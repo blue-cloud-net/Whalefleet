@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Docker.Manager.Infrastructure
+===============================================================================
+    DDD 基础设施层。第三方 SDK 适配（Docker.DotNet.Enhanced）、数据持久化实现、
+    外部服务集成等的归宿。
+
+    依赖：
+    - Domain（实现 Domain 层定义的仓储接口）
+    - Application（实现 Application/Abstractions 下定义的外部资源接口）
+    - Docker.DotNet.Enhanced（Docker SDK）
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>Docker.Manager.Infrastructure</RootNamespace>
+    <AssemblyName>Docker.Manager.Infrastructure</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Docker.Manager.Domain\Docker.Manager.Domain.csproj" />
+    <ProjectReference Include="..\Docker.Manager.Application\Docker.Manager.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Docker.DotNet.Enhanced" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+  </ItemGroup>
+
+</Project>
