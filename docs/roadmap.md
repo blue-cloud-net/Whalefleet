@@ -24,21 +24,35 @@
 
 **目标**：可构建、可运行最小后端 + CI 流水线雏形。
 
+> **0.0.1 实施决策（DDD 拆分）**：原规划的"三项目（Api / Core / Infrastructure）"经评审后调整为 **4 个 DDD 项目（Domain / Application / Infrastructure / Api）** + 1 个测试项目骨架。详细规范见 [docs/ddd-guide.md](./ddd-guide.md)。
+
 后端：
-- 三项目解决方案：`src/Docker.Manager.Api/`、`src/Docker.Manager.Core/`、`src/Docker.Manager.Infrastructure/`
+- **4 个 DDD 项目解决方案**：
+  - `src/Docker.Manager.Domain/`——领域层。实体、值对象、领域事件、领域服务、仓储接口。**仅依赖 BCL，不引用任何 NuGet 包**
+  - `src/Docker.Manager.Application/`——应用层。用例编排、DTO、外部资源接口抽象（如 `IDockerClientFactory`）。依赖 Domain
+  - `src/Docker.Manager.Infrastructure/`——基础设施层。第三方 SDK 适配（`Docker.DotNet.Enhanced`）、仓储实现、外部服务集成。依赖 Domain + Application
+  - `src/Docker.Manager.Api/`——接口层。ASP.NET Core 10 宿主进程，托管 Controllers / SignalR Hubs / 静态前端。依赖 Application + Infrastructure
 - `Directory.Packages.props` 启用 **Central Package Management**（`<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>`），所有 NuGet 包版本号集中此文件
-- `Infrastructure` 项目引入 `Docker.DotNet.Enhanced` 包（采用最新稳定版），在 `Core` 中定义 `IDockerClientFactory` 接口抽象
-- `Docker.Manager.Api` 启动监听 `:8080`，返回 `GET /healthz` → 200 OK
+- `Infrastructure` 项目引入 `Docker.DotNet.Enhanced` 包（采用最新稳定版），**在 `Application/Abstractions` 中定义 `IDockerClientFactory` 接口抽象**（外部资源接口放在应用层，非领域层）
+- `Docker.Manager.Api` 启动监听 `:8080`，返回 `GET /healthz` → 200 OK（Controller 风格，区别于后续 RPC 风格的 `POST /api/v1/...` 端点）
 - `Directory.Build.props`：TargetFramework=net10.0、LangVersion=latest、可空引用类型开启、警告即错误
-- Serilog 控制台输出
+- Serilog 控制台输出（JSON 配置 + `ReadFrom.Configuration`）
+
+测试：
+- `tests/Docker.Manager.UnitTests/` 引入 xUnit + FluentAssertions + coverlet 骨架（占位烟雾用例验证测试链路）。详细覆盖节奏：0.0.3 Argon2id 哈希、0.0.4 登录、0.0.8 引入 Testcontainers 集成测试
 
 CI：
-- `.github/workflows/ci.yml`：push 触发，`dotnet restore` → `dotnet build` → 失败即红
+- `.github/workflows/ci.yml`：push / pull_request 到 `main` / `develop` 触发。步骤：`dotnet restore` → `dotnet build -c Release`（warn-as-error）→ `dotnet test -c Release`。NuGet 包缓存（`~/.nuget/packages`，key 基于 `*.csproj` + `Directory.Packages.props`）
 
 仓库：
-- `README.md` 占位
+- `README.md` 占位（详细完善在 0.0.13）
 
-**验收**：本地 `dotnet build` 通过；`/healthz` 返回 200；NuGet 还原成功拉取 `Docker.DotNet.Enhanced`。
+**验收**：
+- 本地 `dotnet build` 通过（零警告，因 `TreatWarningsAsErrors=true`）
+- `dotnet test` 通过（占位烟雾用例至少 1 个）
+- `/healthz` 返回 200 OK
+- NuGet 还原成功拉取 `Docker.DotNet.Enhanced`
+- 依赖方向校验：`Domain` 项目无任何上游 NuGet 依赖（仅 BCL）
 
 ---
 

@@ -12,6 +12,7 @@
 | 组件 | 选型 | 版本约束 | 说明 |
 |------|------|---------|------|
 | 运行时 | .NET | **10 LTS**（支持到 2028-11） | C# 14 |
+| 架构风格 | **DDD 分层** | 4 个后端项目 | `Domain` / `Application` / `Infrastructure` / `Api`，详细见 [architecture.md](./architecture.md#ddd-依赖方向) 与 [ddd-guide.md](./ddd-guide.md) |
 | Web 框架 | ASP.NET Core | 10 | WebAPI + Minimal API + SignalR Hub |
 | Docker 交互 | [`Docker.DotNet.Enhanced`](https://github.com/testcontainers/Docker.DotNet) | 最新稳定 | fork 自 `dotnet/Docker.DotNet`；Docker API ≥29.8.0；AOT 兼容 |
 | Docker TLS 认证 | `Docker.DotNet.Enhanced.X509` | 最新稳定 | 远程 TCP 可选 TLS |
@@ -51,6 +52,22 @@
 | 代码格式化（前端） | Prettier + ESLint | CI 中执行 |
 | 测试（后端） | xUnit + FluentAssertions + Testcontainers（基于 Docker.DotNet.Enhanced 做集成测试） | 单元 + 集成 |
 | 测试（前端） | Vitest + Vue Test Utils | 组件测试 |
+
+### DDD 约定（0.0.1 起强制）
+
+| 项 | 约定 |
+|----|------|
+| 聚合根命名 | 名词单数，如 `DockerHost`、`Container`、`Image`、`User`。继承 `Docker.Manager.Domain.Common.AggregateRoot<TId>` |
+| 实体命名 | 名词单数，继承 `Docker.Manager.Domain.Common.Entity<TId>`。仅在不属于聚合根时使用 |
+| 值对象命名 | 名词，如 `HostEndpoint`、`ContainerStatus`、`PortMapping`。继承 `Docker.Manager.Domain.Common.ValueObject`，**必须不可变**（init-only 或 readonly） |
+| 仓储接口 | `IXxxRepository`，定义在 `Domain/Repositories/`，实现在 `Infrastructure/Persistence/`。**不允许反向依赖**（Domain 不得引用 Dapper / SQLite 等） |
+| 外部资源接口 | `IXxxFactory` / `IXxxAccessor` 等，定义在 `Application/Abstractions/`，实现在 `Infrastructure/`。典型：`IDockerClientFactory`、`IDockerHostAccessor` |
+| 领域事件 | 过去时态命名（`ContainerStarted`、`HostRegistered`），实现 `IDomainEvent`。仅聚合根可产生 |
+| 跨聚合修改 | 通过领域事件订阅实现最终一致性；同聚合内调用直接走方法引用 |
+| 业务异常 | 领域不变量的违反用 `DomainException`；应用层用例执行失败用 `BusinessException`（`Application/Common/`） |
+| 反模式 | 贫血模型、Entity 直接返回 DTO、聚合根跨边界互相引用、Domain 引用 NuGet 包（仅 BCL） |
+
+详细示例与反模式清单见 [ddd-guide.md](./ddd-guide.md)。
 
 ---
 

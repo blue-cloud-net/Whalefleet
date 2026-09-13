@@ -46,6 +46,73 @@
 
 ## 各层职责
 
+> 0.0.1 起采用 **DDD 分层（4 个后端项目）**。本节后续描述保持与原文档兼容，仅关键术语对齐 DDD：
+> - "API 层" → **接口层（Api / Presentation）**
+> - "Service 层" → **应用层（Application）**
+> - "Docker 接入层 Core 抽象" → **应用层 Abstractions**
+> - "数据访问层" → 仓储接口在 **Domain**，实现在 **Infrastructure/Persistence**
+>
+> 完整 DDD 规范见 [ddd-guide.md](./ddd-guide.md)。
+
+### DDD 依赖方向
+
+项目级依赖图（箭头方向 = 引用方向；箭头尾部依赖箭头头部）：
+
+```
+                              ┌──────────────────────────────┐
+                              │  Docker.Manager.Domain        │
+                              │  ───────────────────────────  │
+                              │  Entity / ValueObject /       │
+                              │  IAggregateRoot / IDomainEvent│
+                              │  DomainException              │
+                              │  仓储接口（0.0.3 起）          │
+                              │  仅依赖 BCL，无 NuGet          │
+                              └──────────────┬───────────────┘
+                                             │ ▲
+                  ┌──────────────────────────┘ │ ┌──────────────────────────┐
+                  │                            │ │                          │
+                  ▼                            │ ▼                          │
+       ┌─────────────────────────┐             │       ┌─────────────────────────┐
+       │  Application            │             │       │  Infrastructure          │
+       │  ─────────────────────  │             │       │  ─────────────────────  │
+       │  应用服务（用例编排）    │             │       │  Docker.DotNet 适配      │
+       │  外部资源接口抽象       │             │       │  仓储实现                │
+       │  (IDockerClientFactory) │             │       │  第三方 SDK 集成         │
+       │  DTO 映射              │             │       │                          │
+       └──────────┬──────────────┘             │       └──────────┬──────────────┘
+                  │                            │                  │
+                  │     ┌──────────────────────┘                  │
+                  │     │                                          │
+                  ▼     ▼                                          ▼
+       ┌──────────────────────────────────────────────────────────────────┐
+       │                       Docker.Manager.Api                          │
+       │  ─────────────────────────────────────────────────────────────  │
+       │  ASP.NET Core 10 宿主进程                                          │
+       │  Controllers / SignalR Hubs / 静态前端托管                        │
+       │  Serilog / Kestrel / 配置 / DI 编排                                │
+       └──────────────────────────────────────────────────────────────────┘
+```
+
+**依赖方向规则**：
+
+| 项目 | 可依赖 | 不可依赖 |
+|------|--------|---------|
+| `Domain` | BCL | Application、Infrastructure、Api、任何 NuGet |
+| `Application` | Domain | Infrastructure、Api |
+| `Infrastructure` | Domain、Application | Api |
+| `Api` | Application、Infrastructure | （已是最外层） |
+| `UnitTests` | Domain、Application | Infrastructure、Api |
+
+**违反依赖方向的检测手段**：
+
+```bash
+# 1) Domain 项目应无任何 NuGet 依赖
+dotnet list src/Docker.Manager.Domain/Docker.Manager.Domain.csproj package --include-transitive
+
+# 2) Application 应仅依赖 Domain（一个 ProjectReference，无 NuGet）
+dotnet list src/Docker.Manager.Application/Docker.Manager.Application.csproj package
+```
+
 ### API 层（Controllers）
 
 - 接收 HTTP 请求，解析入参，调用 Service 层
@@ -72,14 +139,15 @@ Hub 鉴权：JWT 通过 `?access_token=...` 查询参数传递（WebSocket 不�
 
 ### Docker 接入层
 
-- **`Core` 层定义接口**：`IDockerClientFactory`、`IDockerHostAccessor`、`IContainerOperations`、`IImageOperations` 等
-- **`Infrastructure` 层实现**：基于 [Docker.DotNet.Enhanced](https://github.com/testcontainers/Docker.DotNet)（fork），使用 `DockerClientBuilder` 风格
+- **`Application/Abstractions` 层定义接口**：`IDockerClientFactory`、`IDockerHostAccessor`、`IContainerOperations`、`IImageOperations` 等
+- **`Infrastructure/Docker` 层实现**：基于 [Docker.DotNet.Enhanced](https://github.com/testcontainers/Docker.DotNet)（fork），使用 `DockerClientBuilder` 风格
 - **0.0.8 起支持多主机**：根据 `hostId` 动态创建并缓存 `DockerClient` 实例
 - **后续**：支持 TCP 连接（`tcp://host:port`）与 TLS / Basic 证书，通过 `hosts` 表动态创建
 
 ### 数据访问层
 
-- 使用 `Dapper` 执行手写 SQL
+- **仓储接口**（`IUserRepository`、`IHostRepository` 等）定义在 `Docker.Manager.Domain/Repositories/`
+- **仓储实现**位于 `Docker.Manager.Infrastructure/Persistence/`：使用 `Dapper` 执行手写 SQL
 - 数据库：SQLite + `Microsoft.Data.Sqlite`，**WAL 模式**启用（PRAGMA journal_mode=WAL）
 - 文件存储：`/app/data/docker-manager.db`
 - 应用启动时自动执行建表 SQL（若表不存在）
