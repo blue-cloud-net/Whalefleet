@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Docker.Manager.Domain
+===============================================================================
+    DDD 领域层。领域实体、值对象、领域事件、领域服务、仓储接口等的归宿。
+
+    依赖约束：
+    - 仅依赖 BCL（System.*），不允许引用任何 NuGet 包
+    - 不允许引用 Application / Infrastructure / Api 任何上游项目
+    - 不引用任何外部 SDK（Docker SDK 等都在 Infrastructure 层）
+
+    强制约束：警告即错误（CPM 继承 Directory.Build.props）。
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>Docker.Manager.Domain</RootNamespace>
+    <AssemblyName>Docker.Manager.Domain</AssemblyName>
+    <!-- 内部可见（其他项目通过 ProjectReference 引用即可，不需要 InternalsVisibleTo） -->
+  </PropertyGroup>
+
+</Project>
