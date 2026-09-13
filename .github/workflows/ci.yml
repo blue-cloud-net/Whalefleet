@@ -1,0 +1,53 @@
+name: ci
+
+# 触发：
+# - push 到 main / develop（集成分支）
+# - pull_request 到 main / develop
+# tag v*.*.* 由 release.yml（0.0.6 起）单独处理。
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+# 取消同分支的前序运行（节省 CI 配额）
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+
+jobs:
+  build-and-test:
+    name: build + test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', 'Directory.Packages.props') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: restore
+        run: dotnet restore
+
+      - name: build (Release, warn-as-error)
+        run: dotnet build --no-restore --configuration Release
+
+      - name: test (Release)
+        run: dotnet test --no-build --configuration Release --verbosity normal
