@@ -1,3 +1,38 @@
 <Project>
+  <!--
+    Directory.Build.props
+    ===========================================================================
+    全局 MSBuild 属性。所有 .NET 项目自动继承。
+    - TargetFramework=net10.0
+    - LangVersion=latest（C# 14）
+    - Nullable=enable、ImplicitUsings=enable
+    - TreatWarningsAsErrors=true：警告即错误（CI 必须零警告）
+    - AnalysisLevel=latest-recommended：启用 .NET 最新分析器规则集
+    - Central Package Management：版本号集中在 Directory.Packages.props
+  -->
 
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <!-- 风格规则（IDE0xxx）由 .editorconfig 控制；不在 build 时强制为错误 -->
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <!-- 0.0.1 阶段：CA 质量规则仅作为建议，不强制为错误。后续迭代按需单独启用 -->
+    <CodeAnalysisTreatWarningsAsErrors>false</CodeAnalysisTreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);CA1848;CA1873;CA1707;CA1716</NoWarn>
+    <!-- Central Package Management 由 Directory.Packages.props 启用（见该文件）-->
+
+    <!-- 通用元数据（各 csproj 可覆盖） -->
+    <Company>blue-cloud-net</Company>
+    <Product>Docker.Manager</Product>
+    <Copyright>Copyright (c) 2026 blue-cloud-net</Copyright>
+    <NeutralLanguage>zh-CN</NeutralLanguage>
+
+    <!-- 默认不打 NuGet 包（仅 Api/Docker.Manager.Api 显式 IsPackable=true 时才打包） -->
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
 </Project>

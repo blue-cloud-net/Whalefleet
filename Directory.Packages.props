@@ -1,0 +1,42 @@
+<Project>
+  <!--
+    Directory.Packages.props
+    ===========================================================================
+    Central Package Management (CPM) 集中版本表。
+    所有 NuGet 包版本号集中此文件管理；csproj 中只引用包名，不再写版本号。
+    启用位置：本文件 <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  -->
+
+  <PropertyGroup>
+    <!-- CPM 启用（实际开关在 Directory.Build.props；此处冗余写一次以提升可见性） -->
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- ============ ASP.NET Core / Web ============ -->
+    <!-- .NET 10 内置，无需单独版本号；保留占位供后续追加 Microsoft.AspNetCore.* 包 -->
+
+    <!-- ============ Microsoft.Extensions（DI / Logging / Options / Configuration） ============ -->
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="9.0.0" />
+
+    <!-- ============ Serilog（日志） ============ -->
+    <PackageVersion Include="Serilog" Version="4.0.2" />
+    <PackageVersion Include="Serilog.AspNetCore" Version="8.0.3" />
+    <PackageVersion Include="Serilog.Sinks.Console" Version="6.0.0" />
+    <PackageVersion Include="Serilog.Settings.Configuration" Version="8.0.4" />
+
+    <!-- ============ Docker SDK ============ -->
+    <PackageVersion Include="Docker.DotNet.Enhanced" Version="3.125.15" />
+
+    <!-- ============ 测试（xUnit + FluentAssertions + coverlet） ============ -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageVersion Include="xunit" Version="2.9.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageVersion Include="FluentAssertions" Version="6.12.1" />
+    <PackageVersion Include="coverlet.collector" Version="6.0.2" />
+  </ItemGroup>
+</Project>
