@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Docker.Manager.Application
+===============================================================================
+    DDD 应用层。用例编排、DTO 映射、对外接口抽象、跨聚合协调。
+    接口放置原则（详见 docs/ddd-guide.md）：
+    - 领域知识（实体、值对象、领域服务、仓储接口）→ Domain
+    - 外部资源接口（DockerClientFactory、TimeProvider、SmtpSender 等）→ Application/Abstractions
+    - 第三方 SDK 适配 → Infrastructure
+
+    依赖：仅 Domain 项目（不允许引用 Infrastructure / Api）。
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>Docker.Manager.Application</RootNamespace>
+    <AssemblyName>Docker.Manager.Application</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Docker.Manager.Domain\Docker.Manager.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 暴露 DockerClient 返回类型所需 -->
+    <PackageReference Include="Docker.DotNet.Enhanced" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+  </ItemGroup>
+
+</Project>
