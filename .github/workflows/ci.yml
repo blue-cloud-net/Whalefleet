@@ -1,14 +1,14 @@
 name: ci
 
 # 触发：
-# - push 到 main / develop（集成分支）
-# - pull_request 到 main / develop
+# - push 到 main / dev（集成分支）
+# - pull_request 到 main / dev
 # tag v*.*.* 由 release.yml（0.0.6 起）单独处理。
 on:
   push:
-    branches: [main, develop]
+    branches: [main, dev]
   pull_request:
-    branches: [main, develop]
+    branches: [main, dev]
 
 # 取消同分支的前序运行（节省 CI 配额）
 concurrency:
