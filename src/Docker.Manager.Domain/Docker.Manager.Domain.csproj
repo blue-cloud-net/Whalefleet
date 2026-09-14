@@ -13,10 +13,4 @@
     强制约束：警告即错误（CPM 继承 Directory.Build.props）。
   -->
 
-  <PropertyGroup>
-    <RootNamespace>Docker.Manager.Domain</RootNamespace>
-    <AssemblyName>Docker.Manager.Domain</AssemblyName>
-    <!-- 内部可见（其他项目通过 ProjectReference 引用即可，不需要 InternalsVisibleTo） -->
-  </PropertyGroup>
-
 </Project>

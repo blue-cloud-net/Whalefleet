@@ -12,11 +12,6 @@
     依赖：仅 Domain 项目（不允许引用 Infrastructure / Api）。
   -->
 
-  <PropertyGroup>
-    <RootNamespace>Docker.Manager.Application</RootNamespace>
-    <AssemblyName>Docker.Manager.Application</AssemblyName>
-  </PropertyGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\Docker.Manager.Domain\Docker.Manager.Domain.csproj" />
   </ItemGroup>

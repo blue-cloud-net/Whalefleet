@@ -10,13 +10,6 @@
     监听：开发环境 :8080；生产环境通过 Kestrel 配置或容器编排覆盖。
   -->
 
-  <PropertyGroup>
-    <RootNamespace>Docker.Manager.Api</RootNamespace>
-    <AssemblyName>Docker.Manager.Api</AssemblyName>
-    <!-- 仅 Api 项目显式打包 NuGet（其他项目 IsPackable=false） -->
-    <IsPackable>true</IsPackable>
-  </PropertyGroup>
-
   <ItemGroup>
     <InternalsVisibleTo Include="Docker.Manager.UnitTests" />
   </ItemGroup>

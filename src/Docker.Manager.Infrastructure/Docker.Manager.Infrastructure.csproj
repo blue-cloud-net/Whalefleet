@@ -12,11 +12,6 @@
     - Docker.DotNet.Enhanced（Docker SDK）
   -->
 
-  <PropertyGroup>
-    <RootNamespace>Docker.Manager.Infrastructure</RootNamespace>
-    <AssemblyName>Docker.Manager.Infrastructure</AssemblyName>
-  </PropertyGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\Docker.Manager.Domain\Docker.Manager.Domain.csproj" />
     <ProjectReference Include="..\Docker.Manager.Application\Docker.Manager.Application.csproj" />
