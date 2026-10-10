@@ -107,7 +107,15 @@ CI：
 后端：
 - SQLite 初始化（`/app/data/docker-manager.db`，目录不存在自动创建）
 - Dapper 接入，仓储层抽象 `IUserRepository`
-- 启动时建 `users` 表（id、username、password_hash、role、created_at）
+- 启动时建 `users` 表（id、username、password_hash、role、creation_time、creator_id）
+  - 列名遵循「属性名 ↔ 列名同名、仅大小写风格不同」的审计列约定（`docs/architecture.md` 实体审计与软删除）
+  - Dapper 直接物化充血实体：实体给**非公开无参构造**即可，**不建 Row DTO、不加 InternalsVisibleTo**；
+    须开启 `MatchNamesWithUnderscores` 才能把 `creation_time` 映射到 `CreationTime`
+  - `IUserRepository` 实现继承 `Infrastructure/Persistence/RepositoryBase`，插入 / 更新时调用
+    `MarkCreated` / `MarkModified` 写入审计（值取自 `TimeProvider` 与 `ICurrentUser`）
+- `ICurrentUser`（`Application/Abstractions/`）抽象当前登录用户；`RepositoryBase` 注入
+  `ICurrentUser` + `TimeProvider` 完成审计填充
+- `User` 实体继承 `AuditedEntity<TId, TUserKey>`（记录创建 + 修改审计）
 - Argon2id 密码哈希（`Isopoh.Cryptography.Argon2`），禁止明文落库与日志
 - 单元测试覆盖哈希/校验
 
@@ -202,7 +210,7 @@ CI：
 **目标**：可注册多个 Docker 主机，按主机切换操作。
 
 后端：
-- 新建 `hosts` 表（id、name、type=socket|tcp、endpoint、tls_config_json、enabled、created_at）
+- 新建 `hosts` 表（id、name、type=socket|tcp、endpoint、tls_config_json、enabled、creation_time、creator_id）
 - 启动时若 hosts 表为空，插入默认主机：`name="local"`、`type=socket`、`endpoint="/var/run/docker.sock"`
 - `Infrastructure` 项目额外引入 `Docker.DotNet.Enhanced.X509` + `Docker.DotNet.Enhanced.BasicAuth`
 - `IDockerClientFactory`（在 `Core` 中定义接口，`Infrastructure` 实现）：按 `hostId` 返回缓存的 `DockerClient` 实例

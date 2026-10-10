@@ -157,6 +157,11 @@ dotnet list src/Docker.Manager.Application/Docker.Manager.Application.csproj pac
 |------|------|------|
 | `Entity<TId>` | `Core/Common/Entity.cs` | 按 `Id` 判定相等性；提供 `Id` 与运算符重载 |
 | `ValueObject` | `Core/Common/ValueObject.cs` | 按 `GetEqualityComponents()` 逐项判定相等性；应不可变 |
+| `CreationAuditedEntity<TId, TUserKey>` | `Core/Common/Auditing/` | 追加创建审计（`CreationTime` / `CreatorId`） |
+| `AuditedEntity<TId, TUserKey>` | `Core/Common/Auditing/` | 追加最后修改审计（`LastModificationTime` / `LastModifierId`） |
+| `FullAuditedEntity<TId, TUserKey>` | `Core/Common/Auditing/` | 追加软删除（`IsDeleted` / `DeletionTime` / `DeleterId`）+ `Delete()` / `Restore()` |
+
+详见 [实体审计与软删除](#实体审计与软删除) 与 [持久化实体物化约定（Dapper）](#持久化实体物化约定dapper)。
 
 **反模式清单**
 
@@ -254,6 +259,8 @@ public interface IHostRepository
 - `IHostRepository` 定义在 `Core`，实现在 `Infrastructure/Persistence`
 - 私有构造 + 静态工厂确保不变量在创建时即成立
 
+---
+
 ### API 层（Controllers）
 
 - 接收 HTTP 请求，解析入参，调用 Service 层
@@ -295,6 +302,140 @@ Hub 鉴权：JWT 通过 `?access_token=...` 查询参数传递（WebSocket 不�
 - 存储内容：用户信息、资源授权关系、Docker 主机配置、Registry 凭据（加密）
 
 ---
+
+## 实体审计与软删除
+
+> 位于 `src/Docker.Manager.Core/Common/Auditing/`。设计参照 ABP 的分层审计：把"创建 / 修改 / 删除"
+> 拆成**可独立混入的细粒度接口**，再提供三级常用基类作为便利入口。
+
+### 分层接口
+
+| 接口 | 泛型 | 成员 | 语义 |
+|------|------|------|------|
+| `IHasCreationTime` | 否 | `CreationTime` | 只记创建时间 |
+| `IHasModificationTime` | 否 | `LastModificationTime?` | 只记最后修改时间 |
+| `ISoftDelete` | 否 | `IsDeleted` | 只记软删除标志 |
+| `IHasDeletionTime` | 否 | `: ISoftDelete` + `DeletionTime?` | 软删除 + 删除时间 |
+| `ICreationAuditedObject<TUserKey>` | 是 | `: IHasCreationTime` + `CreatorId` | 创建时间 + 创建人 |
+| `IModificationAuditedObject<TUserKey>` | 是 | `: IHasModificationTime` + `LastModifierId` | 修改时间 + 修改人 |
+| `IAuditedObject<TUserKey>` | 是 | 组合上述两者 | 创建 + 修改审计 |
+| `IDeletionAuditedObject<TUserKey>` | 是 | `: IHasDeletionTime` + `DeleterId` | 删除时间 + 删除人 |
+| `IFullAuditedObject<TUserKey>` | 是 | `IAuditedObject` + `IDeletionAuditedObject` | 全量审计 + 软删除 |
+
+**所有接口成员都是只读（`get`）契约**，不提供 `set`——它们只声明"这个实体有这些审计信息"，
+写入路径统一走基类方法。
+
+### 三级基类
+
+| 基类 | 继承 | 新增属性 | 新增方法 |
+|------|------|----------|----------|
+| `CreationAuditedEntity<TId, TUserKey>` | `Entity<TId>` | `CreationTime`、`CreatorId` | `MarkCreated(DateTime utcNow, TUserKey creatorId)` |
+| `AuditedEntity<TId, TUserKey>` | `CreationAuditedEntity<…>` | `LastModificationTime`、`LastModifierId` | `MarkModified(DateTime utcNow, TUserKey modifierId)` |
+| `FullAuditedEntity<TId, TUserKey>` | `AuditedEntity<…>` | `IsDeleted`、`DeletionTime`、`DeleterId` | `Delete(DateTime utcNow, TUserKey deleterId)`、`Restore()` |
+
+未提供 `SoftDeleteEntity`：只需"标记删除"时，让实体自行实现 `ISoftDelete` 即可，不额外增加继承层级。
+
+### 写入路径
+
+审计属性一律 `internal set`，**外部（含应用层）只读**，唯一写入口是上述 `public` 方法：
+
+```
+应用服务 / 仓储基类
+      │  调 entity.MarkCreated(now, userId)  ← public
+      ▼
+实体内部  ──►  internal setter 写 CreationTime / CreatorId
+```
+
+`Mark*` / `Delete` **显式接收时间与操作人**，而不是在实体内部取当前时间。原因有三：
+
+1. 可测试——时间由调用方注入，单测无需真实时钟；
+2. 可复原——同一套方法既用于"新建时写入"，也用于"从库中读出后按原值复原"（覆盖式赋值）；
+3. 分层干净——"现在几点"和"当前是谁"属于应用/基础设施的上下文，实体无权获取。
+
+**填充时机（0.0.3 落地）**：`RepositoryBase`（`Infrastructure/Persistence/`）持有
+`ICurrentUser` 与 `TimeProvider`，在插入时调 `MarkCreated`、更新时调 `MarkModified`、
+软删除时调 `Delete`，取值来自 `TimeProvider.GetUtcNow().UtcDateTime` 与当前用户 ID。
+
+### 列名约定
+
+**实体属性名与数据库列名同名，仅大小写风格不同**（属性 PascalCase，列 snake_case）：
+
+| 属性 | 列 | 类型 |
+|------|-----|------|
+| `CreationTime` | `creation_time` | `DateTime`（UTC） |
+| `CreatorId` | `creator_id` | 审计人主键 |
+| `LastModificationTime` | `last_modification_time` | `DateTime?` |
+| `LastModifierId` | `last_modifier_id` | 审计人主键 |
+| `IsDeleted` | `is_deleted` | 布尔 |
+| `DeletionTime` | `deletion_time` | `DateTime?` |
+| `DeleterId` | `deleter_id` | 审计人主键 |
+
+### 「无审计人」的表达：默认值哨兵
+
+`TUserKey` **不加类型约束**（以支持 `string` 等引用类型主键），因此 C# 的 `TUserKey?` 语法
+对值类型会退化为 `TUserKey` 本身、无法表达空值。本项目统一采用**默认值哨兵**：
+
+| `TUserKey` | 哨兵值 | 含义 |
+|------------|--------|------|
+| `Guid` | `Guid.Empty` | 系统操作（无登录用户） |
+| `long` / `int` | `0` | 系统操作 |
+| `string` | `null` | 系统操作 |
+
+消费方用 `EqualityComparer<TUserKey>.Default.Equals(x, default)` 判断。
+
+> ⚠️ **代价**：哨兵值无法区分"未设置"与"系统操作"。若将来需要区分，改用包装结构体
+> `AuditUser<TUserKey>`（属破坏性变更）。
+
+### 软删除语义与查询过滤
+
+| 规则 | 说明 |
+|------|------|
+| **不变量** | `DeletionTime == null` ⇔ `IsDeleted == false`，由 `Delete()` / `Restore()` 成对维护 |
+| **幂等** | 重复 `Delete()` 刷新删除时间与删除者；对未删除实体 `Restore()` 无副作用 |
+| **查询默认过滤** | 仓储生成的 `SELECT` **默认追加 `WHERE is_deleted = 0`**，软删除数据对业务查询不可见 |
+| **逃生舱** | 仅在显式传入"包含已删除"开关（如 `includeDeleted: true`）时才放开，供回收站 / 数据修复类用例使用 |
+| **唯一索引** | 软删除表的唯一约束需带 `WHERE is_deleted = 0`（SQLite 部分索引），避免删除后占用业务键 |
+
+> 软删除查询过滤的**代码契约在 0.0.3 随 `RepositoryBase` 一并落地**；本节当前为约定。
+
+---
+
+## 持久化实体物化约定（Dapper）
+
+> 0.0.3 落地。结论基于 Dapper 源码核实，**不需要**中间 Row DTO，**不需要** `InternalsVisibleTo`。
+
+### Dapper 能物化非公开成员
+
+| 环节 | Dapper 实现 | 结论 |
+|------|-------------|------|
+| 选构造 | `DefaultTypeMap.FindConstructor` 用 `GetConstructors(BindingFlags.Public \| BindingFlags.NonPublic)`，按 `public → internal/protected → private` 排序，再按参数个数升序；**参数个数为 0 立即采用** | `private` / `internal` 无参构造可用 |
+| 选属性 | `GetSettableProps` 用 `BindingFlags.NonPublic`，`GetPropertySetter` 用 `GetSetMethod(true)` | `private` / `internal` setter 可写 |
+| 生成代码 | `GetTypeDeserializerImpl` 用 `new DynamicMethod(..., type, skipVisibility: true)` | 跨程序集跳过可见性检查 |
+
+官方测试佐证：`tests/Dapper.Tests/ConstructorTests.cs::TestWithNonPublicConstructor`。
+
+### 因此实体须满足
+
+1. 提供**非公开无参构造**（或参数个数与列数恰好匹配且按名映射的构造）；
+2. 属性（`Id` 的 `protected set`、审计属性的 `internal set`）**保持非公开即可**，Dapper 会灌值；
+3. **无需** `InternalsVisibleTo`——Dapper 靠 `skipVisibility` 访问，不走 C# 编译期访问检查；
+   仅当 `Infrastructure` 需要用**强类型代码直接调用**非公开成员时才需另加。
+
+### 命名映射
+
+列名与属性名的对应见 [列名约定](#列名约定)。Dapper 默认忽略大小写并按名称匹配，
+`snake_case` 列与 `PascalCase` 属性之间需通过 `SqlMapper.SetTypeMap`（`MatchNamesWithUnderscores = true`）
+或 `ITypeMap` 自定义映射实现——**0.0.3 落地时须显式开启 `MatchNamesWithUnderscores`**，
+否则 `creation_time` 无法匹配到 `CreationTime`。
+
+### 反模式
+
+| 反模式 | 纠正 |
+|--------|------|
+| 为图省事把审计属性开成 `public set` | 保持 `internal set`；Dapper 不需要 public setter |
+| 为 Dapper 单独建 `XxxRow` DTO 再手工映射 | 实体给非公开无参构造即可，勿引入双份模型 |
+| 用 `InternalsVisibleTo` 解决 Dapper 物化 | Dapper 用 `skipVisibility`，IVT 是多余的 |
+| 忘记 `MatchNamesWithUnderscores` | snake_case 列映射不到 PascalCase 属性，会静默丢值 |
 
 ## 多主机架构（0.0.8 起）
 
@@ -397,9 +538,12 @@ public interface IDockerClientFactory
 启动时若 `hosts` 表为空，自动插入默认主机：
 
 ```sql
-INSERT INTO hosts (id, name, type, endpoint, enabled, created_at)
-VALUES ('00000000-0000-0000-0000-000000000001', 'local', 'socket', '/var/run/docker.sock', 1, datetime('now'));
+INSERT INTO hosts (id, name, type, endpoint, enabled, creation_time, creator_id)
+VALUES ('00000000-0000-0000-0000-000000000001', 'local', 'socket', '/var/run/docker.sock', 1, datetime('now'), '00000000-0000-0000-0000-000000000000');
 ```
+
+> 列名遵循「实体属性 ↔ 数据库列同名（仅大小写风格不同）」的约定，详见
+> [实体审计与软删除](#实体审计与软删除)。`creator_id` 取 `Guid.Empty` 表示**系统操作**（启动引导无登录用户）。
 
 ---
 

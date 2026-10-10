@@ -65,14 +65,48 @@
 | 持久化接口 | `IXxxRepository`，定义在 `Core`，实现在 `Infrastructure/Persistence/`。**不允许反向依赖**（`Core` 不得引用 Dapper / SQLite 等） |
 | 外部资源接口 | `IXxxFactory` / `IXxxAccessor` 等，定义在 `Application/Abstractions/`，实现在 `Infrastructure/`。典型：`IDockerClientFactory`、`IDockerHostAccessor` |
 | 充血要求 | 实体的行为与不变量写在实体方法内（推荐「私有构造 + 静态工厂」），不得只当数据袋 |
+| 审计接口 | `Core/Common/Auditing/`，**全部只读**（`get` 无 `set`）。细粒度：`IHasCreationTime` / `IHasModificationTime` / `ISoftDelete` / `IHasDeletionTime` / `ICreationAuditedObject<TUserKey>` / `IModificationAuditedObject<TUserKey>` / `IAuditedObject<TUserKey>` / `IDeletionAuditedObject<TUserKey>` / `IFullAuditedObject<TUserKey>` |
+| 审计基类 | 三级：`CreationAuditedEntity<TId, TUserKey>` → `AuditedEntity<TId, TUserKey>` → `FullAuditedEntity<TId, TUserKey>`。**不提供** `SoftDeleteEntity`（纯软删除自行实现 `ISoftDelete`） |
+| 审计属性 | 一律 `internal set` + `public` `MarkCreated` / `MarkModified` / `Delete` / `Restore` 写入；**不得**开 `public set` 绕过 |
+| 审计时间 | 一律 `DateTime` **UTC**；由仓储基类从 `TimeProvider.GetUtcNow().UtcDateTime` 取值，**实体不自行取当前时间** |
+| 审计人 ID | 泛型 `TUserKey` **不加类型约束**（支持 `Guid` / `long` / `string`）；「无用户」用**默认值哨兵** `default(TUserKey)` |
+| 审计列名 | 属性名与列名**同名、仅大小写风格不同**：`creation_time` / `creator_id` / `last_modification_time` / `last_modifier_id` / `is_deleted` / `deletion_time` / `deleter_id` |
+| Dapper 物化 | 实体给**非公开无参构造**即可被 Dapper 直接物化（`skipVisibility`）；**不需要** Row DTO，**不需要** `InternalsVisibleTo`。须显式开启 `MatchNamesWithUnderscores` |
+| 软删除 | `DeletionTime == null` ⇔ `IsDeleted == false`，由 `Delete()` / `Restore()` 成对维护；`Delete` / `Restore` 均**幂等** |
 | 不变量违反 | 抛 BCL 的 `ArgumentException`（含 `ArgumentNullException`），中间件映射为 `1000` / 400；不定义领域异常类型 |
 | 用例失败 | 抛 `BusinessException`（`Application/Common/`），自带错误码 |
 | 响应模型 | Entity 不直接作为 HTTP 响应返回；在应用服务里做 Entity → DTO 映射 |
-| 反模式 | 贫血模型、Entity 直接返回 DTO、实体跨边界互相持有对象引用、`Core` 引用 NuGet 包（仅 BCL） |
+| 反模式 | 贫血模型、Entity 直接返回 DTO、实体跨边界互相持有对象引用、`Core` 引用 NuGet 包（仅 BCL）、审计属性开 `public set`、为 Dapper 另建 Row DTO、忘记 `MatchNamesWithUnderscores` |
 
 > DDD 战术模式（聚合根、领域事件、领域服务）已整体移除；`Core` 的职责是**业务实体与值对象**。
 
 详细示例与反模式清单见 [architecture.md](./architecture.md#分层与充血模型约定)。
+
+---
+
+## 软删除查询过滤约定
+
+> 适用于所有实现 `ISoftDelete` 的实体。**代码契约在 0.0.3 随 `RepositoryBase` 落地**；本节当前为约定。
+
+| 场景 | 行为 |
+|------|------|
+| 仓储生成的 `SELECT` | **默认追加 `WHERE is_deleted = 0`**，软删除数据对业务查询不可见 |
+| 按主键查询 | 命中软删除行时按「未找到」处理（返回 `null` / 抛 `KeyNotFoundException` → `1001`），**不暴露**行已删除这一事实 |
+| 计数 / 存在性判断 | 一并过滤，避免统计口径把回收站数据算进去 |
+| 唯一约束 | 须用 SQLite **部分索引** `UNIQUE (username) WHERE is_deleted = 0`，否则软删除行会永久占用业务键 |
+| 显式包含已删除 | 仅回收站 / 数据修复 / 审计类用例可传 `includeDeleted: true` 放开；**禁止**在常规业务路径使用 |
+| 物理清理 | 超过保留期由离线维护脚本执行 `DELETE ... WHERE is_deleted = 1 AND deletion_time < ?`；应用运行期不物理删除 |
+
+**为什么默认过滤而不是"查出来再判"**：过滤下沉到 SQL 才能走索引，且避免漏判——应用层过滤一旦有
+某个 `Query` 忘了加 `if (x.IsDeleted) continue`，软删除数据就会泄漏到业务结果里。
+
+**反模式**：
+
+| 反模式 | 后果 |
+|--------|------|
+| 在应用服务里遍历结果手工过滤 `IsDeleted` | 列表接口易漏；数据量大了才暴露性能问题 |
+| 仓储提供无过滤的 `ListAll()` 供业务直接调用 | 软删除语义被绕过 |
+| 部分索引缺失 | 软删除的用户名 / 主机名无法被再次使用 |
 
 ---
 
