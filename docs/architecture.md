@@ -530,8 +530,10 @@ public interface IDockerClientFactory
 
 ### 前端集成
 
-- **顶栏 `HostSelector` 组件**：显示当前主机 + 在线状态点；列出可访问主机；admin 可见「管理主机」入口
-- **切换主机**：写入 Pinia `useHostStore`，所有后续 axios 请求通过 `composables/useDockerRequest.ts` 拦截器自动带 `X-Host-Id` Header
+- **顶栏 `HostSelector` 组件**（`components/business/HostSelector.vue`）：主机作用域显示当前主机名 + 状态点，全局作用域显示「选择主机」占位；列出可访问主机，**切换后停留在当前资源页**；admin 可见「管理主机」入口
+- **切换主机**：写入 Pinia `useHostStore.currentId`，由 `api/index.ts` 的请求拦截器自动带 `X-Host-Id` Header
+- **作用域驱动**：`currentId` 不是独立状态，而是路由（`/hosts/:hostId/**`）的镜像，由路由守卫在导航时写入/清空，因此刷新与深链都能正确还原作用域
+- **仅主机作用域注入 `X-Host-Id`**：全局作用域（总览 / 主机管理 / 用户管理）的请求不携带该头，否则后端会误判为针对某台机器的资源操作
 
 ### 默认主机（0.0.8 启动时）
 
@@ -693,8 +695,8 @@ src/web/src/
 │   └── business/          # 业务组件（ContainerStatusBadge、PortMappingEditor、EnvVarEditor）
 ├── composables/           # 复用 Composition 函数
 │   ├── useTheme.ts
-│   ├── useShortcuts.ts
-│   └── useDockerRequest.ts  # 自动注入 X-Host-Id
+│   └── useShortcuts.ts
+│   # X-Host-Id 由 api/index.ts 的请求拦截器按作用域条件注入
 ├── layouts/
 │   ├── AppLayout.vue
 │   └── AuthLayout.vue

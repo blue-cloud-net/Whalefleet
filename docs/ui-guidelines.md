@@ -68,23 +68,47 @@ UnoCSS 默认 + 自定义：
 
 ### 侧边栏菜单分组
 
-| 分组 | 菜单项 | 可见角色 | 阶段 |
-|------|--------|---------|------|
-| 运维 | Dashboard / Containers / Images / Volumes / Networks | admin + user | 0.0.7+ |
-| 管理 | Hosts / Users | **admin only** | 0.0.13 / 0.0.8 |
-| 系统（0.3.0+） | Stacks / Registries | admin | 0.4.0 |
+菜单项**从路由表自动派生**（`AppLayout.navItems`），按 `meta.scope` 切换两套菜单：
+
+| 作用域 | 菜单项 | 可见角色 | 阶段 |
+|--------|--------|---------|------|
+| `global` | 总览 / 全局设置 | admin + user | 0.0.7+ |
+| `global` | 管理：主机管理 / 用户管理 | **admin only** | 0.0.13 / 0.0.8 |
+| `host` | 返回总览 + 概览 / 容器 / 镜像 / 数据卷 / 网络 | admin + user | 0.0.7+ |
+| `host` | （0.4.0+）Stacks / Registries | admin | 0.4.0 |
 
 - 菜单项**图标 + 标题 + 可选描述**三列布局（>1024px 显示描述）
 - 当前路由对应菜单项**高亮**：左侧蓝色指示条 + 文字加粗
 - 折叠状态记 localStorage（key: `sidebar_collapsed`）
+- **主机作用域的侧栏顶部**额外渲染主机名 header（状态点 + 主机名）与「返回总览」链接
+- 纯重定向路由（`hosts/:hostId`）必须声明 `meta.showInSidebar: false`，
+  否则会被当成菜单项，因缺 `meta.title` 而在 `t(undefined)` 处抛错
+
+### 总览页主机列表（长条形）
+
+总览页用**长条形**条目而非卡片网格（便于横向对比多台服务器的同类指标）：
+
+```
+┌────────────────────────────────────────────────────────────┐
+│ ● local  本地 Socket          ┃ ▢  ┃ ▢  ┃ ▢  ┃ ▢   在线  [进入] │
+│   /var/run/docker.sock        ┃容器┃镜像┃卷  ┃网络          │
+├────────────────────────────────────────────────────────────┤
+│ ● prod-01  远程 TCP           ┃ ▢  ┃ ▢  ┃ ▢  ┃ ▢   在线  [进入] │
+│   tcp://10.0.0.11:2376        ┃容器┃镜像┃卷  ┃网络          │
+└────────────────────────────────────────────────────────────┘
+```
+
+- 一行一台主机：`名称 + 类型` / `endpoint` ｜ 四个资源计数 ｜ `状态 + 进入`
+- 窄屏（<1024px）用 `flex-wrap` 折行，不做横向滚动
+- 计数在后端聚合接口就绪前显示占位 `—`
 
 ### 顶栏组件（从左到右）
 
 | 组件 | 说明 | 阶段 |
 |------|------|------|
-| Logo（点击回 Dashboard） | 64×64 区域 | 0.0.13 引入品牌 |
-| 面包屑（`el-breadcrumb`） | 自动从路由 meta 生成；支持点击上级跳转 | 0.0.7 |
-| HostSelector（下拉） | 显示当前主机名 + 在线状态点；点开显示所有可访问主机列表 + 「管理」入口（admin 可见） | 0.0.11 |
+| Logo（点击回总览） | 64×64 区域；点击跳 `/overview` | 0.0.13 引入品牌 |
+| 面包屑（`el-breadcrumb`） | 自动从路由 meta 生成；主机作用域需带上 hostId 段 | 0.0.7 |
+| HostSelector（下拉） | 主机作用域：显示当前主机名 + 状态点；全局作用域：显示「选择主机」占位。点开列出全部可访问主机，**切换后停留在当前资源页**；admin 可见「管理主机」入口 | 0.0.11 |
 | 全局搜索按钮（Ctrl+K 触发） | 0.0.13 起实现命令面板 | 0.0.13 |
 | 通知按钮（铃铛） | 0.3.0+ 容器 died 通知，未读小红点 | 0.3.0 |
 | 用户菜单（头像下拉） | 用户名 / 角色标签 / 切换主题 / 切换语言 / 修改密码 / 登出 | 0.0.7 |
@@ -176,6 +200,8 @@ UnoCSS 默认 + 自定义：
 | 资源 | 图标 class |
 |------|------------|
 | Dashboard | `i-mdi-view-dashboard` |
+| 总览（所有服务器） | `i-carbon-dashboard` |
+| 全局设置 | `i-carbon-settings-adjust` |
 | Containers | `i-mdi-docker` |
 | Images | `i-mdi-package-variant` |
 | Volumes | `i-mdi-database` |
@@ -195,22 +221,28 @@ UnoCSS 默认 + 自定义：
 
 ```
 /login                              → LoginView（独立 AuthLayout，无顶栏侧栏）
-/                                   → AppLayout 容器
-  /dashboard                        → DashboardView（默认页）
-  /containers                       → ContainerListView
-    /containers/:id                 → ContainerDetailView（tab: info / logs / stats / inspect）
-    /containers/:id/logs            → ContainerLogsView（0.0.11 起可直链）
-  /images                           → ImageListView
-    /images/:id                     → ImageInspectView
-  /volumes   (0.2.0+)               → VolumeListView
-  /networks  (0.2.0+)               → NetworkListView
-  /stacks    (0.4.0+)               → StackListView
-  /registries (0.4.0+)              → RegistryListView
-  ─── admin ───
-  /admin/hosts                      → HostManagementView
-  /admin/users                      → UserManagementView
-  /admin/permissions (0.3.0+)       → PermissionManagementView
+/                                   → AppLayout 容器，redirect → /overview
+
+  ─── 全局作用域（scope: 'global'）───
+  /overview                         → OverviewView（所有服务器总览，默认页）
+  /settings                         → SettingsView（主题 / 语言 / 每页条数）
+  /hosts                            → HostsView        (admin, 主机 CRUD)
+  /users                            → UsersView        (admin)
+
+  ─── 主机作用域（scope: 'host'）───
+  /hosts/:hostId                    → redirect → /hosts/:hostId/dashboard
+  /hosts/:hostId/dashboard          → HostDashboardView（该主机概览）
+  /hosts/:hostId/containers         → ContainersView
+    /hosts/:hostId/containers/:id   → ContainerDetailView (tab: info / logs / stats / inspect)
+  /hosts/:hostId/images             → ImagesView
+  /hosts/:hostId/volumes            → VolumesView      (0.2.0+)
+  /hosts/:hostId/networks           → NetworksView     (0.2.0+)
+  /hosts/:hostId/stacks             → StackListView    (0.4.0+)
+  /hosts/:hostId/registries         → RegistryListView (0.4.0+)
 ```
+
+> **注意**：`/hosts`（主机管理，admin CRUD）与 `/hosts/:hostId/**`（某台主机的资源作用域）
+> 是两个不同语义，共存不冲突。`/hosts/:hostId` 是纯重定向，必须声明 `meta.showInSidebar: false`。
 
 ### 路由 meta
 
@@ -218,11 +250,24 @@ UnoCSS 默认 + 自定义：
 interface RouteMeta {
   title: string;             // i18n key，用于面包屑与浏览器标题
   icon?: string;             // UnoCSS icon class
+  scope?: 'global' | 'host'; // 默认 'global'；决定侧边栏渲染哪套菜单
+  group?: 'manage';          // 全局作用域的分组标题（当前仅管理组）
   requiresAdmin?: boolean;   // true → 仅 admin 可见，路由守卫拦截
-  showInSidebar?: boolean;   // 默认 true；false 表示不在侧边栏显示（如详情页）
+  showInSidebar?: boolean;   // 默认 true；false 表示不在侧边栏显示（详情页 / 纯重定向）
   breadcrumb?: 'auto' | 'none';
 }
 ```
+
+### 作用域与 `X-Host-Id` 的关系
+
+| 场景 | `useHostStore.currentId` | 是否发 `X-Host-Id` |
+|------|--------------------------|-------------------|
+| 全局作用域路由 | `''`（守卫调 `clearCurrent()`） | ❌ 不发 |
+| 主机作用域路由 | URL 的 `:hostId`（守卫调 `setCurrent()`） | ✅ 发送 |
+| 未知 hostId | 守卫直接重定向 `/overview` | — |
+
+`api/index.ts` 的请求拦截器**仅当 `currentId` 非空**才写入 `X-Host-Id`；
+若无条件发送会让后端把总览 / 主机管理请求误当作针对某台机器的资源操作。
 
 ---
 
@@ -237,8 +282,8 @@ src/web/src/
 │   └── business/          # 业务组件（领域专用）
 ├── composables/           # 复用 Composition 函数
 │   ├── useTheme.ts
-│   ├── useShortcuts.ts
-│   └── useDockerRequest.ts  # 自动注入 X-Host-Id
+│   └── useShortcuts.ts
+│   # X-Host-Id 由 api/index.ts 的请求拦截器按作用域条件注入
 ├── layouts/
 │   ├── AppLayout.vue
 │   └── AuthLayout.vue
