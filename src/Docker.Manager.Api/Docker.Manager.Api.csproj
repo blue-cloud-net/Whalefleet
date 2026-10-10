@@ -3,9 +3,9 @@
   <!--
     Docker.Manager.Api
 ===============================================================================
-    DDD 接口层。ASP.NET Core 10 宿主进程，托管 Controllers / SignalR Hubs / 静态前端。
+    接口层。ASP.NET Core 10 宿主进程，托管 Controllers / SignalR Hubs / 静态前端。
 
-    依赖：Application + Infrastructure（不直接依赖 Domain）。
+    依赖：Application + Infrastructure（不直接依赖 Core）。
 
     监听：开发环境 :8080；生产环境通过 Kestrel 配置或容器编排覆盖。
   -->
@@ -22,6 +22,8 @@
   <ItemGroup>
     <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="Serilog.Settings.Configuration" />
+    <!-- 滚动文件 sink：显式引用而非依赖 Serilog.AspNetCore 的传递依赖 -->
+    <PackageReference Include="Serilog.Sinks.File" />
   </ItemGroup>
 
 </Project>

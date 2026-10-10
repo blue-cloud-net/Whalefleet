@@ -24,7 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Docker.Manager.Domain\Docker.Manager.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Docker.Manager.Core\Docker.Manager.Core.csproj" />
     <ProjectReference Include="..\..\src\Docker.Manager.Application\Docker.Manager.Application.csproj" />
   </ItemGroup>
 

@@ -3,17 +3,17 @@
   <!--
     Docker.Manager.Infrastructure
 ===============================================================================
-    DDD 基础设施层。第三方 SDK 适配（Docker.DotNet.Enhanced）、数据持久化实现、
+    基础设施层。第三方 SDK 适配（Docker.DotNet.Enhanced）、数据持久化实现、
     外部服务集成等的归宿。
 
     依赖：
-    - Domain（实现 Domain 层定义的仓储接口）
+    - Core（业务实体的持久化落地）
     - Application（实现 Application/Abstractions 下定义的外部资源接口）
     - Docker.DotNet.Enhanced（Docker SDK）
   -->
 
   <ItemGroup>
-    <ProjectReference Include="..\Docker.Manager.Domain\Docker.Manager.Domain.csproj" />
+    <ProjectReference Include="..\Docker.Manager.Core\Docker.Manager.Core.csproj" />
     <ProjectReference Include="..\Docker.Manager.Application\Docker.Manager.Application.csproj" />
   </ItemGroup>
 

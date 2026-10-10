@@ -11,7 +11,7 @@
   </Folder>
 
   <Folder Name="/src/">
-    <Project Path="src/Docker.Manager.Domain/Docker.Manager.Domain.csproj" />
+    <Project Path="src/Docker.Manager.Core/Docker.Manager.Core.csproj" />
     <Project Path="src/Docker.Manager.Application/Docker.Manager.Application.csproj" />
     <Project Path="src/Docker.Manager.Infrastructure/Docker.Manager.Infrastructure.csproj" />
     <Project Path="src/Docker.Manager.Api/Docker.Manager.Api.csproj" />
