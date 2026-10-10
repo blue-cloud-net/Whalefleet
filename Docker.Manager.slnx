@@ -19,5 +19,6 @@
 
   <Folder Name="/tests/">
     <Project Path="tests/Docker.Manager.UnitTests/Docker.Manager.UnitTests.csproj" />
+    <Project Path="tests/Docker.Manager.IntegrationTests/Docker.Manager.IntegrationTests.csproj" />
   </Folder>
 </Solution>
