@@ -12,9 +12,9 @@
 | 组件 | 选型 | 版本约束 | 说明 |
 |------|------|---------|------|
 | 运行时 | .NET | **10 LTS**（支持到 2028-11） | C# 14 |
-| 架构风格 | **DDD 分层** | 4 个后端项目 | `Domain` / `Application` / `Infrastructure` / `Api`，详细见 [architecture.md](./architecture.md#ddd-依赖方向) 与 [ddd-guide.md](./ddd-guide.md) |
+| 架构风格 | **分层架构 + 充血模型** | 4 个后端项目 | `Core` / `Application` / `Infrastructure` / `Api`，详细见 [architecture.md](./architecture.md#项目依赖方向) |
 | Web 框架 | ASP.NET Core | 10 | WebAPI + Minimal API + SignalR Hub |
-| Docker 交互 | [`Docker.DotNet.Enhanced`](https://github.com/testcontainers/Docker.DotNet) | 最新稳定 | fork 自 `dotnet/Docker.DotNet`；Docker API ≥29.8.0；AOT 兼容 |
+| Docker 交互 | [`Docker.DotNet.Enhanced`](https://github.com/testcontainers/Docker.DotNet) | **4.3.3** | fork 自 `dotnet/Docker.DotNet`；面向 Docker Engine API **v29.4.1**（实际版本与守护进程协商）；AOT 兼容 |
 | Docker TLS 认证 | `Docker.DotNet.Enhanced.X509` | 最新稳定 | 远程 TCP 可选 TLS |
 | Docker Basic 认证 | `Docker.DotNet.Enhanced.BasicAuth` | 最新稳定 | 远程 TCP 可选 Basic |
 | 数据访问 | Dapper | 最新稳定 | 手写 SQL，不引 ORM |
@@ -26,7 +26,9 @@
 | 日志 | Serilog | 最新稳定 | 控制台 + 滚动文件 |
 | OpenAPI（1.0.0） | `Microsoft.AspNetCore.OpenApi` + **Scalar** | 最新稳定 | 替代 Swagger UI |
 
-> **SDK 选型说明**：选用 `Docker.DotNet.Enhanced` 是因为上游 `Docker.DotNet` 3.x 已停摆多年，而 fork 同步 Docker API 29.8.0 且持续维护。`Core` 层通过 `IDockerClientFactory` / `IDockerHostAccessor` 抽象隔离 SDK，未来可平滑回退到上游 3.x。详见 [architecture.md](./architecture.md)。
+> **SDK 选型说明**：选用 `Docker.DotNet.Enhanced` 是因为上游 `Docker.DotNet` 3.x 已停摆多年，而 fork 持续维护、同步 Docker Engine API。应用层通过 `IDockerClientFactory` / `IDockerHostAccessor` 抽象隔离 SDK，未来可平滑回退到上游 3.x。详见 [architecture.md](./architecture.md)。
+>
+> **4.x 迁移注记（0.0.2）**：`Docker.DotNet.Enhanced` 4.x 移除了 `DockerClientConfiguration` 与 `IDockerClient`，客户端构建统一改为 `DockerClientBuilder.WithEndpoint(...).Build()`。请勿再引用旧类型；该回归由 `tests/Docker.Manager.IntegrationTests/Infrastructure/DockerClientFactoryTests.cs` 守住（构建客户端本身不建立连接，因此测试无需真实 Docker）。
 
 ### 前端
 
@@ -50,24 +52,72 @@
 | NuGet 包管理 | Central Package Management（`Directory.Packages.props`） | .NET 10 原生支持；所有 NuGet 版本集中管理 |
 | 代码格式化（后端） | `dotnet format` | CI 中执行 |
 | 代码格式化（前端） | Prettier + ESLint | CI 中执行 |
-| 测试（后端） | xUnit + FluentAssertions + Testcontainers（基于 Docker.DotNet.Enhanced 做集成测试） | 单元 + 集成 |
+| 测试（后端） | xUnit + FluentAssertions（**7.2.2，勿升 8.x**：8.x 起改为 Xceed 商业授权）+ Testcontainers（基于 Docker.DotNet.Enhanced 做集成测试） | 单元 + 集成 |
 | 测试（前端） | Vitest + Vue Test Utils | 组件测试 |
 
-### DDD 约定（0.0.1 起强制）
+### 分层与充血模型约定（0.0.1 起强制）
 
 | 项 | 约定 |
 |----|------|
-| 聚合根命名 | 名词单数，如 `DockerHost`、`Container`、`Image`、`User`。继承 `Docker.Manager.Domain.Common.AggregateRoot<TId>` |
-| 实体命名 | 名词单数，继承 `Docker.Manager.Domain.Common.Entity<TId>`。仅在不属于聚合根时使用 |
-| 值对象命名 | 名词，如 `HostEndpoint`、`ContainerStatus`、`PortMapping`。继承 `Docker.Manager.Domain.Common.ValueObject`，**必须不可变**（init-only 或 readonly） |
-| 仓储接口 | `IXxxRepository`，定义在 `Domain/Repositories/`，实现在 `Infrastructure/Persistence/`。**不允许反向依赖**（Domain 不得引用 Dapper / SQLite 等） |
+| 实体命名 | 名词单数，继承 `Docker.Manager.Core.Common.Entity<TId>` |
+| 值对象命名 | 名词，继承 `Docker.Manager.Core.Common.ValueObject`，**必须不可变**（init-only 或 readonly） |
+| 枚举命名 | 名词（如 `DockerHostType`、`UserRole`），与对应实体同命名空间 |
+| 持久化接口 | `IXxxRepository`，定义在 `Core`，实现在 `Infrastructure/Persistence/`。**不允许反向依赖**（`Core` 不得引用 Dapper / SQLite 等） |
 | 外部资源接口 | `IXxxFactory` / `IXxxAccessor` 等，定义在 `Application/Abstractions/`，实现在 `Infrastructure/`。典型：`IDockerClientFactory`、`IDockerHostAccessor` |
-| 领域事件 | 过去时态命名（`ContainerStarted`、`HostRegistered`），实现 `IDomainEvent`。仅聚合根可产生 |
-| 跨聚合修改 | 通过领域事件订阅实现最终一致性；同聚合内调用直接走方法引用 |
-| 业务异常 | 领域不变量的违反用 `DomainException`；应用层用例执行失败用 `BusinessException`（`Application/Common/`） |
-| 反模式 | 贫血模型、Entity 直接返回 DTO、聚合根跨边界互相引用、Domain 引用 NuGet 包（仅 BCL） |
+| 充血要求 | 实体的行为与不变量写在实体方法内（推荐「私有构造 + 静态工厂」），不得只当数据袋 |
+| 不变量违反 | 抛 BCL 的 `ArgumentException`（含 `ArgumentNullException`），中间件映射为 `1000` / 400；不定义领域异常类型 |
+| 用例失败 | 抛 `BusinessException`（`Application/Common/`），自带错误码 |
+| 响应模型 | Entity 不直接作为 HTTP 响应返回；在应用服务里做 Entity → DTO 映射 |
+| 反模式 | 贫血模型、Entity 直接返回 DTO、实体跨边界互相持有对象引用、`Core` 引用 NuGet 包（仅 BCL） |
 
-详细示例与反模式清单见 [ddd-guide.md](./ddd-guide.md)。
+> DDD 战术模式（聚合根、领域事件、领域服务）已整体移除；`Core` 的职责是**业务实体与值对象**。
+
+详细示例与反模式清单见 [architecture.md](./architecture.md#分层与充血模型约定)。
+
+---
+
+## 配置系统
+
+### 配置源与优先级
+
+后加载的来源覆盖先加载的：
+
+| 顺序 | 来源 | 说明 |
+|------|------|------|
+| 1 | `appsettings.json` | 基线默认值 |
+| 2 | `appsettings.{Environment}.json` | 环境覆盖，由 `ASPNETCORE_ENVIRONMENT` 决定加载哪一个 |
+| 3 | 环境变量 | 容器部署的主要配置手段 |
+| 4 | 命令行参数 | 优先级最高 |
+
+### 环境变量命名规则
+
+| 规则 | 说明 | 示例 |
+|------|------|------|
+| 层级分隔 | 用 **`__`（双下划线）** 表达配置键中的 `:` | `Docker:Hosts:0:Endpoint` → `DOCKER__HOSTS__0__ENDPOINT` |
+| 数组 | 用**数字下标**表达索引 | `Cors:AllowedOrigins:0` → `CORS__ALLOWEDORIGINS__0` |
+| 大小写 | 键比较**不区分大小写**（`ConfigurationKeyComparer` 与各 provider 的字典均为 OrdinalIgnoreCase），故 `JWT__Secret` 与 `JWT__SECRET` 等价。**新增配置项统一采用全大写下划线风格** | — |
+
+### 关键环境变量对照表
+
+| 配置键 | 环境变量 | 默认值 | 引入版本 |
+|--------|---------|--------|---------|
+| `Docker:Hosts:0:Name` | `DOCKER__HOSTS__0__NAME` | `local` | 0.0.8 |
+| `Docker:Hosts:0:Type` | `DOCKER__HOSTS__0__TYPE` | `Socket` | 0.0.8 |
+| `Docker:Hosts:0:Endpoint` | `DOCKER__HOSTS__0__ENDPOINT` | `/var/run/docker.sock` | 0.0.8 |
+| `Docker:ClientCache:IdleTimeout` | `DOCKER__CLIENTCACHE__IDLETIMEOUT` | `00:30:00` | 0.0.8 |
+| `Cors:AllowedOrigins:0` | `CORS__ALLOWEDORIGINS__0` | （空，拒绝全部跨域） | 0.0.2 |
+| `Urls` | `URLS` | `http://+:8080` | 0.0.2 |
+| `Jwt:Secret` | `JWT__SECRET` | （无，缺失则启动失败） | 0.0.4 |
+| `Admin:User` | `ADMIN__USER` | （无） | 0.0.6 |
+| `Admin:Password` | `ADMIN__PASSWORD` | （无） | 0.0.6 |
+
+> ⚠️ **`Urls` 与 `ASPNETCORE_URLS` 的关系**（0.0.2 实测确认）：`appsettings.json` 中的 `Urls` 优先级**高于** `ASPNETCORE_URLS` 环境变量与 `launchSettings.json` 的 `applicationUrl`——因为 `WebApplicationBuilder` 把应用配置层叠加在含 `ASPNETCORE_` 前缀环境变量的宿主配置之上。
+>
+> 要更换监听端口，请使用（优先级自高至低）：
+> 1. 命令行参数：`dotnet Docker.Manager.Api.dll --urls http://0.0.0.0:9090`
+> 2. 无前缀环境变量：`URLS=http://0.0.0.0:9090`
+
+> **配置校验**：不合法的配置在**启动时**即失败（`ValidateOnStart`），不会拖到第一次请求。例如 `Cors:AllowedOrigins` 含尾斜杠会直接导致启动失败。
 
 ---
 
@@ -83,7 +133,7 @@
 | JWT access token 有效期 | **15 分钟** |
 | JWT refresh token 有效期 | **7 天**，写入数据库可撤销表 |
 | 初始管理员引导 | 环境变量 `ADMIN__USER` + `ADMIN__PASSWORD`（启动时若 `users` 表为空则创建） |
-| JWT Secret 来源 | 仅环境变量 `JWT__Secret`；**缺失或过弱（<32 字节）则启动失败** |
+| JWT Secret 来源 | 仅环境变量 `JWT__SECRET`；**缺失或过弱（<32 字节）则启动失败** |
 | 0.4.0 终端短时 token | `POST /api/v1/auth/terminal-token` 返回 5 分钟过期 token，**仅能用于 WebSocket `/ws/container/exec`** |
 
 ### 速率限制
@@ -100,10 +150,16 @@
 | X-Frame-Options | `DENY` |
 | Referrer-Policy | `no-referrer` |
 
-### CORS
+### CORS（0.0.2 起）
 
-- **生产环境**：默认同源，**禁用 CORS**（一体化镜像托管前端，Nginx 风格反代或 ASP.NET Core 静态文件中间件）
-- **开发环境**：仅通过 Vite 代理（`/api` → `http://localhost:8080`，`/hubs` → 同上），不直接开放跨域
+| 项 | 策略 |
+|----|------|
+| 默认值 | `Cors:AllowedOrigins` 为空数组 → **不发出任何 `Access-Control-*` 响应头**，等价于完全拒绝跨域 |
+| 白名单格式 | 每项必须是绝对 `http`/`https` URI 且**不带尾斜杠**；不合规**启动即失败** |
+| 配置方式 | `CORS__ALLOWEDORIGINS__0`、`CORS__ALLOWEDORIGINS__1` …（数组用数字下标） |
+| 放行范围 | `AllowAnyHeader` + `AllowAnyMethod` + `AllowCredentials`（因白名单是显式枚举的具体 origin，而非 `AllowAnyOrigin`） |
+| 生产环境 | 默认同源，**禁用 CORS**（一体化镜像托管前端） |
+| 开发环境 | 不开放跨域，统一走 Vite 代理（`/api` → `http://localhost:8080`，`/hubs` → 同上） |
 
 ### Docker Socket 挂载（⚠️ 高危）
 
@@ -129,7 +185,7 @@ services:
     image: ghcr.io/blue-cloud-net/docker-manager:latest
     depends_on: [socket-proxy]
     environment:
-      - DEFAULT_HOST__ENDPOINT=tcp://socket-proxy:2375
+      - DOCKER__HOSTS__0__ENDPOINT=tcp://socket-proxy:2375
     volumes:
       - ./data:/app/data
 ```
@@ -137,6 +193,18 @@ services:
 socket-proxy 默认仅授予 `GET`（只读 + 列出），如需写操作（创建容器、启动/停止等）按需开启对应子集。
 
 详细的安全声明与部署模式见 `README.md` 与 `SECURITY.md`（仓库根）。
+
+### 日志输出基线（0.0.2 起）
+
+| 项 | 策略 |
+|----|------|
+| 输出目标 | 控制台 + 滚动文件（`Serilog.Sinks.File`） |
+| 文件路径 | 生产 `/app/data/logs/app-.log`；开发环境相对路径 `logs/app-.log`（非容器环境不存在 `/app/data`） |
+| 滚动周期 | 按天（`rollingInterval: Day`） |
+| 保留数量 | 14 个文件（`retainedFileCountLimit: 14`） |
+| 文件编码 | UTF-8 无 BOM（中文日志可直接阅读） |
+| 异常记录 | 5xx 记 `Error` 且含完整堆栈；4xx 记 `Warning` 且**不含堆栈**（避免噪声与被误报为告警） |
+| 请求日志 | `Serilog` 请求日志在「发生异常」的请求上降级为 `Debug`——异常详情统一由全局异常中间件记录，避免同一次失败产生两条 Error 日志以及重复告警计数 |
 
 ### 日志脱敏（0.0.13 起强制）
 

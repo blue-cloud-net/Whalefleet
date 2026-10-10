@@ -24,13 +24,13 @@
 
 **目标**：可构建、可运行最小后端 + CI 流水线雏形。
 
-> **0.0.1 实施决策（DDD 拆分）**：原规划的"三项目（Api / Core / Infrastructure）"经评审后调整为 **4 个 DDD 项目（Domain / Application / Infrastructure / Api）** + 1 个测试项目骨架。详细规范见 [docs/ddd-guide.md](./ddd-guide.md)。
+> **0.0.1 实施决策（分层拆分）**：原规划的"三项目（Api / Core / Infrastructure）"经评审后调整为 **4 个分层项目（Core / Application / Infrastructure / Api）** + 1 个测试项目骨架。0.0.2 后废弃 DDD 战术模式：`Domain` 更名为 `Core`，移除聚合根、领域事件与 `DomainException`，保留分层依赖方向与充血模型。详细规范见 [docs/architecture.md](./architecture.md#项目依赖方向)。
 
 后端：
-- **4 个 DDD 项目解决方案**：
-  - `src/Docker.Manager.Domain/`——领域层。实体、值对象、领域事件、领域服务、仓储接口。**仅依赖 BCL，不引用任何 NuGet 包**
-  - `src/Docker.Manager.Application/`——应用层。用例编排、DTO、外部资源接口抽象（如 `IDockerClientFactory`）。依赖 Domain
-  - `src/Docker.Manager.Infrastructure/`——基础设施层。第三方 SDK 适配（`Docker.DotNet.Enhanced`）、仓储实现、外部服务集成。依赖 Domain + Application
+- **4 个分层项目解决方案**：
+  - `src/Docker.Manager.Core/`——核心层。业务实体、值对象、枚举。**仅依赖 BCL，不引用任何 NuGet 包**
+  - `src/Docker.Manager.Application/`——应用层。用例编排、DTO、外部资源接口抽象（如 `IDockerClientFactory`）。依赖 Core
+  - `src/Docker.Manager.Infrastructure/`——基础设施层。第三方 SDK 适配（`Docker.DotNet.Enhanced`）、仓储实现、外部服务集成。依赖 Core + Application
   - `src/Docker.Manager.Api/`——接口层。ASP.NET Core 10 宿主进程，托管 Controllers / SignalR Hubs / 静态前端。依赖 Application + Infrastructure
 - `Directory.Packages.props` 启用 **Central Package Management**（`<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>`），所有 NuGet 包版本号集中此文件
 - `Infrastructure` 项目引入 `Docker.DotNet.Enhanced` 包（采用最新稳定版），**在 `Application/Abstractions` 中定义 `IDockerClientFactory` 接口抽象**（外部资源接口放在应用层，非领域层）
@@ -52,7 +52,7 @@ CI：
 - `dotnet test` 通过（占位烟雾用例至少 1 个）
 - `/healthz` 返回 200 OK
 - NuGet 还原成功拉取 `Docker.DotNet.Enhanced`
-- 依赖方向校验：`Domain` 项目无任何上游 NuGet 依赖（仅 BCL）
+- 依赖方向校验：`Core` 项目无任何上游 NuGet 依赖（仅 BCL）
 
 ---
 
@@ -60,14 +60,43 @@ CI：
 
 **目标**：所有后续接口的统一基线。
 
-后端：
-- 全局异常处理中间件（统一映射未捕获异常到 `ApiResult<T>` code=9999）
-- `ApiResult<T>` 统一响应模型 + `BusinessException` 体系
-- 配置系统（`appsettings.json` + 环境变量覆盖，key 用 `__` 分隔嵌套）
-- Serilog 滚动文件输出（`/app/data/logs/app-.log`，按天滚动，保留 14 天）
-- CORS 白名单（默认拒绝跨域）
+> **0.0.2 实施决策**：
+> 1. **集成测试载体提前**：原计划 0.0.8 才引入的 `tests/Docker.Manager.IntegrationTests/` **在本迭代落地**（骨架 + `WebApplicationFactory`），用于验证 HTTP 管道级契约；0.0.8 只需追加 `Testcontainers` 依赖。
+> 2. **错误码分层**：错误码常量、语义分类与默认文案放 `Application/Common`（`ErrorCodes` / `ErrorCategory` / `ErrorCodeCatalog`）；「语义分类 → HTTP 状态码」放 `Api/Errors`（`ErrorHttpStatus`）。既避免应用层依赖 Web 概念，又让两侧都能被单测。
+> 3. **CORS 策略延迟注册**：白名单策略通过 `IConfigureOptions<CorsOptions>` 在**选项解析期**注册，而非 DI 注册期直接读配置——后者会读到尚未定型的值（集成测试注入的内存配置即属此列），导致静默地不注册任何策略。
+> 4. **`UseUrls` 改为配置**：硬编码的 `UseUrls("http://+:8080")` 改为 `appsettings.json` 的 `"Urls"` 键，使 `TestServer` 能接管监听。注意 `Urls` 优先级**高于** `ASPNETCORE_URLS`，改端口需用 `--urls` 或 `URLS`（详见 [constraints.md](./constraints.md#配置系统)）。
+> 5. **顺带消除 `.editorconfig` 隐患**：统一 LF（与 `.gitattributes` 的 `* text=auto` 一致）、末尾换行统一、清除 6 个重复键、为 `[*.sh]` 显式声明 LF 以保护 0.0.6 的 `scripts/backup.sh`。`dotnet format` 的 CI 门槛仍留到 0.0.6。
+> 6. **环境变量命名规范化**：失效的 `DEFAULT_HOST__ENDPOINT` → `DOCKER__DEFAULTHOST__ENDPOINT`；`JWT__Secret` → `JWT__SECRET`。
+> 7. **依赖统一升到最新**：`Microsoft.Extensions.*` → 10.0.12（net10.0 对齐）；Serilog 全家桶 → `AspNetCore` 10.0.0 / `Settings.Configuration` 10.0.1 / `Sinks.File` 7.0.0；测试栈 → `Microsoft.NET.Test.Sdk` 18.10.0 / `xunit` 2.9.3 / `xunit.runner.visualstudio` 4.0.0 / `coverlet.collector` 10.0.1。
+>    **例外——`FluentAssertions` 停留在 7.2.2**：8.x 起改为 Xceed 商业授权，7.x 是最后一个 Apache-2.0 版本；本项目为 MIT 开源且不引入商业授权依赖，故不跟进 8.x。
+> 8. **`Docker.DotNet.Enhanced` 3.x → 4.3.3（破坏性）**：4.x 移除了 `DockerClientConfiguration` 与 `IDockerClient`，`DockerClientFactory` 改为 `DockerClientBuilder.WithEndpoint(...).Build()`；并新增 `DockerClientFactoryTests` 把「能编译」升级为「能构造出可用客户端」。
+> 9. **JSON 编码策略**：中文原样输出（`JavaScriptEncoder.Create(UnicodeRanges.All)`）而非 `\uXXXX` 转义；MVC 与错误响应共用 `ApiJsonDefaults` 以防两处漂移。
 
-**验收**：`GET /healthz` 异常时返回标准 `ApiResult` JSON。
+后端：
+- **全局异常处理中间件**（`Api/Middleware/ExceptionHandlingMiddleware`，注册为管道第一个中间件）：
+  - `BusinessException` → 用其自带错误码；`ArgumentException` / `JsonException` / `BadHttpRequestException` → `1000`（400）；`KeyNotFoundException` → `1001`（404）；`TaskCanceledException` → `1003`（408）；兜底 → `9999`（500）
+  - 客户端主动断开（`RequestAborted`）不写响应体，记 `Debug`；响应已开始写出时记 `Critical` 后重抛
+  - 4xx 记 `Warning`（不含堆栈），5xx 记 `Error`（含完整堆栈 + `TraceId`）
+- **统一响应模型**：`ApiResult` / `ApiResult<T>` + `ApiResults` 工厂（工厂放在非泛型静态类，规避 CA1000）；`BusinessException` 体系（`Validation` / `NotFound` / `Unauthenticated` / `Forbidden` / `Timeout` / `HostUnreachable` / `Internal`）
+- **无响应体状态码包装**：`UseStatusCodePages` 把未知路由 404、405、415 等统一包装为 `ApiResult`；`ApiController` 的 ModelState 失败改写为 `1000`
+- **日志去重**：`Serilog` 请求日志在异常请求上降级为 `Debug`，异常详情只由中间件记一次 `Error`
+- **配置系统**：`appsettings.json` → `appsettings.{Environment}.json` → 环境变量 → 命令行；key 用 `__` 分隔嵌套、数组用数字下标；不合法的配置通过 `ValidateOnStart` 在**启动时**失败
+- **Serilog 滚动文件输出**：生产 `/app/data/logs/app-.log`、开发 `logs/app-.log`；按天滚动，保留 14 天；UTF-8 无 BOM
+- **CORS 白名单**：`Cors:AllowedOrigins` 默认空数组 = 不发出任何 `Access-Control-*` 响应头（默认拒绝跨域）；非法 origin（非绝对 URI / 带尾斜杠）启动即失败
+- **开发专用故障注入端点** `POST /api/v1/dev/throw?kind=internal|business|validation|notfound|timeout`，仅 `IsDevelopment()` 时注册（生产不存在该路由）
+
+测试：
+- `tests/Docker.Manager.IntegrationTests/` 新建（xUnit + FluentAssertions + `Microsoft.AspNetCore.Mvc.Testing`），覆盖异常映射、状态码包装、CORS 与配置系统
+- `UnitTests` 补充错误码表一致性、语义分类、`ApiResult` 工厂与序列化契约
+
+**验收**：
+- `GET /healthz` 成功返回裸 JSON（不含 `success` 字段）；抛异常时返回标准 `ApiResult` JSON
+- `POST /api/v1/dev/throw` → 500 + `{"success":false,"code":9999,"message":"服务器内部错误","data":null}`，且响应体无堆栈 / 异常类型名 / 源码位置
+- 未知路由 → 404 + `code 1001`
+- `Origin: http://evil.example` → 无 `Access-Control-Allow-Origin`；配置白名单后仅命中项回显
+- 环境变量 `DOCKER__HOSTS__0__ENDPOINT` 可覆盖 `IOptions<DockerClientFactoryOptions>` 的 `Hosts[0].Endpoint`
+- 日志文件按天生成于预期路径，且同一次 5xx 只产生一条 `Error` 日志
+- `dotnet test` 同时跑通 UnitTests 与 IntegrationTests
 
 ---
 
@@ -190,7 +219,7 @@ CI：
 - `IResourcePermissionService` 接口定义（0.1.0 仅实现 host 可见性）
 
 测试（从本迭代起为强制要求）：
-- `tests/Docker.Manager.IntegrationTests/` 引入 `Testcontainers` for .NET
+- `tests/Docker.Manager.IntegrationTests/`（**项目骨架已于 0.0.2 落地**）新增 `Testcontainers` for .NET 依赖
 - 容器/镜像/Volume/Network 等新 API 必须配集成测试，CI 卡
 - 不设行覆盖率门槛
 

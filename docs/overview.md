@@ -98,7 +98,7 @@ services:
     image: ghcr.io/blue-cloud-net/docker-manager:latest
     depends_on: [socket-proxy]
     environment:
-      - DEFAULT_HOST__ENDPOINT=tcp://socket-proxy:2375
+      - DOCKER__HOSTS__0__ENDPOINT=tcp://socket-proxy:2375
 ```
 
 socket-proxy 作为只读代理，将 Docker API 权限限定到最小子集。如必须直挂 socket，请确保 Docker.Manager 实例仅暴露给可信网络。

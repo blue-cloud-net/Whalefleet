@@ -37,6 +37,49 @@
 | `message` | string | 错误描述（成功时为 "ok"） |
 | `data` | object / null | 返回数据主体 |
 
+### 响应约定（0.0.2 起）
+
+| 项 | 约定 |
+|----|------|
+| 序列化 | camelCase；字段固定为 `success` / `code` / `message` / `data` 四项 |
+| 字符编码 | `JavaScriptEncoder.Create(UnicodeRanges.All)`——中文等非 ASCII 字符**原样输出**（不是 `\uXXXX` 转义），但 `<` `>` `&` `'` `"` `+` 仍被转义，以消除 JSON 被嵌入 HTML 时的注入风险。MVC 与错误响应序列化器共用 `ApiJsonDefaults`，不得各自配置 |
+| `data` 字段 | **始终存在**。失败响应显式输出 `"data": null`（不得为 JSON 序列化开启 `WhenWritingNull`） |
+| Content-Type | `application/json; charset=utf-8` |
+| 构造方式 | 统一使用 `ApiResults.Ok(...)` / `ApiResults.Fail<T>(...)`，不要直接调用构造函数（避免 `success` 与 `code` 不自洽） |
+| 无数据接口 | 使用非泛型 `ApiResult`（不含 `data` 字段）；需要显式 `data: null` 的场景用 `ApiResults.Fail<T>` |
+| 错误信息安全 | 错误响应**绝不**包含堆栈、内部异常消息、异常类型名或源码位置；`code = 9999` 的消息被强制替换为固定文案 |
+
+### 错误码 → HTTP 状态码
+
+`success = false` 时，HTTP 状态码由业务错误码**逐码显式映射**（实现见 `Docker.Manager.Api.Errors.ErrorHttpStatus`，完整对照见下文「当前已分配的错误码」表格的 HTTP 列）。
+
+> ⚠️ **不能按错误码数值分段推断状态码**：同一分段内语义并不统一——`1002`（段 1000-1099）是 500、`1103`（段 1100-1199）是 429、`1301`（段 1300-1399）是 502。分类与映射分两层：错误码 → 语义分类在应用层（`ErrorCodeCatalog`），语义分类 → HTTP 状态码在接口层（`ErrorHttpStatus`）。
+
+### 无响应体状态码的包装
+
+框架在管道末端直接产生、**没有响应体**的 4xx/5xx（未知路由 404、方法不允许 405、不支持的媒体类型 415 等）不会被 Controller 或异常中间件处理，由 `UseStatusCodePages` 统一包装为上述 `ApiResult` 结构。反查规则：
+
+| HTTP | 业务错误码 |
+|------|-----------|
+| `401` | `1100` |
+| `403` | `1500` |
+| `404` | `1001` |
+| `408` | `1003` |
+| `>= 500` | `9999` |
+| 其他 4xx（400 / 405 / 415 等） | `1000` |
+
+请求体模型校验失败（ModelState）走同一套结构，固定返回 `1000` / HTTP 400，`message` 聚合字段级错误。
+
+### 例外：基础设施端点
+
+`GET /healthz` **不适用**上述信封——它属于基础设施探针（Docker `HEALTHCHECK` 等），成功响应为裸 JSON：
+
+```json
+{ "status": "ok", "timestamp": "2026-09-14T04:05:35.6405225+00:00" }
+```
+
+仅当它**抛出异常**时，才由全局异常中间件按统一结构返回 `ApiResult`。
+
 ---
 
 ## 业务错误码

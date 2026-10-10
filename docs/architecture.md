@@ -46,27 +46,28 @@
 
 ## 各层职责
 
-> 0.0.1 起采用 **DDD 分层（4 个后端项目）**。本节后续描述保持与原文档兼容，仅关键术语对齐 DDD：
+> 0.0.1 起采用 **分层架构 + 充血模型（4 个后端项目）**。本节后续描述保持与原文档兼容，仅关键术语对齐：
 > - "API 层" → **接口层（Api / Presentation）**
 > - "Service 层" → **应用层（Application）**
 > - "Docker 接入层 Core 抽象" → **应用层 Abstractions**
-> - "数据访问层" → 仓储接口在 **Domain**，实现在 **Infrastructure/Persistence**
+> - "数据访问层" → 持久化接口在 **Core**，实现在 **Infrastructure/Persistence**
 >
-> 完整 DDD 规范见 [ddd-guide.md](./ddd-guide.md)。
+> **为什么是充血模型而不是 DDD 战术模式**：本项目管理的容器 / 镜像 / Volume / Network 的真相在
+> Docker 守护进程，把它们建成带聚合根与领域事件的领域模型只会得到"立刻过期的数据袋"；
+> 真正有业务不变量的是 **User / Role / ResourceGrant** 这类自有数据。因此这里采用
+> 「实体承载行为与不变量 + 分层隔离依赖」的充血模型，不引入聚合根、领域事件与仓储派发机制。
 
-### DDD 依赖方向
+### 项目依赖方向
 
 项目级依赖图（箭头方向 = 引用方向；箭头尾部依赖箭头头部）：
 
 ```
                               ┌──────────────────────────────┐
-                              │  Docker.Manager.Domain        │
-                              │  ───────────────────────────  │
-                              │  Entity / ValueObject /       │
-                              │  IAggregateRoot / IDomainEvent│
-                              │  DomainException              │
-                              │  仓储接口（0.0.3 起）          │
-                              │  仅依赖 BCL，无 NuGet          │
+                              │  Docker.Manager.Core         │
+                              │  ──────────────────────────  │
+                              │  Entity / ValueObject        │
+                              │  枚举与业务常量               │
+                              │  仅依赖 BCL，无 NuGet         │
                               └──────────────┬───────────────┘
                                              │ ▲
                   ┌──────────────────────────┘ │ ┌──────────────────────────┐
@@ -97,21 +98,161 @@
 
 | 项目 | 可依赖 | 不可依赖 |
 |------|--------|---------|
-| `Domain` | BCL | Application、Infrastructure、Api、任何 NuGet |
-| `Application` | Domain | Infrastructure、Api |
-| `Infrastructure` | Domain、Application | Api |
+| `Core` | BCL | Application、Infrastructure、Api、任何 NuGet |
+| `Application` | Core | Infrastructure、Api |
+| `Infrastructure` | Core、Application | Api |
 | `Api` | Application、Infrastructure | （已是最外层） |
-| `UnitTests` | Domain、Application | Infrastructure、Api |
+| `UnitTests` | Core、Application | Infrastructure、Api |
 
 **违反依赖方向的检测手段**：
 
 ```bash
-# 1) Domain 项目应无任何 NuGet 依赖
-dotnet list src/Docker.Manager.Domain/Docker.Manager.Domain.csproj package --include-transitive
+# 1) Core 项目应无任何 NuGet 依赖
+dotnet list src/Docker.Manager.Core/Docker.Manager.Core.csproj package --include-transitive
 
-# 2) Application 应仅依赖 Domain（一个 ProjectReference，无 NuGet）
+# 2) Application 应仅依赖 Core（一个 ProjectReference）
 dotnet list src/Docker.Manager.Application/Docker.Manager.Application.csproj package
 ```
+
+### 分层与充血模型约定
+
+> 本节合并自原 `docs/ddd-guide.md`（已于 0.0.2 后废弃）。DDD 战术模式整体移除，保留分层依赖方向与充血模型。
+
+**命名约定**
+
+| 类别 | 约定 | 示例 |
+|------|------|------|
+| 实体 | 名词单数，继承 `Entity<TId>` | `DockerHost`、`User` |
+| 值对象 | 名词，继承 `ValueObject`，**必须不可变** | `HostEndpoint`、`PortMapping`、`ContainerStatus` |
+| 枚举 | 名词，位于对应实体的命名空间下 | `DockerHostType`、`UserRole` |
+| 外部资源接口 | `IXxxFactory` / `IXxxAccessor`，定义在 `Application/Abstractions/` | `IDockerClientFactory`、`IDockerHostAccessor` |
+| 持久化接口 | `IXxxRepository`，定义在 `Core`，实现在 `Infrastructure/Persistence/` | `IUserRepository`、`IHostRepository` |
+| 应用服务 | `XxxService`，位于 `Application/Services/` | `AuthService`、`ContainerService` |
+| DTO | `XxxDto` / `XxxRequest` / `XxxResponse` | `LoginRequest`、`ContainerDto` |
+| Controller | `XxxController`，继承 `ControllerBase` | `AuthController`、`ContainerController` |
+
+**接口放置原则**
+
+拿到一个接口 `IFoo` 时，按下表判断归属：
+
+| 类型 | 归属 | 判断标准 | 示例 |
+|------|------|---------|------|
+| **业务概念**（"管理 X"） | `Core` | 去掉整个外部世界后，概念仍成立 | `IUserRepository`、`User`、`DockerHost` |
+| **外部资源抽象**（"操作外部系统"） | `Application/Abstractions` | 抽象的是某种外部系统（Docker、邮件、缓存、消息队列），而非业务概念本身 | `IDockerClientFactory`、`IEmailSender` |
+| **第三方 SDK 适配** | `Infrastructure` | 包装 / 适配某个具体 SDK，可直接替换 | `DockerClientFactory`、`SqliteUserRepository` |
+
+**推论——接口的「入参 / 返回类型」同样受约束**：外部资源接口定义在 `Application/Abstractions`，它引用的一切类型也必须能在应用层落脚。因此 `DockerHostType`、`DockerHostAuth`、`DockerHostConnection` 都放在 `Application/Abstractions`，而不是 `Infrastructure`——否则 `Application` 就必须反向引用 `Infrastructure`，依赖方向当场破裂。反之，`DockerEndpointNormalizer`（如何把各种写法拼成规范连接串）是纯技术细节，落在 `Infrastructure/Docker`。
+
+**充血模型要求**
+
+- 实体的**行为与不变量写在实体自身的方法内**（充血），而不是只当数据袋、把所有判断推到应用服务
+- 推荐形态：**私有构造 + 静态工厂**，工厂方法在创建时校验不变量
+- 不变量违反抛 **BCL 的 `ArgumentException`**（含 `ArgumentNullException`），中间件统一映射为 `1000` / HTTP 400
+- 用例执行失败（外部资源不可用、规则不允许）抛 `BusinessException`（`Application/Common/`），自带错误码
+- Entity **不直接作为 HTTP 响应返回**：在应用服务里做 Entity → DTO 映射
+
+**核心基类**
+
+| 类型 | 位置 | 职责 |
+|------|------|------|
+| `Entity<TId>` | `Core/Common/Entity.cs` | 按 `Id` 判定相等性；提供 `Id` 与运算符重载 |
+| `ValueObject` | `Core/Common/ValueObject.cs` | 按 `GetEqualityComponents()` 逐项判定相等性；应不可变 |
+
+**反模式清单**
+
+| 反模式 | 表现 | 纠正 |
+|--------|------|------|
+| **贫血模型** | 实体只有属性、没有行为；所有逻辑写在 Service 里 | 把行为与不变量移到实体方法 |
+| **Entity 直接返回 DTO** | Controller 直接拿 Entity 序列化返回 | 在应用服务里做 Entity → DTO 映射 |
+| **实体跨边界互相持有引用** | `Container` 持有 `User` 对象；`User` 持有 `Host` 对象 | 只保留 ID 引用（`UserId`、`HostId`），按 ID 查询 |
+| **`Core` 引用 NuGet 包** | `Core.csproj` 含 `PackageReference` | 移除；确需 BCL 之外的能力就移到 `Application` / `Infrastructure` |
+| **`Application` 引用 `Infrastructure`** | 应用服务直接 `new SqliteConnection()` | 在 `Application/Abstractions` 定义接口，`Infrastructure` 实现并注入 |
+| **持久化接口返回活连接** | `IHostRepository.ListAsync()` 返回的对象里带 `DockerClient` | 仓储只负责持久化；客户端获取走 `IDockerClientFactory` |
+
+**代码示例：`DockerHost` 实体骨架（0.0.8 规划示意）**
+
+> 以下代码**仅作示例**，实际 `DockerHost` 在 0.0.8 迭代才落地。
+
+````csharp
+// src/Docker.Manager.Core/Hosts/DockerHost.cs
+namespace Docker.Manager.Core.Hosts;
+
+public sealed class DockerHost : Entity<Guid>
+{
+    /// <summary>显示名（唯一）。</summary>
+    public string Name { get; private set; } = default!;
+
+    /// <summary>连接描述。</summary>
+    public HostEndpoint Endpoint { get; private set; } = default!;
+
+    /// <summary>是否启用；停用后不再接受该主机的请求。</summary>
+    public bool Enabled { get; private set; }
+
+    // 私有构造：仅供静态工厂使用，确保对象一诞生就满足全部不变量
+    private DockerHost() { }
+
+    /// <summary>注册一台新的 Docker 主机。</summary>
+    public static DockerHost Register(Guid id, string name, HostEndpoint endpoint)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentNullException.ThrowIfNull(endpoint);
+
+        return new DockerHost
+        {
+            Id = id,
+            Name = name,
+            Endpoint = endpoint,
+            Enabled = true,
+        };
+    }
+
+    /// <summary>停用该主机（幂等）。</summary>
+    public void Disable()
+    {
+        Enabled = false;
+    }
+
+    /// <summary>重新启用该主机。</summary>
+    public void Enable() => Enabled = true;
+}
+
+// src/Docker.Manager.Core/Hosts/HostEndpoint.cs
+public sealed class HostEndpoint : ValueObject
+{
+    public string Url { get; }
+
+    public HostEndpoint(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            throw new ArgumentException("HostEndpoint URL 不能为空", nameof(url));
+        }
+
+        Url = url;
+    }
+
+    protected override IEnumerable<object?> GetEqualityComponents()
+    {
+        yield return Url;
+    }
+}
+
+// src/Docker.Manager.Core/Hosts/IHostRepository.cs
+public interface IHostRepository
+{
+    Task<DockerHost?> GetAsync(Guid id, CancellationToken ct = default);
+    Task<IReadOnlyList<DockerHost>> ListAsync(CancellationToken ct = default);
+    Task AddAsync(DockerHost host, CancellationToken ct = default);
+    Task RemoveAsync(Guid id, CancellationToken ct = default);
+}
+````
+
+要点回顾：
+
+- `DockerHost` 继承 `Entity<Guid>`，行为（`Disable` / `Enable`）在实体自身
+- `HostEndpoint` 是不可变值对象，构造时校验不变量
+- `IHostRepository` 定义在 `Core`，实现在 `Infrastructure/Persistence`
+- 私有构造 + 静态工厂确保不变量在创建时即成立
 
 ### API 层（Controllers）
 
@@ -141,12 +282,12 @@ Hub 鉴权：JWT 通过 `?access_token=...` 查询参数传递（WebSocket 不�
 
 - **`Application/Abstractions` 层定义接口**：`IDockerClientFactory`、`IDockerHostAccessor`、`IContainerOperations`、`IImageOperations` 等
 - **`Infrastructure/Docker` 层实现**：基于 [Docker.DotNet.Enhanced](https://github.com/testcontainers/Docker.DotNet)（fork），使用 `DockerClientBuilder` 风格
-- **0.0.8 起支持多主机**：根据 `hostId` 动态创建并缓存 `DockerClient` 实例
-- **后续**：支持 TCP 连接（`tcp://host:port`）与 TLS / Basic 证书，通过 `hosts` 表动态创建
+- **0.0.8 起支持多主机**：按**规范化连接串**缓存客户端（多主机名指向同一守护进程即共享连接），并提供 `Invalidate` 与空闲回收；连接描述 `DockerHostConnection` 定义在 `Application/Abstractions`
+- **后续**：TCP + TLS / Basic 认证（`DockerHostAuth` 槽位已预留），主机来源由配置切换为 `hosts` 表
 
 ### 数据访问层
 
-- **仓储接口**（`IUserRepository`、`IHostRepository` 等）定义在 `Docker.Manager.Domain/Repositories/`
+- **持久化接口**（`IUserRepository`、`IHostRepository` 等）定义在 `Docker.Manager.Core/`
 - **仓储实现**位于 `Docker.Manager.Infrastructure/Persistence/`：使用 `Dapper` 执行手写 SQL
 - 数据库：SQLite + `Microsoft.Data.Sqlite`，**WAL 模式**启用（PRAGMA journal_mode=WAL）
 - 文件存储：`/app/data/docker-manager.db`
@@ -192,15 +333,41 @@ public interface IDockerHostAccessor
 
 ### `IDockerClientFactory`（Singleton 服务）
 
-按 `hostId` 返回缓存的 `DockerClient`：
+按**规范化连接串**返回缓存的客户端。`hostId` 只是"配置（0.0.8 起为数据库）里的一个名字"，**不参与缓存键**：
 
 ```csharp
 public interface IDockerClientFactory
 {
-    Task<DockerClient> GetClientAsync(string hostId);
-    Task<bool> TestConnectionAsync(string endpoint, HostType type, AuthConfig? auth);
+    Task<IDockerClient> GetClientAsync(string hostId, CancellationToken cancellationToken = default);
+    Task<bool> TestConnectionAsync(DockerHostConnection connection, CancellationToken cancellationToken = default);
+    void Invalidate(string hostId);
 }
 ```
+
+**为什么按连接而不是按主机缓存**：多个主机名可能指向同一个守护进程（如 `local` 与 `local-alias`，或同一台机器的 socket 与 socket-proxy）。以连接串为键可让它们共享同一个客户端与 HTTP 连接池——切换主机时连接不会被重建，这正是「多主机随时切换」体验的前提。`DockerHostConnection`（`Application/Abstractions`）即"连接描述"，0.0.8 由 `Core` 中的 `DockerHost` 实体映射而来。
+
+**端点规范化**（`Infrastructure/Docker/DockerEndpointNormalizer`）把各种写法收敛成唯一形式，否则"同一守护进程"会被误判成多条连接：
+
+| 输入 | 规范形式 |
+|------|---------|
+| `/var/run/docker.sock`、`unix:///var/run/docker.sock`、`unix://var/run/docker.sock` | `unix:///var/run/docker.sock` |
+| `//./pipe/docker_engine`、`\\.\pipe\docker_engine` | `npipe://./pipe/docker_engine` |
+| `host:2375`、`http://host` | `tcp://host:2375` |
+
+> ⚠️ 三个斜杠是刻意的：`unix://var/run/docker.sock` 会被 `Uri` 解析成 `Host="var"` + `AbsolutePath="/run/docker.sock"`（指向错误路径）；只有三斜杠形式的 `AbsolutePath` 才是完整 socket 路径。
+
+**缓存生命周期**：
+
+| 触发 | 行为 |
+|------|------|
+| 正常取用 | 客户端驻留进程内存，HTTP 连接池持续复用 |
+| `Invalidate(hostId)` | 主机配置变更 / 删除后调用：移出缓存并释放（同端点的其他主机名一并受影响） |
+| 空闲超时 | 默认 30 分钟（`Docker:ClientCache:IdleTimeout`）：取用时惰性判定 + 后台任务周期扫描（`ReapInterval`）。任一设为 0 即禁用回收 |
+| 进程退出 | DI 释放全部客户端 |
+
+> **构建失败必定清条目**：`Lazy<T>` 会永久缓存异常，不移除的话一次失败之后就再也无法重试。
+>
+> **长调用注意**：空闲判定依据是"最近一次取用时间"，若某次调用自身持续时长超过 `IdleTimeout`（如 0.0.9 的日志流式读取），理论上存在被回收打断的风险——调大该值或禁用回收即可。
 
 **实现使用 `DockerClientBuilder` 风格**：
 
@@ -306,30 +473,30 @@ const connection = new HubConnectionBuilder()
 为避免 Docker SDK 类型泄漏到上层，并支持未来切换：
 
 ```
-┌──────────────────────────────────────────┐
-│ API 层 (Docker.Manager.Api)              │
-│   - Controllers 只引用 Core 接口          │
-└──────────────────┬───────────────────────┘
+┌────────────────────────────────────────────┐
+│ 接口层 (Docker.Manager.Api)                │
+│   - Controllers 只引用 Application 的接口  │
+└──────────────────┬─────────────────────────┘
                    │
-┌──────────────────▼───────────────────────┐
-│ Core 层 (Docker.Manager.Core)            │
-│   - IDockerClientFactory (接口)          │
-│   - IDockerHostAccessor  (接口)          │
-│   - 业务模型 (Host, ContainerDto, ...)   │
-│   - 错误码 + ApiResult<T>                 │
-└──────────────────┬───────────────────────┘
+┌──────────────────▼─────────────────────────┐
+│ 应用层 (Docker.Manager.Application)        │
+│   - IDockerClientFactory (接口)            │
+│   - IDockerHostAccessor  (接口)            │
+│   - DTO (HostDto, ContainerDto, ...)       │
+│   - ApiResult<T> / ErrorCodes              │
+└──────────────────┬─────────────────────────┘
                    │
-┌──────────────────▼───────────────────────┐
-│ Infrastructure 层 (Docker.Manager.Infra) │
-│   - DockerClientFactoryImpl (实现)        │
-│   - DockerHostAccessorImpl  (实现)        │
-│   - ContainerRepository, ...             │
-│   - 引用 Docker.DotNet.Enhanced          │
-└──────────────────────────────────────────┘
+┌──────────────────▼─────────────────────────┐
+│ 基础设施层 (Docker.Manager.Infrastructure) │
+│   - DockerClientFactory (实现)             │
+│   - DockerHostAccessor  (实现)             │
+│   - XxxRepository (Dapper + SQLite)        │
+│   - 引用 Docker.DotNet.Enhanced            │
+└────────────────────────────────────────────┘
 ```
 
 **关键收益**：
-- Controller / Service 仅依赖 `Core` 接口，**与 SDK 解耦**
+- Controller / Service 仅依赖 `Application` 的接口，**与 SDK 解耦**
 - 未来切换 SDK（如回退到上游 `Docker.DotNet` 3.x 或迁移到其他 Docker SDK）只需重写 `Infrastructure` 层
 - 单测可 Mock `IDockerClientFactory`，无需真实 Docker
 
@@ -415,7 +582,7 @@ src/web/src/
 
 ## 统一响应格式
 
-所有 HTTP API 均返回统一结构：
+所有 `/api/v1/**` 接口均返回统一结构（`GET /healthz` 为基础设施端点，例外，见下）：
 
 ```json
 {
@@ -431,9 +598,51 @@ src/web/src/
 | `success` | bool | 请求是否成功 |
 | `code` | int | 业务错误码（0 = 成功） |
 | `message` | string | 错误描述（成功时为 "ok"） |
-| `data` | object / null | 返回数据主体 |
+| `data` | object / null | 返回数据主体（失败时显式输出 `null`） |
 
-完整错误码分段见 [api-spec.md](./api-spec.md#业务错误码)。
+完整错误码分段、HTTP 状态码映射与响应约定见 [api-spec.md](./api-spec.md#统一响应格式)。
+
+---
+
+## 异常处理与统一响应（0.0.2 起）
+
+### 职责分层
+
+```
+错误码数值           语义分类               HTTP 状态码
+ErrorCodes    ──►  ErrorCategory   ──►  ErrorHttpStatus
+（应用层）           （应用层）             （接口层）
+      └── ErrorCodeCatalog 提供分类与默认文案
+```
+
+> 刻意分三层：应用层只描述「错误属于哪一类」，不引入 HTTP 概念；接口层负责把分类翻译成协议状态码。两侧都能独立单测。
+
+**为什么不能按错误码数值分段推断状态码**：同一分段内语义并不统一——`1002`（段 1000-1099）是 500、`1103`（段 1100-1199）是 429、`1301`（段 1300-1399）是 502。
+
+### 管道顺序（不可随意调整）
+
+```
+1. ExceptionHandlingMiddleware   ← 必须最外层，否则无法捕获注册在它之前的中间件异常
+2. SerilogRequestLogging         ← 异常请求降级为 Debug（详情已由第 1 层记录，避免重复告警）
+3. UseStatusCodePages            ← 包装「无响应体」的 4xx/5xx
+4. UseCors                       ← 白名单为空时不注册任何策略 = 默认拒绝跨域
+5. MapControllers / MapHealthChecks /（仅 Development）dev 故障注入端点
+```
+
+### 异常 → 错误码 → HTTP 映射
+
+| 异常类型 | 业务错误码 | HTTP |
+|---------|-----------|------|
+| `BusinessException` | 异常自带（`Code`） | 由错误码映射 |
+| `ArgumentException` / `JsonException` / `BadHttpRequestException` | `1000` | 400 |
+| `KeyNotFoundException` | `1001` | 404 |
+| `TaskCanceledException`（未被「客户端断开」过滤器捕获） | `1003` | 408 |
+| 客户端主动断开（`RequestAborted` 已取消） | — | 不写响应体，记 `Debug` |
+| 其他（兜底） | `9999` | 500 |
+
+**安全约束**：错误响应**绝不**包含堆栈、内部异常消息、异常类型名或源码位置；`9999` 的消息一律替换为固定文案。完整异常（含堆栈）与 `TraceId` 只写入服务端日志。
+
+**基础设施端点例外**：`GET /healthz` 成功响应为裸 JSON（不含 `success` 字段），便于外部探针（Docker `HEALTHCHECK`）直接消费；仅当它抛出异常时才走统一结构。
 
 ---
 
@@ -461,10 +670,10 @@ services:
       - "8080:8080"
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
-      - JWT__Secret=<your-strong-secret-≥32-bytes>
+      - JWT__SECRET=<your-strong-secret-≥32-bytes>
       - ADMIN__USER=admin
       - ADMIN__PASSWORD=<initial-strong-password>
-      - DEFAULT_HOST__ENDPOINT=tcp://socket-proxy:2375
+      - DOCKER__HOSTS__0__ENDPOINT=tcp://socket-proxy:2375
     volumes:
       - ./data:/app/data
       - ./scripts:/app/scripts

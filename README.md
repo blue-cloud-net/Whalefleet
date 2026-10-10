@@ -2,12 +2,12 @@
 
 > 一个类 Portainer 的轻量化 Docker 管理平台。基于 Web 的可视化界面，用于管理本地及远程 Docker 主机上的容器、镜像、Volume、Network 等资源。
 >
-> **后端** .NET 10 LTS + Dapper + SQLite + SignalR ｜ **前端** Vue 3.5+ + TypeScript 5.7+ + UnoCSS + Element Plus 2.14+ ｜ **Docker SDK** [Docker.DotNet.Enhanced](https://github.com/testcontainers/Docker.DotNet)（Docker API ≥29.8.0）
+> **后端** .NET 10 LTS + Dapper + SQLite + SignalR ｜ **前端** Vue 3.5+ + TypeScript 5.7+ + UnoCSS + Element Plus 2.14+ ｜ **Docker SDK** [Docker.DotNet.Enhanced](https://github.com/testcontainers/Docker.DotNet) 4.3.3（Docker Engine API v29.4.1）
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![.NET 10 LTS](https://img.shields.io/badge/.NET-10_LTS-512BD4)](https://dotnet.microsoft.com)
 [![Vue 3.5+](https://img.shields.io/badge/Vue-3.5+-42b883)](https://vuejs.org)
-[![Docker API ≥29.8.0](https://img.shields.io/badge/Docker_API-≥29.8.0-2496ED)](https://github.com/testcontainers/Docker.DotNet)
+[![Docker Engine API v29.4.1](https://img.shields.io/badge/Docker_Engine_API-v29.4.1-2496ED)](https://github.com/testcontainers/Docker.DotNet)
 [![GHCR](https://img.shields.io/badge/GHCR-blue--cloud--net%2Fdocker--manager-2496ED)](https://ghcr.io/blue-cloud-net/docker-manager)
 
 > 当前阶段：**0.0.x 开发迭代期**（未正式发布，0.0.* tag 不推 GHCR）。首个 semver 稳定版 `v0.1.0` 路线图见 [docs/roadmap.md](docs/roadmap.md)。
@@ -54,10 +54,10 @@ services:
       - "8080:8080"
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
-      - JWT__Secret=<your-strong-secret-≥32-bytes>
+      - JWT__SECRET=<your-strong-secret-≥32-bytes>
       - ADMIN__USER=admin
       - ADMIN__PASSWORD=<initial-strong-password>
-      - DEFAULT_HOST__ENDPOINT=tcp://socket-proxy:2375
+      - DOCKER__HOSTS__0__ENDPOINT=tcp://socket-proxy:2375
     volumes:
       - ./data:/app/data
       - ./scripts:/app/scripts
@@ -96,7 +96,7 @@ docker run -d \
   -p 8080:8080 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v $(pwd)/data:/app/data \
-  -e JWT__Secret=$(openssl rand -hex 32) \
+  -e JWT__SECRET=$(openssl rand -hex 32) \
   -e ADMIN__USER=admin \
   -e ADMIN__PASSWORD='StrongP@ss123' \
   --restart unless-stopped \
