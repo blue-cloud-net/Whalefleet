@@ -13,6 +13,49 @@
 > **CI 规则**：`v0.0.*` tag 触发构建但不推 GHCR；`v0.1.0-rc.*` / `v0.x.0` / `v1.0.0` tag 触发构建 + 推 GHCR + 创建 GitHub Release。镜像标签策略仅 semver（`v0.1.0` / `0.1.0` / `0.1` / `latest`）。
 >
 > 完整版本计划：13 个 0.0.x 迭代 + 1 个 RC + 4 个稳定版（0.1.0 / 0.2.0 / 0.3.0 / 0.4.0 / 1.0.0）。
+---
+
+## 进度图例与总览
+
+> **图标约定**：版本标题与条目**首列**的图标即为其状态，全文统一。
+
+| 图标 | 状态 | 判定口径 |
+|:---:|------|----------|
+| ✅ | **已完成** | 代码已合入主干，且该条目的验收标准全部通过 |
+| 🚧 | **进行中** | 已开工但未闭环——本节至少一个条目尚未完成 |
+| ⬜ | **未开始** | 尚未开工，条目与设计处于最终态 |
+| ❌ | **明确不做** | 已判定为非目标（清单见 [features.md](./features.md#v10-不包含明确非目标)） |
+
+> **维护规则**
+>
+> 1. 条目级图标**只出现在「已完成」与「进行中」的版本内**；未开始的版本仅在标题标 ⬜，条目保持干净。
+> 2. 子条目默认**继承父条目的图标**；只有明确标注状态时才单独覆盖。
+> 3. 一个版本内**不再有任何 ⬜ 条目**时，才能把标题从 🚧 改成 ✅。
+> 4. 「验收」小节是**该版本的收口清单**，只有它整体打 ✅ 才算真正交付。
+
+### 当前进度（截至 2026-10-10）
+
+| 版本 | 主题 | 状态 | 备注 |
+|------|------|:---:|------|
+| `0.0.1` | 项目骨架 + CI 骨架 | ✅ | 4 个分层项目 + Central Package Management + `/healthz` |
+| `0.0.2` | 后端基础设施 | ✅ | 异常管道 / 统一响应 / 错误码分层 / CORS / 集成测试载体 |
+| `0.0.3` | 数据层与密码安全 | 🚧 | 实体审计基座已落地；SQLite / Dapper / 仓储 / Argon2 未开工 |
+| `0.0.4` | 认证 API（核心） | ⬜ | 依赖 0.0.3 的用户表 |
+| `0.0.5` | 认证完善 + 前端基础设施 | 🚧 | 前端工作区、代理、axios 层已就位；后端 refresh / logout 未开工 |
+| `0.0.6` | 部署底座与初始管理员引导 | ⬜ | |
+| `0.0.7` | 前端登录页与基础布局 | 🚧 | 与后端**并行**推进；布局 / 主题 / 国际化 / 两段式导航已落地 |
+| `0.0.8` | Docker 主机抽象 | 🚧 | 主机连接模型 + 客户端缓存工厂已完成；`hosts` 表与主机 API 未开工 |
+| `0.0.9` | 容器 API 后端 | ⬜ | 仅占位视图 |
+| `0.0.10` | 镜像 API 后端 | ⬜ | 仅占位视图 |
+| `0.0.11` | 前端：容器 UI | ⬜ | 仅 `HostSelector` 等通用件已提前落地 |
+| `0.0.12` | 前端：镜像 UI | ⬜ | 仅占位视图 |
+| `0.0.13` | 前端：管理 UI + MVP 打磨 | ⬜ | 仅 `EmptyState` 等通用件已提前落地 |
+| `0.1.0-rc.1` | MVP 候选发布 | ⬜ | |
+| `0.1.0` | MVP 首个 semver 稳定版 | ⬜ | |
+| `0.2.0` | Volume / Network / 镜像构建 | ⬜ | |
+| `0.3.0` | 实时推送与资源粒度 RBAC | ⬜ | |
+| `0.4.0` | exec 终端 / Compose / Registry | ⬜ | |
+| `1.0.0` | 生产就绪版 | ⬜ | |
 
 ---
 
@@ -20,43 +63,43 @@
 
 > 每个 0.0.x 迭代 = 1 个可独立验收的小型里程碑。允许破坏性变更，仅自测，不对外发布。
 
-### 0.0.1 — 项目骨架 + CI 骨架
+### 0.0.1 ✅ — 项目骨架 + CI 骨架
 
 **目标**：可构建、可运行最小后端 + CI 流水线雏形。
 
 > **0.0.1 实施决策（分层拆分）**：原规划的"三项目（Api / Core / Infrastructure）"经评审后调整为 **4 个分层项目（Core / Application / Infrastructure / Api）** + 1 个测试项目骨架。0.0.2 后废弃 DDD 战术模式：`Domain` 更名为 `Core`，移除聚合根、领域事件与 `DomainException`，保留分层依赖方向与充血模型。详细规范见 [docs/architecture.md](./architecture.md#项目依赖方向)。
 
 后端：
-- **4 个分层项目解决方案**：
-  - `src/Docker.Manager.Core/`——核心层。业务实体、值对象、枚举。**仅依赖 BCL，不引用任何 NuGet 包**
-  - `src/Docker.Manager.Application/`——应用层。用例编排、DTO、外部资源接口抽象（如 `IDockerClientFactory`）。依赖 Core
-  - `src/Docker.Manager.Infrastructure/`——基础设施层。第三方 SDK 适配（`Docker.DotNet.Enhanced`）、仓储实现、外部服务集成。依赖 Core + Application
-  - `src/Docker.Manager.Api/`——接口层。ASP.NET Core 10 宿主进程，托管 Controllers / SignalR Hubs / 静态前端。依赖 Application + Infrastructure
-- `Directory.Packages.props` 启用 **Central Package Management**（`<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>`），所有 NuGet 包版本号集中此文件
-- `Infrastructure` 项目引入 `Docker.DotNet.Enhanced` 包（采用最新稳定版），**在 `Application/Abstractions` 中定义 `IDockerClientFactory` 接口抽象**（外部资源接口放在应用层，非领域层）
-- `Docker.Manager.Api` 启动监听 `:8080`，返回 `GET /healthz` → 200 OK（Controller 风格，区别于后续 RPC 风格的 `POST /api/v1/...` 端点）
-- `Directory.Build.props`：TargetFramework=net10.0、LangVersion=latest、可空引用类型开启、警告即错误
-- Serilog 控制台输出（JSON 配置 + `ReadFrom.Configuration`）
+- ✅ **4 个分层项目解决方案**：
+  - ✅ `src/Docker.Manager.Core/`——核心层。业务实体、值对象、枚举。**仅依赖 BCL，不引用任何 NuGet 包**
+  - ✅ `src/Docker.Manager.Application/`——应用层。用例编排、DTO、外部资源接口抽象（如 `IDockerClientFactory`）。依赖 Core
+  - ✅ `src/Docker.Manager.Infrastructure/`——基础设施层。第三方 SDK 适配（`Docker.DotNet.Enhanced`）、仓储实现、外部服务集成。依赖 Core + Application
+  - ✅ `src/Docker.Manager.Api/`——接口层。ASP.NET Core 10 宿主进程，托管 Controllers / SignalR Hubs / 静态前端。依赖 Application + Infrastructure
+- ✅ `Directory.Packages.props` 启用 **Central Package Management**（`<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>`），所有 NuGet 包版本号集中此文件
+- ✅ `Infrastructure` 项目引入 `Docker.DotNet.Enhanced` 包（采用最新稳定版），**在 `Application/Abstractions` 中定义 `IDockerClientFactory` 接口抽象**（外部资源接口放在应用层，非领域层）
+- ✅ `Docker.Manager.Api` 启动监听 `:8080`，返回 `GET /healthz` → 200 OK（Controller 风格，区别于后续 RPC 风格的 `POST /api/v1/...` 端点）
+- ✅ `Directory.Build.props`：TargetFramework=net10.0、LangVersion=latest、可空引用类型开启、警告即错误
+- ✅ Serilog 控制台输出（JSON 配置 + `ReadFrom.Configuration`）
 
 测试：
-- `tests/Docker.Manager.UnitTests/` 引入 xUnit + FluentAssertions + coverlet 骨架（占位烟雾用例验证测试链路）。详细覆盖节奏：0.0.3 Argon2id 哈希、0.0.4 登录、0.0.8 引入 Testcontainers 集成测试
+- ✅ `tests/Docker.Manager.UnitTests/` 引入 xUnit + FluentAssertions + coverlet 骨架（占位烟雾用例验证测试链路）。详细覆盖节奏：0.0.3 Argon2id 哈希、0.0.4 登录、0.0.8 引入 Testcontainers 集成测试
 
 CI：
-- `.github/workflows/ci.yml`：push / pull_request 到 `main` / `develop` 触发。步骤：`dotnet restore` → `dotnet build -c Release`（warn-as-error）→ `dotnet test -c Release`。NuGet 包缓存（`~/.nuget/packages`，key 基于 `*.csproj` + `Directory.Packages.props`）
+- ✅ `.github/workflows/ci.yml`：push / pull_request 到 `main` / `develop` 触发。步骤：`dotnet restore` → `dotnet build -c Release`（warn-as-error）→ `dotnet test -c Release`。NuGet 包缓存（`~/.nuget/packages`，key 基于 `*.csproj` + `Directory.Packages.props`）
 
 仓库：
-- `README.md` 占位（详细完善在 0.0.13）
+- ✅ `README.md` 占位（详细完善在 0.0.13）
 
 **验收**：
-- 本地 `dotnet build` 通过（零警告，因 `TreatWarningsAsErrors=true`）
-- `dotnet test` 通过（占位烟雾用例至少 1 个）
-- `/healthz` 返回 200 OK
-- NuGet 还原成功拉取 `Docker.DotNet.Enhanced`
-- 依赖方向校验：`Core` 项目无任何上游 NuGet 依赖（仅 BCL）
+- ✅ 本地 `dotnet build` 通过（零警告，因 `TreatWarningsAsErrors=true`）
+- ✅ `dotnet test` 通过（占位烟雾用例至少 1 个）
+- ✅ `/healthz` 返回 200 OK
+- ✅ NuGet 还原成功拉取 `Docker.DotNet.Enhanced`
+- ✅ 依赖方向校验：`Core` 项目无任何上游 NuGet 依赖（仅 BCL）
 
 ---
 
-### 0.0.2 — 后端基础设施
+### 0.0.2 ✅ — 后端基础设施
 
 **目标**：所有后续接口的统一基线。
 
@@ -73,55 +116,57 @@ CI：
 > 9. **JSON 编码策略**：中文原样输出（`JavaScriptEncoder.Create(UnicodeRanges.All)`）而非 `\uXXXX` 转义；MVC 与错误响应共用 `ApiJsonDefaults` 以防两处漂移。
 
 后端：
-- **全局异常处理中间件**（`Api/Middleware/ExceptionHandlingMiddleware`，注册为管道第一个中间件）：
-  - `BusinessException` → 用其自带错误码；`ArgumentException` / `JsonException` / `BadHttpRequestException` → `1000`（400）；`KeyNotFoundException` → `1001`（404）；`TaskCanceledException` → `1003`（408）；兜底 → `9999`（500）
-  - 客户端主动断开（`RequestAborted`）不写响应体，记 `Debug`；响应已开始写出时记 `Critical` 后重抛
-  - 4xx 记 `Warning`（不含堆栈），5xx 记 `Error`（含完整堆栈 + `TraceId`）
-- **统一响应模型**：`ApiResult` / `ApiResult<T>` + `ApiResults` 工厂（工厂放在非泛型静态类，规避 CA1000）；`BusinessException` 体系（`Validation` / `NotFound` / `Unauthenticated` / `Forbidden` / `Timeout` / `HostUnreachable` / `Internal`）
-- **无响应体状态码包装**：`UseStatusCodePages` 把未知路由 404、405、415 等统一包装为 `ApiResult`；`ApiController` 的 ModelState 失败改写为 `1000`
-- **日志去重**：`Serilog` 请求日志在异常请求上降级为 `Debug`，异常详情只由中间件记一次 `Error`
-- **配置系统**：`appsettings.json` → `appsettings.{Environment}.json` → 环境变量 → 命令行；key 用 `__` 分隔嵌套、数组用数字下标；不合法的配置通过 `ValidateOnStart` 在**启动时**失败
-- **Serilog 滚动文件输出**：生产 `/app/data/logs/app-.log`、开发 `logs/app-.log`；按天滚动，保留 14 天；UTF-8 无 BOM
-- **CORS 白名单**：`Cors:AllowedOrigins` 默认空数组 = 不发出任何 `Access-Control-*` 响应头（默认拒绝跨域）；非法 origin（非绝对 URI / 带尾斜杠）启动即失败
-- **开发专用故障注入端点** `POST /api/v1/dev/throw?kind=internal|business|validation|notfound|timeout`，仅 `IsDevelopment()` 时注册（生产不存在该路由）
+- ✅ **全局异常处理中间件**（`Api/Middleware/ExceptionHandlingMiddleware`，注册为管道第一个中间件）：
+  - ✅ `BusinessException` → 用其自带错误码；`ArgumentException` / `JsonException` / `BadHttpRequestException` → `1000`（400）；`KeyNotFoundException` → `1001`（404）；`TaskCanceledException` → `1003`（408）；兜底 → `9999`（500）
+  - ✅ 客户端主动断开（`RequestAborted`）不写响应体，记 `Debug`；响应已开始写出时记 `Critical` 后重抛
+  - ✅ 4xx 记 `Warning`（不含堆栈），5xx 记 `Error`（含完整堆栈 + `TraceId`）
+- ✅ **统一响应模型**：`ApiResult` / `ApiResult<T>` + `ApiResults` 工厂（工厂放在非泛型静态类，规避 CA1000）；`BusinessException` 体系（`Validation` / `NotFound` / `Unauthenticated` / `Forbidden` / `Timeout` / `HostUnreachable` / `Internal`）
+- ✅ **无响应体状态码包装**：`UseStatusCodePages` 把未知路由 404、405、415 等统一包装为 `ApiResult`；`ApiController` 的 ModelState 失败改写为 `1000`
+- ✅ **日志去重**：`Serilog` 请求日志在异常请求上降级为 `Debug`，异常详情只由中间件记一次 `Error`
+- ✅ **配置系统**：`appsettings.json` → `appsettings.{Environment}.json` → 环境变量 → 命令行；key 用 `__` 分隔嵌套、数组用数字下标；不合法的配置通过 `ValidateOnStart` 在**启动时**失败
+- ✅ **Serilog 滚动文件输出**：生产 `/app/data/logs/app-.log`、开发 `logs/app-.log`；按天滚动，保留 14 天；UTF-8 无 BOM
+- ✅ **CORS 白名单**：`Cors:AllowedOrigins` 默认空数组 = 不发出任何 `Access-Control-*` 响应头（默认拒绝跨域）；非法 origin（非绝对 URI / 带尾斜杠）启动即失败
+- ✅ **开发专用故障注入端点** `POST /api/v1/dev/throw?kind=internal|business|validation|notfound|timeout`，仅 `IsDevelopment()` 时注册（生产不存在该路由）
 
 测试：
-- `tests/Docker.Manager.IntegrationTests/` 新建（xUnit + FluentAssertions + `Microsoft.AspNetCore.Mvc.Testing`），覆盖异常映射、状态码包装、CORS 与配置系统
-- `UnitTests` 补充错误码表一致性、语义分类、`ApiResult` 工厂与序列化契约
+- ✅ `tests/Docker.Manager.IntegrationTests/` 新建（xUnit + FluentAssertions + `Microsoft.AspNetCore.Mvc.Testing`），覆盖异常映射、状态码包装、CORS 与配置系统
+- ✅ `UnitTests` 补充错误码表一致性、语义分类、`ApiResult` 工厂与序列化契约
 
 **验收**：
-- `GET /healthz` 成功返回裸 JSON（不含 `success` 字段）；抛异常时返回标准 `ApiResult` JSON
-- `POST /api/v1/dev/throw` → 500 + `{"success":false,"code":9999,"message":"服务器内部错误","data":null}`，且响应体无堆栈 / 异常类型名 / 源码位置
-- 未知路由 → 404 + `code 1001`
-- `Origin: http://evil.example` → 无 `Access-Control-Allow-Origin`；配置白名单后仅命中项回显
-- 环境变量 `DOCKER__HOSTS__0__ENDPOINT` 可覆盖 `IOptions<DockerClientFactoryOptions>` 的 `Hosts[0].Endpoint`
-- 日志文件按天生成于预期路径，且同一次 5xx 只产生一条 `Error` 日志
-- `dotnet test` 同时跑通 UnitTests 与 IntegrationTests
+- ✅ `GET /healthz` 成功返回裸 JSON（不含 `success` 字段）；抛异常时返回标准 `ApiResult` JSON
+- ✅ `POST /api/v1/dev/throw` → 500 + `{"success":false,"code":9999,"message":"服务器内部错误","data":null}`，且响应体无堆栈 / 异常类型名 / 源码位置
+- ✅ 未知路由 → 404 + `code 1001`
+- ✅ `Origin: http://evil.example` → 无 `Access-Control-Allow-Origin`；配置白名单后仅命中项回显
+- ✅ 环境变量 `DOCKER__HOSTS__0__ENDPOINT` 可覆盖 `IOptions<DockerClientFactoryOptions>` 的 `Hosts[0].Endpoint`
+- ✅ 日志文件按天生成于预期路径，且同一次 5xx 只产生一条 `Error` 日志
+- ✅ `dotnet test` 同时跑通 UnitTests 与 IntegrationTests
 
 ---
 
-### 0.0.3 — 数据层与密码安全
+### 0.0.3 🚧 — 数据层与密码安全
 
 **目标**：用户表可创建，密码可哈希校验。
 
+> **进度（2026-10-10）**：🚧 实体审计与软删除基座（`Core/Common/Auditing/` 9 个细粒度接口 + 3 级基类）已落地并写入 [architecture.md](./architecture.md)；`User` 实体、SQLite 初始化、Dapper 仓储与 Argon2id 哈希均未开工。
+
 后端：
-- SQLite 初始化（`/app/data/docker-manager.db`，目录不存在自动创建）
-- Dapper 接入，仓储层抽象 `IUserRepository`
-- 启动时建 `users` 表（id、username、password_hash、role、creation_time、creator_id）
-  - 列名遵循「属性名 ↔ 列名同名、仅大小写风格不同」的审计列约定（`docs/architecture.md` 实体审计与软删除）
-  - Dapper 直接物化充血实体：实体给**非公开无参构造**即可，**不建 Row DTO、不加 InternalsVisibleTo**；
+- ⬜ SQLite 初始化（`/app/data/docker-manager.db`，目录不存在自动创建）
+- ⬜ Dapper 接入，仓储层抽象 `IUserRepository`
+- ⬜ 启动时建 `users` 表（id、username、password_hash、role、creation_time、creator_id）
+  - ✅ 列名遵循「属性名 ↔ 列名同名、仅大小写风格不同」的审计列约定（`docs/architecture.md` 实体审计与软删除）
+  - ✅ Dapper 直接物化充血实体：实体给**非公开无参构造**即可，**不建 Row DTO、不加 InternalsVisibleTo**；
     须开启 `MatchNamesWithUnderscores` 才能把 `creation_time` 映射到 `CreationTime`
-  - `IUserRepository` 实现继承 `Infrastructure/Persistence/RepositoryBase`，插入 / 更新时调用
+  - ⬜ `IUserRepository` 实现继承 `Infrastructure/Persistence/RepositoryBase`，插入 / 更新时调用
     `MarkCreated` / `MarkModified` 写入审计（值取自 `TimeProvider` 与 `ICurrentUser`）
-- `ICurrentUser`（`Application/Abstractions/`）抽象当前登录用户；`RepositoryBase` 注入
+- ⬜ `ICurrentUser`（`Application/Abstractions/`）抽象当前登录用户；`RepositoryBase` 注入
   `ICurrentUser` + `TimeProvider` 完成审计填充
-- `User` 实体继承 `AuditedEntity<TId, TUserKey>`（记录创建 + 修改审计）
-- Argon2id 密码哈希（`Isopoh.Cryptography.Argon2`），禁止明文落库与日志
-- 单元测试覆盖哈希/校验
+- 🚧 `User` 实体继承 `AuditedEntity<TId, TUserKey>`（记录创建 + 修改审计）（`AuditedEntity` 基类已就绪，`User` 实体未建）
+- ⬜ Argon2id 密码哈希（`Isopoh.Cryptography.Argon2`），禁止明文落库与日志
+- ⬜ 单元测试覆盖哈希/校验
 
 ---
 
-### 0.0.4 — 认证 API（核心）
+### 0.0.4 ⬜ — 认证 API（核心）
 
 **目标**：可通过 API 登录拿到 JWT。
 
@@ -136,28 +181,30 @@ CI：
 
 ---
 
-### 0.0.5 — 认证完善 + 前端基础设施
+### 0.0.5 🚧 — 认证完善 + 前端基础设施
 
 **目标**：完整认证闭环 + 前端可对接后端。
 
+> **进度（2026-10-10）**：🚧 前端 `web/` 工作区**提前开工**（与后端并行）：Vite 代理、axios 拦截器、Pinia 持久化、路由守卫均已就位；后端 `refresh` / `logout` / 安全响应头 / 密码强度校验尚未开工。
+
 后端：
-- `POST /api/v1/auth/refresh`：用 refresh token 换新 access
-- `POST /api/v1/auth/logout`：撤销当前 refresh token（写入黑名单表）
-- 安全响应头中间件：X-Content-Type-Options=nosniff、X-Frame-Options=DENY、Referrer-Policy=no-referrer
-- 密码强度校验工具类（≥10 字符、含字母+数字或符号）
+- ⬜ `POST /api/v1/auth/refresh`：用 refresh token 换新 access
+- ⬜ `POST /api/v1/auth/logout`：撤销当前 refresh token（写入黑名单表）
+- ⬜ 安全响应头中间件：X-Content-Type-Options=nosniff、X-Frame-Options=DENY、Referrer-Policy=no-referrer
+- ⬜ 密码强度校验工具类（≥10 字符、含字母+数字或符号）
 
 前端：
-- `src/web/` 工作区，Vite + Vue 3 + TypeScript + Element Plus 骨架
-- `vite.config.ts` 配置 `/api` 与 `/hubs` 代理到 `http://localhost:8080`
-- Pinia `useUserStore`（user、accessToken、refreshToken 持久化到 localStorage）
-- Axios 实例 + 拦截器：自动注入 Authorization、`401` 时尝试 refresh 并重发原请求
-- Vue Router 全局守卫：未登录跳 `/login`
+- ✅ `src/web/` 工作区，Vite + Vue 3 + TypeScript + Element Plus 骨架（实际路径为 `web/`，非 `src/web/`）
+- ✅ `vite.config.ts` 配置 `/api` 与 `/hubs` 代理到 `http://localhost:8080`
+- 🚧 Pinia `useUserStore`（user、accessToken、refreshToken 持久化到 localStorage）（落地为 `stores/auth.ts` + persistedstate）
+- 🚧 Axios 实例 + 拦截器：自动注入 Authorization、`401` 时尝试 refresh 并重发原请求（注入 ✅；`401` → refresh 重发待后端就绪后补）
+- ✅ Vue Router 全局守卫：未登录跳 `/login`（另含 `requiresAdmin` 拦截与 hostId 同步）
 
 **验收**：登录页表单提交 → 拿到 token 跳首页；token 过期自动刷新。
 
 ---
 
-### 0.0.6 — 部署底座与初始管理员引导
+### 0.0.6 ⬜ — 部署底座与初始管理员引导
 
 **目标**：`docker run` 一行启动可登录。
 
@@ -186,54 +233,63 @@ CI：
 
 ---
 
-### 0.0.7 — 前端登录页与基础布局
+### 0.0.7 🚧 — 前端登录页与基础布局
 
 **目标**：可视化的登录体验 + 全局导航骨架 + UnoCSS/主题/快捷键基建。
 
+> **进度（2026-10-10）**：🚧 前端**先行推进**，不阻塞后端主线。UnoCSS、主题系统、两段式导航、总览页、国际化、路由守卫已完成；登录页与后端尚未接通。
+
 前端（详细见 `docs/ui-guidelines.md`）：
-- **UnoCSS 接入**：`unocss` + `presetUno` + `presetTypography` + `presetIcons`（Iconify 按需）
-- **主题系统**：`composables/useTheme.ts`（亮色 / 暗色 / 跟随系统 + 蓝/绿/紫主题色）
-- `LoginView.vue`：居中卡片 + Element Plus 表单 + 主题切换按钮
-- **主布局** `layouts/AppLayout.vue`：顶栏 64px + 左侧 200px 可折叠侧边栏 + 内容区；移动端侧边栏变抽屉
-- **顶栏组件**：`Breadcrumb.vue`、`UserMenu.vue`
-- **侧边栏组件**：`Sidebar.vue`（按 `route.meta.showInSidebar` 与 `requiresAdmin` 过滤）
-- 国际化：vue-i18n，`locales/zh-CN.json` / `locales/en-US.json`；key 用 dotted 命名，缺失 fallback 英文
-- 占位首页 `DashboardView.vue`
-- 路由守卫实现未登录跳 `/login` 与 `requiresAdmin` 拦截
+- ✅ **UnoCSS 接入**：`unocss` + `presetUno` + `presetTypography` + `presetIcons`（Iconify 按需）
+- ✅ **主题系统**：`composables/useTheme.ts`（亮色 / 暗色 / 跟随系统 + 蓝/绿/紫主题色）
+- 🚧 `LoginView.vue`：居中卡片 + Element Plus 表单 + 主题切换按钮（UI 完成，未接后端登录 API）
+- ✅ **主布局** `layouts/AppLayout.vue`：顶栏 64px + 左侧 200px 可折叠侧边栏 + 内容区；移动端侧边栏变抽屉
+  - ✅ **两段式信息架构**：全局作用域（`meta.scope='global'`：总览 / 全局设置 / 主机管理 / 用户管理）与主机作用域（`meta.scope='host'`：`/hosts/:hostId/{dashboard,containers,images,volumes,networks}`）使用**不同侧边栏菜单**
+  - ✅ **主机作用域进入 URL**（`/hosts/:hostId/**`），可深链 / 可分享；路由守卫负责把 `hostId` 同步到 `useHostStore`，未知 hostId 重定向 `/overview`
+  - ✅ `X-Host-Id` 仅在主机作用域注入（全局请求不携带）
+  - ✅ 侧边栏菜单**从路由表自动派生**（按 `meta.scope` / `showInSidebar` / `requiresAdmin` 过滤），新增路由无需改布局
+- ✅ **总览页 `OverviewView.vue`**：登录后的默认落地页。**长条形**列出所有可见主机（名称 / 类型 / endpoint / 状态点 / 四类资源计数 / 进入按钮）+ 总数与在线数摘要；点击「进入」切换到该主机作用域
+- 🚧 **顶栏组件**：`Breadcrumb.vue`、`UserMenu.vue`（无独立组件文件，功能内联在 `AppLayout.vue`）
+- 🚧 **侧边栏组件**：`Sidebar.vue`（按 `route.meta.showInSidebar` 与 `requiresAdmin` 过滤）（同上，内联实现）
+- ✅ 国际化：vue-i18n，`locales/zh-CN.json` / `locales/en-US.json`；key 用 dotted 命名，缺失 fallback 英文
+- 🚧 占位首页 `DashboardView.vue`（落地为按主机作用域的 `HostDashboardView.vue`）
+- ✅ 路由守卫实现未登录跳 `/login` 与 `requiresAdmin` 拦截
 
 **验收**：登录页英文/中文切换正常；切换主题颜色变化；侧边栏可折叠且状态持久化；移动端（375px）侧边栏变抽屉可正常开关。
 
 ---
 
-### 0.0.8 — Docker 主机抽象
+### 0.0.8 🚧 — Docker 主机抽象
 
 **目标**：可注册多个 Docker 主机，按主机切换操作。
 
+> **进度（2026-10-10）**：🚧 「多主机连接模型 + 客户端缓存工厂」这一层已完成（`DockerHostConnection` / `DockerHostAuth` / `DockerHostType` / `DockerClientFactory` 缓存与空闲回收 / 连通性测试），但**缺数据层与 API 入口**：`hosts` 表、`IDockerHostAccessor`、主机 / 用户管理 API 均未开工。
+
 后端：
-- 新建 `hosts` 表（id、name、type=socket|tcp、endpoint、tls_config_json、enabled、creation_time、creator_id）
-- 启动时若 hosts 表为空，插入默认主机：`name="local"`、`type=socket`、`endpoint="/var/run/docker.sock"`
-- `Infrastructure` 项目额外引入 `Docker.DotNet.Enhanced.X509` + `Docker.DotNet.Enhanced.BasicAuth`
-- `IDockerClientFactory`（在 `Core` 中定义接口，`Infrastructure` 实现）：按 `hostId` 返回缓存的 `DockerClient` 实例
-  - 使用 `DockerClientBuilder` 风格
-  - socket：`WithEndpoint(new Uri("unix:///var/run/docker.sock"))`
-  - TCP（无认证）：`WithEndpoint(new Uri("tcp://host:2375"))`
-  - TCP + TLS：`WithEndpoint(...)` + `WithAuthProvider(new CertificateCredentials(cert))`
-  - TCP + Basic：`WithEndpoint(...)` + `WithAuthProvider(new BasicAuthCredentials(user, pass))`
-- `IDockerHostAccessor`：Scoped 服务，从请求 Header `X-Host-Id`（缺省 `"local"`）解析当前 host
-- 主机管理 API（admin 专用）：
-  - `POST /api/v1/host/list` / `create` / `update` / `delete` / `test`
-- 用户管理 API（admin 专用）：
-  - `POST /api/v1/user/list` / `create` / `delete` / `update-password`
-- `IResourcePermissionService` 接口定义（0.1.0 仅实现 host 可见性）
+- ⬜ 新建 `hosts` 表（id、name、type=socket|tcp、endpoint、tls_config_json、enabled、creation_time、creator_id）
+- ⬜ 启动时若 hosts 表为空，插入默认主机：`name="local"`、`type=socket`、`endpoint="/var/run/docker.sock"`
+- ⬜ `Infrastructure` 项目额外引入 `Docker.DotNet.Enhanced.X509` + `Docker.DotNet.Enhanced.BasicAuth`
+- ✅ `IDockerClientFactory`（在 `Core` 中定义接口，`Infrastructure` 实现）：按 `hostId` 返回缓存的 `DockerClient` 实例
+  - ✅ 使用 `DockerClientBuilder` 风格
+  - ✅ socket：`WithEndpoint(new Uri("unix:///var/run/docker.sock"))`
+  - ✅ TCP（无认证）：`WithEndpoint(new Uri("tcp://host:2375"))`
+  - ⬜ TCP + TLS：`WithEndpoint(...)` + `WithAuthProvider(new CertificateCredentials(cert))`
+  - ⬜ TCP + Basic：`WithEndpoint(...)` + `WithAuthProvider(new BasicAuthCredentials(user, pass))`
+- ⬜ `IDockerHostAccessor`：Scoped 服务，从请求 Header `X-Host-Id`（缺省 `"local"`）解析当前 host
+- ⬜ 主机管理 API（admin 专用）：
+  - ⬜ `POST /api/v1/host/list` / `create` / `update` / `delete` / `test`
+- ⬜ 用户管理 API（admin 专用）：
+  - ⬜ `POST /api/v1/user/list` / `create` / `delete` / `update-password`
+- ⬜ `IResourcePermissionService` 接口定义（0.1.0 仅实现 host 可见性）
 
 测试（从本迭代起为强制要求）：
-- `tests/Docker.Manager.IntegrationTests/`（**项目骨架已于 0.0.2 落地**）新增 `Testcontainers` for .NET 依赖
-- 容器/镜像/Volume/Network 等新 API 必须配集成测试，CI 卡
-- 不设行覆盖率门槛
+- ⬜ `tests/Docker.Manager.IntegrationTests/`（**项目骨架已于 0.0.2 落地**）新增 `Testcontainers` for .NET 依赖
+- ⬜ 容器/镜像/Volume/Network 等新 API 必须配集成测试，CI 卡
+- ✅ 不设行覆盖率门槛
 
 ---
 
-### 0.0.9 — 容器 API 后端
+### 0.0.9 ⬜ — 容器 API 后端
 
 **目标**：所有容器 CRUD 操作可通过 API 完成。
 
@@ -253,7 +309,7 @@ CI：
 
 ---
 
-### 0.0.10 — 镜像 API 后端
+### 0.0.10 ⬜ — 镜像 API 后端
 
 **目标**：镜像 CRUD + 拉取（含进度回传）。
 
@@ -269,14 +325,14 @@ CI：
 
 ---
 
-### 0.0.11 — 前端：容器 UI
+### 0.0.11 ⬜ — 前端：容器 UI
 
 **目标**：可视化容器管理。
 
 前端：
 - API 封装层 `src/web/src/api/container.ts`：RPC 风格方法封装
 - `src/web/src/stores/host.ts`：Pinia 当前主机选择 + 持久化
-- **顶栏 `HostSelector` 下拉组件**：显示当前主机名 + 在线状态点；列出可访问主机；admin 可见「管理主机」入口；切换写入 Pinia `useHostStore` + 自动后续请求带 `X-Host-Id`（通过 `composables/useDockerRequest.ts` 拦截器实现）
+- **顶栏 `HostSelector` 下拉组件**（`components/business/HostSelector.vue`）：主机作用域显示当前主机名 + 状态点，全局作用域显示「选择主机」占位；列出可访问主机，**切换后停留在当前资源页**；写入 Pinia `useHostStore` → 请求拦截器自动带 `X-Host-Id`（仅主机作用域）；admin 可见「管理主机」入口
 - `ContainerListView.vue`：表格（名称、镜像、状态、端口、创建时间）+ 操作按钮（启动/停止/重启/删除）+ 状态自动刷新（轮询 5 秒）
 - **`CreateContainerDialog.vue`**：可视化创建表单（镜像下拉 + 名称 + 端口映射 + 环境变量键值对 + Volume 挂载 + 重启策略选择 + 高级选项折叠面板「网络模式 / 资源限制 / capabilities」）
 - `ContainerLogsView.vue`：行数选择 + tail 加载 + 时间过滤 + 自动滚动开关
@@ -284,7 +340,7 @@ CI：
 
 ---
 
-### 0.0.12 — 前端：镜像 UI
+### 0.0.12 ⬜ — 前端：镜像 UI
 
 **目标**：可视化镜像管理。
 
@@ -295,7 +351,7 @@ CI：
 
 ---
 
-### 0.0.13 — 前端：管理 UI + MVP 打磨
+### 0.0.13 ⬜ — 前端：管理 UI + MVP 打磨
 
 **目标**：完成所有 0.1.0 必备 UI，准备进入 RC。
 
@@ -321,7 +377,7 @@ CI：
 
 ---
 
-### 0.1.0-rc.1 — MVP 候选发布
+### 0.1.0-rc.1 ⬜ — MVP 候选发布
 
 **目标**：0.0.13 后冻结功能，仅修 bug。
 
@@ -334,7 +390,7 @@ CI：
 
 ---
 
-## 0.1.0 — MVP 首个 semver 稳定版 🎉
+## 0.1.0 ⬜ — MVP 首个 semver 稳定版 🎉
 
 **对外承诺**：
 - 公开 API 路径与请求/响应结构从 0.1.0 起冻结（向后兼容到 1.0.0）
@@ -367,7 +423,7 @@ CI：
 
 ---
 
-## 0.2.0 — Volume / Network / 镜像构建
+## 0.2.0 ⬜ — Volume / Network / 镜像构建
 
 **目标**：把 Docker 主要资源类型管理补齐；支持上传 Dockerfile 构建镜像；增加批量删除能力。
 
@@ -386,7 +442,7 @@ CI：
 
 ---
 
-## 0.3.0 — 实时推送与资源粒度 RBAC
+## 0.3.0 ⬜ — 实时推送与资源粒度 RBAC
 
 **目标**：上线实时日志 / 监控 / 异常通知；落地按 host/container 粒度的资源授权。
 
@@ -407,7 +463,7 @@ CI：
 
 ---
 
-## 0.4.0 — 生态：exec 终端 / Compose / Registry
+## 0.4.0 ⬜ — 生态：exec 终端 / Compose / Registry
 
 **目标**：覆盖 Portainer CE 90% 用户场景。
 
@@ -426,7 +482,7 @@ CI：
 
 ---
 
-## 1.0.0 — 生产就绪版
+## 1.0.0 ⬜ — 生产就绪版
 
 **目标**：经过真实环境压测、安全审计、API 稳定性承诺生效。
 
