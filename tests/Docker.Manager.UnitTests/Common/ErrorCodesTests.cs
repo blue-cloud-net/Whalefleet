@@ -48,6 +48,7 @@ public class ErrorCodesTests
         [nameof(ErrorCodes.DockerResourceNotFound)] = 1401,
         [nameof(ErrorCodes.DockerApiFailed)] = 1402,
         [nameof(ErrorCodes.DockerTimeout)] = 1403,
+        [nameof(ErrorCodes.DockerResourceConflict)] = 1404,
 
         // 资源权限
         [nameof(ErrorCodes.ResourceForbidden)] = 1500,

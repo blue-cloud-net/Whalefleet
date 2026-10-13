@@ -47,6 +47,7 @@ public class ErrorHttpStatusTests
         [ErrorCodes.DockerResourceNotFound] = 404,
         [ErrorCodes.DockerApiFailed] = 500,
         [ErrorCodes.DockerTimeout] = 408,
+        [ErrorCodes.DockerResourceConflict] = 409,
 
         [ErrorCodes.ResourceForbidden] = 403,
         [ErrorCodes.HostForbidden] = 403,

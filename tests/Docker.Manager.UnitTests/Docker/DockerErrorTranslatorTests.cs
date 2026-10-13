@@ -39,7 +39,7 @@ public class DockerErrorTranslatorTests
 
     [Theory]
     [InlineData(HttpStatusCode.NotFound, ErrorCodes.DockerResourceNotFound)]
-    [InlineData(HttpStatusCode.Conflict, ErrorCodes.DockerApiFailed)]
+    [InlineData(HttpStatusCode.Conflict, ErrorCodes.DockerResourceConflict)]
     [InlineData(HttpStatusCode.InternalServerError, ErrorCodes.DockerApiFailed)]
     public async Task 通用Api异常_按状态码分流(HttpStatusCode statusCode, int expectedCode)
     {
