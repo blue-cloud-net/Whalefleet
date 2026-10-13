@@ -44,6 +44,9 @@ public static class ApplicationServiceCollectionExtensions
         // Docker 客户端本身的复用由 Singleton 的客户端池负责，不靠本服务的生命周期。
         services.AddScoped<ContainerService>();
 
+        // 主机概览查询用例（0.0.8 遗留的版本与运行摘要）。
+        services.AddScoped<HostOverviewService>();
+
         return services;
     }
 }
