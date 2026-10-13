@@ -44,7 +44,7 @@
 | `0.0.5` | 认证完善 + 前端基础设施 | ✅ | refresh / logout / 安全响应头 / 密码强度；前端接入真实登录并实现 401 静默续期 |
 | `0.0.6` | 部署底座与初始管理员引导 | 🚧 | **初始管理员引导已随 0.0.4 落地**；Dockerfile / compose / CI 增强 / 社区文档未开工 |
 | `0.0.7` | 前端登录页与基础布局 | ✅ | 布局 / 主题 / 国际化 / 两段式导航；登录页接真实 API；顶栏与侧边栏拆成独立组件（面包屑由纯函数派生） |
-| `0.0.8` | Docker 主机抽象 | 🚧 | `hosts` 表 + 默认主机种子 + 工厂/池/访问器三层已落地；缺 API 入口 / TLS-Basic / 当前主机解析 |
+| `0.0.8` | Docker 主机抽象 | ✅ | 数据层 / 客户端池 / 访问器三层 + 当前主机中间件 + TLS·Basic 认证 + 主机与用户管理 API；管理界面排 0.0.13 |
 | `0.0.9` | 容器 API 后端 | ⬜ | 仅占位视图 |
 | `0.0.10` | 镜像 API 后端 | ⬜ | 仅占位视图 |
 | `0.0.11` | 前端：容器 UI | ⬜ | 仅 `HostSelector` 等通用件已提前落地 |
@@ -312,13 +312,12 @@ CI：
 
 ---
 
-### 0.0.8 🚧 — Docker 主机抽象
+### 0.0.8 ✅ — Docker 主机抽象
 
 **目标**：可注册多个 Docker 主机，按主机切换操作。
 
-> **进度（2026-10-13）**：🚧 后端「数据层 → 客户端池 → 主机解析」已打通：`hosts` 表与默认主机种子已落地；
-> 客户端按 **工厂（无状态创建）/ 池（Singleton 复用与回收）/ 访问器（Scoped 查库解析）** 三层拆分，主机来源从配置切到数据库。
-> **仍缺 API 入口**：主机管理 API、用户管理 API、当前主机（路由值 `hostId`）解析与可见性校验。
+> **完成（2026-10-13）**：后端全部落地——主机/用户管理 API、当前主机解析、TLS/Basic 认证、
+> 集成测试设施。主机管理界面仍排 0.0.13。
 
 后端：
 - ✅ 新建 `hosts` 表（id、name、type=socket|tcp、endpoint、auth_kind、auth_config_json、enabled、审计列）
@@ -330,22 +329,26 @@ CI：
   - ✅ 构建失败必定清条目（`Lazy<T>` 会永久缓存异常，不然一次失败后就再也无法重试）
 - ✅ `IDockerHostAccessor`（Scoped）：`hostId`（主机名）→ `hosts` 表 → 客户端；`Enabled=false` → `1302`
   - ✅ 连通性测试（临时客户端 + Ping，**不经池**）
-  - ⬜ 由 Api 中间件从**路由值** `hostId` 解析当前主机（写入 Scoped `ICurrentHost`）；路径形如 `/api/v1/hosts/{hostId}/...`，**无缺省值**（与 0.3.0 的可见性校验一起做）
+  - ✅ 由 Api 中间件从**路由值** `hostId` 解析当前主机（写入 Scoped `ICurrentHost`）；路径形如 `/api/v1/hosts/{hostId}/...`，**无缺省值**
+    - ✅ 顺带完成存在性校验：未知主机在进控制器之前就变成 `1300`/404，主机作用域端点无需各自重复校验
+    - 资源可见性校验（`IResourcePermissionService` 的实现）随 0.1.0 落地（接口已定义）
 - ✅ `IDockerClientFactory`（无状态）：只用 `DockerClientBuilder` 创建客户端
   - ✅ socket：`WithEndpoint(new Uri("unix:///var/run/docker.sock"))`
   - ✅ TCP（无认证）：`WithEndpoint(new Uri("tcp://host:2375"))`
-  - ⬜ `Infrastructure` 项目额外引入 `Docker.DotNet.Enhanced.X509` + `Docker.DotNet.Enhanced.BasicAuth`
-  - ⬜ TCP + TLS：`WithEndpoint(...)` + `WithAuthProvider(new CertificateCredentials(cert))`
-  - ⬜ TCP + Basic：`WithEndpoint(...)` + `WithAuthProvider(new BasicAuthCredentials(user, pass))`
-- ⬜ 主机管理 API（admin 专用）：
-  - ⬜ `POST /api/v1/admin/hosts/list` / `create` / `{hostId}/update` / `{hostId}/delete` / `test`
-- ⬜ 用户管理 API（admin 专用）：
-  - ⬜ `POST /api/v1/admin/users/list` / `create` / `delete` / `update-password`
-- ⬜ `IResourcePermissionService` 接口定义（0.1.0 仅实现 host 可见性）
+  - ✅ `Infrastructure` 项目额外引入 `Docker.DotNet.Enhanced.X509` + `Docker.DotNet.Enhanced.BasicAuth`
+  - ✅ TCP + TLS：`https://` 端点（默认端口 2376）+ 客户端证书；三项路径均必填（缺 CA 等于接受任意服务端证书）
+  - ✅ TCP + Basic：`BasicAuthCredentials(user, pass, tlsEnabled)`；明文端点不阻断但记 Warning
+- ✅ 主机管理 API（admin 专用）：
+  - ✅ `POST /api/v1/admin/hosts/list`（并行探活）/ `create` / `{hostId}/update` / `{hostId}/delete` / `test`
+  - 新增错误码 `1303`（主机名已被占用）；更新时用**变更前**的连接描述让客户端池失效
+- ✅ 用户管理 API（admin 专用）：
+  - ✅ `POST /api/v1/admin/users/list`（分页）/ `create` / `delete` / `update-password`
+  - 自助改密需验原密码，管理员重置他人不需要；改密码与删号都撤销该用户全部令牌
+- ✅ `IResourcePermissionService` 接口定义（**实现**排 0.1.0，仅做 host 可见性）
 
 测试（从本迭代起为强制要求）：
-- ⬜ `tests/Docker.Manager.IntegrationTests/`（**项目骨架已于 0.0.2 落地**）新增集成测试辅助设施：`DockerFactAttribute` 探测宿主 `/var/run/docker.sock`，不可达时跳过用例（**不引入 Testcontainers**，见 [constraints.md](./constraints.md#集成测试门槛)）
-- ⬜ 容器/镜像/Volume/Network 等新 API 必须配集成测试，CI 卡
+- ✅ `tests/Docker.Manager.IntegrationTests/`（**项目骨架已于 0.0.2 落地**）新增集成测试辅助设施：`DockerFactAttribute` 探测宿主 `/var/run/docker.sock`，不可达时跳过用例（**不引入 Testcontainers**，见 [constraints.md](./constraints.md#集成测试门槛)）
+- ✅ 容器/镜像/Volume/Network 等新 API 必须配集成测试，CI 卡（本迭代起生效：主机 / 用户 API 均已配）
 - ✅ 不设行覆盖率门槛
 
 ---
