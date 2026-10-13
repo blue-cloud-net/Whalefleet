@@ -1,4 +1,6 @@
 using System.Net.Sockets;
+using Docker.DotNet;
+using Docker.DotNet.Models;
 
 namespace Docker.Manager.IntegrationTests.Infrastructure;
 
@@ -26,6 +28,9 @@ public static class DockerAvailability
 
     private static readonly Lazy<bool> ProbeResult = new(Probe, LazyThreadSafetyMode.ExecutionAndPublication);
 
+    private static readonly Lazy<string?> AvailableImage =
+        new(DiscoverImage, LazyThreadSafetyMode.ExecutionAndPublication);
+
     /// <summary>
     /// 宿主 Docker 守护进程是否可用。
     /// </summary>
@@ -37,6 +42,63 @@ public static class DockerAvailability
     public static string SkipReason =>
         $"宿主 Docker socket（{DefaultSocketPath}）不可达——需要真实 Docker 守护进程的用例已跳过。"
         + "在开发机上请确认 Docker 正在运行；在 CI 上这类用例本就允许跳过。";
+
+    /// <summary>
+    /// 无镜像时的跳过原因。
+    /// </summary>
+    public static string ImageSkipReason =>
+        "宿主守护进程上没有已打标签的镜像——需要镜像来建容器的用例已跳过（刻意不联网拉取："
+        + "那会让用例依赖网络与镜像仓库可用性，而它们与本次验证的目标无关）。";
+
+    /// <summary>
+    /// 宿主上第一张「有名字的」镜像（<c>repo:tag</c>）；无可用镜像时为 <see langword="null"/>。
+    /// </summary>
+    /// <remarks>
+    /// <b>为什么在本地镜像里挑而不是写死 <c>alpine:latest</c></b>：写死镜像名意味着用例的通过与否
+    /// 取决于「那台机器恰好拉过哪张镜像」，在干净环境里必然红。挑一张现成镜像则让用例只依赖
+    /// 「有镜像」这个真正必要的前提，且不会引入网络依赖。
+    /// </remarks>
+    public static string? ImageReference => AvailableImage.Value;
+
+    private static string? DiscoverImage()
+    {
+        if (!IsAvailable)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var client = new DockerClientBuilder()
+                .WithEndpoint(new Uri($"unix://{DefaultSocketPath}"))
+                .Build();
+
+            // 与探测同理：特性构造不可能是异步的，这里只能同步等待。
+            var images = client.Images
+                .ListImagesAsync(new ImagesListParameters { All = false })
+                .GetAwaiter()
+                .GetResult();
+
+            foreach (var image in images)
+            {
+                var tag = image.RepoTags?.FirstOrDefault(
+                    candidate => !String.IsNullOrWhiteSpace(candidate)
+                        && !candidate.Contains("<none>", StringComparison.Ordinal));
+
+                if (tag is not null)
+                {
+                    return tag;
+                }
+            }
+
+            return null;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            // 发现阶段任何失败都只意味着「不能用真实镜像跑用例」，不应把异常抛到测试发现里。
+            return null;
+        }
+    }
 
     private static bool Probe()
     {

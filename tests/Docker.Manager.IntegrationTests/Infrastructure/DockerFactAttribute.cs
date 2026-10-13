@@ -47,3 +47,30 @@ public sealed class DockerTheoryAttribute : TheoryAttribute
         }
     }
 }
+
+/// <summary>
+/// 「需要真实 Docker 守护进程<b>并且</b>宿主上至少有一张现成镜像」的用例标注。
+/// </summary>
+/// <remarks>
+/// <para>用于需要<b>创建</b>容器的用例：创建必须指定镜像，而镜像有两种来法——本地已有，或者去拉。
+/// 后者会让用例依赖网络与镜像仓库，与「验证本项目的创建参数映射」这个目标无关，因此这里只接受本地现成镜像。</para>
+/// <para>跳过条件比 <see cref="DockerFactAttribute"/> 多一条（没有镜像也跳），原因写在
+/// <see cref="DockerAvailability.ImageSkipReason"/>："没镜像"与"用例挂了"必须能区分。</para>
+/// </remarks>
+public sealed class DockerImageFactAttribute : FactAttribute
+{
+    /// <summary>
+    /// 初始化特性，并在守护进程不可用或本地无镜像时给出跳过原因。
+    /// </summary>
+    public DockerImageFactAttribute()
+    {
+        if (!DockerAvailability.IsAvailable)
+        {
+            this.Skip = DockerAvailability.SkipReason;
+        }
+        else if (DockerAvailability.ImageReference is null)
+        {
+            this.Skip = DockerAvailability.ImageSkipReason;
+        }
+    }
+}
