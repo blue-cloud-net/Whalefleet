@@ -121,23 +121,23 @@ export interface HostCounts {
 /**
  * 主机分组。
  *
- * 当前为**仅展示**语义：组定义是前端常量，没有管理 UI，也没有持久化。
- * 分组的增删改与「主机归组」交互归后续迭代，可与后端 `hosts.group_id` 列一起落地。
+ * **是展示信息，不是权限边界**：「谁能操作哪台主机」由 0.3.0 的资源权限表回答。
+ *
+ * `name` 是管理员可改的数据（自定义分组直接展示）；三个内置分组由后端按英文标识种入
+ * （`production` / `staging` / `local`），前端用 `host.group.<name>` 取 i18n 文案。
+ * 映射见 `utils/group-display.ts`。
  */
 export interface HostGroup {
-  /** 稳定标识，如 `production` */
+  /** 分组主键（Guid 文本） */
   id: string
-  /**
-   * 显示名的 i18n key，如 `host.group.production`。
-   *
-   * 存 key 而非字面文案，避免把中文/英文写死在 store 里；
-   * 未分组主机使用约定 key `host.group.ungrouped`。
-   */
-  nameKey: string
-  /** 描述的 i18n key；同样存 key，理由同 `nameKey` */
-  descriptionKey?: string
-  /** 排序权重，升序；未分组主机恒排在所有分组之后 */
-  order: number
+  /** 分组名（内置分组为英文标识，自定义分组为管理员输入） */
+  name: string
+  /** 描述；未填写时 null */
+  description: string | null
+  /** 排序权重（升序） */
+  sortOrder: number
+  /** 组内主机数（后端聚合，避免前端自己遍历） */
+  hostCount: number
 }
 
 /**
