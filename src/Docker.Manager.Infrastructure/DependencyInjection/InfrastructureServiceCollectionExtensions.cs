@@ -1,6 +1,8 @@
 using Docker.Manager.Application.Abstractions;
+using Docker.Manager.Application.Abstractions.Persistence;
 using Docker.Manager.Core.Auth;
 using Docker.Manager.Infrastructure.Docker;
+using Docker.Manager.Infrastructure.Persistence;
 using Docker.Manager.Infrastructure.Security;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -83,6 +85,9 @@ public static class InfrastructureServiceCollectionExtensions
 
         services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
 
+        // 初始管理员引导（0.0.4，原属 0.0.6）：注册为单例，与 DatabaseInitializer 同属启动阶段。
+        services.AddSingleton<IAdminBootstrapper, AdminBootstrapper>();
+
         // 令牌服务（0.0.4）：HS256 签名密钥缺失或过短在启动时即失败。
         // ⚠️ 允许 Secret 存在默认值会使生产环境"忘了配也能启动"，因此刻意只靠校验器兵它。
         services
@@ -92,6 +97,13 @@ public static class InfrastructureServiceCollectionExtensions
                 static options => IsValidJwtOptions(options),
                 $"Jwt:Secret 缺失或不足 {JwtOptions.MinSecretLengthBytes} 字节，或 AccessTokenLifetime / RefreshTokenLifetime 非正值")
             .ValidateOnStart();
+
+        // 初始管理员引导配置（0.0.4，原属 0.0.6）。
+        // 刻意不加 ValidateOnStart：它只在 users 表为空时才有意义，
+        // 强行校验会让「已经建过账号、但环境里残留了弱密码变量」的环境起不来。
+        services
+            .AddOptions<AdminOptions>()
+            .Bind(configuration.GetSection(AdminOptions.SectionName));
 
         services.AddSingleton<ITokenService, JwtTokenService>();
 

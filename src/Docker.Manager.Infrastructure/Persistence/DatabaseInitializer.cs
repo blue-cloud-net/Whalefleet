@@ -6,24 +6,28 @@ using Microsoft.Extensions.Logging;
 
 namespace Docker.Manager.Infrastructure.Persistence;
 
-/// <summary>
-/// 数据库初始化器实现：迁移 → 启用 WAL → 种入默认主机。
-/// </summary>
-/// <remarks>
-/// <para><b>为什么通过 <see cref="IServiceScopeFactory"/> 取仓储</b>：本类是单例，
-/// 而仓储是 Scoped（依赖 <c>ICurrentUser</c> 这类请求级上下文）。单例直接注入 Scoped
-/// 会构成「捕获依赖」（captive dependency）——DI 容器在开发环境会直接报错，
-/// 生产环境则会静默地把请求级对象变成进程级，产生难以复现的状态泄漏。</para>
-/// <para><b>默认主机</b>：与 <c>docs/architecture.md</c> 的 0.0.8 约定一致——
-/// 固定主键、名称 <c>local</c>、socket 连接 <c>/var/run/docker.sock</c>；
-/// 审计人取默认值哨兵（启动引导无登录用户）。</para>
-/// </remarks>
-internal sealed class DatabaseInitializer : IDatabaseInitializer
-{
     /// <summary>
-    /// 默认主机的固定主键（文档中给出，便于运维脚本引用）。
+    /// 数据库初始化器实现：迁移 → 启用 WAL → 种入默认主机。
     /// </summary>
-    internal static readonly Guid DefaultHostId = new("00000000-0000-0000-0000-000000000001");
+    /// <remarks>
+    /// <para><b>为什么通过 <see cref="IServiceScopeFactory"/> 取仓储</b>：本类是单例，
+    /// 而仓储是 Scoped（依赖 <c>ICurrentUser</c> 这类请求级上下文）。单例直接注入 Scoped
+    /// 会构成「捕获依赖」（captive dependency）——DI 容器在开发环境会直接报错，
+    /// 生产环境则会静默地把请求级对象变成进程级，产生难以复现的状态泄漏。</para>
+    /// <para><b>默认主机</b>：与 <c>docs/architecture.md</c> 的 0.0.8 约定一致——
+    /// 固定主键、名称 <c>local</c>、socket 连接 <c>/var/run/docker.sock</c>；
+    /// 审计人取默认值哨兵（启动引导无登录用户）。</para>
+    /// <para><b>职责边界</b>：本类只负责「让数据库可用」（架构 + 基线数据）。
+    /// 初始管理员引导在 <see cref="AdminBootstrapper"/>——它需要密码哈希器，
+    /// 而「数据库初始化」不该因此依赖安全组件：否则任何只想建库的调用方
+    /// 都必须先准备一个密码哈希器（测试环境已真实撞到过这个问题）。</para>
+    /// </remarks>
+    internal sealed class DatabaseInitializer : IDatabaseInitializer
+    {
+        /// <summary>
+        /// 默认主机的固定主键（文档中给出，便于运维脚本引用）。
+        /// </summary>
+        internal static readonly Guid DefaultHostId = new("00000000-0000-0000-0000-000000000001");
 
     /// <summary>
     /// 默认主机显示名。

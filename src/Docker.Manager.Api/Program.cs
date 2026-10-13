@@ -3,6 +3,7 @@ using Docker.Manager.Api.Development;
 using Docker.Manager.Api.Errors;
 using Docker.Manager.Api.Middleware;
 using Docker.Manager.Api.Serialization;
+using Docker.Manager.Application.Abstractions.Persistence;
 using Docker.Manager.Application.Common;
 using Docker.Manager.Application.DependencyInjection;
 using Docker.Manager.Infrastructure.DependencyInjection;
@@ -107,6 +108,10 @@ if (app.Environment.IsDevelopment())
 // 数据库初始化：架构迁移 → 启用 WAL → 种入默认主机。
 // 必须发生在开始监听之前——建表失败宁可启动失败，也不能让第一个请求撞上「no such table」。
 await app.Services.GetRequiredService<IDatabaseInitializer>().InitializeAsync();
+
+// 初始管理员引导：users 表为空且配置了 ADMIN__USER / ADMIN__PASSWORD 时创建 admin。
+// 必须在数据库初始化之后——它要读由迁移创建的 users / roles 表。
+await app.Services.GetRequiredService<IAdminBootstrapper>().InitializeAsync();
 
 app.Run();
 
