@@ -167,6 +167,159 @@ public sealed class AuthService
     }
 
     /// <summary>
+    /// 用刷新令牌换取新的 access + refresh（<b>轮换</b>）。
+    /// </summary>
+    /// <param name="refreshToken">客户端持有的刷新令牌原文。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>新的令牌对与用户摘要。</returns>
+    /// <exception cref="BusinessException">
+    /// 未提供令牌（<c>1000</c>）；令牌未知 / 已撤销 / 已过期 / 用户已不可用（<c>1102</c>）；
+    /// 用户所属角色缺失（<c>9999</c>）。
+    /// </exception>
+    /// <remarks>
+    /// <para><b>轮换</b>：刷新成功即撤销旧令牌，并通过 <c>ReplacedByTokenHash</c> 指向新令牌。
+    /// 于是每个刷新令牌只能被使用一次，泄漏窗口被压缩到一个刷新周期以内。</para>
+    /// <para><b>重放检测</b>：若「已被<b>轮换</b>的旧令牌」再次出现，说明它很可能已被窃取
+    /// （合法客户端换到新令牌后不会再持有旧的），此时撤销该用户的<b>全部</b>刷新令牌、
+    /// 强制重新登录。注意与「已登出的令牌被误用」区分——后者不牵连其他会话，
+    /// 判据是 <c>ReplacedByTokenHash</c> 是否为空。</para>
+    /// </remarks>
+    public async Task<LoginResponse> RefreshAsync(
+        string? refreshToken,
+        CancellationToken cancellationToken = default)
+    {
+        if (String.IsNullOrWhiteSpace(refreshToken))
+        {
+            throw BusinessException.Validation("缺少刷新令牌");
+        }
+
+        var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
+        var stored = await _refreshTokens
+            .FindByHashAsync(_tokenService.HashRefreshToken(refreshToken), cancellationToken)
+            .ConfigureAwait(false);
+
+        if (stored is null)
+        {
+            // 未知令牌：可能是伪造、也可能是已被清理的过期记录。不作重放判定。
+            _logger.LogWarning("刷新失败：令牌不存在");
+
+            throw InvalidRefreshToken();
+        }
+
+        if (!stored.IsActiveAt(utcNow))
+        {
+            if (stored.ReplacedByTokenHash is not null)
+            {
+                // 已被轮换却再次出现 → 判定为重放。
+                var revoked = await _refreshTokens
+                    .RevokeAllForUserAsync(stored.UserId, utcNow, cancellationToken)
+                    .ConfigureAwait(false);
+
+                _logger.LogError(
+                    "检测到刷新令牌重放，已撤销该用户的全部刷新令牌（用户={UserId}，共撤销 {Count} 条）",
+                    stored.UserId,
+                    revoked);
+            }
+            else
+            {
+                // 已被登出（或由管理员撤销）后误用：只拒绝，不牵连其他会话。
+                _logger.LogWarning("刷新失败：令牌已撤销（用户={UserId}）", stored.UserId);
+            }
+
+            throw InvalidRefreshToken();
+        }
+
+        var user = await _users.QueryByIdAsync(stored.UserId, cancellationToken).ConfigureAwait(false);
+
+        if (user is null)
+        {
+            // 用户已被删除（软删除）而令牌仍在：拒绝，不签发新令牌。
+            _logger.LogWarning("刷新失败：令牌所属用户已不存在（用户={UserId}）", stored.UserId);
+
+            throw InvalidRefreshToken();
+        }
+
+        var role = await _roles.QueryByIdAsync(user.RoleId, cancellationToken).ConfigureAwait(false);
+
+        if (role is null)
+        {
+            _logger.LogError("用户 {Username} 的角色 {RoleId} 不存在，无法刷新令牌", user.Username, user.RoleId);
+
+            throw BusinessException.Internal("用户所属角色不存在");
+        }
+
+        var accessToken = _tokenService.CreateAccessToken(user.Id, user.Username, role.Name, utcNow);
+        var newRefreshToken = _tokenService.CreateRefreshToken(utcNow);
+
+        // 先撤销旧的（并记录取代关系），再写入新的——两条写操作都在同一请求内，
+        // 中途失败会留下"旧已撤销、新未写入"的状态，用户重新登录即可恢复，不会产生安全缺口。
+        stored.Revoke(utcNow, newRefreshToken.Hash);
+        await _refreshTokens.UpdateAsync(stored, cancellationToken).ConfigureAwait(false);
+
+        await _refreshTokens
+            .AddAsync(
+                RefreshToken.Issue(Guid.NewGuid(), user.Id, newRefreshToken.Hash, newRefreshToken.ExpiresAt),
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        _logger.LogInformation("用户 {Username} 刷新令牌成功（旧令牌已轮换）", user.Username);
+
+        return new LoginResponse(
+            accessToken.Value,
+            newRefreshToken.Raw,
+            (int)Math.Max(0, (accessToken.ExpiresAt - utcNow).TotalSeconds),
+            new AuthenticatedUser(user.Id, user.Username, role.Name));
+    }
+
+    /// <summary>
+    /// 登出：撤销当前刷新令牌。
+    /// </summary>
+    /// <param name="refreshToken">客户端持有的刷新令牌原文。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>表示异步操作的任务。</returns>
+    /// <exception cref="BusinessException">未提供令牌（<c>1000</c>）。</exception>
+    /// <remarks>
+    /// <para><b>幂等</b>：令牌不存在或已被撤销都视为成功。登出是清理动作，
+    /// 因"令牌已经没用了"而报错只会让客户端在重试逻辑上绕圈子。</para>
+    /// <para><b>不影响 access token</b>：它在到期前仍然有效（无状态 JWT 的固有性质）。
+    /// 前端登出时必须同时清除本地的 access token——服务端无法让一个已签发的 JWT 立即失效
+    /// （那也是 0.3.0 才需要的"单 token 撤销"议题）。</para>
+    /// </remarks>
+    public async Task LogoutAsync(string? refreshToken, CancellationToken cancellationToken = default)
+    {
+        if (String.IsNullOrWhiteSpace(refreshToken))
+        {
+            throw BusinessException.Validation("缺少刷新令牌");
+        }
+
+        var stored = await _refreshTokens
+            .FindByHashAsync(_tokenService.HashRefreshToken(refreshToken), cancellationToken)
+            .ConfigureAwait(false);
+
+        if (stored is null || stored.RevokedAt is not null)
+        {
+            // 幂等：已不存在或已撤销，直接视为登出成功。
+            return;
+        }
+
+        stored.Revoke(_timeProvider.GetUtcNow().UtcDateTime);
+        await _refreshTokens.UpdateAsync(stored, cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation("用户已登出（用户={UserId}）", stored.UserId);
+    }
+
+    /// <summary>
+    /// 构造统一的「刷新令牌无效」异常。
+    /// </summary>
+    /// <returns>错误码 <c>1102</c> 的业务异常。</returns>
+    /// <remarks>
+    /// 未知 / 已撤销 / 已过期 / 用户已删除共用同一文案：这些差异对攻击者有价值
+    /// （可据此判断令牌是否曾经存在），对合法客户端则毫无用处。
+    /// </remarks>
+    private static BusinessException InvalidRefreshToken() =>
+        new(ErrorCodes.RefreshTokenRevoked, "刷新令牌无效或已过期");
+
+    /// <summary>
     /// 记录一次登录失败并构造统一凭据错误异常。
     /// </summary>
     /// <param name="clientIp">客户端 IP。</param>
