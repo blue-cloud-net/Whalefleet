@@ -12,25 +12,33 @@ import type { HostGroup, HostOverview } from '@/types/api'
  * 改动它等于删掉这个测试用例。
  */
 
-/** 分组定义。描述同样存 i18n key（`descriptionKey`），不存字面文案。 */
+/**
+ * 分组定义（与后端 `host_groups` 表同形状）。
+ *
+ * 名字用英文标识（与迁移种入的三个内置分组一致）：它们是**数据**，
+ * 前端仅对这三个已知名字取 i18n 文案，自定义分组原样显示。
+ */
 export const MOCK_HOST_GROUPS: HostGroup[] = [
   {
-    id: 'production',
-    nameKey: 'host.group.production',
-    descriptionKey: 'host.group.productionDesc',
-    order: 10
+    id: '00000000-0000-0000-0000-0000000000a1',
+    name: 'production',
+    description: null,
+    sortOrder: 10,
+    hostCount: 1
   },
   {
-    id: 'staging',
-    nameKey: 'host.group.staging',
-    descriptionKey: 'host.group.stagingDesc',
-    order: 20
+    id: '00000000-0000-0000-0000-0000000000a2',
+    name: 'staging',
+    description: null,
+    sortOrder: 20,
+    hostCount: 0
   },
   {
-    id: 'local',
-    nameKey: 'host.group.local',
-    descriptionKey: 'host.group.localDesc',
-    order: 30
+    id: '00000000-0000-0000-0000-0000000000a3',
+    name: 'local',
+    description: null,
+    sortOrder: 30,
+    hostCount: 1
   }
 ]
 
@@ -64,7 +72,7 @@ export const MOCK_HOSTS_DEFAULT: HostOverview[] = [
     endpoint: '/var/run/docker.sock',
     enabled: true,
     status: 'online',
-    groupId: 'local',
+    groupId: '00000000-0000-0000-0000-0000000000a3',
     startedAt: '2026-09-28T03:12:45Z',
     version: { ...LOCAL_VERSION }
   },
@@ -75,7 +83,7 @@ export const MOCK_HOSTS_DEFAULT: HostOverview[] = [
     endpoint: 'tcp://10.0.0.11:2376',
     enabled: true,
     status: 'online',
-    groupId: 'production',
+    groupId: '00000000-0000-0000-0000-0000000000a1',
     startedAt: '2026-10-06T11:40:08Z',
     version: { ...PROD_VERSION }
   },
@@ -87,7 +95,7 @@ export const MOCK_HOSTS_DEFAULT: HostOverview[] = [
     endpoint: 'tcp://10.0.0.21:2375',
     enabled: true,
     status: 'offline',
-    groupId: 'staging'
+    groupId: '00000000-0000-0000-0000-0000000000a2'
   }
 ]
 
@@ -123,7 +131,7 @@ export const MOCK_HOSTS_WITH_DISABLED: HostOverview[] = [
     endpoint: 'tcp://10.0.0.31:2375',
     enabled: false,
     status: 'offline',
-    groupId: 'staging'
+    groupId: '00000000-0000-0000-0000-0000000000a2'
   }
 ]
 

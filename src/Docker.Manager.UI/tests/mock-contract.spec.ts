@@ -470,3 +470,267 @@ describe('镜像端点', () => {
     expect((json.data as { items: unknown[] }).items).toEqual([])
   })
 })
+
+/**
+ * 用户管理与主机分组的契约守卫（0.0.13）。
+ *
+ * 这批用例守的是「界面上那些提示有没有来源」：
+ * 删自己被挡、最后一个管理员删不掉、原密码错返回 **1000 而不是 401**、
+ * 删除分组不删主机……不复刻任何一条，对应的界面分支都成了永远走不到的死代码。
+ */
+describe('用户管理端点', () => {
+  it('列表回显夹紧后的 pageSize（请求 5000 → 100）', async () => {
+    const { status, json } = await post('/api/v1/admin/users/list', { pageSize: 5000 })
+
+    expect(status).toBe(200)
+    expect((json.data as { pageSize: number }).pageSize).toBe(100)
+    expect((json.data as { total: number }).total).toBeGreaterThan(0)
+  })
+
+  it('用户名重复 → 1200 / 400', async () => {
+    const { status, json } = await post('/api/v1/admin/users/create', {
+      username: 'admin',
+      password: 'StrongP@ss123'
+    })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.UsernameAlreadyExists)
+  })
+
+  it('密码强度不足 → 1202 / 400', async () => {
+    const { status, json } = await post('/api/v1/admin/users/create', {
+      username: 'newcomer',
+      password: 'short'
+    })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.WeakPassword)
+  })
+
+  it('创建成功后可立刻在列表里看到（mock 必须有记忆）', async () => {
+    const created = await post('/api/v1/admin/users/create', {
+      username: 'deploy-bot',
+      password: 'StrongP@ss123'
+    })
+
+    expect(created.status).toBe(200)
+    // 省略 role 时取默认角色（当前为 auditor）
+    expect((created.json.data as { role: string }).role).toBe('auditor')
+
+    const list = await post('/api/v1/admin/users/list', {})
+    expect(
+      (list.json.data as { items: { username: string }[] }).items.some(
+        (user) => user.username === 'deploy-bot'
+      )
+    ).toBe(true)
+  })
+
+  it('删除当前登录账号 → 1000 / 400（后端护栏）', async () => {
+    const list = await post('/api/v1/admin/users/list', {})
+    const self = (list.json.data as { items: { id: string; username: string }[] }).items.find(
+      (user) => user.username === 'admin'
+    )
+
+    const { status, json } = await post('/api/v1/admin/users/delete', { userId: self!.id })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.ValidationFailed)
+  })
+
+  it('删除最后一个管理员 → 1000 / 400', async () => {
+    // 先把唯一的管理员之外没有其他 admin，因此删它必然命中「最后一个管理员」
+    const list = await post('/api/v1/admin/users/list', {})
+    const admins = (list.json.data as { items: { id: string; role: string }[] }).items.filter(
+      (user) => user.role === 'admin'
+    )
+
+    expect(admins).toHaveLength(1)
+
+    const { status, json } = await post('/api/v1/admin/users/delete', { userId: admins[0].id })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.ValidationFailed)
+  })
+
+  it('自助改密：原密码错误 → 1000 而不是 401', async () => {
+    // ⚠️ 401 会被前端拦截器当成「会话过期」去刷新并重放，
+    // 用在这里会把「输错原密码」表现成一连串莫名其妙的重定向。
+    const { status, json } = await post('/api/v1/admin/users/update-password', {
+      oldPassword: 'wrong-password',
+      newPassword: 'AnotherP@ss123'
+    })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.ValidationFailed)
+  })
+
+  it('自助改密：原密码正确 → 成功', async () => {
+    const { status, json } = await post('/api/v1/admin/users/update-password', {
+      oldPassword: 'demo1234',
+      newPassword: 'AnotherP@ss123'
+    })
+
+    expect(status).toBe(200)
+    expect(json.success).toBe(true)
+  })
+
+  it('管理员重置他人不需要原密码', async () => {
+    const list = await post('/api/v1/admin/users/list', {})
+    const target = (list.json.data as { items: { id: string; username: string }[] }).items.find(
+      (user) => user.username === 'ops-zhang'
+    )
+
+    const { status } = await post('/api/v1/admin/users/update-password', {
+      userId: target!.id,
+      newPassword: 'ResetP@ss1234'
+    })
+
+    expect(status).toBe(200)
+  })
+})
+
+describe('主机分组端点', () => {
+  it('读端点返回三个内置分组，且带主机数', async () => {
+    const { status, json } = await post('/api/v1/host-groups/list')
+
+    expect(status).toBe(200)
+
+    const groups = json.data as { name: string; hostCount: number }[]
+    expect(groups.map((group) => group.name)).toEqual(['production', 'staging', 'local'])
+    expect(groups.find((group) => group.name === 'local')!.hostCount).toBe(1)
+  })
+
+  it('分组名重复 → 1304 / 400', async () => {
+    const { status, json } = await post('/api/v1/admin/host-groups/create', { name: 'production' })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.GroupNameAlreadyExists)
+  })
+
+  it('分组不存在 → 1305 / 404', async () => {
+    const { status, json } = await post(
+      '/api/v1/admin/host-groups/00000000-0000-0000-0000-00000000dead/update',
+      { name: 'whatever' }
+    )
+
+    expect(status).toBe(404)
+    expect(json.code).toBe(ErrorCode.GroupNotFound)
+  })
+
+  it('只改描述不改名字时不会与自己冲突', async () => {
+    // 重名检查必须排除自己，否则「保存一下」都会被自己的旧名字挡住
+    const { status } = await post(
+      '/api/v1/admin/host-groups/00000000-0000-0000-0000-0000000000a1/update',
+      { description: '核心交易集群' }
+    )
+
+    expect(status).toBe(200)
+  })
+
+  it('主机归属：目标分组不存在 → 1305 / 404', async () => {
+    const { status, json } = await post('/api/v1/admin/hosts/local/group', {
+      groupId: '00000000-0000-0000-0000-00000000dead'
+    })
+
+    expect(status).toBe(404)
+    expect(json.code).toBe(ErrorCode.GroupNotFound)
+  })
+
+  it('主机归属：可移入分组，也可用 null 移出', async () => {
+    const staging = '00000000-0000-0000-0000-0000000000a2'
+
+    const countOf = async (name: string): Promise<number> => {
+      const list = await post('/api/v1/host-groups/list')
+      return (list.json.data as { name: string; hostCount: number }[]).find(
+        (group) => group.name === name
+      )!.hostCount
+    }
+
+    // 夹具里 staging-01 本来就在 staging 组，因此移入后是 2 台
+    expect(await countOf('staging')).toBe(1)
+
+    expect((await post('/api/v1/admin/hosts/local/group', { groupId: staging })).status).toBe(200)
+    expect(await countOf('staging')).toBe(2)
+    expect(await countOf('local')).toBe(0)
+
+    // 移出分组：groupId 显式为 null。这正是它单设端点而不是塞进 hosts/update 的理由——
+    // 那边的「未提供表示不改」语义分不清「没给 groupId」与「给了 null」。
+    expect((await post('/api/v1/admin/hosts/local/group', { groupId: null })).status).toBe(200)
+    expect(await countOf('staging')).toBe(1)
+    expect(await countOf('local')).toBe(0)
+  })
+
+  it('删除分组不删主机：主机回到未分组，并回带被移出的台数', async () => {
+    const staging = '00000000-0000-0000-0000-0000000000a2'
+    // 夹具里 staging-01 已在 staging 组，再把 local 移进去 → 该组共 2 台
+    await post('/api/v1/admin/hosts/local/group', { groupId: staging })
+
+    const removed = await post(`/api/v1/admin/host-groups/${staging}/delete`)
+
+    expect(removed.status).toBe(200)
+    expect(removed.json.data).toBe(2)
+
+    // 主机还在（这条正是界面提示「已把 N 台主机移出该分组」的依据）
+    const hosts = await post('/api/v1/hosts/list')
+    const local = (hosts.json.data as { id: string; groupId?: string }[]).find(
+      (host) => host.id === 'local'
+    )
+    expect(local).toBeDefined()
+    expect(local!.groupId).toBeUndefined()
+  })
+})
+
+describe('主机管理端点', () => {
+  it('管理列表用主键做 id，并用 null 表示「未探测」', async () => {
+    const { status, json } = await post('/api/v1/admin/hosts/list')
+
+    expect(status).toBe(200)
+
+    const hosts = json.data as { id: string; name: string; reachable: boolean | null }[]
+    const local = hosts.find((host) => host.name === 'local')!
+
+    // ⚠️ 这里的 id 是主键（Guid），与 /hosts/list 的 id（主机名）不是同一个东西
+    expect(local.id).toMatch(/^[0-9a-f-]{36}$/)
+    expect(typeof local.reachable).toBe('boolean')
+  })
+
+  it('创建主机不探活：reachable 为 null 而不是 false', async () => {
+    const created = await post('/api/v1/admin/hosts/create', {
+      name: 'edge-01',
+      type: 'tcp',
+      endpoint: 'tcp://10.0.0.42:2375'
+    })
+
+    expect(created.status).toBe(200)
+    // false 会让界面显示成「离线」，把「没测」误报成故障
+    expect((created.json.data as { reachable: boolean | null }).reachable).toBeNull()
+  })
+
+  it('主机名重复 → 1303 / 400', async () => {
+    const { status, json } = await post('/api/v1/admin/hosts/create', {
+      name: 'local',
+      type: 'socket',
+      endpoint: '/var/run/docker.sock'
+    })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.HostNameAlreadyExists)
+  })
+
+  it('测试连通性：连不上也是 200 + data=false，不是错误响应', async () => {
+    const unreachable = await post('/api/v1/admin/hosts/test', {
+      type: 'tcp',
+      endpoint: 'unreachable://10.0.0.99:2375'
+    })
+
+    expect(unreachable.status).toBe(200)
+    expect(unreachable.json.data).toBe(false)
+
+    const reachable = await post('/api/v1/admin/hosts/test', {
+      type: 'socket',
+      endpoint: '/var/run/docker.sock'
+    })
+
+    expect(reachable.json.data).toBe(true)
+  })
+})

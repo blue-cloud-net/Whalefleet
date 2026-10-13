@@ -57,6 +57,10 @@ export const ErrorCode = {
   HostDisabled: 1302,
   /** 主机名已被占用 → 400 */
   HostNameAlreadyExists: 1303,
+  /** 分组名已被占用 → 400 */
+  GroupNameAlreadyExists: 1304,
+  /** 分组不存在 → 404 */
+  GroupNotFound: 1305,
 
   /** 容器 / 镜像 / Volume / Network 不存在 → 404 */
   DockerResourceNotFound: 1401,
@@ -109,6 +113,8 @@ export const ERROR_HTTP_STATUS: Record<number, number> = {
   [ErrorCode.HostUnreachable]: 502,
   [ErrorCode.HostDisabled]: 400,
   [ErrorCode.HostNameAlreadyExists]: 400,
+  [ErrorCode.GroupNameAlreadyExists]: 400,
+  [ErrorCode.GroupNotFound]: 404,
 
   [ErrorCode.DockerResourceNotFound]: 404,
   [ErrorCode.DockerApiFailed]: 500,
@@ -145,6 +151,8 @@ export const ERROR_MESSAGES: Record<number, string> = {
   [ErrorCode.HostUnreachable]: '主机连通性失败',
   [ErrorCode.HostDisabled]: '主机已停用',
   [ErrorCode.HostNameAlreadyExists]: '主机名已被占用',
+  [ErrorCode.GroupNameAlreadyExists]: '分组名已被占用',
+  [ErrorCode.GroupNotFound]: '分组不存在',
 
   [ErrorCode.DockerResourceNotFound]: '容器 / 镜像 / Volume / Network 不存在',
   [ErrorCode.DockerApiFailed]: 'Docker API 调用失败',

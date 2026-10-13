@@ -1,15 +1,15 @@
 import { describe, expect, it, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { useHostStore, DEFAULT_HOST_GROUPS } from '../src/stores/host'
-import { MOCK_HOSTS_DEFAULT } from '../src/mocks/data/hosts'
+import { useHostStore } from '../src/stores/host'
+import { MOCK_HOST_GROUPS, MOCK_HOSTS_DEFAULT } from '../src/mocks/data/hosts'
 import type { HostOverview } from '../src/types/api'
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  // 主机数据不再由 store 内置（改由 API 加载），因此测试需显式铺数据。
-  // 同时铺上分组，否则 groupedHosts 恒为空。
+  // 主机与分组都不再由 store 内置（0.0.13 起分组也来自后端），因此测试需显式铺数据。
+  // 两者都要铺，否则 groupedHosts 恒为空。
   const host = useHostStore()
-  host.setGroups([...DEFAULT_HOST_GROUPS])
+  host.setGroups(structuredClone(MOCK_HOST_GROUPS))
   host.setHosts([...MOCK_HOSTS_DEFAULT])
 })
 
@@ -38,16 +38,19 @@ describe('主机 store — 作用域', () => {
 })
 
 describe('主机 store — 分组聚合', () => {
-  it('按 group.order 升序排列分组', () => {
+  it('按 sortOrder 升序排列分组', () => {
     const host = useHostStore()
-    const ids = host.groupedHosts.map((g) => g.group?.id)
-    expect(ids).toEqual(['production', 'staging', 'local'])
+    const names = host.groupedHosts.map((g) => g.group?.name)
+    expect(names).toEqual(['production', 'staging', 'local'])
   })
 
   it('无成员的分组不出现在结果中', () => {
     const host = useHostStore()
-    host.setGroups([...DEFAULT_HOST_GROUPS, { id: 'empty', nameKey: 'x', order: 99 }])
-    expect(host.groupedHosts.map((g) => g.group?.id)).not.toContain('empty')
+    host.setGroups([
+      ...structuredClone(MOCK_HOST_GROUPS),
+      { id: 'empty-group', name: 'empty', description: null, sortOrder: 99, hostCount: 0 }
+    ])
+    expect(host.groupedHosts.map((g) => g.group?.name)).not.toContain('empty')
   })
 
   it('未分组主机恒排在末尾（group = null）', () => {
