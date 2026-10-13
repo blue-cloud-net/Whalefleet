@@ -18,7 +18,7 @@ public class DatabaseInitializerTests
     /// <summary>
     /// 当前迁移脚本数量——新增迁移时必须同步上调，以此强制"新脚本确实被跑过"。
     /// </summary>
-    private const int _expectedSchemaVersion = 4;
+    private const int _expectedSchemaVersion = 5;
 
     [Fact]
     public async Task 初始化_建出三张业务表并推进架构版本()

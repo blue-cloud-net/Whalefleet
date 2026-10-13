@@ -43,6 +43,8 @@ public class ErrorCodesTests
         [nameof(ErrorCodes.HostUnreachable)] = 1301,
         [nameof(ErrorCodes.HostDisabled)] = 1302,
         [nameof(ErrorCodes.HostNameAlreadyExists)] = 1303,
+        [nameof(ErrorCodes.GroupNameAlreadyExists)] = 1304,
+        [nameof(ErrorCodes.GroupNotFound)] = 1305,
 
         // 资源操作
         [nameof(ErrorCodes.DockerResourceNotFound)] = 1401,
