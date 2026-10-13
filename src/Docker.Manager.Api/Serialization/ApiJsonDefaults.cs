@@ -1,5 +1,6 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.Unicode;
 
 namespace Docker.Manager.Api.Serialization;
@@ -33,5 +34,11 @@ internal static class ApiJsonDefaults
         ArgumentNullException.ThrowIfNull(options);
 
         options.Encoder = Encoder;
+
+        // 枚举一律以小驼峰字符串出现（DockerHostType.Socket → "socket"）。
+        // 默认的数值形态对调用方不友好：接口契约里 type 收的就是 "socket"/"tcp"，
+        // 响应却回一个 0/1，前端与文档都得靠猜；而数值一旦被写进测试或客户端，
+        // 改枚举顺序就成了破坏性变更。字符串形态让契约自解释、且重排序安全。
+        options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
     }
 }
