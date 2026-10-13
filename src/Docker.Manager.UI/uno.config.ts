@@ -1,4 +1,28 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
 import { defineConfig, presetIcons, presetTypography, presetUno } from 'unocss'
+
+/**
+ * 从路由表收集侧边栏图标。
+ *
+ * 侧边栏图标写作路由 `meta.icon` 的**动态字符串**（SidebarNav 里 `:class="item.icon"`），
+ * UnoCSS 的静态提取器扫不到，图标 CSS 就不会被生成 —— 表现为
+ * 「图标一开始是空的 / 首次渲染缺失」。因此必须显式 safelist。
+ *
+ * 这里直接从 `src/router/index.ts` 读出来自动并入，避免「加路由忘加 safelist」
+ * 这类静默漂移（历史 bug：i-carbon-layers / i-carbon-events / i-carbon-data-center
+ * 三个菜单图标缺失）。
+ */
+function collectRouteIcons(): string[] {
+  const routerFile = fileURLToPath(new URL('./src/router/index.ts', import.meta.url))
+  const source = readFileSync(routerFile, 'utf-8')
+  const icons = new Set<string>()
+  for (const match of source.matchAll(/icon:\s*'(i-carbon-[\w-]+)'/g)) {
+    icons.add(match[1])
+  }
+  return [...icons]
+}
 
 // UnoCSS：utility-first，与 Element Plus 互不重叠
 //  - presetUno：原子化基础预设
@@ -90,6 +114,9 @@ export default defineConfig({
     }
   ],
   safelist: [
+    // ===== 路由 meta.icon 自动同步（见 collectRouteIcons）=====
+    // 侧边栏图标以动态字符串出现，必须显式 safelist，否则不会生成 CSS
+    ...collectRouteIcons(),
     'i-carbon-sun', 'i-carbon-moon', 'i-carbon-asleep',
     'i-carbon-user', 'i-carbon-settings', 'i-carbon-container-software',
     'i-carbon-image', 'i-carbon-data-volume', 'i-carbon-network-3',
