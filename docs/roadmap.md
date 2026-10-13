@@ -12,7 +12,7 @@
 >
 > **CI 规则**：`v0.0.*` tag 触发构建但不推 GHCR；`v0.1.0-rc.*` / `v0.x.0` / `v1.0.0` tag 触发构建 + 推 GHCR + 创建 GitHub Release。镜像标签策略仅 semver（`v0.1.0` / `0.1.0` / `0.1` / `latest`）。
 >
-> 完整版本计划：13 个 0.0.x 迭代（0.0.1–0.0.5、0.0.7–0.0.14，**0.0.6 为空号**，见下方「维护规则」）+ 1 个 RC + 5 个稳定版本（0.1.0 / 0.2.0 / 0.3.0 / 0.4.0 / 1.0.0）。
+> 完整版本计划：14 个 0.0.x 迭代（0.0.1–0.0.5、0.0.7–0.0.15，**0.0.6 为空号**，见下方「维护规则」）+ 1 个 RC + 5 个稳定版本（0.1.0 / 0.2.0 / 0.3.0 / 0.4.0 / 1.0.0）。
 ---
 
 ## 进度图例与总览
@@ -32,7 +32,7 @@
 > 2. 子条目默认**继承父条目的图标**；只有明确标注状态时才单独覆盖。
 > 3. 一个版本内**不再有任何 ⬜ 条目**时，才能把标题从 🚧 改成 ✅。
 > 4. 「验收」小节是**该版本的收口清单**，只有它整体打 ✅ 才算真正交付。
-> 5. 版本编号即**执行顺序**。原 `0.0.6`（部署底座）空有编号却排在功能迭代中间，已改编号为 `0.0.14` 并移到 0.0.x 末位；`0.0.6` 自此为**空号**，不再代表任何里程碑。
+> 5. 版本编号即**执行顺序**。原 `0.0.6`（部署底座）空有编号却排在功能迭代中间，已改编号为 `0.0.15` 并移到 0.0.x 末位；`0.0.6` 自此为**空号**，不再代表任何里程碑。
 
 ### 当前进度（截至 2026-10-13）
 
@@ -49,8 +49,9 @@
 | `0.0.10` | 镜像 API 后端 | ✅ | 列表（含搜索）/ 详情 / 拉取 / 删除四个端点全部落地；23 条端点集成测试 |
 | `0.0.11` | 前端：容器 UI | ✅ | 列表 / 生命周期操作 / 创建表单 / 日志 / 详情全部落地；5 秒轮询、页面隐藏时暂停；`HostSelector` 与主机 store 由 0.0.7 / 0.0.8 提前落地 |
 | `0.0.12` | 前端：镜像 UI | ⬜ | 仅占位视图 |
-| `0.0.13` | 前端：管理 UI + MVP 打磨 | ⬜ | 仅 `EmptyState` 等通用件已提前落地 |
-| `0.0.14` | 部署底座与发布流水线 | ⬜ | **原 `0.0.6`**，改排到 0.0.x 末位；初始管理员引导已随 0.0.4 落地，本版只剩 Dockerfile / compose / CI 增强 / 社区文档 |
+| `0.0.13` | 前端：管理 UI | ⬜ | 用户 / 主机 / 分组管理界面与改密入口 |
+| `0.0.14` | 前端：MVP 打磨 | ⬜ | 命令面板 / 快捷键 / 通用与业务组件 / README 与文档定稿 / 脱敏审计与性能基线 |
+| `0.0.15` | 部署底座与发布流水线 | ⬜ | **原 `0.0.6`**，改排到 0.0.x 末位；初始管理员引导已随 0.0.4 落地，本版只剩 Dockerfile / compose / CI 增强 / 社区文档 |
 | `0.1.0-rc.1` | MVP 候选发布 | ⬜ | |
 | `0.1.0` | MVP 首个 semver 稳定版 | ⬜ | |
 | `0.2.0` | Volume / Network / 镜像构建 | ⬜ | |
@@ -89,7 +90,7 @@ CI：
 - ✅ `.github/workflows/ci.yml`：push / pull_request 到 `main` / `dev` 触发。步骤：`dotnet restore` → `dotnet build -c Release`（warn-as-error）→ `dotnet test -c Release`。NuGet 包缓存（`~/.nuget/packages`，key 基于 `*.csproj` + `Directory.Packages.props`）
 
 仓库：
-- ✅ `README.md` 占位（详细完善在 0.0.13）
+- ✅ `README.md` 占位（详细完善在 0.0.14）
 
 **验收**：
 - ✅ 本地 `dotnet build` 通过（零警告，因 `TreatWarningsAsErrors=true`）
@@ -109,7 +110,7 @@ CI：
 > 2. **错误码分层**：错误码常量、语义分类与默认文案放 `Application/Common`（`ErrorCodes` / `ErrorCategory` / `ErrorCodeCatalog`）；「语义分类 → HTTP 状态码」放 `Api/Errors`（`ErrorHttpStatus`）。既避免应用层依赖 Web 概念，又让两侧都能被单测。
 > 3. **CORS 策略延迟注册**：白名单策略通过 `IConfigureOptions<CorsOptions>` 在**选项解析期**注册，而非 DI 注册期直接读配置——后者会读到尚未定型的值（集成测试注入的内存配置即属此列），导致静默地不注册任何策略。
 > 4. **`UseUrls` 改为配置**：硬编码的 `UseUrls("http://+:8080")` 改为 `appsettings.json` 的 `"Urls"` 键，使 `TestServer` 能接管监听。注意 `Urls` 优先级**高于** `ASPNETCORE_URLS`，改端口需用 `--urls` 或 `URLS`（详见 [constraints.md](./constraints.md#配置系统)）。
-> 5. **顺带消除 `.editorconfig` 隐患**：统一 LF（与 `.gitattributes` 的 `* text=auto` 一致）、末尾换行统一、清除 6 个重复键、为 `[*.sh]` 显式声明 LF 以保护部署迭代的 `scripts/backup.sh`。`dotnet format` 的 CI 门槛留到 0.0.14（有部署流水线时一并接入）。
+> 5. **顺带消除 `.editorconfig` 隐患**：统一 LF（与 `.gitattributes` 的 `* text=auto` 一致）、末尾换行统一、清除 6 个重复键、为 `[*.sh]` 显式声明 LF 以保护部署迭代的 `scripts/backup.sh`。`dotnet format` 的 CI 门槛留到 0.0.15（有部署流水线时一并接入）。
 > 6. **环境变量命名规范化**：失效的 `DEFAULT_HOST__ENDPOINT` → `DOCKER__DEFAULTHOST__ENDPOINT`；`JWT__Secret` → `JWT__SECRET`。
 > 7. **依赖统一升到最新**：`Microsoft.Extensions.*` → 10.0.12（net10.0 对齐）；Serilog 全家桶 → `AspNetCore` 10.0.0 / `Settings.Configuration` 10.0.1 / `Sinks.File` 7.0.0；测试栈 → `Microsoft.NET.Test.Sdk` 18.10.0 / `xunit` 2.9.3 / `xunit.runner.visualstudio` 4.0.0 / `coverlet.collector` 10.0.1。
 >    **例外——`FluentAssertions` 停留在 7.2.2**：8.x 起改为 Xceed 商业授权，7.x 是最后一个 Apache-2.0 版本；本项目为 MIT 开源且不引入商业授权依赖，故不跟进 8.x。
@@ -209,7 +210,7 @@ CI：
 - ✅ `dotnet test -c Release` 全绿（本迭代新增 **63** 个用例，全量 532）
 - ✅ 手工：`ADMIN__USER=admin ADMIN__PASSWORD=StrongP@ss123 dotnet run` → 用 admin 登录成功
 
-> ⚠️ **已知缺口（留给 0.0.14）**：反代后 `Connection.RemoteIpAddress` 是代理 IP，
+> ⚠️ **已知缺口（留给 0.0.15）**：反代后 `Connection.RemoteIpAddress` 是代理 IP，
 > 而本项目尚未启用 `ForwardedHeaders`（需配合可信代理白名单）——
 > 不加会将所有用户的登录失败算进同一个限流桶。
 
@@ -252,7 +253,7 @@ CI：
 **目标**：可视化的登录体验 + 全局导航骨架 + UnoCSS/主题/快捷键基建。
 
 > **完成（2026-10-13）**：登录页已于 0.0.5 接通后端；本次把内联在 `AppLayout.vue` 里的
-> 顶栏与侧边栏拆成独立组件（`layouts/`），并补上面包屑。快捷键属 0.0.13，不在本版范围。
+> 顶栏与侧边栏拆成独立组件（`layouts/`），并补上面包屑。快捷键属 0.0.14，不在本版范围。
 >
 > **界面打磨（2026-10-13 追加）**：本版的页面骨架已就位，但走查发现几处结构性问题，
 > 已一并修掉，不另开版本号：
@@ -413,16 +414,28 @@ CI：
 
 ---
 
-### 0.0.13 ⬜ — 前端：管理 UI + MVP 打磨
+### 0.0.13 ⬜ — 前端：管理 UI
 
-**目标**：完成所有 0.1.0 必备 UI，准备进入 RC。
+**目标**：管理员可在界面上完成主机与用户管理。
+
+前端：
+- `UserManagementView.vue`（admin 可见）：用户列表 + 创建对话框 + 删除确认 + 改密对话框
+- `HostManagementView.vue`（admin 可见）：主机列表 + 创建/编辑对话框 + test 连通性按钮 + 删除确认
+- **主机分组管理 UI**：分组的新建 / 重命名 / 删除 + 主机归组调整（与后端 `hosts.group_id` 列一起落地）
+- `ChangePasswordDialog.vue`：任意用户可改自己密码（从顶栏用户菜单进入）
+- 路由守卫增强：按 `route.meta.requiresAdmin` 隐藏菜单项 + 拦截直接访问
+
+**验收**：创建用户并用其登录成功；创建远程主机 + 测试连通性通过；删除主机后其容器页不可达；改密后旧令牌失效。
+
+---
+
+### 0.0.14 ⬜ — 前端：MVP 打磨
+
+**目标**：补齐 0.1.0 的交互与非功能细节，准备进入 RC。
+
 前端：
 - **命令面板** `components/common/CommandPalette.vue`：Ctrl+K / Cmd+K 唤起；搜索所有路由 + 常用操作（跳 Containers / 跳 Images / 创建容器 / 拉取镜像）；Fuse.js 模糊匹配
 - **全局快捷键** `composables/useShortcuts.ts`：`g+c` / `g+i` / `g+v` / `g+n` / `g+d` / `?` 跳转与帮助弹窗
-- `UserManagementView.vue`（admin 可见）：用户列表 + 创建对话框 + 删除确认 + 改密对话框
-- `HostManagementView.vue`（admin 可见）：主机列表 + 创建/编辑对话框 + test 连通性按钮 + 删除确认
-- `ChangePasswordDialog.vue`：任意用户可改自己密码（从顶栏用户菜单进入）
-- 路由守卫增强：按 `route.meta.requiresAdmin` 隐藏菜单项 + 拦截直接访问
 - 通用组件库扩充：`EmptyState`、`StatusBadge`、`JsonTree`、`CopyableText`
 - 业务组件：`ContainerStatusBadge`、`ImageSize`、`PortMappingEditor`、`EnvVarEditor`、`VolumeMountEditor`
 
@@ -438,13 +451,13 @@ CI：
 
 ---
 
-### 0.0.14 ⬜ — 部署底座与发布流水线
+### 0.0.15 ⬜ — 部署底座与发布流水线
 
 **目标**：`docker run` 一行启动可登录、可发布。
 
 > **为什么排在 0.0.x 末位**（原编号 `0.0.6`）：
 >
-> 1. **Dockerfile 要打的正是前端产物**——builder 阶段要跑 `pnpm build`，而容器/镜像/管理三套界面到 0.0.13 才齐。在 0.0.6 做，打出来的镜像里只有占位页，等于交付一个「能启动但没用」的东西。
+> 1. **Dockerfile 要打的正是前端产物**——builder 阶段要跑 `pnpm build`，而容器/镜像/管理三套界面到 0.0.14 才打磨完。在 `0.0.6` 做，打出来的镜像里只有占位页，等于交付一个「能启动但没用」的东西。
 > 2. **compose / socket-proxy 的安全说明依赖真实能力清单**——「只授 `CONTAINERS`/`IMAGES`/`NETWORK`/`VOLUME` 子集」这句话，在还没搞清楚 0.1.0 到底会调用哪些 Docker API 之前是猜的。
 > 3. **Release Please 与 CHANGELOG 要读得懂提交历史**——在只有二十来个提交时启用，规则改动的返工成本远高于稳定后一次做对。
 > 4. **初始管理员引导不等它**——那件事有鸡生蛋问题（要先能登录才能建用户），已于 0.0.4 落地，本版只剩部署与发布。
@@ -480,7 +493,7 @@ CI：
 
 ### 0.1.0-rc.1 ⬜ — MVP 候选发布
 
-**目标**：0.0.14 后冻结功能，仅修 bug。
+**目标**：0.0.15 后冻结功能，仅修 bug。
 
 - 不引入新功能
 - 集中修复 QA 反馈

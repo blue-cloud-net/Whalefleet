@@ -274,7 +274,7 @@ socket-proxy 默认仅授予 `GET`（只读 + 列出），如需写操作（创�
 | 异常记录 | 5xx 记 `Error` 且含完整堆栈；4xx 记 `Warning` 且**不含堆栈**（避免噪声与被误报为告警） |
 | 请求日志 | `Serilog` 请求日志在「发生异常」的请求上降级为 `Debug`——异常详情统一由全局异常中间件记录，避免同一次失败产生两条 Error 日志以及重复告警计数 |
 
-### 日志脱敏（0.0.13 起强制）
+### 日志脱敏（0.0.14 起强制）
 
 - 启动时执行 grep 审计：确认无明文密码、access token、refresh token 写入日志
 - Serilog 配置 `.MinimumLevel.Information()` + `.Filter.ByExcluding(...)` 过滤敏感字段
@@ -300,14 +300,14 @@ socket-proxy 默认仅授予 `GET`（只读 + 列出），如需写操作（创�
 - 推荐使用 scope（如 `feat(container):`、`fix(auth):`）
 - Type 限定：`feat` / `fix` / `docs` / `style` / `refactor` / `perf` / `test` / `build` / `ci` / `chore`
 
-### Release Please（0.0.14 启用）
+### Release Please（0.0.15 启用）
 
 - 读 Conventional Commits 自动生成 release notes
 - 自动开 PR 修改 `CHANGELOG.md`
 - 自动打 tag
 - 状态文件：`.github/.release-please-manifest.json`
 
-### 镜像发布（0.0.14 起）
+### 镜像发布（0.0.15 起）
 
 | 项 | 策略 |
 |----|------|

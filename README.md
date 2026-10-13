@@ -174,7 +174,7 @@ dotnet Docker.Manager.Api.dll --urls http://0.0.0.0:8080
 
 - 镜像仓库：`ghcr.io/blue-cloud-net/docker-manager`
 - 标签策略：仅 semver（`v0.1.0` / `0.1.0` / `0.1` / `latest`）
-- CHANGELOG：由 Release Please 自动生成（0.0.14 起）
+- CHANGELOG：由 Release Please 自动生成（0.0.15 起）
 - 完整策略见 [docs/overview.md#发布模型与版本号策略](docs/overview.md)
 
 ---
