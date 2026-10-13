@@ -78,6 +78,9 @@ public static class ErrorCodes
     /// <summary>主机连通性失败（HTTP 502）。</summary>
     public const int HostUnreachable = 1301;
 
+    /// <summary>主机已停用（HTTP 400）。</summary>
+    public const int HostDisabled = 1302;
+
     // ==================== 1400-1499 资源操作 ====================
 
     /// <summary>Docker 资源（容器 / 镜像 / Volume / Network）不存在（HTTP 404）。</summary>

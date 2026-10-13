@@ -1,3 +1,5 @@
+using Docker.Manager.Core.Hosts;
+
 namespace Docker.Manager.Application.Abstractions;
 
 /// <summary>
@@ -15,8 +17,12 @@ namespace Docker.Manager.Application.Abstractions;
 public sealed record DockerHostConnection
 {
     /// <summary>
-    /// 主机标识（当前为配置里的 <c>Name</c>；0.0.8 起为 <c>hosts</c> 表主键）。
+    /// 主机标识——即 <c>hosts</c> 表里的主机名（不区分大小写）。
     /// </summary>
+    /// <remarks>
+    /// 刻意<b>不</b>用 <c>Guid</c> 主键：主机名唯一、可读，能直接进 URL 与 <c>X-Host-Id</c> 头；
+    /// 主键只用于权限外键与审计。
+    /// </remarks>
     public required string HostId { get; init; }
 
     /// <summary>
@@ -34,4 +40,23 @@ public sealed record DockerHostConnection
     /// 认证信息（当前仅支持 <see cref="DockerHostAuth.None"/>）。
     /// </summary>
     public DockerHostAuth Auth { get; init; } = DockerHostAuth.None;
+
+    /// <summary>
+    /// 由 <c>DockerHost</c> 实体映射出连接描述。
+    /// </summary>
+    /// <param name="host">主机实体。</param>
+    /// <returns>连接描述；<see cref="HostId"/> 取主机名（<c>Name</c>）。</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="host"/> 为 <see langword="null"/>。</exception>
+    public static DockerHostConnection From(DockerHost host)
+    {
+        ArgumentNullException.ThrowIfNull(host);
+
+        return new DockerHostConnection
+        {
+            HostId = host.Name,
+            Type = host.Type,
+            Endpoint = host.Endpoint.Value,
+            Auth = DockerHostAuth.From(host.Credentials),
+        };
+    }
 }

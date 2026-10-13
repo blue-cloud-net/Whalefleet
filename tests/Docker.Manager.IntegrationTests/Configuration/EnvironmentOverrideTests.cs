@@ -20,50 +20,50 @@ namespace Docker.Manager.IntegrationTests.Configuration;
 [Collection(EnvironmentVariablesCollectionDefinition.Name)]
 public class EnvironmentOverrideTests
 {
-    private const string EndpointVariable = "DOCKER__HOSTS__0__ENDPOINT";
+    private const string IdleTimeoutVariable = "DOCKER__POOL__IDLETIMEOUT";
     private const string CorsOriginVariable = "CORS__ALLOWEDORIGINS__0";
 
     [Fact]
-    public void WithoutOverride_ShouldUseDocumentedDefaultSocketPath()
+    public void WithoutOverride_ShouldUseDocumentedDefaultIdleTimeout()
     {
-        RunWithEnvironmentVariable(EndpointVariable, null, () =>
+        RunWithEnvironmentVariable(IdleTimeoutVariable, null, () =>
         {
             using var factory = new ApiFactory();
             using var client = factory.CreateClient();
 
             var options = factory.Services.GetRequiredService<IOptions<DockerClientFactoryOptions>>();
 
-            options.Value.Hosts[0].Endpoint.Should().Be("/var/run/docker.sock");
+            options.Value.Pool.IdleTimeout.Should().Be(TimeSpan.FromMinutes(30));
         });
     }
 
     [Fact]
-    public void EnvironmentVariable_ShouldOverrideFirstHostEndpoint()
+    public void EnvironmentVariable_ShouldOverridePoolIdleTimeout()
     {
-        RunWithEnvironmentVariable(EndpointVariable, "/tmp/dm-env-override.sock", () =>
+        RunWithEnvironmentVariable(IdleTimeoutVariable, "00:07:00", () =>
         {
             using var factory = new ApiFactory();
             using var client = factory.CreateClient();
 
             var options = factory.Services.GetRequiredService<IOptions<DockerClientFactoryOptions>>();
 
-            options.Value.Hosts[0].Endpoint.Should().Be("/tmp/dm-env-override.sock");
+            options.Value.Pool.IdleTimeout.Should().Be(TimeSpan.FromMinutes(7));
         });
     }
 
     [Fact]
-    public void InMemorySetting_ShouldOverrideFirstHostEndpoint()
+    public void InMemorySetting_ShouldOverridePoolIdleTimeout()
     {
         // 不使用环境变量的等价路径（WebApplicationFactory.UseSetting 语义），
         // 用于证明「后加载的配置源覆盖先加载的」这一顺序规律。
         using var factory = new ApiFactory()
-            .WithSetting("Docker:Hosts:0:Endpoint", "/tmp/dm-setting.sock");
+            .WithSetting("Docker:Pool:IdleTimeout", "00:09:00");
 
         using var client = factory.CreateClient();
 
         var options = factory.Services.GetRequiredService<IOptions<DockerClientFactoryOptions>>();
 
-        options.Value.Hosts[0].Endpoint.Should().Be("/tmp/dm-setting.sock");
+        options.Value.Pool.IdleTimeout.Should().Be(TimeSpan.FromMinutes(9));
     }
 
     [Fact]

@@ -1,4 +1,5 @@
 using Docker.Manager.Application.Abstractions;
+using Docker.Manager.Core.Hosts;
 using Docker.Manager.Infrastructure.Docker;
 using FluentAssertions;
 using Xunit;

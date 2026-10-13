@@ -14,16 +14,20 @@ public static class InfrastructureServiceCollectionExtensions
     /// <summary>
     /// 注册 Infrastructure 层服务：
     /// - <see cref="DockerClientFactoryOptions"/>（绑定 <c>Docker</c> 配置节，含启动时校验）
-    /// - <see cref="IDockerClientFactory"/> / <see cref="IDockerClientCacheMaintenance"/>
-    ///   → <see cref="DockerClientFactory"/>（Singleton）
-    /// - <see cref="DockerClientCacheReaper"/>（后台空闲回收）
+    /// - <see cref="IDockerClientFactory"/> → <see cref="DockerClientFactory"/>（Singleton，无状态）
+    /// - <see cref="IDockerClientPool"/> / <see cref="IDockerClientPoolMaintenance"/> /
+    ///   <see cref="DockerClientPool"/>（Singleton，三者是<b>同一实例</b>）
+    /// - <see cref="IDockerHostAccessor"/> → <see cref="DockerHostAccessor"/>（Scoped）
+    /// - <see cref="DockerClientPoolReaper"/>（后台空闲回收）
     /// - <see cref="TimeProvider"/>（若调用方尚未注册）
     /// </summary>
     /// <remarks>
-    /// <para><b>为什么必须是单例</b>：客户端缓存要跨请求存活，否则「切换主机不重建连接」
+    /// <para><b>池为什么必须是单例</b>：客户端要跨请求存活，否则「切换主机不重建连接」
     /// 就退化成了每次请求重连。</para>
-    /// <para><b>配置校验</b>：主机列表为空、主机名重复/为空、端点无法规范化，
-    /// 都会在<b>启动时</b>失败（<c>ValidateOnStart</c>），而不是拖到第一次连接。</para>
+    /// <para><b>访问器为什么是 Scoped</b>：它依赖 Scoped 的主机仓储（其取值来自当前请求）。
+    /// 池只接受连接描述、不查数据库，因此以单例注册不会构成「捕获依赖」。</para>
+    /// <para><b>配置校验</b>：池策略（空闲超时 / 扫描间隔）非法会在<b>启动时</b>失败
+    /// （<c>ValidateOnStart</c>）。主机<b>不</b>来自配置——它们是 <c>hosts</c> 表里的数据。</para>
     /// </remarks>
     /// <param name="services">服务集合。</param>
     /// <param name="configuration">配置根。</param>
@@ -39,41 +43,31 @@ public static class InfrastructureServiceCollectionExtensions
             .AddOptions<DockerClientFactoryOptions>()
             .Bind(configuration.GetSection(DockerClientFactoryOptions.SectionName))
             .Validate(
-                options => options.Hosts is { Count: > 0 },
-                "Docker:Hosts 至少需要配置一个主机")
-            .Validate(
-                options => options.Hosts.All(host => !String.IsNullOrWhiteSpace(host.Name)),
-                "Docker:Hosts 的主机名（Name）不能为空")
-            .Validate(
-                options => options.Hosts
-                    .Select(host => host.Name)
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .Count() == options.Hosts.Count,
-                "Docker:Hosts 的主机名（Name）不能重复（不区分大小写）")
-            .Validate(
-                options => options.Hosts.All(host =>
-                    DockerEndpointNormalizer.TryNormalize(host.Type, host.Endpoint, out _, out _)),
-                "Docker:Hosts 的端点非法：socket 需为绝对路径（如 /var/run/docker.sock），"
-                + "TCP 形如 tcp://host:2375")
-            .Validate(
-                options => options.ClientCache.IdleTimeout >= TimeSpan.Zero
-                    && options.ClientCache.ReapInterval >= TimeSpan.Zero,
-                "Docker:ClientCache 的 IdleTimeout / ReapInterval 不能为负值")
+                options => options.Pool.IdleTimeout >= TimeSpan.Zero
+                    && options.Pool.ReapInterval >= TimeSpan.Zero,
+                "Docker:Pool 的 IdleTimeout / ReapInterval 不能为负值")
             .ValidateOnStart();
 
-        // 工厂本体只注册一次，再以两个身份暴露同一实例：
-        // 业务侧用 IDockerClientFactory，后台回收任务用 IDockerClientCacheMaintenance。
-        // 不能写成 AddSingleton<IDockerClientFactory, DockerClientFactory>() + 另一个
-        // AddSingleton<IDockerClientCacheMaintenance, DockerClientFactory>()——那会创建两个
-        // 互不相识的实例，回收任务将操作不到真正在用的那份缓存。
-        services.AddSingleton<DockerClientFactory>();
-        services.AddSingleton<IDockerClientFactory>(static provider => provider.GetRequiredService<DockerClientFactory>());
-        services.AddSingleton<IDockerClientCacheMaintenance>(static provider => provider.GetRequiredService<DockerClientFactory>());
+        // 工厂是无状态的纯构建器，单独注册即可。
+        services.AddSingleton<IDockerClientFactory, DockerClientFactory>();
 
-        // 时间源：工厂用它判定空闲，回收任务用它驱动定时器。测试可覆盖为假时间。
+        // 池本体只注册一次，再以三个身份暴露同一实例：
+        // 业务侧用 IDockerClientPool，后台回收任务用 IDockerClientPoolMaintenance，
+        // 直接构造（如测试）用具体类型。**不能**写成多个 AddSingleton<TInterface, DockerClientPool>()
+        // ——那会创建多个互不相识的实例，回收任务将操作不到真正在用的那份池。
+        services.AddSingleton<DockerClientPool>();
+        services.AddSingleton<IDockerClientPool>(static provider => provider.GetRequiredService<DockerClientPool>());
+        services.AddSingleton<IDockerClientPoolMaintenance>(static provider => provider.GetRequiredService<DockerClientPool>());
+
+        // 时间源：池用它判定空闲，回收任务用它驱动定时器。测试可覆盖为假时间。
         services.TryAddSingleton(TimeProvider.System);
 
-        services.AddHostedService<DockerClientCacheReaper>();
+        services.AddHostedService<DockerClientPoolReaper>();
+
+        // 主机访问器是 Scoped（依赖 Scoped 的主机仓储）；池是 Singleton——
+        // 二者生命周期不同，故「解析主机」与「池化客户端」分属两层。
+        services.AddScoped<IDockerHostAccessor, DockerHostAccessor>();
+
 
         return services;
     }

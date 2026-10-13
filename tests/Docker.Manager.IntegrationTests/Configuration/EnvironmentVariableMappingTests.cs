@@ -13,36 +13,36 @@ namespace Docker.Manager.IntegrationTests.Configuration;
 /// 数组用数字下标表达，例如 <c>CORS__ALLOWEDORIGINS__0</c>。</para>
 /// <para>这里同时锁定一个易被误解的事实：<b>配置键的查找是大小写不敏感的</b>
 /// （<c>ConfigurationKeyComparer</c> 与各 provider 内部的字典均使用 OrdinalIgnoreCase），
-/// 因此在 Linux 上设置大写的 <c>DOCKER__HOSTS__0__ENDPOINT</c>
-/// 可以正常绑定到 <c>Docker:Hosts:0</c> 配置节。</para>
+/// 因此在 Linux 上设置大写的 <c>DOCKER__POOL__IDLETIMEOUT</c>
+/// 可以正常绑定到 <c>Docker:Pool:IdleTimeout</c> 配置节。</para>
 /// </remarks>
 [Collection(EnvironmentVariablesCollectionDefinition.Name)]
 public class EnvironmentVariableMappingTests
 {
-    private const string EndpointVariable = "DOCKER__HOSTS__0__ENDPOINT";
+    private const string IdleTimeoutVariable = "DOCKER__POOL__IDLETIMEOUT";
     private const string CorsOriginVariable = "CORS__ALLOWEDORIGINS__0";
 
     [Fact]
     public void DoubleUnderscore_ShouldMapToConfigurationSectionSeparator()
     {
-        RunWithEnvironmentVariable(EndpointVariable, "/tmp/dm-env.sock", () =>
+        RunWithEnvironmentVariable(IdleTimeoutVariable, "00:07:00", () =>
         {
             var configuration = BuildFromEnvironment();
 
-            configuration["Docker:Hosts:0:Endpoint"].Should().Be("/tmp/dm-env.sock");
+            configuration["Docker:Pool:IdleTimeout"].Should().Be("00:07:00");
         });
     }
 
     [Fact]
     public void DoubleUnderscore_ShouldBeCaseInsensitiveWhenReadingBack()
     {
-        RunWithEnvironmentVariable(EndpointVariable, "/tmp/dm-env.sock", () =>
+        RunWithEnvironmentVariable(IdleTimeoutVariable, "00:07:00", () =>
         {
             var configuration = BuildFromEnvironment();
 
-            // 环境变量定义的是 DOCKER:HOSTS:0:ENDPOINT，此处用小写驼峰读取，
+            // 环境变量定义的是 DOCKER:POOL:IDLETIMEOUT，此处用小写读取，
             // 用于证明配置键比较不区分大小写。
-            configuration["docker:hosts:0:endpoint"].Should().Be("/tmp/dm-env.sock");
+            configuration["docker:pool:idletimeout"].Should().Be("00:07:00");
         });
     }
 

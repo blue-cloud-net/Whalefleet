@@ -41,6 +41,7 @@ public class ErrorCodesTests
         // 主机管理
         [nameof(ErrorCodes.HostNotFound)] = 1300,
         [nameof(ErrorCodes.HostUnreachable)] = 1301,
+        [nameof(ErrorCodes.HostDisabled)] = 1302,
 
         // 资源操作
         [nameof(ErrorCodes.DockerResourceNotFound)] = 1401,

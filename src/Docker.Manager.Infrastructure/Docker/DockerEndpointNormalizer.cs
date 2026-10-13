@@ -1,4 +1,5 @@
 using Docker.Manager.Application.Abstractions;
+using Docker.Manager.Core.Hosts;
 
 namespace Docker.Manager.Infrastructure.Docker;
 
@@ -43,13 +44,13 @@ public static class DockerEndpointNormalizer
     /// </summary>
     public const int DefaultTcpPort = 2375;
 
-    private const string UnixScheme = "unix://";
-    private const string NpipeScheme = "npipe://";
-    private const string NpipePrefix = "npipe://./pipe/";
-    private const string NpipeWindowsPrefix = @"\\.\pipe\";
-    private const string NpipeSlashPrefix = "//./pipe/";
-    private const string TcpScheme = "tcp://";
-    private const string SchemeSeparator = "://";
+    private const string _unixScheme = "unix://";
+    private const string _npipeScheme = "npipe://";
+    private const string _npipePrefix = "npipe://./pipe/";
+    private const string _npipeWindowsPrefix = @"\\.\pipe\";
+    private const string _npipeSlashPrefix = "//./pipe/";
+    private const string _tcpScheme = "tcp://";
+    private const string _schemeSeparator = "://";
 
     /// <summary>
     /// 尝试把端点规范化。
@@ -96,13 +97,13 @@ public static class DockerEndpointNormalizer
             return TryNormalizeNamedPipe(raw, out normalized, out error);
         }
 
-        var hasUnixScheme = raw.StartsWith(UnixScheme, StringComparison.OrdinalIgnoreCase);
-        if (!hasUnixScheme && raw.Contains(SchemeSeparator, StringComparison.Ordinal))
+        var hasUnixScheme = raw.StartsWith(_unixScheme, StringComparison.OrdinalIgnoreCase);
+        if (!hasUnixScheme && raw.Contains(_schemeSeparator, StringComparison.Ordinal))
         {
             return Fail($"Socket 端点不支持该协议前缀：{raw}", out normalized, out error);
         }
 
-        var path = hasUnixScheme ? raw[UnixScheme.Length..] : raw;
+        var path = hasUnixScheme ? raw[_unixScheme.Length..] : raw;
 
         // 容忍 unix://var/run/docker.sock 的 authority 写法，纠正为路径语义（见类备注）。
         if (hasUnixScheme && !path.StartsWith('/'))
@@ -132,7 +133,7 @@ public static class DockerEndpointNormalizer
             return Fail("Socket 端点缺少 socket 文件路径", out normalized, out error);
         }
 
-        var canonical = UnixScheme + path;
+        var canonical = _unixScheme + path;
 
         return Uri.TryCreate(canonical, UriKind.Absolute, out var uri)
             ? Succeed(uri, canonical, out normalized, out error)
@@ -161,7 +162,7 @@ public static class DockerEndpointNormalizer
             return Fail("命名管道端点缺少管道名（如 npipe://./pipe/docker_engine）", out normalized, out error);
         }
 
-        var canonical = NpipePrefix + name;
+        var canonical = _npipePrefix + name;
 
         return Uri.TryCreate(canonical, UriKind.Absolute, out var uri)
             ? Succeed(uri, canonical, out normalized, out error)
@@ -177,7 +178,7 @@ public static class DockerEndpointNormalizer
         error = null;
 
         var remainder = raw;
-        var separatorIndex = raw.IndexOf(SchemeSeparator, StringComparison.Ordinal);
+        var separatorIndex = raw.IndexOf(_schemeSeparator, StringComparison.Ordinal);
 
         if (separatorIndex > 0)
         {
@@ -194,7 +195,7 @@ public static class DockerEndpointNormalizer
                 return Fail($"TCP 端点不支持该协议前缀：{scheme}://", out normalized, out error);
             }
 
-            remainder = raw[(separatorIndex + SchemeSeparator.Length)..];
+            remainder = raw[(separatorIndex + _schemeSeparator.Length)..];
         }
 
         if (remainder.Contains('@', StringComparison.Ordinal))
@@ -222,7 +223,7 @@ public static class DockerEndpointNormalizer
             return Fail($"TCP 端点端口超出范围（1-65535）：{port}", out normalized, out error);
         }
 
-        var canonical = $"{TcpScheme}{host.ToLowerInvariant()}:{port}{path}";
+        var canonical = $"{_tcpScheme}{host.ToLowerInvariant()}:{port}{path}";
 
         return Uri.TryCreate(canonical, UriKind.Absolute, out var uri)
             ? Succeed(uri, canonical, out normalized, out error)
@@ -288,9 +289,9 @@ public static class DockerEndpointNormalizer
     }
 
     private static bool IsNamedPipe(string raw) =>
-        raw.StartsWith(NpipeScheme, StringComparison.OrdinalIgnoreCase)
-        || raw.StartsWith(NpipeSlashPrefix, StringComparison.Ordinal)
-        || raw.StartsWith(NpipeWindowsPrefix, StringComparison.OrdinalIgnoreCase);
+        raw.StartsWith(_npipeScheme, StringComparison.OrdinalIgnoreCase)
+        || raw.StartsWith(_npipeSlashPrefix, StringComparison.Ordinal)
+        || raw.StartsWith(_npipeWindowsPrefix, StringComparison.OrdinalIgnoreCase);
 
     private static bool Succeed(
         Uri uri,
