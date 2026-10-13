@@ -62,6 +62,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<IRoleRepository, SqliteRoleRepository>();
         services.AddScoped<IUserRepository, SqliteUserRepository>();
         services.AddScoped<IHostRepository, SqliteHostRepository>();
+        services.AddScoped<IHostGroupRepository, SqliteHostGroupRepository>();
         services.AddScoped<IRefreshTokenRepository, SqliteRefreshTokenRepository>();
 
         return services;

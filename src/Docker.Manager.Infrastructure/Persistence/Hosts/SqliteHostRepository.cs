@@ -20,7 +20,7 @@ namespace Docker.Manager.Infrastructure.Persistence.Hosts;
 internal sealed class SqliteHostRepository : RepositoryBase<DockerHost, Guid>, IHostRepository
 {
     private const string _columns =
-        "id, name, type, endpoint, auth_kind, auth_config_json, enabled, creation_time, creator_id, "
+        "id, name, type, endpoint, auth_kind, auth_config_json, enabled, group_id, creation_time, creator_id, "
         + "last_modification_time, last_modifier_id, is_deleted, deletion_time, deleter_id";
 
     private static readonly string _selectByIdSql = $"""
@@ -56,7 +56,7 @@ internal sealed class SqliteHostRepository : RepositoryBase<DockerHost, Guid>, I
 
     private static readonly string _insertSql = $"""
         INSERT INTO hosts ({_columns})
-        VALUES (@Id, @Name, @Type, @Endpoint, @AuthKind, @AuthConfigJson, @Enabled,
+        VALUES (@Id, @Name, @Type, @Endpoint, @AuthKind, @AuthConfigJson, @Enabled, @GroupId,
                 @CreationTime, @CreatorId, @LastModificationTime, @LastModifierId,
                 @IsDeleted, @DeletionTime, @DeleterId)
         """;
@@ -69,12 +69,27 @@ internal sealed class SqliteHostRepository : RepositoryBase<DockerHost, Guid>, I
             auth_kind = @AuthKind,
             auth_config_json = @AuthConfigJson,
             enabled = @Enabled,
+            group_id = @GroupId,
             last_modification_time = @LastModificationTime,
             last_modifier_id = @LastModifierId,
             is_deleted = @IsDeleted,
             deletion_time = @DeletionTime,
             deleter_id = @DeleterId
         WHERE id = @Id AND {SoftDeleteFilter}
+        """;
+
+    private static readonly string _queryByGroupSql = $"""
+        SELECT {_columns}
+        FROM hosts
+        WHERE group_id = @GroupId AND {SoftDeleteFilter}
+        ORDER BY creation_time, name
+        """;
+
+    private static readonly string _countByGroupSql = $"""
+        SELECT group_id, COUNT(1)
+        FROM hosts
+        WHERE group_id IS NOT NULL AND {SoftDeleteFilter}
+        GROUP BY group_id
         """;
 
     /// <summary>
@@ -148,6 +163,42 @@ internal sealed class SqliteHostRepository : RepositoryBase<DockerHost, Guid>, I
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<Guid, int>> CountByGroupAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = Connections.Create();
+        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        var rows = await connection.QueryAsync<(string GroupId, long Count)>(
+            new CommandDefinition(_countByGroupSql, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        // 读取侧显式解析：库里存的是小写 36 位文本（写入侧统一走 ToStorageText），
+        // 直接让 Dapper 映 Guid 会依赖类型处理器对文本宽容度，这里明确一点
+        return rows.ToDictionary(
+            row => Guid.Parse(row.GroupId),
+            row => checked((int)row.Count));
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<DockerHost>> QueryByGroupAsync(
+        Guid groupId,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = Connections.Create();
+        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        var rows = await connection.QueryAsync<DockerHost>(
+            new CommandDefinition(
+                _queryByGroupSql,
+                new { GroupId = groupId.ToStorageText() },
+                cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        return [.. rows];
+    }
+
+    /// <inheritdoc />
     protected override Task<int> ExecuteInsertAsync(
         System.Data.Common.DbConnection connection,
         DockerHost host,
@@ -182,6 +233,8 @@ internal sealed class SqliteHostRepository : RepositoryBase<DockerHost, Guid>, I
         Endpoint = host.Endpoint.Value,
         AuthConfigJson = host.Credentials.ConfigJson,
         host.Enabled,
+        // 可空外键：未分组时必须写 NULL 而不是空串，否则外键约束会把空串当成"指向不存在的主键"
+        GroupId = host.GroupId?.ToStorageText(),
         host.CreationTime,
         CreatorId = host.CreatorId.ToStorageText(),
         host.LastModificationTime,
