@@ -372,7 +372,42 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 操作 | 路径 | 角色 | 说明 |
 |------|------|------|------|
 | 可见主机列表 | `POST /api/v1/hosts/list` | 任意已登录 | 返回**当前用户可见**的主机（含 `status`）；admin 调用时返回全部 |
-| 单台聚合信息 | `POST /api/v1/hosts/{hostId}/overview` | 任意已登录 | 返回单台主机的 `version` / `counts`；失败形态 `1300`/404、`1302`/400、`1501`/403 |
+| 单台概览 | `POST /api/v1/hosts/{hostId}/overview` | 任意已登录 | 返回单台主机的 `version` / `runtime`（运行摘要）；失败形态 `1300`/404、`1302`/400、`1501`/403。**0.0.8 / 0.0.9 已实现** |
+
+**`overview` 的响应形态**（0.0.9 已实现）：
+
+```jsonc
+// POST /api/v1/hosts/local/overview
+// Request: 无 Body
+// Response.data
+{
+  "version": {                                  // 来自 /version
+    "version": "27.3.1",
+    "apiVersion": "1.47", "minApiVersion": "1.24",
+    "os": "linux", "arch": "x86_64",
+    "goVersion": "go1.22.7", "kernelVersion": "6.8.0-45-generic",
+    "experimental": false
+  },
+  "runtime": {                                  // 来自 /info
+    "name": "dev-01", "serverVersion": "27.3.1",
+    "startedAt": "2026-01-02T03:04:05.678+00:00",  // 拿不到为 null
+    "uptimeSeconds": 86400,                        // startedAt 为 null 时同样为 null
+    "containers": 12, "containersRunning": 8,
+    "containersPaused": 0, "containersStopped": 4,
+    "images": 30, "cpus": 8, "memoryTotalBytes": 16803856384,
+    "operatingSystem": "Ubuntu 24.04.1 LTS"
+  }
+}
+```
+
+> **为什么拆成 `version` / `runtime`**：它们来自守护进程的两个不同接口（`/version` 与 `/info`），
+> 字段重名也不少（`version` / `serverVersion`、`os` / `operatingSystem`）。分组之后调用方一眼能看出
+> 字段来源，0.3.0 给其中一块加缓存也不必动契约。
+>
+> **`uptimeSeconds` 由服务端算**：让每个客户端各算一次会把「前端时钟不准」变成
+> 「主机运行时长是负数」。拿不到 `startedAt` 时一并返回 `null`——给 0 会被读成「刚刚启动」。
+>
+> **本端点会真的连守护进程**（与列表里的轻量 ping 不同），因此主机离线时返回 `1301`/502。
 
 > **为什么要与 `admin/hosts/list` 分开**：总览页与侧栏主机选择器对**所有角色**可见，
 > 而 `admin/hosts/list` 是主机管理页专用（含管理操作所需的完整信息）。

@@ -357,6 +357,9 @@ CI：
 - ✅ 主机管理 API（admin 专用）：
   - ✅ `POST /api/v1/admin/hosts/list`（并行探活）/ `create` / `{hostId}/update` / `{hostId}/delete` / `test`
   - 新增错误码 `1303`（主机名已被占用）；更新时用**变更前**的连接描述让客户端池失效
+- ✅ 主机概览 API（任意已认证用户）：
+  - ✅ `POST /api/v1/hosts/{hostId}/overview`（`/version` + `/info` 投影：版本 / 启动时间 / 运行时长 / 资源计数）
+  - 本迭代初版遗留了「主机版本信息」「主机启动时间」两项（features.md 标着属于 0.0.8 但无端点），**已随 0.0.9 补齐**
 - ✅ 用户管理 API（admin 专用）：
   - ✅ `POST /api/v1/admin/users/list`（分页）/ `create` / `delete` / `update-password`
   - 自助改密需验原密码，管理员重置他人不需要；改密码与删号都撤销该用户全部令牌
