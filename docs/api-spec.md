@@ -135,6 +135,7 @@
 | `1300` | 404 | 主机不存在 | 0.0.8 |
 | `1301` | 502 | 主机连通性失败 | 0.0.13 |
 | `1302` | 400 | 主机已停用 | 0.0.8 |
+| `1303` | 400 | 主机名已被占用 | 0.0.8 |
 | `1401` | 404 | 容器 / 镜像 / Volume / Network 不存在 | 0.0.9 |
 | `1402` | 500 | Docker API 调用失败 | 0.0.9 |
 | `1403` | 408 | Docker 操作超时 | 0.0.9 |
@@ -330,9 +331,35 @@ POST /api/v1/hosts/{hostId}/containers/list
 |------|------|------|------|
 | 获取列表 | `POST /api/v1/admin/hosts/list` | admin | 包含所有主机的连通状态 |
 | 创建主机 | `POST /api/v1/admin/hosts/create` | admin | Body: `{ name, type: "socket"\|"tcp", endpoint, tlsConfig?, basicAuth? }` |
-| 更新主机 | `POST /api/v1/admin/hosts/{hostId}/update` | admin | Body: `{ endpoint?, tlsConfig?, basicAuth?, enabled? }`——**不含 `name`**（主机名不可改，它是对外标识） |
+| 更新主机 | `POST /api/v1/admin/hosts/{hostId}/update` | admin | Body: `{ endpoint?, tlsConfig?, basicAuth?, clearCredentials?, enabled? }`——**不含 `name`**（主机名不可改，它是对外标识） |
 | 删除主机 | `POST /api/v1/admin/hosts/{hostId}/delete` | admin | 无 Body |
 | 测试主机 | `POST /api/v1/admin/hosts/test` | admin | Body: `{ type, endpoint, tlsConfig?, basicAuth? }`——测试**未保存**的配置，故不带 `hostId` |
+
+**更新语义**（`update`）：未提供的字段表示**不改**；提供 `tlsConfig` / `basicAuth` 则替换凭据，
+两者与 `clearCredentials: true`（改为无认证）**三者互斥**。
+之所以需要 `clearCredentials`：JSON 无法区分「没给 `tlsConfig`」与「`tlsConfig: null`」，
+没有它就答不出「把主机从 TLS 改回明文」——而 TLS 凭据留在明文端点上会被直接拒绝（`1301`），
+用户会卡在一个无法自救的配置里。
+
+**主机对象的字段**（`list` / `create` / `update` 的 `data`）：
+
+```jsonc
+{
+  "id": "3f1e...",            // 主键：仅用于权限外键与审计，不进 URL
+  "name": "local",             // 对外标识，也是路径里的 hostId
+  "type": "socket",           // 枚举一律以小驼峰字符串出现：socket | tcp
+  "endpoint": "/var/run/docker.sock",
+  "enabled": true,
+  "reachable": true,          // true 可连 / false 连不上 / null **未探测**
+  "authKind": "none"          // none | tls | basic；只有方式，**不含任何凭据内容**
+}
+```
+
+> `reachable` 之所以是可空布尔：`create` / `update` 不探活（写操作不该被网络超时拖住），
+> 用 `false` 表示「未探测」会让界面把它显示成「离线」，把没测当成故障。
+
+> **枚举一律序列化为小驼峰字符串**（`DockerHostType.Socket` → `"socket"`）。数值形态会让
+> 契约自解释性很差（请求收 `"socket"`、响应回 `0`），且枚举重排序会变成破坏性变更。
 
 **`tlsConfig` 字段**（`auth_kind=tls`，三项路径均必填）：
 
