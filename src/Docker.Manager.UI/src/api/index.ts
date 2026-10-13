@@ -11,7 +11,7 @@ import { ErrorCode, type ApiError, type ApiResult } from '@/types/api'
  * 3. 错误：401 / token 过期 → 跳登录；业务失败 → toast
  */
 
-const TOKEN_EXPIRED_CODES: number[] = [ErrorCode.AuthTokenExpired, ErrorCode.AuthTokenRevoked]
+const TOKEN_EXPIRED_CODES: number[] = [ErrorCode.TokenExpired, ErrorCode.RefreshTokenRevoked]
 
 export const http: AxiosInstance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/',
@@ -70,7 +70,7 @@ async function handleHttpError(error: unknown): Promise<never> {
     const apiErr: ApiError = body
       ? { code: body.code, message: body.message }
       : {
-          code: error.response?.status === 401 ? ErrorCode.Unauthorized : ErrorCode.Internal,
+          code: error.response?.status === 401 ? ErrorCode.Unauthenticated : ErrorCode.InternalError,
           message: error.message
         }
 

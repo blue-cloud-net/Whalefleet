@@ -16,31 +16,76 @@ export interface ApiError {
   details?: Record<string, unknown>
 }
 
-/** 业务错误分段（与后端 ErrorCodeCatalog 对齐） */
+/**
+ * 业务错误码。
+ *
+ * **必须与后端 `Docker.Manager.Application.Common.ErrorCodes` 及
+ * `docs/api-spec.md` 的「当前已分配的错误码」表逐码一致**（含常量名）。
+ *
+ * 数值由后端定义，前端只做引用；新增错误码请先改 `api-spec.md`，再同步此处。
+ * 禁止按数值分段自行推断含义——同一分段内 HTTP 语义并不统一。
+ */
 export const ErrorCode = {
-  // 通用（1xxx）
-  Validation: 1000,
+  /** 成功 */
+  Success: 0,
+
+  // ===== 1000-1099 通用 =====
+  /** 参数校验失败 */
+  ValidationFailed: 1000,
+  /** 资源不存在 */
   NotFound: 1001,
-  Unauthorized: 1002,
-  Timeout: 1003,
-  Forbidden: 1004,
-  Conflict: 1005,
-  // 鉴权（11xx）
-  AuthInvalidCredential: 1100,
-  AuthTokenExpired: 1101,
-  AuthTokenRevoked: 1102,
-  AuthRateLimited: 1103,
-  // 主机（12xx）
-  HostUnreachable: 1200,
-  HostNotFound: 1201,
-  // 资源（14xx）
-  ResourceNotFound: 1401,
-  DockerApi: 1402,
-  OperationTimeout: 1403,
-  // 权限（15xx）
-  ResourceDenied: 1501,
-  // 系统（9xxx）
-  Internal: 9999
+  /** 通用 Docker 操作失败（`DockerApiException`） */
+  DockerOperationFailed: 1002,
+  /** 操作超时（`TaskCanceledException`） */
+  OperationTimeout: 1003,
+
+  // ===== 1100-1199 鉴权与会话 =====
+  /** 未认证：Token 缺失或无效 */
+  Unauthenticated: 1100,
+  /** Token 已过期 */
+  TokenExpired: 1101,
+  /** Refresh token 已撤销或无效 */
+  RefreshTokenRevoked: 1102,
+  /** 登录速率限制（5 次/分钟） */
+  LoginRateLimited: 1103,
+  /** Terminal token 无效或已过期（0.4.0） */
+  TerminalTokenInvalid: 1104,
+
+  // ===== 1200-1299 用户管理 =====
+  /** 用户名已存在 */
+  UsernameAlreadyExists: 1200,
+  /** 用户不存在 */
+  UserNotFound: 1201,
+  /** 密码强度不满足要求 */
+  WeakPassword: 1202,
+
+  // ===== 1300-1399 主机管理 =====
+  /** 主机不存在 */
+  HostNotFound: 1300,
+  /** 主机连通性失败 */
+  HostUnreachable: 1301,
+  /** 主机已停用 */
+  HostDisabled: 1302,
+
+  // ===== 1400-1499 资源操作 =====
+  /** Docker 资源（容器 / 镜像 / Volume / Network）不存在 */
+  DockerResourceNotFound: 1401,
+  /** Docker API 调用失败 */
+  DockerApiFailed: 1402,
+  /** Docker 操作超时 */
+  DockerTimeout: 1403,
+
+  // ===== 1500-1599 资源权限 =====
+  /** 无权限访问此资源 */
+  ResourceForbidden: 1500,
+  /** 无权限访问此主机 */
+  HostForbidden: 1501,
+  /** 无权限执行此操作（缺少 write 权限） */
+  OperationForbidden: 1502,
+
+  // ===== 9000-9999 服务器内部错误 =====
+  /** 服务器内部错误（未捕获异常） */
+  InternalError: 9999
 } as const
 
 export type ErrorCodeValue = (typeof ErrorCode)[keyof typeof ErrorCode]
