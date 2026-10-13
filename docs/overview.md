@@ -105,7 +105,8 @@ services:
 
 socket-proxy 作为只读代理，将 Docker API 权限限定到最小子集。如必须直挂 socket，请确保 Docker.Manager 实例仅暴露给可信网络。
 
-完整安全策略见仓库根 [SECURITY.md](../SECURITY.md)。
+完整安全声明见 [README.md](../README.md#️-安全声明docker-socket-挂载) 与
+[constraints.md](constraints.md#docker-socket-挂载-️-高危)。
 
 ---
 
