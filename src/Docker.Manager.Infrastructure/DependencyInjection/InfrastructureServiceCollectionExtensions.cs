@@ -1,5 +1,7 @@
 using Docker.Manager.Application.Abstractions;
+using Docker.Manager.Core.Auth;
 using Docker.Manager.Infrastructure.Docker;
+using Docker.Manager.Infrastructure.Security;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -68,11 +70,60 @@ public static class InfrastructureServiceCollectionExtensions
         // 二者生命周期不同，故「解析主机」与「池化客户端」分属两层。
         services.AddScoped<IDockerHostAccessor, DockerHostAccessor>();
 
+        // 密码哈希（Argon2id）：参数越界在启动时即失败（ValidateOnStart），
+        // 而不是拖到第一次登录。哈希器无状态，故为 Singleton。
+        services
+            .AddOptions<Argon2Options>()
+            .Bind(configuration.GetSection(Argon2Options.SectionName))
+            .Validate(
+                static options => IsValidArgon2Options(options),
+                "Security:Argon2 参数越界：内存须 ≥ 8 × 并行度，各字段须在 PasswordHash 允许的范围内")
+            .ValidateOnStart();
+
+        services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
+
         // 持久化（SQLite + Dapper）：连接工厂、架构迁移、仓储。
         // 数据库的实际初始化（迁移 / WAL / 种子）由宿主在启动阶段显式调用
         // IDatabaseInitializer，不在 DI 注册期执行。
         services.AddPersistence(configuration);
 
         return services;
+    }
+
+    /// <summary>
+    /// 校验 Argon2 参数是否合法。
+    /// </summary>
+    /// <remarks>
+    /// <para>刻意<b>复用</b> <see cref="PasswordHash.Create"/> 的校验规则，而不是在此重写一套范围判断——
+    /// 两处规则一旦漂移，就会出现「启动校验通过、首次登录却抛异常」的错位。</para>
+    /// <para>先用显式边界拦住长度字段，避免极小/极大的长度值在构造探测数组时先抛
+    /// <see cref="OverflowException"/>（那不属于参数越界的语义）。</para>
+    /// </remarks>
+    /// <param name="options">待校验的选项。</param>
+    /// <returns>合法返回 <see langword="true"/>。</returns>
+    private static bool IsValidArgon2Options(Argon2Options options)
+    {
+        if (options.SaltSizeBytes is < PasswordHash.MinSaltLength or > PasswordHash.MaxSaltLength
+            || options.HashSizeBytes is < PasswordHash.MinDigestLength or > PasswordHash.MaxDigestLength)
+        {
+            return false;
+        }
+
+        try
+        {
+            // 返回值只是用来触发一次完整校验，不参与任何计算。
+            _ = PasswordHash.Create(
+                options.MemorySizeKiB,
+                options.Iterations,
+                options.Parallelism,
+                new byte[options.SaltSizeBytes],
+                new byte[options.HashSizeBytes]);
+
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
     }
 }

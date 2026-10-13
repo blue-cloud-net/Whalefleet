@@ -36,6 +36,11 @@
     <!-- ============ Docker SDK ============ -->
     <PackageVersion Include="Docker.DotNet.Enhanced" Version="4.3.3" />
 
+    <!-- ============ 安全（密码哈希） ============ -->
+    <!-- MIT 许可（本项目亦为 MIT）。它只输出原始字节，PHC 编码串由 Core/Auth/PasswordHash 值对象负责。
+         未选 Isopoh.Cryptography.Argon2：其为 CC-BY-4.0（Creative Commons 内容许可，官方不建议用于软件）。 -->
+    <PackageVersion Include="Konscious.Security.Cryptography.Argon2" Version="1.3.1" />
+
     <!-- ============ 持久化（Dapper + SQLite） ============ -->
     <PackageVersion Include="Dapper" Version="2.1.89" />
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.12" />

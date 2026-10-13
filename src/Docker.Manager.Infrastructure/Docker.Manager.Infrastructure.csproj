@@ -33,6 +33,11 @@
     <PackageReference Include="Microsoft.Data.Sqlite" />
   </ItemGroup>
 
+  <!-- 安全：Argon2id 密码哈希（仅本层引用；Core 不引用任何 NuGet） -->
+  <ItemGroup>
+    <PackageReference Include="Konscious.Security.Cryptography.Argon2" />
+  </ItemGroup>
+
   <!-- 建表 / 迁移脚本以嵌入资源随程序集分发，避免运行时依赖工作目录下的 .sql 文件 -->
   <ItemGroup>
     <EmbeddedResource Include="Persistence\Schema\Migrations\*.sql" />
