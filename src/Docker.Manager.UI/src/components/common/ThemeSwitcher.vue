@@ -52,7 +52,7 @@ const activeDot = computed(() => COLORS.find((c) => c.value === color.value)?.do
     <el-dropdown trigger="click">
       <el-button text class="!px-2" :title="t('theme.color')" :aria-label="t('theme.color')">
         <span
-          class="w-4 h-4 rounded-full ring-2 ring-offset-2 ring-offset-white dark:ring-offset-gray-900 transition-all duration-200"
+          class="w-4 h-4 rounded-full ring-2 ring-offset-2 ring-offset-surface-card transition-all duration-200"
           :class="[activeDot, `ring-current/25`]"
         />
       </el-button>

@@ -20,13 +20,13 @@ withDefaults(
   <section class="app-card overflow-hidden">
     <header
       v-if="title || $slots.actions"
-      class="flex items-center justify-between gap-3 px-4 sm:px-5 py-3 border-b border-gray-200 dark:border-gray-700"
+      class="flex items-center justify-between gap-3 px-4 sm:px-5 py-3 border-b border-line-subtle"
     >
       <div class="min-w-0">
-        <h2 v-if="title" class="text-sm font-semibold text-gray-900 dark:text-gray-100 app-truncate">
+        <h2 v-if="title" class="text-sm font-semibold text-content-strong app-truncate">
           {{ title }}
         </h2>
-        <p v-if="description" class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+        <p v-if="description" class="mt-0.5 text-xs text-content-muted">
           {{ description }}
         </p>
       </div>

@@ -36,7 +36,7 @@ function onLocaleChange(next: AppLocale) {
       <SectionCard :title="t('settings.appearance')">
         <div class="space-y-5">
           <div class="flex items-center justify-between gap-4 flex-wrap">
-            <span class="text-sm text-gray-600 dark:text-gray-300">{{ t('theme.mode') }}</span>
+            <span class="text-sm text-content-body">{{ t('theme.mode') }}</span>
             <el-radio-group
               :model-value="theme.mode"
               size="small"
@@ -49,7 +49,7 @@ function onLocaleChange(next: AppLocale) {
           </div>
 
           <div class="flex items-center justify-between gap-4 flex-wrap">
-            <span class="text-sm text-gray-600 dark:text-gray-300">{{ t('theme.color') }}</span>
+            <span class="text-sm text-content-body">{{ t('theme.color') }}</span>
             <!-- 色板选择比单选按钮更直观 -->
             <div class="flex items-center gap-2">
               <button
@@ -59,12 +59,12 @@ function onLocaleChange(next: AppLocale) {
                 :class="[
                   theme.color === c.value
                     ? 'bg-brand-500/12 ring-1 ring-brand-500/30'
-                    : 'ring-1 ring-gray-200 dark:ring-gray-700 hover:ring-gray-300 dark:hover:ring-gray-600'
+                    : 'ring-1 ring-line-subtle hover:ring-line-strong'
                 ]"
                 @click="theme.setColor(c.value)"
               >
                 <span class="w-5 h-5 rounded-full transition-transform duration-200" :class="c.swatch" />
-                <span class="text-xs text-gray-600 dark:text-gray-300">{{ t(c.label) }}</span>
+                <span class="text-xs text-content-body">{{ t(c.label) }}</span>
               </button>
             </div>
           </div>
@@ -74,7 +74,7 @@ function onLocaleChange(next: AppLocale) {
       <!-- 语言 -->
       <SectionCard :title="t('settings.locale')">
         <div class="flex items-center justify-between gap-4 flex-wrap">
-          <span class="text-sm text-gray-600 dark:text-gray-300">{{ t('settings.language') }}</span>
+          <span class="text-sm text-content-body">{{ t('settings.language') }}</span>
           <el-radio-group
             :model-value="locale"
             size="small"
@@ -89,7 +89,7 @@ function onLocaleChange(next: AppLocale) {
       <!-- 列表偏好 -->
       <SectionCard :title="t('settings.list')">
         <div class="flex items-center justify-between gap-4 flex-wrap">
-          <span class="text-sm text-gray-600 dark:text-gray-300">{{ t('settings.pageSize') }}</span>
+          <span class="text-sm text-content-body">{{ t('settings.pageSize') }}</span>
           <el-radio-group
             :model-value="prefs.pageSize"
             size="small"
@@ -100,7 +100,7 @@ function onLocaleChange(next: AppLocale) {
             </el-radio-button>
           </el-radio-group>
         </div>
-        <p class="mt-3 text-xs text-gray-400 dark:text-gray-500">
+        <p class="mt-3 text-xs text-content-faint">
           {{ t('settings.pageSizeHint') }}
         </p>
       </SectionCard>

@@ -98,10 +98,10 @@ function describeLoginError(error: unknown): string {
           <span class="i-carbon-cube text-8" />
         </span>
         <div class="text-center">
-          <h1 class="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+          <h1 class="text-xl font-semibold tracking-tight text-content-strong">
             {{ t('auth.login.title') }}
           </h1>
-          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('app.tagline') }}</p>
+          <p class="mt-1 text-xs text-content-muted">{{ t('app.tagline') }}</p>
         </div>
       </div>
 
@@ -135,7 +135,7 @@ function describeLoginError(error: unknown): string {
 
           <p
             v-if="errorMessage"
-            class="mb-3 -mt-1 text-xs text-red-500 dark:text-red-400 flex items-center gap-1"
+            class="mb-3 -mt-1 text-xs text-status-down flex items-center gap-1"
             role="alert"
           >
             <span class="i-carbon-warning-alt shrink-0" />
@@ -154,7 +154,7 @@ function describeLoginError(error: unknown): string {
         </el-form>
 
         <!-- 主题快捷切换：登录页也应能切主题，便于验收 -->
-        <div class="mt-5 pt-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+        <div class="mt-5 pt-4 border-t border-line-subtle flex items-center justify-between">
           <div class="flex items-center gap-2">
             <button
               v-for="c in [
@@ -167,7 +167,7 @@ function describeLoginError(error: unknown): string {
               :class="[
                 c.cls,
                 color === c.key
-                  ? 'ring-2 ring-offset-2 ring-gray-300 dark:ring-offset-gray-900 dark:ring-gray-500'
+                  ? 'ring-2 ring-offset-2 ring-offset-surface-card ring-line-strong'
                   : ''
               ]"
               :aria-label="t(`theme.color.${c.key}`)"
@@ -176,7 +176,7 @@ function describeLoginError(error: unknown): string {
           </div>
 
           <button
-            class="text-xs text-gray-500 dark:text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors inline-flex items-center gap-1"
+            class="text-xs text-content-muted hover:text-brand-600 dark:hover:text-brand-400 transition-colors inline-flex items-center gap-1"
             @click="setMode(resolvedMode === 'dark' ? 'light' : 'dark')"
           >
             <span :class="resolvedMode === 'dark' ? 'i-carbon-sun' : 'i-carbon-moon'" />

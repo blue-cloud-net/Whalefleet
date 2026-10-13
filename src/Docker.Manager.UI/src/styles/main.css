@@ -19,11 +19,47 @@
   --shadow-md: 0 4px 12px rgb(15 23 42 / 0.08), 0 2px 4px rgb(15 23 42 / 0.04);
   --shadow-lg: 0 12px 28px rgb(15 23 42 / 0.12), 0 4px 8px rgb(15 23 42 / 0.06);
 
-  /* 主题感知的表面色 */
+  /* ===== 表面层级：page（页面底）→ card（卡片）→ elevated（浮层）=====
+     卡片悬浮态单列一个 token：暗色下阴影几乎不可见，靠表面提亮给反馈。 */
   --surface-page: #f6f8fa;
   --surface-card: #ffffff;
+  --surface-card-hover: #fbfcfe;
   --surface-sunken: #f1f5f9;
+  --surface-hover: #eef2f7;
+  --surface-elevated: #ffffff;
+
+  /* 描边：subtle 用于分隔线与卡片边，strong 用于可交互元素的 hover 态 */
   --border-subtle: #e2e8f0;
+  --border-strong: #cbd5e1;
+
+  /* ===== 文本四级语义色（RGB 三元组，支持 /alpha 修饰符）=====
+     组件只允许用这四个（text-content-*），不再直接写 gray-500 / gray-400：
+     后者不带语义，换主题或调暗度时要逐处改，且亮暗两套值容易漂移。
+     写成三元组而非十六进制，是为了能用 text-content-muted/70 这类透明度写法。 */
+  --text-strong: 15 23 42; /* 标题、强调数值 */
+  --text-body: 51 65 85; /* 正文 */
+  --text-muted: 100 116 139; /* 次要说明、标签 */
+  --text-faint: 148 163 184; /* 占位符、禁用态 */
+
+  /* ===== 状态三元组 =====
+     online / offline / unknown 在 StatusDot、HostCard、HostSelector
+     等处重复出现过三遍相同的 green/red/gray 组合，收口成令牌。 */
+  --status-ok: 22 163 74;
+  --status-down: 220 38 38;
+  --status-idle: 148 163 184;
+  /* 半透明铺底与主色分列：暗色下靠透明度调淡，而非换一个更深的纯色 */
+  --status-ok-soft: 240 253 244;
+  --status-down-soft: 254 242 242;
+  --status-idle-soft: 248 250 252;
+
+  /* 层级刻度：顶栏 sticky、卡片悬浮、浮层、toast 各有归属，不再随手写 z-20 */
+  --z-base: 0;
+  --z-sticky: 20;
+  --z-raised: 30;
+  --z-dropdown: 2000;
+  --z-drawer: 2000;
+  --z-modal: 2000;
+  --z-toast: 3000;
 
   /* 品牌色阴影（跟随三色主题） */
   --shadow-brand: 0 8px 24px rgb(var(--brand-500) / 0.18);
@@ -41,8 +77,25 @@
 html.dark {
   --surface-page: #0b0f14;
   --surface-card: #141a21;
+  --surface-card-hover: #1a222b;
   --surface-sunken: #1b232c;
+  --surface-hover: #212b35;
+  --surface-elevated: #1a222b;
+
   --border-subtle: #2a3441;
+  --border-strong: #3b4857;
+
+  --text-strong: 226 232 240;
+  --text-body: 203 213 225;
+  --text-muted: 148 163 184;
+  --text-faint: 100 116 139;
+
+  --status-ok: 74 222 128;
+  --status-down: 248 113 113;
+  --status-idle: 100 116 139;
+  --status-ok-soft: 34 197 94;
+  --status-down-soft: 239 68 68;
+  --status-idle-soft: 100 116 139;
 
   /* 暗色下阴影几乎不可见，改用更亮的边框与更深的天花板 */
   --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.3);
@@ -117,12 +170,8 @@ html {
 
 body {
   background: var(--surface-page);
-  color: #0f172a;
+  color: rgb(var(--text-strong));
   transition: background-color var(--duration-base) var(--ease-out), color var(--duration-base) var(--ease-out);
-}
-
-html.dark body {
-  color: #e2e8f0;
 }
 
 /* ============================================================
@@ -247,7 +296,7 @@ html.dark *::-webkit-scrollbar-thumb:hover {
 
   --el-bg-color-page: var(--surface-page);
   --el-bg-color: var(--surface-card);
-  --el-bg-color-overlay: var(--surface-card);
+  --el-bg-color-overlay: var(--surface-elevated);
   --el-fill-color-blank: var(--surface-card);
 
   --el-border-color: var(--border-subtle);
@@ -255,10 +304,12 @@ html.dark *::-webkit-scrollbar-thumb:hover {
   --el-border-color-lighter: color-mix(in srgb, var(--border-subtle) 60%, transparent);
   --el-border-color-extra-light: color-mix(in srgb, var(--border-subtle) 45%, transparent);
 
-  --el-text-color-primary: #1f2937;
-  --el-text-color-regular: #4b5563;
-  --el-text-color-secondary: #6b7280;
-  --el-text-color-placeholder: #9ca3af;
+  /* 文本色直接引用语义令牌，不再在 EP 侧另存一份灰阶：
+     这样暗色只需翻转 --text-* 四个值，EP 组件自动跟随，不会两处漂移。 */
+  --el-text-color-primary: rgb(var(--text-strong));
+  --el-text-color-regular: rgb(var(--text-body));
+  --el-text-color-secondary: rgb(var(--text-muted));
+  --el-text-color-placeholder: rgb(var(--text-faint));
 
   --el-box-shadow-lighter: var(--shadow-xs);
   --el-box-shadow-light: var(--shadow-sm);
@@ -267,10 +318,6 @@ html.dark *::-webkit-scrollbar-thumb:hover {
 }
 
 html.dark {
-  --el-text-color-primary: #e2e8f0;
-  --el-text-color-regular: #cbd5e1;
-  --el-text-color-secondary: #94a3b8;
-  --el-text-color-placeholder: #64748b;
   --el-border-color-dark: color-mix(in srgb, var(--border-subtle) 100%, #fff 10%);
   --el-border-color-darker: color-mix(in srgb, var(--border-subtle) 100%, #fff 20%);
   --el-mask-color: rgb(11 15 20 / 0.8);
@@ -313,4 +360,15 @@ html.dark {
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
   backdrop-filter: blur(8px);
+}
+
+/* 骨架屏底色接上 --border-subtle：加载中与空态、预告在明暗下都读得出来 */
+.el-skeleton__item {
+  background: linear-gradient(
+    90deg,
+    var(--border-subtle) 25%,
+    color-mix(in srgb, var(--border-subtle) 45%, transparent) 37%,
+    var(--border-subtle) 63%
+  );
+  background-size: 400% 100%;
 }

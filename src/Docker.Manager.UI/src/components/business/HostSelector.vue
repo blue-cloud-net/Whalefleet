@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useHostStore } from '@/stores/host'
+import { hostTone, HOST_TONE_CHIP, HOST_TONE_LABEL_KEY } from '@/utils/host-status'
 import StatusDot from '@/components/common/StatusDot.vue'
 
 const route = useRoute()
@@ -14,26 +15,13 @@ const currentHost = computed(() => host.currentHost)
 const hosts = computed(() => host.hosts)
 const inHostScope = computed(() => route.meta.scope === 'host')
 
+/** 状态语义与配色统一走 utils/host-status（此前这里是第三份重复实现） */
 function statusLabel(status?: string): string {
-  switch (status) {
-    case 'online':
-      return t('host.status.online')
-    case 'offline':
-      return t('host.status.offline')
-    default:
-      return t('host.status.unknown')
-  }
+  return t(HOST_TONE_LABEL_KEY[hostTone(status)])
 }
 
 function statusChip(status?: string): string {
-  switch (status) {
-    case 'online':
-      return 'text-green-600 dark:text-green-400 ring-green-200/70 dark:ring-green-500/25'
-    case 'offline':
-      return 'text-red-600 dark:text-red-400 ring-red-200/70 dark:ring-red-500/25'
-    default:
-      return 'text-gray-400 dark:text-gray-500 ring-gray-200/70 dark:ring-gray-600/50'
-  }
+  return HOST_TONE_CHIP[hostTone(status)]
 }
 
 /**
@@ -57,18 +45,18 @@ function onSelect(command: string) {
 
 <template>
   <el-dropdown trigger="click" @command="onSelect">
-    <el-button text class="!px-2 !py-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+    <el-button text class="!px-2 !py-1.5 rounded-md hover:bg-surface-hover transition-colors">
       <template v-if="currentHost">
         <StatusDot :status="currentHost.status" size="sm" />
-        <span class="text-xs font-medium text-gray-700 dark:text-gray-200 max-w-28 app-truncate">
+        <span class="text-xs font-medium text-content-body max-w-28 app-truncate">
           {{ currentHost.name }}
         </span>
       </template>
       <template v-else>
-        <span class="i-carbon-cloud-satellite text-base text-gray-400" />
-        <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('host.selector.placeholder') }}</span>
+        <span class="i-carbon-cloud-satellite text-base text-content-faint" />
+        <span class="text-xs text-content-muted">{{ t('host.selector.placeholder') }}</span>
       </template>
-      <span class="i-carbon-chevron-down text-xs text-gray-400" />
+      <span class="i-carbon-chevron-down text-xs text-content-faint" />
     </el-button>
 
     <template #dropdown>
@@ -82,10 +70,7 @@ function onSelect(command: string) {
           <span class="flex items-center gap-2.5">
             <StatusDot :status="h.status" size="sm" />
             <span class="text-sm app-truncate max-w-32">{{ h.name }}</span>
-            <span
-              class="app-chip ml-auto shrink-0 ring-1 ring-inset"
-              :class="statusChip(h.status)"
-            >
+            <span class="app-chip ml-auto shrink-0" :class="statusChip(h.status)">
               {{ statusLabel(h.status) }}
             </span>
           </span>

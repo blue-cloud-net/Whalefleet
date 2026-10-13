@@ -6,6 +6,7 @@ import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import type { HostOverview } from '@/types/api'
 import { formatUptime, EMPTY, type DurationUnits } from '@/utils/datetime'
+import { hostTone, HOST_TONE_CHIP, HOST_TONE_LABEL_KEY, HOST_TONE_RAIL } from '@/utils/host-status'
 import StatusDot from '@/components/common/StatusDot.vue'
 
 const props = defineProps<{
@@ -24,28 +25,10 @@ const stats = computed(() => [
   { key: 'networks', label: t('nav.networks'), icon: 'i-carbon-network-3' }
 ])
 
-const statusLabel = computed(() => {
-  switch (props.host.status) {
-    case 'online':
-      return t('host.status.online')
-    case 'offline':
-      return t('host.status.offline')
-    default:
-      return t('host.status.unknown')
-  }
-})
+/** 状态语义：ok / down / idle，配色与文案统一从 utils/host-status 取 */
+const tone = computed(() => hostTone(props.host.status))
 
-/** 状态徽标配色：药丸形 chip，比纯文字更易扫视 */
-const statusChip = computed(() => {
-  switch (props.host.status) {
-    case 'online':
-      return 'bg-green-50 text-green-700 ring-green-200/70 dark:bg-green-500/15 dark:text-green-400 dark:ring-green-500/25'
-    case 'offline':
-      return 'bg-red-50 text-red-700 ring-red-200/70 dark:bg-red-500/15 dark:text-red-400 dark:ring-red-500/25'
-    default:
-      return 'bg-gray-50 text-gray-500 ring-gray-200/70 dark:bg-gray-700/60 dark:text-gray-400 dark:ring-gray-600/50'
-  }
-})
+const statusLabel = computed(() => t(HOST_TONE_LABEL_KEY[tone.value]))
 
 const typeIcon = computed(() =>
   props.host.type === 'socket' ? 'i-carbon-terminal' : 'i-carbon-cloud-satellite'
@@ -107,21 +90,14 @@ function onKeydown(e: KeyboardEvent) {
     role="button"
     tabindex="0"
     :aria-label="t('host.actions.enterLabel', { name: host.name })"
-    class="app-card app-card-interactive group relative overflow-hidden px-4 py-3.5 flex flex-wrap items-center gap-x-6 gap-y-3 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-50 dark:focus-visible:ring-offset-gray-950"
+    class="app-card app-card-interactive group relative overflow-hidden px-4 py-3.5 flex flex-wrap items-center gap-x-6 gap-y-3 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
     @click="enter"
     @keydown="onKeydown"
   >
     <!-- 左侧状态色条：整行的状态一目了然，hover 时加亮 -->
     <span
-      class="absolute left-0 top-0 bottom-0 w-1 transition-all duration-300"
-      :class="[
-        host.status === 'online'
-          ? 'bg-green-500'
-          : host.status === 'offline'
-            ? 'bg-red-500'
-            : 'bg-gray-300 dark:bg-gray-600',
-        'opacity-60 group-hover:opacity-100'
-      ]"
+      class="absolute left-0 top-0 bottom-0 w-1 transition-opacity duration-300 opacity-60 group-hover:opacity-100"
+      :class="HOST_TONE_RAIL[tone]"
       aria-hidden="true"
     />
 
@@ -129,26 +105,21 @@ function onKeydown(e: KeyboardEvent) {
     <div class="min-w-0 flex-1 basis-56 pl-2">
       <div class="flex items-center gap-2">
         <StatusDot :status="host.status" size="md" />
-        <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 app-truncate">
+        <h3 class="text-sm font-semibold text-content-strong app-truncate">
           {{ host.name }}
         </h3>
-        <span
-          class="app-chip shrink-0 text-gray-500 dark:text-gray-400 ring-gray-200/70 dark:ring-gray-600/50"
-        >
+        <span class="app-chip shrink-0 bg-surface-sunken text-content-muted ring-line-subtle">
           <span class="text-xs" :class="typeIcon" />
           {{ host.type === 'socket' ? t('host.type.socket') : t('host.type.tcp') }}
         </span>
       </div>
 
-      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400 app-truncate font-mono" :title="host.endpoint">
+      <p class="mt-1 text-xs text-content-muted app-truncate font-mono" :title="host.endpoint">
         {{ host.endpoint }}
       </p>
 
       <!-- 版本 / 运行时间：缺失时整行不渲染 -->
-      <p
-        v-if="metaItems.length > 0"
-        class="mt-1 text-xs text-gray-400 dark:text-gray-500 app-truncate"
-      >
+      <p v-if="metaItems.length > 0" class="mt-1 text-xs text-content-faint app-truncate">
         {{ metaItems.join(' · ') }}
       </p>
     </div>
@@ -160,21 +131,26 @@ function onKeydown(e: KeyboardEvent) {
         :key="s.key"
         class="app-stat-tile w-16 flex flex-col items-center justify-center gap-0.5"
       >
-        <span class="text-base leading-none text-gray-400 dark:text-gray-500" :class="s.icon" />
-        <span class="text-sm font-semibold leading-tight app-tabular text-gray-600 dark:text-gray-300">
+        <span class="text-base leading-none text-content-faint" :class="s.icon" />
+        <span class="text-sm font-semibold leading-tight app-tabular text-content-body">
           {{ host.counts ? host.counts[s.key as keyof typeof host.counts] : '—' }}
         </span>
-        <span class="text-xs leading-none text-gray-400 dark:text-gray-500">{{ s.label }}</span>
+        <span class="text-xs leading-none text-content-faint">{{ s.label }}</span>
       </div>
     </div>
 
     <!-- 状态 + 行内操作 -->
     <div class="flex items-center gap-1.5 shrink-0 ml-auto">
-      <span class="app-chip" :class="statusChip">
+      <span class="app-chip" :class="HOST_TONE_CHIP[tone]">
         {{ statusLabel }}
       </span>
 
-      <!-- 操作按钮：常态半透明，hover 整行时才完全显形，保持列表干净 -->
+      <!--
+        操作按钮：常态半透明，hover 整行时才完全显形，保持列表干净。
+
+        早先这里是三个按钮，其中「查看详情」与「状态图」**绑的是同一个 openStatus()**
+        （详情本该指概览，而整行点击已经能进概览），属于纯粹的冗余，已删除。
+      -->
       <div
         class="flex items-center gap-0.5 opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200 focus-within:opacity-100"
       >
@@ -191,18 +167,6 @@ function onKeydown(e: KeyboardEvent) {
           </el-button>
         </el-tooltip>
 
-        <el-tooltip :content="t('host.actions.detail')" placement="top">
-          <el-button
-            text
-            size="small"
-            class="!px-1.5"
-            :aria-label="t('host.actions.detail')"
-            @click.stop="openStatus"
-          >
-            <span class="i-carbon-information text-base" />
-          </el-button>
-        </el-tooltip>
-
         <el-tooltip :content="t('host.actions.status')" placement="top">
           <el-button
             text
@@ -216,7 +180,7 @@ function onKeydown(e: KeyboardEvent) {
         </el-tooltip>
       </div>
 
-      <span class="i-carbon-arrow-right text-sm text-gray-300 dark:text-gray-600 shrink-0" />
+      <span class="i-carbon-arrow-right text-sm text-content-faint shrink-0" aria-hidden="true" />
     </div>
   </div>
 </template>

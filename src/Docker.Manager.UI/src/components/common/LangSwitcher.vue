@@ -21,7 +21,7 @@ function toggle() {
 <template>
   <el-button
     text
-    class="!px-2 !w-9 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+    class="!px-2 !w-9 text-xs font-semibold text-content-muted hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
     :title="LABELS[modelValue]"
     :aria-label="`switch to ${modelValue === 'zh-CN' ? 'en-US' : 'zh-CN'}`"
     @click="toggle"

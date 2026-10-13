@@ -54,6 +54,36 @@ export default defineConfig({
         700: 'rgb(var(--brand-700) / <alpha-value>)',
         800: 'rgb(var(--brand-800) / <alpha-value>)',
         900: 'rgb(var(--brand-900) / <alpha-value>)'
+      },
+      // ===== 语义色 =====
+      // 全部指向 main.css 的令牌。组件用 bg-surface-card / text-content-muted /
+      // border-line-subtle 这类带语义的类名，亮暗切换只发生在令牌层。
+      surface: {
+        page: 'var(--surface-page)',
+        card: 'var(--surface-card)',
+        'card-hover': 'var(--surface-card-hover)',
+        sunken: 'var(--surface-sunken)',
+        hover: 'var(--surface-hover)',
+        elevated: 'var(--surface-elevated)'
+      },
+      content: {
+        strong: 'rgb(var(--text-strong) / <alpha-value>)',
+        body: 'rgb(var(--text-body) / <alpha-value>)',
+        muted: 'rgb(var(--text-muted) / <alpha-value>)',
+        faint: 'rgb(var(--text-faint) / <alpha-value>)'
+      },
+      line: {
+        subtle: 'var(--border-subtle)',
+        strong: 'var(--border-strong)'
+      },
+      // 状态色用 RGB 三元组形式，才能支持 ring-status-ok/30 这类透明度写法
+      status: {
+        ok: 'rgb(var(--status-ok) / <alpha-value>)',
+        'ok-soft': 'rgb(var(--status-ok-soft) / <alpha-value>)',
+        down: 'rgb(var(--status-down) / <alpha-value>)',
+        'down-soft': 'rgb(var(--status-down-soft) / <alpha-value>)',
+        idle: 'rgb(var(--status-idle) / <alpha-value>)',
+        'idle-soft': 'rgb(var(--status-idle-soft) / <alpha-value>)'
       }
     },
     fontFamily: {
@@ -84,29 +114,36 @@ export default defineConfig({
 
       // ===== 卡片 =====
       'app-card':
-        'rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-xs transition-[box-shadow,border-color,transform] duration-200 ease-out',
-      // 可交互卡片：悬浮抬升 + 品牌色描边
+        'rounded-lg bg-surface-card border border-line-subtle shadow-xs transition-[box-shadow,border-color,background-color] duration-200 ease-out',
+      // 可交互卡片：悬浮抬升 + 品牌色描边 + 表面提亮。
+      // 表面提亮是暗色下的主要反馈信号——那里的 shadow-md 几乎不可见。
       'app-card-interactive':
-        'app-card hover:shadow-md hover:border-brand-300 dark:hover:border-brand-700 hover:-translate-y-px',
+        'app-card hover:shadow-md hover:border-brand-300 hover:bg-surface-card-hover hover:-translate-y-px',
 
       // ===== 导航 =====
       'app-nav-item':
         'w-full flex items-center gap-3 rounded-md text-sm transition-all duration-200 ease-out',
       'app-nav-idle':
-        'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100',
+        'text-content-body hover:bg-surface-hover hover:text-content-strong',
       'app-nav-active':
         'bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400 font-medium',
 
+      // ===== 语义文本 / 分隔线 =====
+      // 替代散落各处的 `text-gray-500 dark:text-gray-400` 与 `border-gray-200 dark:border-gray-700`
+      'app-text-muted': 'text-content-muted',
+      'app-text-faint': 'text-content-faint',
+      'app-divider': 'border-line-subtle',
+
       // ===== 表单元素 =====
       'app-stat-tile':
-        'rounded-lg bg-gray-50 dark:bg-gray-800/70 px-3 py-3 ring-1 ring-inset ring-gray-200/70 dark:ring-gray-700/50',
+        'rounded-lg bg-surface-sunken px-3 py-3 ring-1 ring-inset ring-line-subtle',
       'app-chip':
         'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ring-1 ring-inset transition-colors duration-200',
 
       // ===== 文本 =====
       'app-page-title':
-        'flex items-center gap-2.5 text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-100',
-      'app-page-subtitle': 'mt-1.5 text-sm leading-relaxed text-gray-500 dark:text-gray-400',
+        'flex items-center gap-2.5 text-xl font-semibold tracking-tight text-content-strong',
+      'app-page-subtitle': 'mt-1.5 text-sm leading-relaxed text-content-muted',
 
       // ===== 排版辅助 =====
       'app-truncate': 'min-w-0 truncate',

@@ -34,9 +34,7 @@ async function onLogout() {
       >
         <span class="i-carbon-user-avatar" />
       </span>
-      <span
-        class="hidden sm:inline text-sm text-gray-700 dark:text-gray-200 app-truncate max-w-24"
-      >
+      <span class="hidden sm:inline text-sm text-content-body app-truncate max-w-24">
         <!-- 理论上登录后必有 user；恢复失败时用占位符，别硬编码成 admin 冒充身份 -->
         {{ auth.user?.username ?? '—' }}
       </span>

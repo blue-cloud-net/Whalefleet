@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { hostTone, HOST_TONE_DOT } from '@/utils/host-status'
 
 /**
  * 状态点：online / offline / unknown 三态。
  *
  * online 带脉冲扩散动画（尊重 prefers-reduced-motion，样式层已在 main.css 处理），
  * 让总览页的长列表里「哪台在线」一眼可辨。
+ *
+ * 配色走 `utils/host-status.ts` 的语义令牌，不再自带一份 green/red/gray 开关——
+ * 之前这里与 HostCard / HostSelector 各写一遍，已漂移过一次。
  */
 const props = withDefaults(
   defineProps<{
@@ -18,16 +22,7 @@ const props = withDefaults(
   { status: 'unknown', pulse: true, size: 'md' }
 )
 
-const colorClass = computed(() => {
-  switch (props.status) {
-    case 'online':
-      return 'bg-green-500 text-green-500'
-    case 'offline':
-      return 'bg-red-500 text-red-500'
-    default:
-      return 'bg-gray-400 dark:bg-gray-500 text-gray-400'
-  }
-})
+const colorClass = computed(() => HOST_TONE_DOT[hostTone(props.status)])
 
 const sizeClass = computed(() => {
   switch (props.size) {

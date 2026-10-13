@@ -20,7 +20,7 @@ const { t } = useI18n()
 <template>
   <!-- ===== 桌面端侧边栏（lg 及以上） ===== -->
   <aside
-    class="hidden lg:flex flex-col shrink-0 border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 transition-[width] duration-200 ease-out"
+    class="hidden lg:flex flex-col shrink-0 border-r border-line-subtle bg-surface-card transition-[width] duration-200 ease-out"
     :class="collapsed ? 'w-16' : 'w-50'"
   >
     <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
@@ -28,8 +28,8 @@ const { t } = useI18n()
     </nav>
 
     <!-- 折叠态底部的展开提示 -->
-    <div v-if="collapsed" class="p-3 border-t border-gray-200 dark:border-gray-700 text-center">
-      <span class="text-[10px] text-gray-400 dark:text-gray-600">{{ t('common.sidebar') }}</span>
+    <div v-if="collapsed" class="p-3 border-t border-line-subtle text-center">
+      <span class="text-[10px] text-content-faint">{{ t('common.sidebar') }}</span>
     </div>
   </aside>
 

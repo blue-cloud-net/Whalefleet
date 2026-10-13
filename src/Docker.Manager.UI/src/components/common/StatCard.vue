@@ -19,12 +19,18 @@ withDefaults(
   { tone: 'neutral' }
 )
 
+/**
+ * 色调对应的图标底色。
+ *
+ * 语义色的暗色变体由令牌自身翻转（`--status-ok` 暗色下是更亮的绿），
+ * 因此这里不再写 `dark:` 变体——早先的写法会让暗色和亮色各维护一套色值。
+ */
 const TONE_ICON: Record<string, string> = {
-  brand: 'text-brand-500 bg-brand-50 dark:bg-brand-500/15',
-  neutral: 'text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700/60',
-  success: 'text-green-600 dark:text-green-500 bg-green-50 dark:bg-green-500/15',
-  warning: 'text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-500/15',
-  danger: 'text-red-600 dark:text-red-500 bg-red-50 dark:bg-red-500/15'
+  brand: 'text-brand-500 bg-brand-500/10',
+  neutral: 'text-content-faint bg-surface-sunken',
+  success: 'text-status-ok bg-status-ok-soft/60',
+  warning: 'text-amber-500 bg-amber-500/10',
+  danger: 'text-status-down bg-status-down-soft/60'
 }
 </script>
 
@@ -40,18 +46,18 @@ const TONE_ICON: Record<string, string> = {
     </span>
 
     <div class="min-w-0 flex-1">
-      <div class="text-xs font-medium text-gray-500 dark:text-gray-400 app-truncate">
+      <div class="text-xs font-medium text-content-muted app-truncate">
         {{ label }}
       </div>
       <div class="mt-1 flex items-baseline gap-1">
-        <span class="text-2xl font-semibold leading-none app-tabular text-gray-900 dark:text-gray-100">
+        <span class="text-2xl font-semibold leading-none app-tabular text-content-strong">
           {{ value ?? '—' }}
         </span>
-        <span v-if="suffix && value != null" class="text-xs text-gray-400 dark:text-gray-500">
+        <span v-if="suffix && value != null" class="text-xs text-content-faint">
           {{ suffix }}
         </span>
       </div>
-      <div v-if="hint" class="mt-1 text-xs text-gray-400 dark:text-gray-500 app-truncate">
+      <div v-if="hint" class="mt-1 text-xs text-content-faint app-truncate">
         {{ hint }}
       </div>
     </div>

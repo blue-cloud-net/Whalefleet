@@ -12,14 +12,14 @@ const { t } = useI18n()
     />
 
     <span
-      class="w-20 h-20 rounded-2xl grid place-items-center text-5xl text-gray-300 dark:text-gray-600 bg-gray-100 dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700"
+      class="w-20 h-20 rounded-2xl grid place-items-center text-5xl text-content-faint bg-surface-sunken ring-1 ring-line-subtle"
     >
       <span class="i-carbon-warning-alt" />
     </span>
 
     <div class="text-center">
-      <h1 class="text-lg font-semibold text-gray-700 dark:text-gray-300">{{ t('notfound.title') }}</h1>
-      <p class="mt-1 text-xs text-gray-400 dark:text-gray-500 font-mono">
+      <h1 class="text-lg font-semibold text-content-body">{{ t('notfound.title') }}</h1>
+      <p class="mt-1 text-xs text-content-faint font-mono">
         {{ $route.fullPath }}
       </p>
     </div>
