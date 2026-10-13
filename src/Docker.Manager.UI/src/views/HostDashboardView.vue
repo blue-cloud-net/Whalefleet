@@ -2,139 +2,150 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { ElMessage } from 'element-plus'
 import { useHostStore } from '@/stores/host'
-import { formatUptime, formatDateTime, type DurationUnits } from '@/utils/datetime'
-import PageHeader from '@/components/common/PageHeader.vue'
+import type { HostOverview } from '@/types/api'
+import { formatDateTime } from '@/utils/datetime'
+import HostHero from '@/components/business/HostHero.vue'
+import ResourceTile from '@/components/business/ResourceTile.vue'
 import SectionCard from '@/components/common/SectionCard.vue'
-import StatusDot from '@/components/common/StatusDot.vue'
 
+/**
+ * 主机落地页（`/hosts/:hostId/dashboard`）。
+ *
+ * 职责刻意收窄为**这台机器的身份与技术信息**：连接端点、运行时长、Docker 版本，
+ * 以及四类资源计数作为通往各资源页的入口。实时指标与事件归「状态」页，
+ * 两页不再重复同一块内容（0.0.7 时它们几乎一模一样）。
+ *
+ * 这一页此前的问题不是样式，而是**缺失态没有被设计**：`counts` / `version` 缺失时
+ * 信息卡整块不渲染、计数位只剩一个裸「—」，下半屏全白，看起来像加载失败。
+ * 现在信息卡恒显、缺失字段显示弱化的占位符并在末尾给出统一说明。
+ */
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 const host = useHostStore()
 
 const hostId = computed(() => String(route.params.hostId ?? ''))
-const currentHost = computed(() => host.hosts.find((h) => h.id === hostId.value) ?? null)
-
-/** 运行时长的单位文案走 i18n */
-const durationUnits = computed<DurationUnits>(() => ({
-  day: t('host.duration.day'),
-  hour: t('host.duration.hour'),
-  minute: t('host.duration.minute'),
-  second: t('host.duration.second')
-}))
-
-/**
- * 主机信息行：字段缺失时整行省略，不显示占位。
- * Agent 版本仅在后端返回时才出现（Agent 模式排在 1.0.0 之后）。
- */
-const hostInfoRows = computed(() => {
-  const h = currentHost.value
-  if (!h) return []
-
-  const rows: { label: string; value: string }[] = []
-  const v = h.version
-
-  if (v?.version) rows.push({ label: t('host.info.version'), value: v.version })
-  if (v?.apiVersion) rows.push({ label: t('host.info.apiVersion'), value: v.apiVersion })
-  if (v?.os) rows.push({ label: t('host.info.os'), value: v.arch ? `${v.os}/${v.arch}` : v.os })
-  if (v?.goVersion) rows.push({ label: t('host.info.goVersion'), value: v.goVersion })
-  if (h.startedAt) {
-    rows.push({
-      label: t('host.info.startedAt'),
-      value: `${formatDateTime(h.startedAt)} · ${t('status.uptime', {
-        value: formatUptime(h.startedAt, durationUnits.value)
-      })}`
-    })
-  }
-  // 预留：Agent 模式 1.0.0 之后，届时后端返回 agentVersion
-  if (h.agentVersion) rows.push({ label: t('host.info.agentVersion'), value: h.agentVersion })
-
-  return rows
-})
+const currentHost = computed<HostOverview | null>(
+  () => host.hosts.find((h) => h.id === hostId.value) ?? null
+)
 
 type ResourceKey = 'containers' | 'images' | 'volumes' | 'networks'
 
-const stats = computed<{ key: ResourceKey; label: string; icon: string }[]>(() => [
+/** 四类资源磁贴的图标与文案；顺序即页面顺序 */
+const resources = computed<{ key: ResourceKey; label: string; icon: string }[]>(() => [
   { key: 'containers', label: t('nav.containers'), icon: 'i-carbon-container-software' },
   { key: 'images', label: t('nav.images'), icon: 'i-carbon-image' },
   { key: 'volumes', label: t('nav.volumes'), icon: 'i-carbon-data-volume' },
   { key: 'networks', label: t('nav.networks'), icon: 'i-carbon-network-3' }
 ])
 
-function countOf(key: ResourceKey): number | string {
-  const counts = currentHost.value?.counts
-  if (!counts) return '—'
-  return counts[key]
+/** 计数缺失（离线或聚合接口未就绪）时给磁贴一句原因，避免「—」被误读成「零」 */
+const missingHint = computed(() =>
+  currentHost.value?.status === 'offline'
+    ? t('host.counts.unavailable')
+    : t('host.info.pending')
+)
+
+function countOf(key: ResourceKey): number | null {
+  return currentHost.value?.counts?.[key] ?? null
 }
 
-function go(key: ResourceKey) {
+function goResource(key: ResourceKey) {
   router.push({ name: `host-${key}`, params: { hostId: hostId.value } })
 }
+
+/**
+ * 刷新：主机列表目前来自本地种子（0.0.8 的列表接口就绪后才真正拉取），
+ * 这里沿用与「编辑主机」一致的处理方式——明确告知未就绪，而不是点一下没反应。
+ */
+function onRefresh() {
+  ElMessage.info(t('host.hero.refreshSoon'))
+}
+
+/** 缺失值的统一占位符，避免各处各写一个长得不一样的破折号 */
+const MISSING = '—'
+
+/**
+ * 主机信息行：**恒显**，缺字段用占位符而非跳过整行。
+ *
+ * 早先的写法是「字段缺失就整行不 push」，于是离线主机这块直接消失、
+ * 页面只剩四个破折号。现在缺失以弱化占位呈现，并在卡片末尾统一说明原因。
+ */
+const infoRows = computed<{ label: string; value: string }[]>(() => {
+  const h = currentHost.value
+  if (!h) return []
+
+  const rows: { label: string; value: string }[] = []
+  const v = h.version
+
+  rows.push({ label: t('host.info.version'), value: v?.version ?? MISSING })
+  rows.push({ label: t('host.info.apiVersion'), value: v?.apiVersion ?? MISSING })
+  rows.push({
+    label: t('host.info.os'),
+    value: v?.os ? (v.arch ? `${v.os}/${v.arch}` : v.os) : MISSING
+  })
+  rows.push({ label: t('host.info.goVersion'), value: v?.goVersion ?? MISSING })
+  rows.push({
+    label: t('host.info.startedAt'),
+    value: h.startedAt ? formatDateTime(h.startedAt) : MISSING
+  })
+  // 预留：Agent 模式排在 1.0.0 之后，届时后端才会返回 agentVersion
+  if (h.agentVersion) rows.push({ label: t('host.info.agentVersion'), value: h.agentVersion })
+
+  return rows
+})
+
+/** 只要有任意字段缺失，就在卡片末尾给出统一说明 */
+const hasMissingInfo = computed(() => infoRows.value.some((r) => r.value === MISSING))
 </script>
 
 <template>
-  <div>
-    <PageHeader
-      icon="i-carbon-cloud-satellite"
-      :title="currentHost?.name ?? hostId"
-      :subtitle="currentHost?.endpoint"
-    >
-      <template #badge>
-        <span class="app-chip" :class="`ring-current/20`">
-          <StatusDot :status="currentHost?.status" size="sm" />
-          <span class="text-gray-600 dark:text-gray-300">
-            {{ currentHost?.status === 'offline' ? t('host.status.offline') : t('host.status.online') }}
-          </span>
-        </span>
-      </template>
-    </PageHeader>
+  <div class="app-stack">
+    <HostHero :host="currentHost" :host-id="hostId" @refresh="onRefresh" />
 
-    <!-- 资源计数：点击直达该资源页 -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-      <button
-        v-for="s in stats"
-        :key="s.key"
-        class="app-card app-card-interactive p-4 text-left"
-        @click="go(s.key)"
-      >
-        <div class="flex items-center gap-2.5">
-          <span
-            class="w-8 h-8 rounded-md grid place-items-center text-base shrink-0 bg-brand-500/10 text-brand-600 dark:text-brand-400"
-          >
-            <span :class="s.icon" />
-          </span>
-          <span class="text-xs font-medium text-gray-500 dark:text-gray-400 app-truncate">
-            {{ s.label }}
-          </span>
-        </div>
-        <div class="mt-2.5 text-2xl font-semibold leading-none app-tabular text-gray-900 dark:text-gray-100">
-          {{ countOf(s.key) }}
-        </div>
-      </button>
+    <!-- 四类资源：点击直达对应资源页 -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+      <ResourceTile
+        v-for="r in resources"
+        :key="r.key"
+        :icon="r.icon"
+        :label="r.label"
+        :value="countOf(r.key)"
+        :missing-hint="missingHint"
+        @click="goResource(r.key)"
+      />
     </div>
 
-    <!-- 主机信息：版本 / 启动时间；字段缺失时整块省略 -->
-    <SectionCard
-      v-if="hostInfoRows.length > 0"
-      class="app-section"
-      :title="t('host.info.title')"
-    >
-      <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3.5">
+    <!-- 技术信息 -->
+    <SectionCard v-if="currentHost" :title="t('host.info.title')" density="dense">
+      <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-10">
+        <!--
+          标签定宽、值紧随其后（而非 justify-between 右对齐）：
+          两列布局下每列约 520px，右对齐会让「标签」到「值」隔出四百多像素，
+          眼睛必须横跨整列才能把两者关联起来。这里按定义列表的常规形态排布。
+        -->
         <div
-          v-for="row in hostInfoRows"
+          v-for="row in infoRows"
           :key="row.label"
-          class="flex items-baseline justify-between gap-4 pb-2 border-b border-dashed border-gray-200 dark:border-gray-700/60 last:border-0"
+          class="flex items-baseline gap-4 py-2.5 border-b border-dashed border-line-subtle last:border-0"
         >
-          <dt class="text-xs text-gray-500 dark:text-gray-400 shrink-0">{{ row.label }}</dt>
+          <dt class="w-24 sm:w-28 shrink-0 text-xs text-content-muted">{{ row.label }}</dt>
           <dd
-            class="text-sm text-gray-800 dark:text-gray-200 text-right app-truncate font-mono text-[13px]"
-            :title="row.value"
+            class="min-w-0 text-[13px] font-mono app-truncate"
+            :class="row.value === MISSING ? 'text-content-faint' : 'text-content-body'"
+            :title="row.value === MISSING ? t('host.info.pending') : row.value"
           >
             {{ row.value }}
           </dd>
         </div>
       </dl>
+
+      <p v-if="hasMissingInfo" class="mt-3 flex items-start gap-1.5 text-xs text-content-faint">
+        <span class="i-carbon-information shrink-0 mt-px" aria-hidden="true" />
+        <span>{{ t('host.info.pending') }}</span>
+      </p>
     </SectionCard>
   </div>
 </template>
