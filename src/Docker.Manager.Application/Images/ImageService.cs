@@ -447,7 +447,7 @@ public sealed class ImageService
     /// </summary>
     /// <param name="source">SDK 标签字典。</param>
     /// <returns>标签字典；无内容时为空字典。</returns>
-    private static IReadOnlyDictionary<string, string> MapLabels(IDictionary<string, string>? source) =>
+    private static Dictionary<string, string> MapLabels(IDictionary<string, string>? source) =>
         source is null
             ? new Dictionary<string, string>(StringComparer.Ordinal)
             : new Dictionary<string, string>(source, StringComparer.Ordinal);

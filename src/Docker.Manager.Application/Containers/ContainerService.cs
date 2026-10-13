@@ -548,7 +548,7 @@ public sealed class ContainerService
     /// <param name="env">请求里的环境变量。</param>
     /// <returns>原样透传的环境变量；未指定时为 <see langword="null"/>。</returns>
     /// <exception cref="BusinessException">不是 <c>KEY=VALUE</c> 形式或 KEY 为空时抛 <c>1000</c>。</exception>
-    private static IList<string>? RequireEnv(IReadOnlyList<string>? env)
+    private static List<string>? RequireEnv(IReadOnlyList<string>? env)
     {
         if (env is not { Count: > 0 })
         {
@@ -559,7 +559,7 @@ public sealed class ContainerService
 
         foreach (var entry in env)
         {
-            if (entry?.IndexOf('=') is not > 0)
+            if (entry?.IndexOf('=', StringComparison.Ordinal) is not > 0)
             {
                 throw new BusinessException(
                     ErrorCodes.ValidationFailed,
@@ -583,7 +583,7 @@ public sealed class ContainerService
     /// 后者需要调用方先说清楚是哪种挂载（<c>bind</c> / <c>volume</c>）——对外少一个必填字段。
     /// 路径本身的合法性（是否存在、是否允许访问）交给守护进程判定。
     /// </remarks>
-    private static IList<string>? RequireVolumes(IReadOnlyList<ContainerVolumeMapping>? volumes)
+    private static List<string>? RequireVolumes(IReadOnlyList<ContainerVolumeMapping>? volumes)
     {
         if (volumes is not { Count: > 0 })
         {
