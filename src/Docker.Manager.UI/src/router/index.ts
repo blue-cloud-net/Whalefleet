@@ -123,6 +123,14 @@ const routes: RouteRecordRaw[] = [
         meta: { scope: 'host', icon: 'i-carbon-image', title: 'nav.images' }
       },
       {
+        // 镜像详情：与容器详情的安排一致——从列表跳进去的下级页，不进侧边栏。
+        // `:id` 传**原始**镜像 ID（含 `sha256:`），由路由负责段内编码；调用方不要自己编码两遍。
+        path: 'hosts/:hostId/images/:id/inspect',
+        name: 'host-image-inspect',
+        component: () => import('@/views/ImageInspectView.vue'),
+        meta: { scope: 'host', showInSidebar: false, title: 'image.detail.title' }
+      },
+      {
         path: 'hosts/:hostId/volumes',
         name: 'host-volumes',
         component: () => import('@/views/VolumesView.vue'),
