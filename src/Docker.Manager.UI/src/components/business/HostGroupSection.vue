@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { groupDescription, groupLabel } from '@/utils/group-display'
 import type { HostGroup } from '@/types/api'
 
 const props = defineProps<{
@@ -11,18 +12,12 @@ const props = defineProps<{
 
 const { t } = useI18n()
 
-const title = computed(() => t(props.group?.nameKey ?? 'host.group.ungrouped'))
+/** 内置分组取 i18n 文案，自定义分组原样显示管理员输入的名字。 */
+const title = computed(() => groupLabel(props.group, t))
 const icon = computed(() => (props.group === null ? 'i-carbon-folder-off' : 'i-carbon-folder'))
 
-/**
- * 分组描述同样走 i18n。
- *
- * 之前 `description` 存的是硬编码中文（'线上生产负载'），切到英文界面时
- * 分组标题变英文、描述却还是中文——与 `nameKey` 的处理方式不一致。
- */
-const description = computed(() =>
-  props.group?.descriptionKey ? t(props.group.descriptionKey) : undefined
-)
+/** 管理员写的描述优先；没写时内置分组回退到内置文案，自定义分组不显示描述。 */
+const description = computed(() => groupDescription(props.group, t))
 </script>
 
 <template>

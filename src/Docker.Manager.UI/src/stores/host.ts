@@ -1,37 +1,7 @@
 import { defineStore } from 'pinia'
+import { listHostGroups } from '@/api/host-group'
 import { listHosts } from '@/api/host'
 import type { HostGroup, HostInfo, HostOverview } from '@/types/api'
-
-/**
- * 主机分组定义。
- *
- * 后端尚无分组表（`hosts.group_id` 未落库），因此分组由前端提供。
- * **刻意不从 `src/mocks/` 引入**——那会让 store 与 mock 产生生产构建上的耦合：
- * mock 模块会在开发时被静态打进主chunk，而分组定义在两种模式下都需要。
- *
- * 未分组主机不属于任何分组，由 `groupedHosts` 统一排在末尾，
- * 显示名与描述走 i18n key（不存字面文案）。
- */
-export const DEFAULT_HOST_GROUPS: HostGroup[] = [
-  {
-    id: 'production',
-    nameKey: 'host.group.production',
-    descriptionKey: 'host.group.productionDesc',
-    order: 10
-  },
-  {
-    id: 'staging',
-    nameKey: 'host.group.staging',
-    descriptionKey: 'host.group.stagingDesc',
-    order: 20
-  },
-  {
-    id: 'local',
-    nameKey: 'host.group.local',
-    descriptionKey: 'host.group.localDesc',
-    order: 30
-  }
-]
 
 /**
  * 主机 store：主机列表 + 分组 + 当前选中主机。
@@ -45,11 +15,12 @@ export const DEFAULT_HOST_GROUPS: HostGroup[] = [
  * **刻意不做持久化**：hosts / groups 来自后端，持久化快照必然陈旧；
  * currentId 由 URL 驱动，路由守卫每次导航都会重写。
  *
- * ## 主机数据来自 API，不再内置种子
+ * ## 主机与分组都来自 API，不再内置种子
  *
- * 早期版本把三台演示主机写成本文件的常量并作为初始 state，等于「前端自带一份真相」——
+ * 早期版本把三台演示主机与三个分组写成本文件的常量，等于「前端自带一份真相」——
  * 既让「数据加载失败」这条路径无法被测试，也让新手误以为数据本来就长这样。
- * 现改为 `loadHosts()` 拉取；离线开发请开 mock（见 `src/mocks/`）。
+ * 0.0.13 起分组也是后端数据（<c>host_groups</c> 表），前端只负责展示：
+ * 内置分组的名字→文案映射在 `utils/group-display.ts`。
  *
  * `ensureLoaded()` 是给路由守卫用的**幂等**入口：首次导航 await 一次，
  * 之后的导航直接返回，不会重复请求。
@@ -82,11 +53,11 @@ export const useHostStore = defineStore('host', {
     /**
      * 按分组聚合的主机列表，供总览页渲染。
      *
-     * 排序规则：分组按 `order` 升序，无成员（或不存在）的分组直接丢弃，
-     * 未分组主机恒排在末尾。组内保持 `hosts` 的原始顺序。
+     * 排序规则：分组按 `sortOrder` 升序（后端已排好，这里再排一次是为了不依赖响应顺序），
+     * 无成员（或不存在）的分组直接丢弃，未分组主机恒排在末尾。组内保持 `hosts` 的原始顺序。
      */
     groupedHosts(state): { group: HostGroup | null; hosts: HostOverview[] }[] {
-      const ordered = [...state.groups].sort((a, b) => a.order - b.order)
+      const ordered = [...state.groups].sort((a, b) => a.sortOrder - b.sortOrder)
       const result: { group: HostGroup | null; hosts: HostOverview[] }[] = []
 
       for (const group of ordered) {
@@ -131,9 +102,11 @@ export const useHostStore = defineStore('host', {
       this.loading = true
       this.error = null
       try {
-        this.hosts = await listHosts()
-        // 分组定义仍由前端常量提供（后端尚无分组表）
-        if (this.groups.length === 0) this.groups = [...DEFAULT_HOST_GROUPS]
+        // 两个请求并行：分组与主机列表互不依赖，串行只会白等一个 RTT
+        const [hosts, groups] = await Promise.all([listHosts(), listHostGroups()])
+
+        this.hosts = hosts
+        this.groups = groups
         this.lastSyncedAt = new Date().toISOString()
       } catch (err) {
         this.error = err instanceof Error ? err.message : String(err)
