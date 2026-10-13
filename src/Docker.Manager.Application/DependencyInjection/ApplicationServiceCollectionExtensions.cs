@@ -1,5 +1,6 @@
 using Docker.Manager.Application.Abstractions;
 using Docker.Manager.Application.Auth;
+using Docker.Manager.Application.Containers;
 using Docker.Manager.Application.Hosts;
 using Docker.Manager.Application.Users;
 using Microsoft.Extensions.Configuration;
@@ -38,6 +39,10 @@ public static class ApplicationServiceCollectionExtensions
 
         // 用户管理用例（0.0.8）。
         services.AddScoped<UserService>();
+
+        // 容器查询用例（0.0.9）。Scoped 是因为主机访问器与仓储都是 Scoped，
+        // Docker 客户端本身的复用由 Singleton 的客户端池负责，不靠本服务的生命周期。
+        services.AddScoped<ContainerService>();
 
         return services;
     }
