@@ -346,3 +346,127 @@ describe('容器端点', () => {
     expect((json.data as { total: number }).total).toBe(0)
   })
 })
+
+/**
+ * 镜像端点的契约守卫（0.0.12）。
+ *
+ * 与容器那组同一个意图：**后端那几个容易被前端忽略的语义**必须被复刻，
+ * 否则对应的界面分支永远走查不到。最典型的是「多标签镜像删掉一个标签时本体仍在」——
+ * 不模拟它，界面上「已解绑标签」那段提示就是死代码。
+ */
+describe('镜像端点', () => {
+  it('列表回显夹紧后的 pageSize（请求 5000 → 100）', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/images/list', { pageSize: 5000 })
+
+    expect(status).toBe(200)
+
+    const data = json.data as { pageSize: number; total: number }
+    expect(data.pageSize).toBe(100)
+    expect(data.total).toBeGreaterThan(0)
+  })
+
+  it('search 在服务端过滤，大小写不敏感', async () => {
+    const { json } = await post('/api/v1/hosts/local/images/list', { search: 'NGINX' })
+
+    const items = (json.data as { items: { repoTags: string[] }[] }).items
+    expect(items.length).toBeGreaterThan(0)
+    expect(items.every((item) => item.repoTags.some((tag) => /nginx/i.test(tag)))).toBe(true)
+  })
+
+  it('悬挂镜像以空 repoTags 表示（后端已过滤掉 <none> 标签）', async () => {
+    const { json } = await post('/api/v1/hosts/local/images/list', {})
+    const items = (json.data as { items: { repoTags: string[] }[] }).items
+
+    expect(items.some((item) => item.repoTags.length === 0)).toBe(true)
+  })
+
+  it('不带 force 删除被容器引用的镜像 → 409 / 1404', async () => {
+    const list = await post('/api/v1/hosts/local/images/list', {})
+    const items = (list.json.data as { items: { repoTags: string[]; containerCount: number }[] })
+      .items
+    const inUse = items.find((item) => item.containerCount > 0)
+
+    expect(inUse, '夹具里必须有一个被容器引用的镜像，否则本条测不到 409').toBeDefined()
+
+    const { status, json } = await post('/api/v1/hosts/local/images/remove', {
+      imageId: inUse!.repoTags[0]
+    })
+
+    expect(status).toBe(409)
+    expect(json.code).toBe(ErrorCode.DockerResourceConflict)
+  })
+
+  it('删除多标签镜像的某个标签：只解绑该标签，镜像本体仍在', async () => {
+    const list = await post('/api/v1/hosts/local/images/list', {})
+    const items = (list.json.data as { items: { repoTags: string[] }[] }).items
+    const multi = items.find((item) => item.repoTags.length > 1)
+
+    expect(multi, '夹具里必须有一个多标签镜像，否则本条测不到「只解绑」').toBeDefined()
+
+    const removed = await post('/api/v1/hosts/local/images/remove', {
+      imageId: multi!.repoTags[0],
+      force: true
+    })
+
+    expect(removed.status).toBe(200)
+    expect((removed.json.data as { untagged: string[] }).untagged).toEqual([multi!.repoTags[0]])
+    // deleted 为空 = 镜像本体未被删除，这正是界面必须说明的情形
+    expect((removed.json.data as { deleted: string[] }).deleted).toEqual([])
+
+    const after = await post('/api/v1/hosts/local/images/list', {})
+    const afterItems = (after.json.data as { items: { id: string; repoTags: string[] }[] }).items
+    const stillThere = afterItems.find((item) => item.id === multi!.id)
+
+    expect(stillThere?.repoTags).toEqual(multi!.repoTags.slice(1))
+  })
+
+  it('image 已含标签又另传 tag → 1000（不是拼成 nginx:1.27:alpine）', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/images/pull', {
+      image: 'nginx:1.27',
+      tag: 'alpine'
+    })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.ValidationFailed)
+  })
+
+  it('拉取失败两条路径：不存在 → 1401；仓库拒绝 → 1402', async () => {
+    const missing = await post('/api/v1/hosts/local/images/pull', { image: 'missing/repo' })
+    expect(missing.status).toBe(404)
+    expect(missing.json.code).toBe(ErrorCode.DockerResourceNotFound)
+
+    const denied = await post('/api/v1/hosts/local/images/pull', { image: 'denied/private' })
+    expect(denied.status).toBe(500)
+    expect(denied.json.code).toBe(ErrorCode.DockerApiFailed)
+  })
+
+  it('拉取成功后列表里立刻能看到它（mock 必须有记忆）', async () => {
+    const pulled = await post('/api/v1/hosts/local/images/pull', { image: 'busybox', tag: '1.36' })
+
+    expect(pulled.status).toBe(200)
+    const reference = (pulled.json.data as { reference: string }).reference
+    expect(reference).toBe('busybox:1.36')
+
+    const list = await post('/api/v1/hosts/local/images/list', {})
+    const items = (list.json.data as { items: { repoTags: string[] }[] }).items
+    expect(items.some((item) => item.repoTags.includes('busybox:1.36'))).toBe(true)
+  })
+
+  it('镜像不存在 → 1401 / 404', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/images/inspect', {
+      imageId: 'no-such-image'
+    })
+
+    expect(status).toBe(404)
+    expect(json.code).toBe(ErrorCode.DockerResourceNotFound)
+  })
+
+  it('empty 场景下镜像列表为空数组而不是报错', async () => {
+    setMockScenario('empty')
+
+    const { status, json } = await post('/api/v1/hosts/local/images/list', {})
+
+    expect(status).toBe(200)
+    expect((json.data as { items: unknown[] }).items).toEqual([])
+  })
+})
