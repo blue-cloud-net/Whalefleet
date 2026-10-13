@@ -410,7 +410,7 @@ CI：
 前端：
 - `ImageListView.vue`：表格（仓库、标签、镜像 ID、创建时间、大小）+ 删除按钮
 - `ImagePullDialog.vue`：镜像名 + 标签输入 + 进度展示（轮询 0.0.10 的 pull 结果，**不接入 SignalR**）+ 完成后自动刷新列表
-- `ImageInspectView.vue`：JSON 树形展示
+- `ImageInspectView.vue`：结构化投影展示（概览 / 构建配置 / 声明端口与卷 / 标签），**不是**裸 JSON 树——后端 inspect 已经是精选投影，逐字段排版比再包一层的 JSON 树更好读；原始 JSON 仅作可折叠的附录
 
 ---
 
@@ -421,7 +421,7 @@ CI：
 前端：
 - `UserManagementView.vue`（admin 可见）：用户列表 + 创建对话框 + 删除确认 + 改密对话框
 - `HostManagementView.vue`（admin 可见）：主机列表 + 创建/编辑对话框 + test 连通性按钮 + 删除确认
-- **主机分组管理 UI**：分组的新建 / 重命名 / 删除 + 主机归组调整（与后端 `hosts.group_id` 列一起落地）
+- **主机分组管理 UI**：分组的新建 / 重命名 / 删除 + 主机归组调整（后端 `host_groups` 表与 `hosts.group_id` 列随本版落地）
 - `ChangePasswordDialog.vue`：任意用户可改自己密码（从顶栏用户菜单进入）
 - 路由守卫增强：按 `route.meta.requiresAdmin` 隐藏菜单项 + 拦截直接访问
 

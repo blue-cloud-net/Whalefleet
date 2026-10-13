@@ -136,6 +136,8 @@
 | `1301` | 502 | 主机连通性失败 | 0.0.13 |
 | `1302` | 400 | 主机已停用 | 0.0.8 |
 | `1303` | 400 | 主机名已被占用 | 0.0.8 |
+| `1304` | 400 | 分组名已被占用 | 0.0.13 |
+| `1305` | 404 | 分组不存在 | 0.0.13 |
 | `1401` | 404 | 容器 / 镜像 / Volume / Network 不存在 | 0.0.9 |
 | `1402` | 500 | Docker API 调用失败 | 0.0.9 |
 | `1403` | 408 | Docker 操作超时 | 0.0.9 |
@@ -452,7 +454,8 @@ POST /api/v1/hosts/{hostId}/containers/list
   "endpoint": "/var/run/docker.sock",
   "enabled": true,
   "reachable": true,          // true 可连 / false 连不上 / null **未探测**
-  "authKind": "none"          // none | tls | basic；只有方式，**不含任何凭据内容**
+  "authKind": "none",         // none | tls | basic；只有方式，**不含任何凭据内容**
+  "groupId": "…0000a3"        // 所属分组主键；null = 未分组
 }
 ```
 
@@ -482,7 +485,49 @@ POST /api/v1/hosts/{hostId}/containers/list
 >
 > **TLS 必须用 `https://` 端点**（默认端口 2376）：在 `tcp://` 上配置 TLS 凭据会被拒绝
 > （`1301`）——放行会导致「看起来启用了 TLS、实际是明文未认证连接」。
+### 主机分组（0.0.13）
 
+| 操作 | 路径 | 角色 | 说明 |
+|------|------|------|------|
+| 获取列表 | `POST /api/v1/host-groups/list` | 任意已登录 | 总览页展示用；无分页 |
+| 获取列表 | `POST /api/v1/admin/host-groups/list` | admin | 管理页用；与上者**同形状** |
+| 创建分组 | `POST /api/v1/admin/host-groups/create` | admin | Body: `{ name, description?, sortOrder? }`；名称重复 → `1304`/400 |
+| 更新分组 | `POST /api/v1/admin/host-groups/{groupId}/update` | admin | Body: `{ name?, description?, sortOrder? }`；未提供表示不改 |
+| 删除分组 | `POST /api/v1/admin/host-groups/{groupId}/delete` | admin | 组内主机**自动回到未分组**，不连带删主机 |
+| 调整归属 | `POST /api/v1/admin/hosts/{hostId}/group` | admin | Body: `{ groupId: "<主键>" \| null }`；`null` = 移出分组；分组不存在 → `1305`/404 |
+
+```jsonc
+// POST /api/v1/host-groups/list  →  Response.data
+[
+  {
+    "id": "00000000-0000-0000-0000-0000000000a1",
+    "name": "production",           // 管理员可改的展示名
+    "description": "线上生产负载",    // 可空
+    "sortOrder": 10,
+    "hostCount": 2
+  }
+]
+```
+
+> **分组是展示信息，不是权限边界**：「谁能操作哪台主机」由 0.3.0 的资源权限表回答。
+> 若让分组承担授权，「把主机挪进生产分组」就会变成一次隐式提权。理由同
+> [architecture.md](./architecture.md) 的实体清单说明。
+>
+> **管理端与展示端分成两个列表端点**：总览页对**所有角色**可见，而管理端点带写能力。
+> 混用会让非 admin 的总览页整块报错（与查询/管理主机列表分离同因）。
+>
+> **归属调整单设端点而不是塞进 `hosts/{hostId}/update`**：`update` 的语义是「未提供表示不改」，
+> 于是「移到未分组」就没有表达方式——JSON 分不清「没给 `groupId`」与「`groupId: null`」。
+> 这与凭据那边需要 `clearCredentials` 是**同一个坑**，那次踩过，这次直接给显式端点。
+>
+> **删除分组不删主机**：分组只是标签。级联删主机是灾难性的（配置与凭据一起没了），
+> 而「主机还在、只是回到未分组」既安全又能被管理员立刻纠正。
+>
+> **名称重复用独立错误码 `1304`**（分组不存在用 `1305`）：与 `1303`（主机名重复）区分开，
+> 前端才能把提示精确落在「分组名」这个字段上。
+>
+> **不做分页**：分组由人工维护（现实里是个位数）。加 `pageIndex` 只会让调用方多一层
+> 「要不要翻页」的判断，而真实数据永远在第一页。
 ---
 
 ### 容器管理（0.0.9 / 0.2.0）

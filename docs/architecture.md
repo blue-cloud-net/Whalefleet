@@ -181,6 +181,7 @@ dotnet list src/Docker.Manager.Application/Docker.Manager.Application.csproj pac
 | `Role` | `Core/Users/Role.cs` | `FullAuditedEntity<Guid, Guid>` | `name`（小写文本，`COLLATE NOCASE` 部分唯一索引） | 标识自动转小写、2–32 字符、仅 `[A-Za-z0-9._-]`；**标识不可改**；内置角色不可删（`Retire` + 仓储 `WHERE is_built_in = 0` 双重保证） |
 | `User` | `Core/Users/User.cs` | `FullAuditedEntity<Guid, Guid>` | `username`（`COLLATE NOCASE` 部分唯一索引） | 去首尾空白后 3–32 字符，仅 `[A-Za-z0-9._-]`；密码哈希非空；`RoleId` 非空；**用户名不可改** |
 | `DockerHost` | `Core/Hosts/DockerHost.cs` | `FullAuditedEntity<Guid, Guid>` | `name`（同上） | 名称 1–64 且无控制字符、**不可改**（它是对外主机标识）；连接方式与端点形态不得矛盾；连接方式 / 端点 / 凭据必须成组更新 |
+| `HostGroup` | `Core/Hosts/HostGroup.cs` | `FullAuditedEntity<Guid, Guid>` | `name`（同上） | 名称 1–32 且无控制字符；**纯展示性**——不参与任何授权判定 |
 | `RefreshToken` | `Core/Auth/RefreshToken.cs` | `CreationAuditedEntity<Guid, Guid>` | `token_hash` 唯一 | 只存哈希（非原文）；归属用户非空；`IsActiveAt` = 未撤销且未过期 |
 | `UserHostPermission` | `Core/Permissions/` | `FullAuditedEntity<Guid, Guid>` | `(user_id, host_id)` 部分唯一索引 | 权限位不得含未定义位；`Has` 对组合位要求**全部**具备 |
 | `UserContainerPermission` | `Core/Permissions/` | `FullAuditedEntity<Guid, Guid>` | `(user_id, host_id, container_id)` | 容器标识必须与主机成对出现（容器 ID 只在单台守护进程内唯一） |
@@ -238,6 +239,11 @@ dotnet list src/Docker.Manager.Application/Docker.Manager.Application.csproj pac
 （结构尚未定型的载荷）。实体对外只有一个 `Credentials` 值对象，这两列是它的**持久化投影**
 （`internal` 属性），因为 Dapper 的物化模型是「一列 → 一成员」，无法把两列拼成一个值对象。
 
+**主机分组为什么建表而不是枚举 / 配置**（0.0.13）：分组是**运行时可变的数据**（管理员随时增删改），
+枚举会把「有哪些分组」焊死在编译期，与 0.0.3 把角色从枚举改成表是同一个理由。
+它还刻意**不承担授权语义**——「某人能碰哪些主机」由 0.3.0 的资源权限表回答，
+分组只影响总览页的呈现。两者混在一起会让「把主机挪进某个分组」变成一次隐式提权。
+
 **完整实现**见 `src/Docker.Manager.Core/{Users,Hosts,Auth,Permissions}/`；
 仓储契约 `IUserRepository` / `IHostRepository` / `IRoleRepository` / `IRefreshTokenRepository` 定义在 `Core`，
 实现在 `Infrastructure/Persistence/`。仓储的「未找到」以 `Task<bool>` 返回，
@@ -293,7 +299,8 @@ protected abstract Task<bool> ExecuteUpdateAsync(DbConnection connection, TEntit
 |----|----------|------|
 | `users` | `0001_users.sql`（`0004` 重建） | 主键与审计人一律 TEXT（规范小写 Guid）；`role_id` 为指向 `roles(id)` 的**外键**（0.0.3 原为 `role` 枚举名文本）；软删除列 `is_deleted`；`ux_users_username` = `UNIQUE (username COLLATE NOCASE) WHERE is_deleted = 0`；`ix_users_role_id` |
 | `roles` | `0004_roles.sql` | `name` 唯一（部分索引 + `COLLATE NOCASE`）；`ux_roles_default` = `UNIQUE (is_default) WHERE is_default = 1 AND is_deleted = 0`，**在数据层保证默认角色至多一个**；`is_built_in` 内置标记 |
-| `hosts` | `0002_hosts.sql` | `type` = `socket`\|`tcp`（小写文本）；`endpoint` 存**规范化前**原文；`auth_kind` = `none`\|`tls`\|`basic`；`auth_config_json` 在无认证时为 NULL；`ux_hosts_name` 同 users |
+| `hosts` | `0002_hosts.sql`（`0005` 加列） | `type` = `socket`\|`tcp`（小写文本）；`endpoint` 存**规范化前**原文；`auth_kind` = `none`\|`tls`\|`basic`；`auth_config_json` 在无认证时为 NULL；`ux_hosts_name` 同 users；`group_id` 可空外键指向 `host_groups(id)`（0.0.13） |
+| `host_groups` | `0005_host_groups.sql` | 主机的展示性分组（**不是权限边界**）：`name` 唯一（部分索引 + `COLLATE NOCASE`）、`description` 可空、`sort_order` 升序；种入 `production` / `staging` / `local` 三个内置分组（固定主键） |
 | `refresh_tokens` | `0003_refresh_tokens.sql` | 无软删除列；`ux_refresh_tokens_token_hash` 唯一；`ix_*_user_id` / `ix_*_expires_at` 支撑「登出所有设备」与过期清理；**不建** `user_id → users(id)` 外键（用户是软删除的，外键带不来额外保护却会让清理脚本更复杂） |
 
 **迁移机制**：`PRAGMA user_version` 记录已应用到第几版，脚本文件名前缀即目标版本（必须从 1 起**连续**编号，
