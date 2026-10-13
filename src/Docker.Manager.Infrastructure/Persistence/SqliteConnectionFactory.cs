@@ -14,7 +14,8 @@ namespace Docker.Manager.Infrastructure.Persistence;
 /// 目录缺失时会以「unable to open database file」失败（容器内极易踩到）。
 /// 因此在构造函数里（而非每次取连接时）做一次目录准备。</para>
 /// <para><b>连接池</b>：<c>Microsoft.Data.Sqlite</c> 自带连接池，
-/// 因此「每次操作新开连接」只是借还池中连接，不会反复做文件打开。</para>
+/// 因此「每次操作新开连接」只是借还池中连接，不会反复做文件打开。
+/// 池化可由 <c>Persistence:Pooling</c> 关闭（集成测试依赖这一点来避免全局清池）。</para>
 /// <para><b>类型映射初始化</b>：构造函数顺带调用 <see cref="DapperTypeMaps.Initialize"/>，
 /// 保证任何取到连接的代码路径都已具备 snake_case 映射与自定义类型处理器
 /// （否则会出现"列名对不上 → 静默丢值"这类难查问题）。</para>
@@ -46,6 +47,7 @@ internal sealed class SqliteConnectionFactory : IDbConnectionFactory
             Mode = SqliteOpenMode.ReadWriteCreate,
             ForeignKeys = true,
             DefaultTimeout = settings.CommandTimeoutSeconds,
+            Pooling = settings.Pooling,
         }.ToString();
     }
 
