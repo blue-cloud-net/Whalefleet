@@ -2,6 +2,7 @@ using Docker.Manager.Application.Abstractions;
 using Docker.Manager.Application.Auth;
 using Docker.Manager.Application.Containers;
 using Docker.Manager.Application.Hosts;
+using Docker.Manager.Application.Images;
 using Docker.Manager.Application.Users;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -47,6 +48,9 @@ public static class ApplicationServiceCollectionExtensions
         // 主机查询用例（可见主机列表 + 单台概览）。Scoped：依赖 Scoped 的仓储、
         // 权限服务与当前用户上下文。
         services.AddScoped<HostQueryService>();
+
+        // 镜像用例（0.0.10）。Scoped：依赖 Scoped 的主机访问器。
+        services.AddScoped<ImageService>();
 
         return services;
     }
