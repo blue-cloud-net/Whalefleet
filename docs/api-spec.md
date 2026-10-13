@@ -175,6 +175,21 @@
 - 后续所有请求需在 Header 中携带：`Authorization: Bearer <accessToken>`
 - Token 过期后通过 `POST /api/v1/auth/refresh` 刷新
 
+### 未认证 / 无权限的响应形态（0.0.4 起）
+
+需要认证的端点（`[Authorize]` / `[Authorize(Roles = …)]`）在鉴权失败时，**同样返回统一的 `ApiResult`**，
+而不是框架默认的「空 401 响应体」——否则客户端无法区分「该跳登录页」还是「该先静默刷新」
+（0.0.5 的 401 → refresh 重发依赖这一区分）：
+
+| 场景 | HTTP | `code` |
+|------|:---:|------|
+| 未携带 Token / 签名或格式错误 / issuer 或 audience 不符 | 401 | `1100` |
+| **Token 已过期**（签名与结构都对，只是过了 `exp`） | 401 | `1101` |
+| 已认证但角色不足（`[Authorize(Roles = …)]` 不通过） | 403 | `1500` |
+
+> 除「已过期」外的签名/格式失败一律归入 `1100` 而不细分原因，避免把内部失败细节泄漏给客户端。
+> 过期判定带 **30 秒时钟容差**，以免客户端与服务端时钟轻微不一致时把刚签发的令牌判为无效。
+
 ---
 
 ## 多主机路径
@@ -208,6 +223,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 操作 | 路径 | 阶段 | 说明 |
 |------|------|------|------|
 | 登录 | `POST /api/v1/auth/login` | 0.0.4 | 返回 accessToken + refreshToken |
+| 当前用户 | `POST /api/v1/auth/me` | 0.0.4 | 需认证；返回当前登录用户摘要。前端刷新页面时用它校验持久化的 token 是否**仍然有效**（签名、过期、角色以服务端为准），比前端自行解码 JWT 更可靠 |
 | 刷新 Token | `POST /api/v1/auth/refresh` | 0.0.5 | 用 refreshToken 换新 accessToken |
 | 登出 | `POST /api/v1/auth/logout` | 0.0.5 | 撤销当前 refreshToken |
 | 终端短时 Token | `POST /api/v1/auth/terminal-token` | 0.4.0 | 返回 5 分钟过期的 terminalToken，仅用于 WebSocket `/ws/hosts/{hostId}/containers/exec` |
@@ -234,6 +250,21 @@ POST /api/v1/hosts/{hostId}/containers/list
   }
 }
 ```
+
+```jsonc
+// POST /api/v1/auth/me    （Header: Authorization: Bearer <accessToken>）
+// Request: 无 Body
+// Response
+{
+  "success": true,
+  "code": 0,
+  "message": "ok",
+  "data": { "id": "...", "username": "admin", "role": "admin" }
+}
+```
+
+> **为何是 `POST` 而非 `GET`**：本 API 全量用 `POST`（见「请求风格约定」），
+> `GET /healthz` 是唯一的基础设施例外。为了一个只读查询破例会让「哪些端点用哪种方法」失去唯一规则。
 
 ---
 
