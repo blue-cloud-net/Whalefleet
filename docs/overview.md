@@ -47,7 +47,7 @@ Docker.Manager vs Portainer
 | 版本段 | 含义 | 公开发布？ | 何时发布 |
 |--------|------|-----------|---------|
 | `0.0.x` | 未正式发布的开发迭代（快速演进、API 可能破坏性变更） | ❌ 不发布到 GHCR，仅自测 | 每个迭代完成即打 tag 内部记录 |
-| `0.1.0-rc.N` | MVP 候选发布（仅修 bug、不加新功能） | ⚠️ 灰度发布到 GHCR（Pre-release） | 0.0.13 后跑通验收后启动 |
+| `0.1.0-rc.N` | MVP 候选发布（仅修 bug、不加新功能） | ⚠️ 灰度发布到 GHCR（Pre-release） | 0.0.14 后跑通验收后启动 |
 | `0.1.0` | **MVP 首个 semver 稳定版**（公开 API 冻结承诺从这一版开始） | ✅ 正式发布 | RC 通过后 |
 | `0.2.0` / `0.3.0` / `0.4.0` | 功能里程碑版本 | ✅ 正式发布 | 每 Phase 完成后 |
 | `1.0.0` | **生产就绪版**（经过真实环境压测与安全审计） | ✅ 正式发布 | 0.4.0 稳定运行后 |
@@ -116,7 +116,7 @@ socket-proxy 作为只读代理，将 Docker API 权限限定到最小子集。�
 | [overview.md](./overview.md) | 项目背景、定位、目标与非目标（本文档） |
 | [constraints.md](./constraints.md) | 技术栈版本基线、安全 / CI/CD 约束、部署约束 |
 | [features.md](./features.md) | 按模块分组的完整功能列表（按版本标注） |
-| [roadmap.md](./roadmap.md) | 17 个版本迭代（0.0.1 ~ 1.0.0）的路线图 |
+| [roadmap.md](./roadmap.md) | 19 个版本迭代（0.0.1 ~ 1.0.0）的路线图 |
 | [architecture.md](./architecture.md) | 系统分层、多主机 DockerClient 工厂、通信机制 |
 | [api-spec.md](./api-spec.md) | RPC 风格 API 约定 + SignalR Hub + WebSocket 规范 |
 | [ui-guidelines.md](./ui-guidelines.md) | UI 布局规范（整体布局、断点、组件分层、交互约定） |

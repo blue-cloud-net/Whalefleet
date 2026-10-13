@@ -151,8 +151,8 @@
 | `Jwt:Issuer` / `Jwt:Audience` | `JWT__ISSUER` / `JWT__AUDIENCE` | `docker-manager` | 0.0.4 |
 | `Jwt:AccessTokenLifetime` | `JWT__ACCESSTOKENLIFETIME` | `00:15:00` | 0.0.4 |
 | `Jwt:RefreshTokenLifetime` | `JWT__REFRESHTOKENLIFETIME` | `7.00:00:00` | 0.0.4 |
-| `Admin:User` | `ADMIN__USER` | （无；**仅 `users` 表为空时**用于引导） | 0.0.6 |
-| `Admin:Password` | `ADMIN__PASSWORD` | （无；同上） | 0.0.6 |
+| `Admin:User` | `ADMIN__USER` | （无；**仅 `users` 表为空时**用于引导） | 0.0.4 |
+| `Admin:Password` | `ADMIN__PASSWORD` | （无；同上） | 0.0.4 |
 
 > **主机不是配置项**（0.0.8 起）：`Docker:Hosts` 已删除。主机是 `hosts` 表里的数据；首次启动时若表为空，
 > 宿主会种入一台默认主机（`name=local`、`type=socket`、`endpoint=/var/run/docker.sock`）。
@@ -300,14 +300,14 @@ socket-proxy 默认仅授予 `GET`（只读 + 列出），如需写操作（创�
 - 推荐使用 scope（如 `feat(container):`、`fix(auth):`）
 - Type 限定：`feat` / `fix` / `docs` / `style` / `refactor` / `perf` / `test` / `build` / `ci` / `chore`
 
-### Release Please（0.0.6 启用）
+### Release Please（0.0.14 启用）
 
 - 读 Conventional Commits 自动生成 release notes
 - 自动开 PR 修改 `CHANGELOG.md`
 - 自动打 tag
 - 状态文件：`.github/.release-please-manifest.json`
 
-### 镜像发布（0.0.6 起）
+### 镜像发布（0.0.14 起）
 
 | 项 | 策略 |
 |----|------|

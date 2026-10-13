@@ -12,7 +12,7 @@
 >
 > **CI 规则**：`v0.0.*` tag 触发构建但不推 GHCR；`v0.1.0-rc.*` / `v0.x.0` / `v1.0.0` tag 触发构建 + 推 GHCR + 创建 GitHub Release。镜像标签策略仅 semver（`v0.1.0` / `0.1.0` / `0.1` / `latest`）。
 >
-> 完整版本计划：13 个 0.0.x 迭代 + 1 个 RC + 4 个稳定版（0.1.0 / 0.2.0 / 0.3.0 / 0.4.0 / 1.0.0）。
+> 完整版本计划：13 个 0.0.x 迭代（0.0.1–0.0.5、0.0.7–0.0.14，**0.0.6 为空号**，见下方「维护规则」）+ 1 个 RC + 5 个稳定版本（0.1.0 / 0.2.0 / 0.3.0 / 0.4.0 / 1.0.0）。
 ---
 
 ## 进度图例与总览
@@ -32,6 +32,7 @@
 > 2. 子条目默认**继承父条目的图标**；只有明确标注状态时才单独覆盖。
 > 3. 一个版本内**不再有任何 ⬜ 条目**时，才能把标题从 🚧 改成 ✅。
 > 4. 「验收」小节是**该版本的收口清单**，只有它整体打 ✅ 才算真正交付。
+> 5. 版本编号即**执行顺序**。原 `0.0.6`（部署底座）空有编号却排在功能迭代中间，已改编号为 `0.0.14` 并移到 0.0.x 末位；`0.0.6` 自此为**空号**，不再代表任何里程碑。
 
 ### 当前进度（截至 2026-10-13）
 
@@ -40,16 +41,16 @@
 | `0.0.1` | 项目骨架 + CI 骨架 | ✅ | 4 个分层项目 + Central Package Management + `/healthz` |
 | `0.0.2` | 后端基础设施 | ✅ | 异常管道 / 统一响应 / 错误码分层 / CORS / 集成测试载体 |
 | `0.0.3` | 数据层与密码安全 | ✅ | SQLite / Dapper / 迁移 `0001–0004` / 四个仓储 / 审计填充 / **Argon2id 密码哈希**全部落地 |
-| `0.0.4` | 认证 API（核心） | ✅ | 登录 / 当前用户 / JWT 中间件 / 限流 / 防枚举 / 初始管理员引导（原属 0.0.6）；refresh 与 logout 属 0.0.5 |
+| `0.0.4` | 认证 API（核心） | ✅ | 登录 / 当前用户 / JWT 中间件 / 限流 / 防枚举 / 初始管理员引导（原属部署迭代）；refresh 与 logout 属 0.0.5 |
 | `0.0.5` | 认证完善 + 前端基础设施 | ✅ | refresh / logout / 安全响应头 / 密码强度；前端接入真实登录并实现 401 静默续期 |
-| `0.0.6` | 部署底座与初始管理员引导 | 🚧 | **初始管理员引导已随 0.0.4 落地**；Dockerfile / compose / CI 增强 / 社区文档未开工 |
 | `0.0.7` | 前端登录页与基础布局 | ✅ | 布局 / 主题 / 国际化 / 两段式导航；登录页接真实 API；顶栏与侧边栏拆成独立组件（面包屑由纯函数派生） |
 | `0.0.8` | Docker 主机抽象 | ✅ | 数据层 / 客户端池 / 访问器三层 + 当前主机中间件 + TLS·Basic 认证 + 主机与用户管理 API；管理界面排 0.0.13 |
 | `0.0.9` | 容器 API 后端 | ✅ | 查询（list / inspect / logs）与变更（create / start / stop / restart / remove）全部落地；11 + 19 条端点集成测试（含真实守护进程上的容器生命周期） |
 | `0.0.10` | 镜像 API 后端 | ✅ | 列表（含搜索）/ 详情 / 拉取 / 删除四个端点全部落地；23 条端点集成测试 |
-| `0.0.11` | 前端：容器 UI | 🚧 | 列表 / 生命周期操作 / 创建表单 / 日志 / 详情已落地；`HostSelector` 与「状态自动刷新」待接 |
+| `0.0.11` | 前端：容器 UI | ✅ | 列表 / 生命周期操作 / 创建表单 / 日志 / 详情全部落地；5 秒轮询、页面隐藏时暂停；`HostSelector` 与主机 store 由 0.0.7 / 0.0.8 提前落地 |
 | `0.0.12` | 前端：镜像 UI | ⬜ | 仅占位视图 |
 | `0.0.13` | 前端：管理 UI + MVP 打磨 | ⬜ | 仅 `EmptyState` 等通用件已提前落地 |
+| `0.0.14` | 部署底座与发布流水线 | ⬜ | **原 `0.0.6`**，改排到 0.0.x 末位；初始管理员引导已随 0.0.4 落地，本版只剩 Dockerfile / compose / CI 增强 / 社区文档 |
 | `0.1.0-rc.1` | MVP 候选发布 | ⬜ | |
 | `0.1.0` | MVP 首个 semver 稳定版 | ⬜ | |
 | `0.2.0` | Volume / Network / 镜像构建 | ⬜ | |
@@ -108,7 +109,7 @@ CI：
 > 2. **错误码分层**：错误码常量、语义分类与默认文案放 `Application/Common`（`ErrorCodes` / `ErrorCategory` / `ErrorCodeCatalog`）；「语义分类 → HTTP 状态码」放 `Api/Errors`（`ErrorHttpStatus`）。既避免应用层依赖 Web 概念，又让两侧都能被单测。
 > 3. **CORS 策略延迟注册**：白名单策略通过 `IConfigureOptions<CorsOptions>` 在**选项解析期**注册，而非 DI 注册期直接读配置——后者会读到尚未定型的值（集成测试注入的内存配置即属此列），导致静默地不注册任何策略。
 > 4. **`UseUrls` 改为配置**：硬编码的 `UseUrls("http://+:8080")` 改为 `appsettings.json` 的 `"Urls"` 键，使 `TestServer` 能接管监听。注意 `Urls` 优先级**高于** `ASPNETCORE_URLS`，改端口需用 `--urls` 或 `URLS`（详见 [constraints.md](./constraints.md#配置系统)）。
-> 5. **顺带消除 `.editorconfig` 隐患**：统一 LF（与 `.gitattributes` 的 `* text=auto` 一致）、末尾换行统一、清除 6 个重复键、为 `[*.sh]` 显式声明 LF 以保护 0.0.6 的 `scripts/backup.sh`。`dotnet format` 的 CI 门槛仍留到 0.0.6。
+> 5. **顺带消除 `.editorconfig` 隐患**：统一 LF（与 `.gitattributes` 的 `* text=auto` 一致）、末尾换行统一、清除 6 个重复键、为 `[*.sh]` 显式声明 LF 以保护部署迭代的 `scripts/backup.sh`。`dotnet format` 的 CI 门槛留到 0.0.14（有部署流水线时一并接入）。
 > 6. **环境变量命名规范化**：失效的 `DEFAULT_HOST__ENDPOINT` → `DOCKER__DEFAULTHOST__ENDPOINT`；`JWT__Secret` → `JWT__SECRET`。
 > 7. **依赖统一升到最新**：`Microsoft.Extensions.*` → 10.0.12（net10.0 对齐）；Serilog 全家桶 → `AspNetCore` 10.0.0 / `Settings.Configuration` 10.0.1 / `Sinks.File` 7.0.0；测试栈 → `Microsoft.NET.Test.Sdk` 18.10.0 / `xunit` 2.9.3 / `xunit.runner.visualstudio` 4.0.0 / `coverlet.collector` 10.0.1。
 >    **例外——`FluentAssertions` 停留在 7.2.2**：8.x 起改为 Xceed 商业授权，7.x 是最后一个 Apache-2.0 版本；本项目为 MIT 开源且不引入商业授权依赖，故不跟进 8.x。
@@ -199,7 +200,7 @@ CI：
 - ✅ `[Authorize]` 中间件 + 角色检查 `[Authorize(Roles = "admin")]`
   - ✅ `ICurrentUser` 的 Api 层实现接管 Infrastructure 的占位实现（`services.Replace`）
   - ✅ 鉴权失败同样返回统一 `ApiResult`，并区分 `1100`（未认证）/ `1101`（**已过期**）/ `1500`（无权限）
-- ✅ 初始管理员引导（**原属 0.0.6，因鸡生蛋问题提前到本版**）
+- ✅ 初始管理员引导（**原属部署迭代，因鸡生蛋问题提前到本版**）
 - ✅ 集成测试覆盖：登录成功、凭据错误、枚举不可区分、限流锁定与窗口过期、令牌过期 / 篡改 / 异密钥 / 格式非法
 
 **验收**：
@@ -208,7 +209,7 @@ CI：
 - ✅ `dotnet test -c Release` 全绿（本迭代新增 **63** 个用例，全量 532）
 - ✅ 手工：`ADMIN__USER=admin ADMIN__PASSWORD=StrongP@ss123 dotnet run` → 用 admin 登录成功
 
-> ⚠️ **已知缺口（留给 0.0.6）**：反代后 `Connection.RemoteIpAddress` 是代理 IP，
+> ⚠️ **已知缺口（留给 0.0.14）**：反代后 `Connection.RemoteIpAddress` 是代理 IP，
 > 而本项目尚未启用 `ForwardedHeaders`（需配合可信代理白名单）——
 > 不加会将所有用户的登录失败算进同一个限流桶。
 
@@ -243,37 +244,6 @@ CI：
 
 **轮换语义**（完整表见 [api-spec.md](./api-spec.md)）：已被轮换的旧刷新令牌再次使用 → 判定为重放 →
 撤销该用户**全部**刷新令牌；登出后的令牌再次使用 → 仅拒绝，不牵连其他会话。
-
----
-
-### 0.0.6 ⬜ — 部署底座与初始管理员引导
-
-**目标**：`docker run` 一行启动可登录。
-
-后端：
-- ✅ （**已随 0.0.4 落地**）启动时检测 `users` 表是否为空：若空，按环境变量 `ADMIN__USER` + `ADMIN__PASSWORD` 创建 admin（密码强度校验）
-  - ✅ 判空用**物理行数**（裸 `SELECT COUNT(1)`）而非仓储计数——软删除会让业务计数为 0，从而导致重复引导并撞用户名唯一索引
-  - ✅ 密码强度不满足 → **启动失败**；凭据未配置 → 只记 Warning 并正常启动
-- ⬜ 健康检查端点 `GET /healthz` 增强：返回 SQLite 连通性
-- Dockerfile 多阶段构建（builder 阶段：Node + .NET SDK；runtime 阶段：仅 .NET runtime + dist）
-- 非 root 用户 `app`（UID 10001）运行，根文件系统只读，data 卷可写
-- `/healthz` 健康检查命令
-- **SQLite 启用 WAL 模式**（PRAGMA journal_mode=WAL），提高并发读性能
-
-仓库：
-- **`docker-compose.yml` 两种部署模式**：
-  - 直挂 socket：`/var/run/docker.sock:/var/run/docker.sock`
-  - **socket-proxy 模式**（推荐）：`tecnativa/docker-socket-proxy` 作为中介，仅授予 `CONTAINERS` / `IMAGES` / `NETWORK` / `VOLUME` 子集权限
-- `scripts/backup.sh`：基于 `sqlite3 .backup` 的 SQLite 备份脚本；README 文档化 cron 示例
-- `.github/release-please-config.json`：启用 Release Please（读 Conventional Commits 自动 PR + 自动 tag）
-- `CHANGELOG.md` / `CONTRIBUTING.md` / `SECURITY.md` / `CODE_OF_CONDUCT.md` 出初始版本
-- `.dockerignore` 扩充
-
-CI：
-- `.github/workflows/ci.yml` 增强：build 镜像 + sanity test
-- `.github/workflows/release.yml`：仅 `v*.*.*` tag 触发构建 + 推 GHCR
-
-**验收**：`docker run -e ADMIN__USER=admin -e ADMIN__PASSWORD=StrongP@ss123 ...` → 看到登录页 → 用 admin 登录成功 → 控制台/日志无密码明文；`bash /app/scripts/backup.sh` 产生备份文件。
 
 ---
 
@@ -414,19 +384,21 @@ CI：
 
 ---
 
-### 0.0.11 🚧 — 前端：容器 UI
+### 0.0.11 ✅ — 前端：容器 UI
 
 **目标**：可视化容器管理。
 
 前端：
 - ✅ API 封装层 `src/Docker.Manager.UI/src/api/container.ts`：RPC 风格方法封装（八个端点全覆盖）
 - ✅ 容器状态语义映射 `src/utils/container-status.ts`：状态→色调（含独立的**过渡态**一档）、端口展示、字节格式化
-- ⬜ `src/Docker.Manager.UI/src/stores/host.ts`：Pinia 当前主机选择（**已由 0.0.7 / 0.0.8 提前落地**）
-- ⬜ **顶栏 `HostSelector` 下拉组件**（`components/business/HostSelector.vue`）：主机作用域显示当前主机名 + 状态点，全局作用域显示「选择主机」占位；列出可访问主机，**切换后停留在当前资源页**；写入 Pinia `useHostStore` → 路由跳转到 `/hosts/{新hostId}/{当前资源页}`；admin 可见「管理主机」入口（**已由 0.0.7 提前落地**）
+- ✅ `src/Docker.Manager.UI/src/stores/host.ts`：Pinia 当前主机选择（**由 0.0.7 / 0.0.8 提前落地**）
+- ✅ **顶栏 `HostSelector` 下拉组件**（`components/business/HostSelector.vue`）：主机作用域显示当前主机名 + 状态点，全局作用域显示「选择主机」占位；列出可访问主机，**切换后停留在当前资源页**；写入 Pinia `useHostStore` → 路由跳转到 `/hosts/{新hostId}/{当前资源页}`；admin 可见「管理主机」入口（**由 0.0.7 提前落地**）
 - ✅ `ContainerListView`（实现为 `views/ContainersView.vue`）：表格（名称、镜像、状态、端口、创建时间）+ 操作按钮（启动/停止/重启/删除）+ 状态自动刷新（轮询 **5 秒**，页面隐藏时暂停，失败不打断轮询）
 - ✅ **`CreateContainerDialog.vue`**：可视化创建表单（镜像 + 名称 + 端口映射 + 环境变量 + Volume 挂载 + 重启策略 + 折叠的高级选项）；行式文本输入配**提交前校验与行号定位**；创建成功后可直接「立即启动」
 - ✅ `ContainerLogsView.vue`：行数选择 + tail 加载 + 时间戳 / stderr 开关（自动滚动不在本版范围：后端不支持 `follow`，实时流归 0.3.0）
 - ✅ `ContainerInspectView.vue`：分组卡片展示（基本信息 / 宿主配置 / 启动配置 / 挂载 / 网络 / 环境变量 / 标签），**不是** JSON 树
+
+**验收**：容器列表 → 创建 → 立即启动 → 详情 → 日志 → 停止 → 删除全链路走通；容器端集成测试与 UI 单测全绿。✅
 
 ---
 
@@ -444,7 +416,6 @@ CI：
 ### 0.0.13 ⬜ — 前端：管理 UI + MVP 打磨
 
 **目标**：完成所有 0.1.0 必备 UI，准备进入 RC。
-
 前端：
 - **命令面板** `components/common/CommandPalette.vue`：Ctrl+K / Cmd+K 唤起；搜索所有路由 + 常用操作（跳 Containers / 跳 Images / 创建容器 / 拉取镜像）；Fuse.js 模糊匹配
 - **全局快捷键** `composables/useShortcuts.ts`：`g+c` / `g+i` / `g+v` / `g+n` / `g+d` / `?` 跳转与帮助弹窗
@@ -467,9 +438,49 @@ CI：
 
 ---
 
+### 0.0.14 ⬜ — 部署底座与发布流水线
+
+**目标**：`docker run` 一行启动可登录、可发布。
+
+> **为什么排在 0.0.x 末位**（原编号 `0.0.6`）：
+>
+> 1. **Dockerfile 要打的正是前端产物**——builder 阶段要跑 `pnpm build`，而容器/镜像/管理三套界面到 0.0.13 才齐。在 0.0.6 做，打出来的镜像里只有占位页，等于交付一个「能启动但没用」的东西。
+> 2. **compose / socket-proxy 的安全说明依赖真实能力清单**——「只授 `CONTAINERS`/`IMAGES`/`NETWORK`/`VOLUME` 子集」这句话，在还没搞清楚 0.1.0 到底会调用哪些 Docker API 之前是猜的。
+> 3. **Release Please 与 CHANGELOG 要读得懂提交历史**——在只有二十来个提交时启用，规则改动的返工成本远高于稳定后一次做对。
+> 4. **初始管理员引导不等它**——那件事有鸡生蛋问题（要先能登录才能建用户），已于 0.0.4 落地，本版只剩部署与发布。
+
+后端：
+- （**已随 0.0.4 落地**，此处保留记录）启动时检测 `users` 表是否为空：若空，按环境变量 `ADMIN__USER` + `ADMIN__PASSWORD` 创建 admin（密码强度校验）
+  - 判空用**物理行数**（裸 `SELECT COUNT(1)`）而非仓储计数——软删除会让业务计数为 0，从而导致重复引导并撞用户名唯一索引
+  - 密码强度不满足 → **启动失败**；凭据未配置 → 只记 Warning 并正常启动
+- 健康检查端点 `GET /healthz` 增强：返回 SQLite 连通性
+- Dockerfile 多阶段构建（builder 阶段：Node + .NET SDK；runtime 阶段：仅 .NET runtime + dist）
+- 非 root 用户 `app`（UID 10001）运行，根文件系统只读，data 卷可写
+- `/healthz` 健康检查命令
+- **SQLite 启用 WAL 模式**（PRAGMA journal_mode=WAL），提高并发读性能
+- 反代场景的 `ForwardedHeaders` + 可信代理白名单（**0.0.4 遗留**：否则所有用户的登录失败会被算进同一个限流桶）
+
+仓库：
+- **`docker-compose.yml` 两种部署模式**：
+  - 直挂 socket：`/var/run/docker.sock:/var/run/docker.sock`
+  - **socket-proxy 模式**（推荐）：`tecnativa/docker-socket-proxy` 作为中介，仅授予 `CONTAINERS` / `IMAGES` / `NETWORK` / `VOLUME` 子集权限
+- `scripts/backup.sh`：基于 `sqlite3 .backup` 的 SQLite 备份脚本；README 文档化 cron 示例
+- `.github/release-please-config.json`：启用 Release Please（读 Conventional Commits 自动 PR + 自动 tag）
+- `CHANGELOG.md` / `CONTRIBUTING.md` / `SECURITY.md` / `CODE_OF_CONDUCT.md` 出初始版本
+- `.dockerignore` 扩充
+- `dotnet format` 纳入 CI 门槛（**0.0.2 遗留**：当时只统一了行尾与空行，格式检查留到有部署流水线的这一步）
+
+CI：
+- `.github/workflows/ci.yml` 增强：build 镜像 + sanity test
+- `.github/workflows/release.yml`：仅 `v*.*.*` tag 触发构建 + 推 GHCR
+
+**验收**：`docker run -e ADMIN__USER=admin -e ADMIN__PASSWORD=StrongP@ss123 ...` → 看到登录页 → 用 admin 登录成功 → 控制台/日志无密码明文；`bash /app/scripts/backup.sh` 产生备份文件；镜像进入 GHCR 且 `v0.0.*` tag **不**推送。
+
+---
+
 ### 0.1.0-rc.1 ⬜ — MVP 候选发布
 
-**目标**：0.0.13 后冻结功能，仅修 bug。
+**目标**：0.0.14 后冻结功能，仅修 bug。
 
 - 不引入新功能
 - 集中修复 QA 反馈
