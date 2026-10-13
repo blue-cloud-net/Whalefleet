@@ -78,6 +78,57 @@ public sealed class AuthController : ControllerBase
     }
 
     /// <summary>
+    /// 用刷新令牌换取新的令牌对（<b>轮换</b>）。
+    /// </summary>
+    /// <param name="request">含刷新令牌的请求。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应，<c>data</c> 为新的 <see cref="LoginResponse"/>。</returns>
+    /// <response code="200">刷新成功（旧刷新令牌已作废）。</response>
+    /// <response code="400">未提供 refreshToken（<c>1000</c>）。</response>
+    /// <response code="401">令牌无效 / 已撤销 / 已过期（<c>1102</c>）。</response>
+    [HttpPost("refresh")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(ApiResult<LoginResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> RefreshAsync(
+        [FromBody] RefreshTokenRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await _authService
+            .RefreshAsync(request.RefreshToken, cancellationToken)
+            .ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok(response));
+    }
+
+    /// <summary>
+    /// 登出：撤销当前刷新令牌。
+    /// </summary>
+    /// <param name="request">含刷新令牌的请求。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应（无 <c>data</c> 字段）。</returns>
+    /// <remarks>
+    /// <b>幂等</b>：令牌不存在或已撤销同样返回成功。
+    /// 注意本端点<b>不</b>使 access token 失效——它在到期前仍然有效，
+    /// 因此客户端登出时必须同时清除本地的 access token。
+    /// </remarks>
+    /// <response code="200">登出成功（含令牌已失效的情况）。</response>
+    /// <response code="400">未提供 refreshToken（<c>1000</c>）。</response>
+    [HttpPost("logout")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> LogoutAsync(
+        [FromBody] RefreshTokenRequest request,
+        CancellationToken cancellationToken)
+    {
+        await _authService.LogoutAsync(request.RefreshToken, cancellationToken).ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok());
+    }
+
+    /// <summary>
     /// 获取当前登录用户摘要。
     /// </summary>
     /// <returns>统一响应，<c>data</c> 为 <see cref="AuthenticatedUser"/>。</returns>
