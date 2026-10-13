@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using Docker.Manager.Application.Common;
 using Docker.Manager.Core.Hosts;
 
 namespace Docker.Manager.Application.Abstractions;
@@ -8,9 +9,8 @@ namespace Docker.Manager.Application.Abstractions;
 /// Docker 主机的认证信息（运行期凭据）。
 /// </summary>
 /// <remarks>
-/// <para><b>当前为占位类型</b>：只有 <see cref="DockerHostAuthKind.None"/> 一种取值。放在这里是为了让
-/// <see cref="DockerHostConnection"/> 与 <see cref="IDockerClientFactory"/> 的签名
-/// 在 0.0.8 引入证书 / 账号密码时<b>无需再变</b>。</para>
+/// <para><b>运行期凭据</b>：<see cref="Kind"/> 之外的字段承载<b>已解析</b>的凭据本体
+/// （TLS 的三份 PEM 路径 / Basic 的账号密码），工厂据此构建认证提供器。</para>
 /// <para><b>枚举归属</b>：<see cref="DockerHostAuthKind"/> 定义在
 /// <see cref="Docker.Manager.Core.Hosts"/>（与 <c>DockerHost</c> 实体共享取值域），
 /// 本记录只承载<b>运行期</b>凭据与缓存区分串。</para>
@@ -27,6 +27,16 @@ public sealed record DockerHostAuth
     /// 认证方式。
     /// </summary>
     public DockerHostAuthKind Kind { get; init; } = DockerHostAuthKind.None;
+
+    /// <summary>
+    /// TLS 凭据；仅 <see cref="DockerHostAuthKind.Tls"/> 时非空。
+    /// </summary>
+    public DockerTlsCredentials? Tls { get; init; }
+
+    /// <summary>
+    /// Basic 凭据；仅 <see cref="DockerHostAuthKind.Basic"/> 时非空。
+    /// </summary>
+    public DockerBasicCredentials? Basic { get; init; }
 
     /// <summary>
     /// 凭据指纹（参与缓存键的不可逆摘要）。
@@ -55,19 +65,38 @@ public sealed record DockerHostAuth
     /// 由主机凭据映射出运行期认证信息。
     /// </summary>
     /// <param name="credentials">主机凭据值对象。</param>
-    /// <returns>无认证时返回共享的 <see cref="None"/>；否则带上凭据指纹。</returns>
+    /// <returns>无认证时返回共享的 <see cref="None"/>；否则带上已解析的凭据与指纹。</returns>
     /// <exception cref="ArgumentNullException"><paramref name="credentials"/> 为 <see langword="null"/>。</exception>
+    /// <exception cref="BusinessException">
+    /// 认证方式未知，或凭据载荷不符合该方式的 schema（错误码 <c>1301</c>）。
+    /// </exception>
+    /// <remarks>
+    /// <b>这里报错而不是退化为无认证</b>：凭据读不出来的正确后果是「连不上」而不是「不用密码连上了」。
+    /// 静默降级会把一个配置笔误变成安全问题，因此宁可在构建客户端前就失败。
+    /// </remarks>
     public static DockerHostAuth From(HostCredentials credentials)
     {
         ArgumentNullException.ThrowIfNull(credentials);
 
-        return credentials.Kind == DockerHostAuthKind.None
-            ? None
-            : new DockerHostAuth
+        return credentials.Kind switch
+        {
+            DockerHostAuthKind.None => None,
+            DockerHostAuthKind.Tls => new DockerHostAuth
             {
-                Kind = credentials.Kind,
+                Kind = DockerHostAuthKind.Tls,
+                Tls = DockerTlsCredentials.Parse(credentials.ConfigJson),
                 CredentialFingerprint = Fingerprint(credentials),
-            };
+            },
+            DockerHostAuthKind.Basic => new DockerHostAuth
+            {
+                Kind = DockerHostAuthKind.Basic,
+                Basic = DockerBasicCredentials.Parse(credentials.ConfigJson),
+                CredentialFingerprint = Fingerprint(credentials),
+            },
+            _ => throw new BusinessException(
+                ErrorCodes.HostUnreachable,
+                $"不支持的认证方式：{(int)credentials.Kind}"),
+        };
     }
 
     private static string Fingerprint(HostCredentials credentials)
