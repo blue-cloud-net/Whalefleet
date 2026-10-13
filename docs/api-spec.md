@@ -146,6 +146,24 @@
 
 > 各代码段保留充足空间，0.3.0 / 0.4.0 起按需分配更细的错误码。
 
+### Mock 与契约同步
+
+前端有一层 MSW mock（`src/Docker.Manager.UI/src/mocks/`）用于**隔离开后端开发**，
+它让本表变成**五处**同步而非四处：
+
+1. 本表（唯一事实源）
+2. 后端 `ErrorCodes`
+3. 后端 `ErrorCodeCatalog`
+4. 前端 `types/api.ts` 的 `ErrorCode`
+5. **mock 的 `src/mocks/envelope.ts`**（含错误码 → HTTP 状态映射与默认文案）
+
+> 新增或修改错误码时，**五处都要改**；`tests/mock-contract.spec.ts` 会逐条比对
+> 错误码→HTTP 状态的映射，漏改则测试失败。
+
+mock 的 HTTP 状态码**逐条拄自后端代码**（`ErrorCodeCatalog.Classify` → `ErrorHttpStatus.ToHttpStatus`），
+而不是拄自本表的表格——表格可能滞后，代码不会。未登记的错误码一律兜底 500，
+**不按数值分段推断**（同段内既有 404 也有 502、429）。
+
 ---
 
 ## 分页约定
@@ -348,6 +366,21 @@ POST /api/v1/hosts/{hostId}/containers/list
 
 ---
 
+### 主机查询（0.0.8）
+
+| 操作 | 路径 | 角色 | 说明 |
+|------|------|------|------|
+| 可见主机列表 | `POST /api/v1/hosts/list` | 任意已登录 | 返回**当前用户可见**的主机（含 `status`）；admin 调用时返回全部 |
+| 单台聚合信息 | `POST /api/v1/hosts/{hostId}/overview` | 任意已登录 | 返回单台主机的 `version` / `counts`；失败形态 `1300`/404、`1302`/400、`1501`/403 |
+
+> **为什么要与 `admin/hosts/list` 分开**：总览页与侧栏主机选择器对**所有角色**可见，
+> 而 `admin/hosts/list` 是主机管理页专用（含管理操作所需的完整信息）。
+> 两者混用会导致非 admin 用户看不到任何主机。
+
+> **`status` 内置、`version` / `counts` 另设端点**：列表只对每台主机做**轻量 ping**
+> 取连通状态（便宜）；`version` / `counts` 需要完整调用 Docker API（贵）。
+> 若都塞进列表，主机一多就会明显变慢甚至超时。
+
 ### 主机管理（0.0.8 / 0.0.13）
 
 | 操作 | 路径 | 角色 | 说明 |
@@ -412,14 +445,104 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 操作 | 路径 | 阶段 | 说明 |
 |------|------|------|------|
 | **创建容器** | `POST /api/v1/hosts/{hostId}/containers/create` | 0.0.9 | Body: `{ image, name, ports, env, volumes, restart, ... }`（完整 `CreateContainerParameters` 字段映射） |
-| 获取列表 | `POST /api/v1/hosts/{hostId}/containers/list` | 0.0.9 | Body: `{ all?, pageIndex, pageSize }` |
+| 获取列表 | `POST /api/v1/hosts/{hostId}/containers/list` | 0.0.9 | Body: `{ all?, pageIndex?, pageSize? }`；分页在服务端**内存**完成（Docker 无分页参数），`pageSize` 上限 100 |
 | 启动 | `POST /api/v1/hosts/{hostId}/containers/start` | 0.0.9 | Body: `{ containerId }` |
 | 停止 | `POST /api/v1/hosts/{hostId}/containers/stop` | 0.0.9 | Body: `{ containerId, waitSeconds? }` |
 | 重启 | `POST /api/v1/hosts/{hostId}/containers/restart` | 0.0.9 | Body: `{ containerId }` |
 | 删除 | `POST /api/v1/hosts/{hostId}/containers/remove` | 0.0.9 | Body: `{ containerId, force? }` |
 | **批量删除** | `POST /api/v1/hosts/{hostId}/containers/batch-remove` | 0.2.0 | Body: `{ containerIds: [...] }`，返回每个的成功/失败状态 |
-| 获取日志 | `POST /api/v1/hosts/{hostId}/containers/logs` | 0.0.9 | Body: `{ containerId, tail?, since?, timestamps? }` |
+| 获取日志 | `POST /api/v1/hosts/{hostId}/containers/logs` | 0.0.9 | Body: `{ containerId, tail?, since?, timestamps?, includeStderr? }`；`tail` 取值 0–10000，省略表示全部；**不支持** `follow` |
 | 获取详情 | `POST /api/v1/hosts/{hostId}/containers/inspect` | 0.0.9 | Body: `{ containerId }` |
+
+#### 查询端点的请求 / 响应形态（0.0.9 已实现）
+
+三个查询端点（`list` / `inspect` / `logs`）的**成功响应都是 `ApiResult`**，`data` 为下面的投影对象。
+响应**不是** SDK 对象的原样透传：那会让「响应里有什么」随 Docker 版本变化，前端无法依赖（详见
+`ContainerSummaries.cs` 的类型注释）。
+
+```jsonc
+// POST /api/v1/hosts/local/containers/list
+// Request
+{ "all": true, "pageIndex": 0, "pageSize": 20 }
+// Response.data
+{
+  "items": [
+    {
+      "id": "3f2c…",                    // 完整容器 ID
+      "name": "nginx",                  // 已去掉 Docker 内部的前导斜杠（/nginx → nginx）
+      "image": "nginx:latest",          // 镜像名；无名字时退化为容器短 ID
+      "imageId": "sha256:…",
+      "command": "nginx -g 'daemon off;'",
+      "created": "2026-01-02T03:04:05.678+00:00",
+      "state": "running",               // Docker 原始状态文本
+      "status": "Up 3 hours",
+      "ports": [{ "privatePort": 80, "publicPort": 8080, "type": "tcp", "ip": "0.0.0.0" }]
+    }
+  ],
+  "total": 7,        // 分页前的总数
+  "pageIndex": 0,    // 服务端实际使用的页码
+  "pageSize": 20      // 服务端实际使用的每页条数（夹紧后）
+}
+```
+
+```jsonc
+// POST /api/v1/hosts/local/containers/inspect
+// Request
+{ "containerId": "nginx" }   // 可传完整 ID、短 ID 或名称
+// Response.data
+{
+  "id": "3f2c…",
+  "name": "nginx",
+  "created": "2026-01-02T03:04:05.678+00:00",
+  "image": "nginx:latest",     // 取 Config.Image（镜像名）；inspect 顶层的 image 字段是**镜像 ID**
+  "state": {
+    "status": "exited",
+    "running": false, "paused": false, "restarting": false,
+    "startedAt": "2026-01-02T03:05:00+00:00",  // 「未启动过」为 null（Docker 给的是 0001-01-01）
+    "finishedAt": "2026-01-02T04:05:00+00:00",
+    "exitCode": 1,                            // **运行中**为 null（运行中固定 0，给出去会被读成「正常退出」）
+    "oomKilled": false,
+    "healthStatus": null                      // 无健康检查为 null；有则为 healthy / unhealthy / starting
+  },
+  "config": {
+    "image": "nginx:latest",
+    "cmd": ["nginx", "-g", "daemon off;"],
+    "entrypoint": ["/docker-entrypoint.sh"],
+    "env": ["PATH=…"],                        // ⚠️ 常用于存放密码 / Token，仅管理员可见（0.3.0 起逐资源授权）
+    "labels": { "com.example.owner": "web" },
+    "workingDir": "", "hostname": "3f2c…", "user": "", "tty": false
+  },
+  "hostConfig": {
+    "restartPolicy": "unless-stopped",       // 线上写法（no / always / on-failure / unless-stopped）
+    "autoRemove": false,
+    "networkMode": "bridge",
+    "privileged": false,
+    "memoryLimitBytes": null,                 // 未限制为 null（Docker 用 0 表示未限制）
+    "nanoCpus": null
+  },
+  "mounts": [{ "type": "bind", "source": "/srv/html", "destination": "/usr/share/nginx/html", "readWrite": true }],
+  "networks": [{ "name": "bridge", "ipAddress": "172.17.0.2", "gateway": "172.17.0.1", "macAddress": "02:42:ac:11:00:02" }]
+}
+```
+
+```jsonc
+// POST /api/v1/hosts/local/containers/logs
+// Request
+{ "containerId": "nginx", "tail": 200, "since": 1735785600, "timestamps": false }
+// Response.data
+{ "containerId": "nginx", "content": "2026/01/02 …\n" }   // 整段文本，未按行切分
+```
+
+> **分页语义**：Docker 不提供容器列表的分页参数，因此 `total` 是**一次性拉全量后**的条数，
+> 切片在服务端内存完成。`pageIndex` 从 0 开始、负数按 0 处理；`pageSize` 默认 20、上限 100，
+> **夹紧后的实际值一并返回**（传 5000 时能从响应里看出服务端用了 100）。页码越界返回空 `items`
+> 而**不是**自动回到最后一页——后者会让调用方以为「这就是第 100 页的内容」。
+>
+> **默认只列运行中的容器**（与 `docker ps` 一致）；`all: true` 等价于 `docker ps -a`。
+>
+> **日志不做实时跟随**：一次性 HTTP 响应跟着日志流只会把连接挂到容器退出；实时流是 0.3.0
+> 的 SignalR 推送要解决的事。`tail` 越界（负数或 > 10000）返回 `1000`/400 而**不是**静默截断——
+> 调用方要 100 万行却只拿到 1 万行，会误以为「日志就这么多」。
 
 ---
 
