@@ -266,6 +266,51 @@ POST /api/v1/hosts/{hostId}/containers/list
 > **为何是 `POST` 而非 `GET`**：本 API 全量用 `POST`（见「请求风格约定」），
 > `GET /healthz` 是唯一的基础设施例外。为了一个只读查询破例会让「哪些端点用哪种方法」失去唯一规则。
 
+```jsonc
+// POST /api/v1/auth/refresh
+// Request
+{ "refreshToken": "VmFkaUQxMjM0NTY3ODkw..." }
+// Response：结构与 login 完全一致（新 access + 新 refresh + user）
+{
+  "success": true,
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "accessToken": "…",
+    "refreshToken": "…",
+    "expiresIn": 900,
+    "user": { "id": "...", "username": "admin", "role": "admin" }
+  }
+}
+```
+
+```jsonc
+// POST /api/v1/auth/logout
+// Request
+{ "refreshToken": "VmFkaUQxMjM0NTY3ODkw..." }
+// Response（幂等——令牌不存在或已撤销同样返回成功；无数据接口不含 data 字段）
+{ "success": true, "code": 0, "message": "ok" }
+```
+
+#### 刷新令牌的轮换语义（0.0.5）
+
+刷新令牌是**一次性**凭据，轮换与重放的处理是安全设计的一部分：
+
+| 场景 | 服务端行为 | 客户端收到 |
+|------|-----------|-----------|
+| 刷新成功 | 旧令牌立即撤销，并用 `replaced_by_token_hash` 指向新令牌；同时签发新 refresh | 新 access + 新 refresh |
+| **已被轮换的旧令牌再次使用** | 判定为**重放**（该令牌很可能已泄漏）→ **撤销该用户的全部刷新令牌** | `1102` / 401 |
+| 已登出的令牌再次使用 | 仅拒绝（不牵连其他会话） | `1102` / 401 |
+| 令牌未知 / 已过期 / 用户已被删除 / 角色缺失 | 拒绝，且**不**签发新令牌 | `1102` / 401 |
+| 请求体缺 `refreshToken` | 参数校验失败 | `1000` / 400 |
+| `logout` 重复调用 | 幂等成功 | `200` |
+
+> **为什么「重放」与「登出后误用」要区别对待**：合法客户端在轮换后**不再持有**旧令牌（它已经被换成新的了），
+> 所以「已轮换的旧令牌被使用」只可能是令牌被窃取或客户端实现有 bug——两种情况下最安全的动作都是
+> 作废该用户全部会话、强制重新登录。
+> 而「已登出的令牌被使用」只说明对方拿着一个已经作废的凭据（例如用户在多设备场景下的旧副本），
+> 牵连其他会话没有安全收益，反而会误伤。两者的区别由 `replaced_by_token_hash` 是否为空表达。
+
 ---
 
 ### 用户管理（0.0.8 / 0.0.13）
