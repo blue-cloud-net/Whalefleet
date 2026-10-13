@@ -126,7 +126,8 @@ export interface HostGroup {
    * 未分组主机使用约定 key `host.group.ungrouped`。
    */
   nameKey: string
-  description?: string
+  /** 描述的 i18n key；同样存 key，理由同 `nameKey` */
+  descriptionKey?: string
   /** 排序权重，升序；未分组主机恒排在所有分组之后 */
   order: number
 }

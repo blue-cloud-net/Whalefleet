@@ -31,11 +31,11 @@ describe('路由表', () => {
   it('主机作用域：7 个资源路由均为 scope=host 且路径带 :hostId', () => {
     const hostRoutes = [
       'host-status',
-      'host-stacks',
       'host-containers',
       'host-images',
       'host-volumes',
       'host-networks',
+      'host-stacks',
       'host-events'
     ]
     for (const name of hostRoutes) {
@@ -46,18 +46,22 @@ describe('路由表', () => {
     }
   })
 
-  it('主机菜单顺序：状态 → 编排 → 容器 → 镜像 → 数据卷 → 网络 → 事件', () => {
+  it('主机菜单顺序：状态 → 容器 → 镜像 → 数据卷 → 网络 → 编排 → 事件', () => {
     // 只取真正进侧边栏的条目：纯重定向路由与概览页均标记 showInSidebar=false
+    //
+    // 顺序与能力交付节奏对齐：容器 / 镜像排在 0.0.11、0.0.12，
+    // 「编排」（Compose）依赖它们且后端排在 0.4.0，因此置于网络之后，
+    // 避免菜单里先摆一个点不动的入口。
     const order = children()
       .filter((r) => r.meta?.scope === 'host' && r.meta?.showInSidebar !== false)
       .map((r) => r.name)
     expect(order).toEqual([
       'host-status',
-      'host-stacks',
       'host-containers',
       'host-images',
       'host-volumes',
       'host-networks',
+      'host-stacks',
       'host-events'
     ])
   })

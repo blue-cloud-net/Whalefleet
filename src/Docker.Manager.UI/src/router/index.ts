@@ -97,14 +97,6 @@ const routes: RouteRecordRaw[] = [
         meta: { scope: 'host', icon: 'i-carbon-activity', title: 'nav.status' }
       },
       {
-        // 「编排」= Docker Compose / Stack。后端 /api/v1/stack/* 排 0.4.0，
-        // 当前先占位建好菜单，后续迭代直接填充实现。
-        path: 'hosts/:hostId/stacks',
-        name: 'host-stacks',
-        component: () => import('@/views/StacksView.vue'),
-        meta: { scope: 'host', icon: 'i-carbon-layers', title: 'nav.stacks' }
-      },
-      {
         path: 'hosts/:hostId/containers',
         name: 'host-containers',
         component: () => import('@/views/ContainersView.vue'),
@@ -127,6 +119,16 @@ const routes: RouteRecordRaw[] = [
         name: 'host-networks',
         component: () => import('@/views/NetworksView.vue'),
         meta: { scope: 'host', icon: 'i-carbon-network-3', title: 'nav.networks' }
+      },
+      {
+        // 「编排」= Docker Compose / Stack。后端 /api/v1/stack/* 排 0.4.0，
+        // 当前先占位建好菜单，后续迭代直接填充实现。
+        // 放在网络之后：它依赖的容器/镜像能力排在 0.0.11 / 0.0.12，
+        // 与交付节奏对齐，菜单里不会先摆一个点不动的入口。
+        path: 'hosts/:hostId/stacks',
+        name: 'host-stacks',
+        component: () => import('@/views/StacksView.vue'),
+        meta: { scope: 'host', icon: 'i-carbon-layers', title: 'nav.stacks' }
       },
       {
         // 「事件」= 操作审计日志（谁在何时做了什么），**不是** Docker Events 流。
@@ -153,7 +155,7 @@ export const router = createRouter({
 })
 
 // ===== 路由守卫 =====
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const auth = useAuthStore()
   const host = useHostStore()
   const requiresAuth = to.meta.requiresAuth !== false
@@ -164,11 +166,22 @@ router.beforeEach((to) => {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
 
+  // 主机列表改由 API 加载后，首次导航时 hosts 还是空的。
+  // 这里必须 await，否则深链（如直接打开 /hosts/local/dashboard）会因
+  // 「找不到该主机」而被误踢回 /overview —— 刷新即失效。
+  //
+  // ensureLoaded() 幂等：只有第一次会真的发请求，后续导航直接返回。
+  await host.ensureLoaded()
+
+  // 加载失败时**放行导航**：host.error 交给页面显示错误态 + 重试。
+  // 若在这里也重定向，/overview 会命中同一段逻辑再次被重定向，成死循环。
+  const hostsAvailable = host.error === null
+
   // 主机作用域：把 URL 上的 hostId 同步到 store；未知主机回退总览，避免停在死路上
   if (isHostScope) {
     const hostId = String(to.params.hostId ?? '')
     const known = host.hosts.some((h) => h.id === hostId)
-    if (!hostId || (host.hosts.length > 0 && !known)) {
+    if (!hostId || (hostsAvailable && host.hosts.length > 0 && !known)) {
       return { name: 'overview' }
     }
     host.setCurrent(hostId)

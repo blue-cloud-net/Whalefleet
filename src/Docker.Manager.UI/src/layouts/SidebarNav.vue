@@ -101,27 +101,12 @@ function goHostDashboard() {
 <template>
   <!-- 主机作用域：顶部固定「返回总览」+ 主机身份 -->
   <template v-if="isHostScope && currentHost">
-    <button
-      class="app-nav-item app-nav-idle mb-1 text-xs"
-      :class="itemPadding"
-      :title="t('nav.backToOverview')"
-      @click="goOverview"
-    >
-      <span class="i-carbon-arrow-left text-base shrink-0" />
-      <span v-if="!collapsed" class="app-truncate">{{ t('nav.backToOverview') }}</span>
-    </button>
-
-    <!-- 主机身份卡；折叠时退化为可点击的状态点（点击进主机概览） -->
-    <div
-      v-if="!collapsed"
-      class="flex items-center gap-2 px-3 py-2.5 mb-2 rounded-md bg-gray-50 dark:bg-gray-800 ring-1 ring-inset ring-gray-200/70 dark:ring-gray-700/50"
-    >
-      <StatusDot :status="currentHost.status" size="md" />
-      <span class="text-sm font-medium text-gray-900 dark:text-gray-100 app-truncate">
-        {{ currentHost.name }}
-      </span>
-    </div>
-    <div v-else class="flex justify-center py-2 mb-2">
+    <!--
+      折叠态：身份卡退化为可点的状态点。
+      此时顶栏 HostSelector 仍显示主机名，而这里是菜单区内**唯一**能进主机概览的
+      入口，因此必须保留——不能因为「展开态删了身份卡」而把折叠态一起删掉。
+    -->
+    <div v-if="collapsed" class="flex justify-center py-2 mb-1">
       <button
         class="rounded-full shrink-0 hover:scale-110 transition-transform"
         :title="`${currentHost.name} · ${t('nav.hostDashboard')}`"
@@ -133,7 +118,21 @@ function goHostDashboard() {
     </div>
 
     <!--
-      主机概览页（host-dashboard）不占用侧边栏条目（其内容已被「状态」覆盖），
+      展开态：只留一个分组标题。
+      早先是「主机名 + 状态点」的身份卡，但它与顶栏 HostSelector 完全重复
+      （同一屏里同一个主机名出现三次：顶栏、这里、面包屑）。改为分组标题后，
+      「我在哪台机器」由顶栏负责，本区只回答「这台机器上有哪些页面」。
+    -->
+    <div
+      v-else
+      class="flex items-center gap-1.5 px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-content-faint"
+    >
+      <span class="i-carbon-server text-xs" aria-hidden="true" />
+      <span class="app-truncate">{{ currentHost.name }}</span>
+    </div>
+
+    <!--
+      主机概览页（host-dashboard）不占用路由表里的侧边栏条目（内容与资源页有重叠），
       但它仍是 /hosts/:hostId 的落地页，因此这里提供显式入口。
     -->
     <button
@@ -146,14 +145,24 @@ function goHostDashboard() {
       <span v-if="!collapsed" class="app-truncate">{{ t('nav.hostDashboard') }}</span>
     </button>
 
-    <div v-if="!collapsed" class="my-3 border-t border-gray-200 dark:border-gray-700" />
+    <button
+      class="app-nav-item app-nav-idle mb-1 text-xs"
+      :class="itemPadding"
+      :title="t('nav.backToOverview')"
+      @click="goOverview"
+    >
+      <span class="i-carbon-arrow-left text-base shrink-0" />
+      <span v-if="!collapsed" class="app-truncate">{{ t('nav.backToOverview') }}</span>
+    </button>
+
+    <div v-if="!collapsed" class="my-3 border-t border-line-subtle" />
   </template>
 
   <template v-for="(item, index) in navItems" :key="item.name">
     <!-- 全局作用域的管理分组标题 -->
     <div
       v-if="startsGroup(index) && !collapsed"
-      class="flex items-center gap-1.5 px-3 pt-5 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500"
+      class="flex items-center gap-1.5 px-3 pt-5 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-content-faint"
     >
       <span class="i-carbon-settings text-xs" />
       {{ t('nav.groupManage') }}

@@ -4,11 +4,13 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useTheme } from '@/composables/useTheme'
 import { setLocale, type AppLocale } from '@/locales'
+import { shouldUseMock } from '@/mocks/switch'
 import AppBreadcrumb from '@/layouts/AppBreadcrumb.vue'
 import AppSidebar from '@/layouts/AppSidebar.vue'
 import UserMenu from '@/layouts/UserMenu.vue'
 import ThemeSwitcher from '@/components/common/ThemeSwitcher.vue'
 import LangSwitcher from '@/components/common/LangSwitcher.vue'
+import MockBadge from '@/components/common/MockBadge.vue'
 import HostSelector from '@/components/business/HostSelector.vue'
 
 /**
@@ -28,6 +30,13 @@ const drawerOpen = ref(false)
 
 /** 当前作用域：由路由 meta 决定 */
 const isHostScope = computed(() => route.meta.scope === 'host')
+
+/**
+ * mock 是否开启。
+ *
+ * 用 `import.meta.env.DEV` 门控，生产构建下整段与 MockBadge 一起被摇掉。
+ */
+const mockEnabled = import.meta.env.DEV && shouldUseMock()
 
 /** 内容区容器：窄屏不额外加宽，避免长行难读 */
 const contentWidth = computed(() => (isHostScope.value ? 'max-w-6xl' : ''))
@@ -50,53 +59,63 @@ function switchLocale(next: AppLocale) {
 </script>
 
 <template>
-  <div class="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-950">
+  <div class="min-h-screen flex flex-col bg-surface-page">
     <!-- ===== 顶栏 64px：毛玻璃 + 细下边线，滚动时内容从下方穿过 ===== -->
     <header
-      class="h-16 flex items-center gap-2 sm:gap-3 px-3 sm:px-4 shrink-0 sticky top-0 z-20 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md backdrop-saturate-150 border-b border-gray-200 dark:border-gray-800"
+      class="h-16 flex items-center gap-1 sm:gap-2 px-3 sm:px-4 shrink-0 sticky top-0 z-20 bg-surface-card/80 backdrop-blur-md backdrop-saturate-150 border-b border-line-subtle"
     >
-      <!-- 移动端：打开侧边栏抽屉 -->
-      <el-button text class="lg:!hidden" :aria-label="t('common.menu')" @click="drawerOpen = true">
-        <span class="i-carbon-menu text-xl" />
-      </el-button>
+      <!--
+        左侧品牌区：折叠按钮 / 汉堡 / Logo / 标题 合成一组。
+        早先折叠按钮独自占在最左、与 Logo 之间隔了空隙，视觉上像一个无主的图标；
+        把它们收进同一组并去掉组内间隙后，这一区读起来才是一个整体。
+      -->
+      <div class="flex items-center gap-0.5 shrink-0">
+        <!-- 移动端：打开侧边栏抽屉 -->
+        <el-button text class="lg:!hidden" :aria-label="t('common.menu')" @click="drawerOpen = true">
+          <span class="i-carbon-menu text-xl" />
+        </el-button>
 
-      <!-- 侧栏折叠/展开：图标表达「点击后将发生的动作」 -->
-      <!-- 折叠时显示 open(← 面板向左展开)，展开时显示 close(→ 面板向右收起) -->
-      <el-button
-        text
-        class="!hidden lg:!inline-flex"
-        :aria-label="t('common.sidebar')"
-        @click="toggleSidebar"
-      >
-        <span
-          class="text-xl transition-transform duration-200"
-          :class="sidebarCollapsed ? 'i-carbon-side-panel-open' : 'i-carbon-side-panel-close'"
-        />
-      </el-button>
-
-      <!-- Logo / 标题（点击回全局总览） -->
-      <button
-        class="flex items-center gap-2 min-w-0 group rounded-md px-1 py-1 -mx-1 transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
-        @click="goOverview"
-      >
-        <span
-          class="i-carbon-cube text-2xl text-brand-500 shrink-0 transition-transform duration-300 group-hover:scale-110"
-        />
-        <span
-          class="font-semibold tracking-tight text-gray-900 dark:text-gray-100 transition-colors group-hover:text-brand-600 dark:group-hover:text-brand-400 app-truncate"
+        <!-- 侧栏折叠/展开：图标表达「点击后将发生的动作」 -->
+        <!-- 折叠时显示 open(← 面板向左展开)，展开时显示 close(→ 面板向右收起) -->
+        <el-button
+          text
+          class="!hidden lg:!inline-flex"
+          :aria-label="t('common.sidebar')"
+          @click="toggleSidebar"
         >
-          {{ t('app.title') }}
-        </span>
-      </button>
+          <span
+            class="text-xl transition-transform duration-200"
+            :class="sidebarCollapsed ? 'i-carbon-side-panel-open' : 'i-carbon-side-panel-close'"
+          />
+        </el-button>
 
-      <!-- 面包屑：与 Logo 之间用竖线分隔，弱化处理不抢主标题 -->
+        <!-- Logo / 标题（点击回全局总览） -->
+        <button
+          class="flex items-center gap-2 min-w-0 group rounded-md px-1.5 py-1 -ml-1 transition-colors hover:bg-surface-hover"
+          @click="goOverview"
+        >
+          <span
+            class="i-carbon-cube text-2xl text-brand-500 shrink-0 transition-transform duration-300 group-hover:scale-110"
+          />
+          <span
+            class="font-semibold tracking-tight text-content-strong transition-colors group-hover:text-brand-600 dark:group-hover:text-brand-400 app-truncate"
+          >
+            {{ t('app.title') }}
+          </span>
+        </button>
+      </div>
+
+      <!-- 面包屑：与品牌区之间用竖线分隔，弱化处理不抢主标题 -->
       <span
-        class="hidden sm:flex items-center pl-3 ml-1 border-l border-gray-200 dark:border-gray-700 min-w-0"
+        class="hidden sm:flex items-center pl-3 ml-2 border-l border-line-subtle min-w-0"
       >
         <AppBreadcrumb />
       </span>
 
       <div class="flex-1" />
+
+      <!-- mock 开启时显眼的角标：避免「前端在打假数据却以为是真后端」 -->
+      <MockBadge v-if="mockEnabled" />
 
       <!-- 主机选择：主机作用域显示当前主机，全局作用域显示「选择主机」占位 -->
       <div class="hidden md:flex items-center gap-1">

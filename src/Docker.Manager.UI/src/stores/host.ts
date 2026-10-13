@@ -1,58 +1,35 @@
 import { defineStore } from 'pinia'
+import { listHosts } from '@/api/host'
 import type { HostGroup, HostInfo, HostOverview } from '@/types/api'
 
 /**
- * 主机分组定义（当前仅展示，无管理 UI）。
+ * 主机分组定义。
+ *
+ * 后端尚无分组表（`hosts.group_id` 未落库），因此分组由前端提供。
+ * **刻意不从 `src/mocks/` 引入**——那会让 store 与 mock 产生生产构建上的耦合：
+ * mock 模块会在开发时被静态打进主chunk，而分组定义在两种模式下都需要。
  *
  * 未分组主机不属于任何分组，由 `groupedHosts` 统一排在末尾，
- * 显示名走 i18n key `host.group.ungrouped`。
+ * 显示名与描述走 i18n key（不存字面文案）。
  */
 export const DEFAULT_HOST_GROUPS: HostGroup[] = [
-  { id: 'production', nameKey: 'host.group.production', description: '线上生产负载', order: 10 },
-  { id: 'staging', nameKey: 'host.group.staging', description: '预发布验证环境', order: 20 },
-  { id: 'local', nameKey: 'host.group.local', description: 'Docker.Manager 宿主机自身', order: 30 }
-]
-
-/**
- * 演示用主机种子数据。
- *
- * TODO(0.0.8)：后端 `POST /api/v1/host/list` 与聚合总览接口就绪后，
- * 改为登录后拉取真实列表填充 `hosts`，本常量仅保留为离线兜底。
- *
- * 注意 `staging-01` 刻意**不提供** version / startedAt —— 用于验证离线主机
- * 在 UI 上显示占位而非塌版。
- */
-export const DEFAULT_HOSTS: HostOverview[] = [
+  {
+    id: 'production',
+    nameKey: 'host.group.production',
+    descriptionKey: 'host.group.productionDesc',
+    order: 10
+  },
+  {
+    id: 'staging',
+    nameKey: 'host.group.staging',
+    descriptionKey: 'host.group.stagingDesc',
+    order: 20
+  },
   {
     id: 'local',
-    name: 'local',
-    type: 'socket',
-    endpoint: '/var/run/docker.sock',
-    enabled: true,
-    status: 'online',
-    groupId: 'local',
-    startedAt: '2026-09-28T03:12:45Z',
-    version: { version: '27.3.1', apiVersion: '1.47', os: 'linux', arch: 'x86_64', goVersion: 'go1.22.7' }
-  },
-  {
-    id: 'prod-01',
-    name: 'prod-01',
-    type: 'tcp',
-    endpoint: 'tcp://10.0.0.11:2376',
-    enabled: true,
-    status: 'online',
-    groupId: 'production',
-    startedAt: '2026-10-06T11:40:08Z',
-    version: { version: '27.3.1', apiVersion: '1.47', os: 'linux', arch: 'aarch64', goVersion: 'go1.22.7' }
-  },
-  {
-    id: 'staging-01',
-    name: 'staging-01',
-    type: 'tcp',
-    endpoint: 'tcp://10.0.0.21:2375',
-    enabled: true,
-    status: 'offline',
-    groupId: 'staging'
+    nameKey: 'host.group.local',
+    descriptionKey: 'host.group.localDesc',
+    order: 30
   }
 ]
 
@@ -67,15 +44,32 @@ export const DEFAULT_HOSTS: HostOverview[] = [
  *
  * **刻意不做持久化**：hosts / groups 来自后端，持久化快照必然陈旧；
  * currentId 由 URL 驱动，路由守卫每次导航都会重写。
+ *
+ * ## 主机数据来自 API，不再内置种子
+ *
+ * 早期版本把三台演示主机写成本文件的常量并作为初始 state，等于「前端自带一份真相」——
+ * 既让「数据加载失败」这条路径无法被测试，也让新手误以为数据本来就长这样。
+ * 现改为 `loadHosts()` 拉取；离线开发请开 mock（见 `src/mocks/`）。
+ *
+ * `ensureLoaded()` 是给路由守卫用的**幂等**入口：首次导航 await 一次，
+ * 之后的导航直接返回，不会重复请求。
  */
 export const useHostStore = defineStore('host', {
   state: () => ({
     /** 当前选中主机 id；空串 = 全局作用域（未选主机） */
     currentId: '' as string,
     /** 可见主机列表（受用户资源可见性约束） */
-    hosts: [...DEFAULT_HOSTS] as HostOverview[],
+    hosts: [] as HostOverview[],
     /** 分组定义 */
-    groups: [...DEFAULT_HOST_GROUPS] as HostGroup[]
+    groups: [] as HostGroup[],
+    /** 首次加载中；用于页面出骨架屏 */
+    loading: false,
+    /** 加载失败信息；页面据此显示错误态 + 重试 */
+    error: null as string | null,
+    /** 最近一次成功同步时间（ISO 字符串），供页面显示「数据更新于…」 */
+    lastSyncedAt: null as string | null,
+    /** `ensureLoaded()` 的在途 Promise，用于并发去重 */
+    _inflight: null as Promise<void> | null
   }),
   getters: {
     /** 当前主机；全局作用域返回 null（不再回退到 local，避免"看起来像选中了某台机器"） */
@@ -125,6 +119,43 @@ export const useHostStore = defineStore('host', {
     },
     setGroups(groups: HostGroup[]) {
       this.groups = groups
+    },
+
+    /**
+     * 拉取主机列表。
+     *
+     * 失败时**不抛异常**，而是把 `error` 置上并保留旧数据：
+     * 守卫与页面都要根据 `error` 决定表现，抛出只会让调用方各自 try/catch。
+     */
+    async loadHosts(): Promise<void> {
+      this.loading = true
+      this.error = null
+      try {
+        this.hosts = await listHosts()
+        // 分组定义仍由前端常量提供（后端尚无分组表）
+        if (this.groups.length === 0) this.groups = [...DEFAULT_HOST_GROUPS]
+        this.lastSyncedAt = new Date().toISOString()
+      } catch (err) {
+        this.error = err instanceof Error ? err.message : String(err)
+      } finally {
+        this.loading = false
+      }
+    },
+
+    /**
+     * 幂等加载：已加载过（或正在加载）则直接返回。
+     *
+     * 路由守卫用它保证「深链首屏也能校验 hostId」——
+     * 否则 `hosts` 为空时守卫会跳过校验，坏链接会静默停在死路上。
+     */
+    async ensureLoaded(): Promise<void> {
+      if (this._inflight) return this._inflight
+      if (!this.loading && this.hosts.length > 0 && this.lastSyncedAt) return
+
+      this._inflight = this.loadHosts().finally(() => {
+        this._inflight = null
+      })
+      return this._inflight
     }
   }
 })
