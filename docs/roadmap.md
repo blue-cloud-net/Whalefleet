@@ -39,7 +39,7 @@
 |------|------|:---:|------|
 | `0.0.1` | 项目骨架 + CI 骨架 | ✅ | 4 个分层项目 + Central Package Management + `/healthz` |
 | `0.0.2` | 后端基础设施 | ✅ | 异常管道 / 统一响应 / 错误码分层 / CORS / 集成测试载体 |
-| `0.0.3` | 数据层与密码安全 | 🚧 | SQLite / Dapper / 迁移 `0001–0004` / 四个仓储 / 审计填充均已落地；**仅缺 Argon2id 哈希** |
+| `0.0.3` | 数据层与密码安全 | ✅ | SQLite / Dapper / 迁移 `0001–0004` / 四个仓储 / 审计填充 / **Argon2id 密码哈希**全部落地 |
 | `0.0.4` | 认证 API（核心） | ⬜ | 依赖 0.0.3 的密码哈希 |
 | `0.0.5` | 认证完善 + 前端基础设施 | 🚧 | 前端工作区、代理、axios 层已就位；后端 refresh / logout / 安全头 / 密码强度未开工 |
 | `0.0.6` | 部署底座与初始管理员引导 | ⬜ | 其中**初始管理员引导**将随 0.0.4 一并落地（否则登录无法端到端验证） |
@@ -143,11 +143,13 @@ CI：
 
 ---
 
-### 0.0.3 🚧 — 数据层与密码安全
+### 0.0.3 ✅ — 数据层与密码安全
 
 **目标**：用户表可创建，密码可哈希校验。
 
-> **进度（2026-10-13）**：🚧 除**密码哈希**外的全部内容已落地——SQLite 初始化（含外键 / `busy_timeout`）、Dapper 接入、架构迁移 `0001–0004`、四个仓储（`users` / `hosts` / `roles` / `refresh_tokens`）与实体审计填充均已写入 [architecture.md](./architecture.md) 与 `Infrastructure/Persistence`。**仅剩 Argon2id 哈希**。
+> **完成（2026-10-13）**：SQLite 初始化（含外键 / `busy_timeout`）、Dapper 接入、架构迁移 `0001–0004`、
+> 四个仓储（`users` / `hosts` / `roles` / `refresh_tokens`）、实体审计填充与 **Argon2id 密码哈希**均已落地。
+> 设计细节见 [architecture.md](./architecture.md) 的「实体审计与软删除」「持久化实体物化约定」。
 
 后端：
 - ✅ SQLite 初始化（`/app/data/docker-manager.db`，目录不存在自动创建）
@@ -162,8 +164,17 @@ CI：
   `ICurrentUser` + `TimeProvider` 完成审计填充（0.0.4 认证落地后由 Api 层实现替换占位实现）
 - ✅ `User` 实体继承 `FullAuditedEntity<TId, TUserKey>`（创建 + 修改 + **软删除**审计）
 - ✅ 角色从 `UserRole` 枚举改为 `roles` 表 + `IRoleRepository`（`users.role_id` 外键），内置 admin / operator / viewer / auditor 四角色
-- ⬜ Argon2id 密码哈希（`Konscious.Security.Cryptography.Argon2`，MIT），禁止明文落库与日志
-- ⬜ 单元测试覆盖哈希/校验
+- ✅ Argon2id 密码哈希（`Konscious.Security.Cryptography.Argon2`，MIT），禁止明文落库与日志
+  - ✅ PHC 编码串（`$argon2id$v=19$m=…,t=…,p=…$salt$hash`）由 `Core/Auth/PasswordHash` 值对象负责编解码；
+    算法参数随哈希一同持久化，因此日后调参不会让旧哈希失效
+  - ✅ `IPasswordHasher`（`Application/Abstractions`）抽象 + `Argon2PasswordHasher`（`Infrastructure/Security`）实现；
+    摘要比较一律走 `CryptographicOperations.FixedTimeEquals`
+  - ✅ 参数经 `Security:Argon2` 配置，越界在**启动时**失败（`ValidateOnStart`，直接复用 `PasswordHash` 的校验规则避免两处漂移）
+- ✅ 单元测试覆盖哈希/校验（编码/解析/边界 + 真实 Argon2id 的哈希、校验、篡改与参数升级）
+
+**验收**：
+- ✅ `dotnet test -c Release` 全绿（本迭代新增 69 个用例，全量 469 个）
+- ✅ 依赖方向守卫：`Docker.Manager.Core` 仍**无任何 NuGet 依赖**
 
 ---
 
