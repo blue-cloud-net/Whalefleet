@@ -1,9 +1,10 @@
+using System.Data.Common;
 using System.Globalization;
 using Docker.Manager.Application.Abstractions;
+using Docker.Manager.Application.Abstractions.Persistence;
 using Docker.Manager.Infrastructure.DependencyInjection;
 using Docker.Manager.Infrastructure.Persistence;
 using Docker.Manager.IntegrationTests.Infrastructure;
-using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -19,8 +20,11 @@ namespace Docker.Manager.IntegrationTests.Persistence;
 /// 新开连接（连接池内），迁移建的表在下一个连接里就看不见了。</para>
 /// <para><b>为什么要假时间与假用户</b>：审计填充的正确性（写入了什么时间、谁写的）
 /// 只有在时间与用户可控时才能断言。</para>
-/// <para><b>为什么要 <c>ClearAllPools</c></b>：驱动默认启用连接池，池中连接会占住数据库文件，
-/// 删临时目录前必须先清池，否则清理会失败并留下垃圾。</para>
+/// <para><b>为什么关掉连接池</b>（<c>Persistence:Pooling=false</c>）：驱动默认池化，
+/// 池中连接会占住数据库文件；以往靠 <c>SqliteConnection.ClearAllPools()</c> 在清理前清池，
+/// 但那是<b>进程级</b>操作，会一并释放并行运行的其他测试正在用的连接句柄
+/// （实测表现为偶发 <c>ObjectDisposedException: SQLitePCL.sqlite3</c>）。
+/// 关掉池化后连接用完即释放，既不需要全局清理，也不会互相干扰。</para>
 /// </remarks>
 internal sealed class PersistenceTestHost : IAsyncDisposable
 {
@@ -50,6 +54,9 @@ internal sealed class PersistenceTestHost : IAsyncDisposable
             {
                 ["Persistence:DatabasePath"] = this.DatabasePath,
                 ["Persistence:CommandTimeoutSeconds"] = "30",
+
+                // 测试之间靠删临时目录隔离，不能留池化连接占住库文件（见类型备注）。
+                ["Persistence:Pooling"] = "false",
             })
             .Build();
 
@@ -103,7 +110,7 @@ internal sealed class PersistenceTestHost : IAsyncDisposable
     /// <returns>标量值的字符串形式；<c>NULL</c> 返回 <see langword="null"/>。</returns>
     public async Task<string?> QueryScalarAsync(string sql)
     {
-        await using var connection = new SqliteConnection($"Data Source={this.DatabasePath}");
+        await using var connection = CreateConnection();
         await connection.OpenAsync();
 
         await using var command = connection.CreateCommand();
@@ -130,7 +137,7 @@ internal sealed class PersistenceTestHost : IAsyncDisposable
     /// <returns>受影响行数。</returns>
     public async Task<int> ExecuteAsync(string sql)
     {
-        await using var connection = new SqliteConnection($"Data Source={this.DatabasePath}");
+        await using var connection = CreateConnection();
         await connection.OpenAsync();
 
         await using var command = connection.CreateCommand();
@@ -139,11 +146,21 @@ internal sealed class PersistenceTestHost : IAsyncDisposable
         return await command.ExecuteNonQueryAsync();
     }
 
+    /// <summary>
+    /// 创建一条与生产路径同源的连接（走连接工厂，因而也是非池化的）。
+    /// </summary>
+    /// <returns>未打开的连接。</returns>
+    /// <remarks>
+    /// 不要就地拼 <c>Data Source=...</c>：那样会绕过 <c>Persistence:Pooling=false</c> 这个配置，
+    /// 连接进池后就会一直占住库文件，删临时目录时留下尾巴。
+    /// </remarks>
+    private DbConnection CreateConnection() =>
+        _provider.GetRequiredService<IDbConnectionFactory>().Create();
+
     /// <inheritdoc />
     public ValueTask DisposeAsync()
     {
         _provider.Dispose();
-        SqliteConnection.ClearAllPools();
 
         if (Directory.Exists(_directory))
         {

@@ -4,7 +4,6 @@ using Docker.Manager.Core.Users;
 using Docker.Manager.Infrastructure.DependencyInjection;
 using Docker.Manager.Infrastructure.Persistence;
 using FluentAssertions;
-using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -170,6 +169,10 @@ public class AdminBootstrapperTests
                 ["Persistence:DatabasePath"] = Path.Combine(directory, "docker-manager.db"),
                 ["Persistence:CommandTimeoutSeconds"] = "30",
 
+                // 关掉连接池：清池是进程级操作，会踩到并行测试正在用的连接句柄；
+                // 关掉后连接用完即释放，临时目录也能直接删。
+                ["Persistence:Pooling"] = "false",
+
                 // 引导测试不关心 KDF 强度，用便宜参数。
                 ["Security:Argon2:MemorySizeKiB"] = "8192",
                 ["Security:Argon2:Iterations"] = "1",
@@ -198,7 +201,6 @@ public class AdminBootstrapperTests
             catch
             {
                 provider.Dispose();
-                SqliteConnection.ClearAllPools();
                 Directory.Delete(directory, recursive: true);
                 throw;
             }
@@ -209,7 +211,6 @@ public class AdminBootstrapperTests
         public ValueTask DisposeAsync()
         {
             _provider.Dispose();
-            SqliteConnection.ClearAllPools();
 
             if (Directory.Exists(_directory))
             {

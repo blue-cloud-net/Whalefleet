@@ -7,7 +7,6 @@ using Docker.Manager.Infrastructure.Persistence;
 using Docker.Manager.IntegrationTests.Infrastructure;
 using Docker.Manager.IntegrationTests.Persistence;
 using FluentAssertions;
-using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -59,6 +58,9 @@ internal sealed class AuthTestHost : IAsyncDisposable
             {
                 ["Persistence:DatabasePath"] = this.DatabasePath,
                 ["Persistence:CommandTimeoutSeconds"] = "30",
+
+                // 关掉连接池：清池是进程级操作，会踩到并行测试正在用的连接句柄（见类型备注）。
+                ["Persistence:Pooling"] = "false",
                 ["Jwt:Secret"] = _jwtSecret,
 
                 // 便宜的 Argon2 参数（见类型备注）。
@@ -136,7 +138,6 @@ internal sealed class AuthTestHost : IAsyncDisposable
     public ValueTask DisposeAsync()
     {
         _provider.Dispose();
-        SqliteConnection.ClearAllPools();
 
         if (Directory.Exists(_directory))
         {

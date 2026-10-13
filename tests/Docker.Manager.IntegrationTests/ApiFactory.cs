@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 
@@ -92,6 +91,11 @@ public class ApiFactory : WebApplicationFactory<Program>
                 // 并行执行的多个宿主还会相互争抢同一个库文件。
                 ["Persistence:DatabasePath"] = _databasePath,
 
+                // 测试靠删除临时目录来隔离，池中连接会占住库文件；
+                // 而清池（ClearAllPools）是进程级操作，会踩到并行测试正在用的连接句柄，
+                // 因此干脆关掉池化：每个连接用完即释放，测试之间自然隔离。
+                ["Persistence:Pooling"] = "false",
+
                 // JWT 签名密钥（缺失会导致启动校验失败）。
                 ["Jwt:Secret"] = TestJwtSecret,
 
@@ -120,9 +124,6 @@ public class ApiFactory : WebApplicationFactory<Program>
         {
             return;
         }
-
-        // 连接池会占住数据库文件，清池后才能删除临时目录。
-        SqliteConnection.ClearAllPools();
 
         var workingDirectory = Path.GetDirectoryName(_logDirectory);
         if (workingDirectory is null || !Directory.Exists(workingDirectory))
