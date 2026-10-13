@@ -74,3 +74,29 @@ public sealed class DockerImageFactAttribute : FactAttribute
         }
     }
 }
+
+/// <summary>
+/// 「需要真实 Docker 守护进程<b>并且</b>能连上镜像仓库」的用例标注。
+/// </summary>
+/// <remarks>
+/// 用于<b>拉取</b>镜像的成功路径：拉取必然要出网，而本组还有一条验证「拉取失败路径」的用例——
+/// 那条不能联网（它要证明的就是失败）。两者若共用一个特性，离线时会一起跳过；
+/// 分开之后离线时仍能验证失败路径，而成功路径的缺失是已知且已记录的。
+/// </remarks>
+public sealed class DockerRegistryFactAttribute : FactAttribute
+{
+    /// <summary>
+    /// 初始化特性，并在守护进程不可用或镜像仓库不可达时给出跳过原因。
+    /// </summary>
+    public DockerRegistryFactAttribute()
+    {
+        if (!DockerAvailability.IsAvailable)
+        {
+            this.Skip = DockerAvailability.SkipReason;
+        }
+        else if (!DockerAvailability.IsRegistryReachable)
+        {
+            this.Skip = DockerAvailability.RegistrySkipReason;
+        }
+    }
+}
