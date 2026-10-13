@@ -6,6 +6,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/common/PageHeader.vue'
 import SectionCard from '@/components/common/SectionCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import IconActionButton from '@/components/common/IconActionButton.vue'
 import PullImageDialog from '@/components/business/PullImageDialog.vue'
 import { listImages, removeImage } from '@/api/image'
 import { ApiRequestError } from '@/api'
@@ -300,20 +301,23 @@ watch(
           </template>
         </el-table-column>
 
-        <el-table-column :label="t('container.col.actions')" width="140" align="right">
+        <!-- 与容器列表共用 IconActionButton：图标按钮 + tooltip 文字标签 -->
+        <el-table-column :label="t('container.col.actions')" width="100" align="right">
           <template #default="{ row }">
-            <el-button size="small" text @click="openInspect(row)">
-              {{ t('container.action.detail') }}
-            </el-button>
-            <el-button
-              size="small"
-              text
-              type="danger"
-              :loading="busyIds.has(row.id)"
-              @click="onRemove(row)"
-            >
-              {{ t('common.delete') }}
-            </el-button>
+            <div class="flex items-center justify-end gap-0.5">
+              <IconActionButton
+                icon="i-carbon-document-view"
+                :label="t('container.action.detail')"
+                @click="openInspect(row)"
+              />
+              <IconActionButton
+                icon="i-carbon-trash-can"
+                :label="t('common.delete')"
+                tone="danger"
+                :loading="busyIds.has(row.id)"
+                @click="onRemove(row)"
+              />
+            </div>
           </template>
         </el-table-column>
       </el-table>

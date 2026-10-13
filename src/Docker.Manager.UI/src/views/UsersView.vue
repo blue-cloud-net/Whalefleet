@@ -5,6 +5,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/common/PageHeader.vue'
 import SectionCard from '@/components/common/SectionCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import IconActionButton from '@/components/common/IconActionButton.vue'
 import UserFormDialog from '@/components/business/UserFormDialog.vue'
 import ResetPasswordDialog from '@/components/business/ResetPasswordDialog.vue'
 import { deleteUser, listUsers } from '@/api/user'
@@ -191,30 +192,26 @@ watch(() => auth.user?.username, load, { immediate: true })
           </template>
         </el-table-column>
 
-        <el-table-column :label="t('container.col.actions')" width="200" align="right">
+        <el-table-column :label="t('container.col.actions')" width="100" align="right">
           <template #default="{ row }">
-            <el-button size="small" text @click="openReset(row)">
-              {{ t('user.action.resetPassword') }}
-            </el-button>
-            <!-- 自己那一行禁用删除：后端有同样的护栏，让按钮命中一次错误不如直接挡住 -->
-            <el-tooltip
-              :disabled="!isSelf(row)"
-              :content="t('user.delete.selfHint')"
-              placement="top"
-            >
-              <span class="inline-block">
-                <el-button
-                  size="small"
-                  text
-                  type="danger"
-                  :disabled="isSelf(row)"
-                  :loading="busyIds.has(row.id)"
-                  @click="onDelete(row)"
-                >
-                  {{ t('common.delete') }}
-                </el-button>
-              </span>
-            </el-tooltip>
+            <div class="flex items-center justify-end gap-0.5">
+              <IconActionButton
+                icon="i-carbon-password"
+                :label="t('user.action.resetPassword')"
+                @click="openReset(row)"
+              />
+              <!-- 自己那一行禁用删除：后端有同样的护栏，让按钮命中一次错误不如直接挡住。
+                   hint 把「为什么点不了」说清楚，否则只剩一个没有解释的灰色图标。 -->
+              <IconActionButton
+                icon="i-carbon-trash-can"
+                :label="t('common.delete')"
+                :hint="t('user.delete.selfHint')"
+                tone="danger"
+                :disabled="isSelf(row)"
+                :loading="busyIds.has(row.id)"
+                @click="onDelete(row)"
+              />
+            </div>
           </template>
         </el-table-column>
       </el-table>

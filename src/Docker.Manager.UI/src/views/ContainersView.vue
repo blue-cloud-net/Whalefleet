@@ -6,6 +6,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/common/PageHeader.vue'
 import SectionCard from '@/components/common/SectionCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import IconActionButton from '@/components/common/IconActionButton.vue'
 import CreateContainerDialog from '@/components/business/CreateContainerDialog.vue'
 import {
   listContainers,
@@ -246,6 +247,73 @@ function openInspect(container: ContainerSummary): void {
   })
 }
 
+/** 行内动作按钮的一行 */
+interface RowAction {
+  key: string
+  /** Carbon 图标类名（`i-carbon-*`） */
+  icon: string
+  /** tooltip 文案，同时作为无障碍标签 */
+  label: string
+  /** 仅删除用危险色，其余走默认色 */
+  tone?: 'danger'
+  /** 正在执行：主操作转圈，其余置灰 */
+  loading?: boolean
+  disabled?: boolean
+  run: (container: ContainerSummary) => void
+}
+
+/**
+ * 某一行当前可用的动作（启动 / 停止二选一，由状态决定）。
+ *
+ * 按钮本身的 tooltip / 禁用态包裹 / 无障碍标签都在 `IconActionButton` 里，这里只负责
+ * 「有哪些动作、什么图标、什么文案、点了干什么」。列成表而不是写死 5 段模板，是因为
+ * 启动/停止要按状态换图标与文案，再乘以重启、删除、日志、详情，逐段展开就得在模板里
+ * 散落着判断；列成表后一眼能看全，以后加动作（复制 ID / 交互式终端）只加一行。
+ *
+ * ⚠️ 新加图标必须同步写进 `uno.config.ts` 的 safelist（那里会校验图标在 Carbon 中真实存在）。
+ */
+function rowActions(container: ContainerSummary): RowAction[] {
+  const busy = busyIds.value.has(container.id)
+  const active = isActive(container)
+
+  return [
+    {
+      key: 'power',
+      icon: active ? 'i-carbon-stop-filled' : 'i-carbon-play-filled',
+      label: t(active ? 'container.action.stop' : 'container.action.start'),
+      loading: busy,
+      run: active ? onStop : onStart
+    },
+    {
+      key: 'restart',
+      icon: 'i-carbon-renew',
+      label: t('container.action.restart'),
+      disabled: busy,
+      run: onRestart
+    },
+    {
+      key: 'remove',
+      icon: 'i-carbon-trash-can',
+      label: t('container.action.remove'),
+      tone: 'danger',
+      disabled: busy,
+      run: onRemove
+    },
+    {
+      key: 'logs',
+      icon: 'i-carbon-terminal',
+      label: t('container.action.logs'),
+      run: openLogs
+    },
+    {
+      key: 'detail',
+      icon: 'i-carbon-document-view',
+      label: t('container.action.detail'),
+      run: openInspect
+    }
+  ]
+}
+
 watch(
   hostId,
   (id) => {
@@ -359,54 +427,20 @@ onBeforeUnmount(stopPolling)
             </template>
           </el-table-column>
 
-          <el-table-column :label="t('container.col.actions')" width="280" align="right">
+          <!-- 文字标签收进 tooltip 后，这一列从 280px 收窄到 180px -->
+          <el-table-column :label="t('container.col.actions')" width="180" align="right">
             <template #default="{ row }">
-              <div class="flex items-center justify-end gap-1">
-                <el-button
-                  v-if="isActive(row)"
-                  link
-                  size="small"
-                  :loading="busyIds.has(row.id)"
-                  @click="onStop(row)"
-                >
-                  {{ t('container.action.stop') }}
-                </el-button>
-                <el-button
-                  v-else
-                  link
-                  size="small"
-                  :loading="busyIds.has(row.id)"
-                  @click="onStart(row)"
-                >
-                  {{ t('container.action.start') }}
-                </el-button>
-
-                <el-button
-                  link
-                  size="small"
-                  :disabled="busyIds.has(row.id)"
-                  @click="onRestart(row)"
-                >
-                  {{ t('container.action.restart') }}
-                </el-button>
-
-                <el-button
-                  link
-                  size="small"
-                  type="danger"
-                  :disabled="busyIds.has(row.id)"
-                  @click="onRemove(row)"
-                >
-                  {{ t('container.action.remove') }}
-                </el-button>
-
-                <el-button link size="small" @click="openLogs(row)">
-                  {{ t('container.action.logs') }}
-                </el-button>
-
-                <el-button link size="small" @click="openInspect(row)">
-                  {{ t('container.action.detail') }}
-                </el-button>
+              <div class="flex items-center justify-end gap-0.5">
+                <IconActionButton
+                  v-for="action in rowActions(row)"
+                  :key="action.key"
+                  :icon="action.icon"
+                  :label="action.label"
+                  :tone="action.tone ?? 'default'"
+                  :loading="action.loading"
+                  :disabled="action.disabled"
+                  @click="action.run(row)"
+                />
               </div>
             </template>
           </el-table-column>
