@@ -38,4 +38,18 @@ public interface IPasswordHasher
     /// 而不是"服务器内部错误"（500）。
     /// </remarks>
     bool Verify(string password, string encodedHash);
+
+    /// <summary>
+    /// 按与真实校验<b>相同的计算成本</b>执行一次必然失败的校验。
+    /// </summary>
+    /// <param name="password">调用方收到的明文密码（不校验其内容）。</param>
+    /// <remarks>
+    /// <para><b>用途：抵御用户名枚举的时序攻击</b>。登录时若"用户不存在"立即返回、
+    /// 而"密码错误"要等 Argon2 算完，那么<b>响应耗时本身就是"该用户名是否存在"的信号</b>。
+    /// 在用户不存在的分支上调用本方法，可让两条失败路径的耗时对齐。</para>
+    /// <para>实现必须始终基于<b>当前配置的参数</b>计算，否则参数一改，两条路径的耗时又会分开。</para>
+    /// <para>返回值无意义（必然失败），因此本方法不返回 <see langword="bool"/>——
+    /// 避免调用方误以为它能用来判断什么。</para>
+    /// </remarks>
+    void PerformDummyVerification(string password);
 }

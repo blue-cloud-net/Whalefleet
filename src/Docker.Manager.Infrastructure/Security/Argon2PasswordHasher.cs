@@ -26,6 +26,16 @@ internal sealed class Argon2PasswordHasher : IPasswordHasher
     private readonly Argon2Options _options;
 
     /// <summary>
+    /// 哑元哈希（惰性求值）。
+    /// </summary>
+    /// <remarks>
+    /// 用一个随机密码生成一次，其明文无从得知，因此校验永不可能成功。
+    /// 惰性求值让它只在真的出现「用户不存在」时才付出那一次生成成本；
+    /// 用<b>当前配置的参数</b>生成，保证与真实校验的耗时一致。
+    /// </remarks>
+    private readonly Lazy<string> _dummyHash;
+
+    /// <summary>
     /// 初始化哈希器。
     /// </summary>
     /// <param name="options">Argon2 参数（启动时已校验）。</param>
@@ -35,6 +45,9 @@ internal sealed class Argon2PasswordHasher : IPasswordHasher
         ArgumentNullException.ThrowIfNull(options);
 
         _options = options.Value;
+        _dummyHash = new Lazy<string>(
+            () => this.Hash(Convert.ToHexString(RandomNumberGenerator.GetBytes(32))),
+            LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
     /// <inheritdoc />
@@ -85,6 +98,18 @@ internal sealed class Argon2PasswordHasher : IPasswordHasher
             expected.Digest.Length);
 
         return expected.IsMatch(candidate);
+    }
+
+    /// <inheritdoc />
+    public void PerformDummyVerification(string password)
+    {
+        if (String.IsNullOrEmpty(password))
+        {
+            return;
+        }
+
+        // 结果必然为 false（没人知道哑元哈希的明文），刻意丢弃。
+        _ = this.Verify(password, _dummyHash.Value);
     }
 
     private static byte[] DeriveDigest(
