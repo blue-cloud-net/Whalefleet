@@ -74,6 +74,8 @@ export const ErrorCode = {
   DockerApiFailed: 1402,
   /** Docker 操作超时 */
   DockerTimeout: 1403,
+  /** 资源当前状态不允许该操作（如不带 force 删除运行中的容器） */
+  DockerResourceConflict: 1404,
 
   // ===== 1500-1599 资源权限 =====
   /** 无权限访问此资源 */
@@ -204,4 +206,145 @@ export interface LoginResult {
   /** access token 剩余有效秒数，前端据此安排静默刷新 */
   expiresIn: number
   user: CurrentUser
+}
+/* ==================================================================
+ * 容器（对应后端 `Docker.Manager.Application.Containers`，0.0.9 已实现）
+ *
+ * 字段与后端投影**逐字对应**，不要在前端另起一套形状：
+ * 后端已经把这些字段挑过一遍（而不是原样透传 SDK 对象），
+ * 前端再改一次就等于凭空多出一层谁也说不清来源的转换。
+ * ================================================================== */
+
+/**
+ * 容器状态（列表项用 `state` / `status` 两个文本字段，详情用这个结构体）。
+ *
+ * ⚠️ `state` 是 **Docker 的原始状态文本**，取值来自守护进程，**不在本项目控制范围内**。
+ * 因此声明为 `string` 而不是字面量联合：新版本 Docker 加了新状态时不会让前端编译失败，
+ * 未登记的状态由 `container-tone.ts` 统一落到「未知」色。
+ */
+export interface ContainerState {
+  /** 状态文本，如 `running` / `exited` / `paused` */
+  status: string
+  running: boolean
+  paused: boolean
+  restarting: boolean
+  /** 本次启动时间（ISO 8601）；从未启动过为 null */
+  startedAt: string | null
+  /** 本次结束时间（ISO 8601）；仍在运行或从未结束为 null */
+  finishedAt: string | null
+  /** 退出码；**运行中恒为 null**（后端会把运行中的固定 0 抹成 null，见其类型注释） */
+  exitCode: number | null
+  oomKilled: boolean
+  /** 健康检查状态 `healthy` / `unhealthy` / `starting`；未配健康检查为 null */
+  healthStatus: string | null
+}
+
+/** 端口映射（`publicPort` / `ip` 为 null 表示「容器内端口已暴露但未映射到宿主」） */
+export interface ContainerPort {
+  privatePort: number
+  publicPort: number | null
+  type: string
+  ip: string | null
+}
+
+/** 容器列表项 */
+export interface ContainerSummary {
+  /** 完整容器 ID */
+  id: string
+  /** 容器名；后端已去掉 Docker 内部的前导斜杠 */
+  name: string
+  /** 镜像名，如 `nginx:latest` */
+  image: string
+  /** 镜像 ID（`sha256:…`） */
+  imageId: string
+  /** 启动命令 */
+  command: string
+  /** 创建时间（ISO 8601） */
+  created: string
+  /** Docker 原始状态文本，如 `running` / `exited` */
+  state: string
+  /** 人类可读状态，如 `Up 3 hours`（后端原样给出，不本地翻译——各语言版本的措辞不同） */
+  status: string
+  ports: ContainerPort[]
+}
+
+/** 容器列表的分页结果 */
+export interface ContainerListResult {
+  items: ContainerSummary[]
+  /** 分页前的总条数 */
+  total: number
+  /** 服务端实际使用的页码（从 0 开始） */
+  pageIndex: number
+  /** 服务端实际使用的每页条数（**已夹紧**：请求 5000 会回 100） */
+  pageSize: number
+}
+
+/** 容器启动配置（详情页用；列表项不带它——`env` 常含密码 / Token） */
+export interface ContainerConfigDetail {
+  image: string
+  cmd: string[]
+  entrypoint: string[]
+  env: string[]
+  labels: Record<string, string>
+  workingDir: string
+  hostname: string
+  user: string
+  tty: boolean
+}
+
+/** 容器宿主侧配置（详情页用） */
+export interface ContainerHostConfigDetail {
+  /** Docker 线上写法：`no` / `always` / `on-failure` / `unless-stopped` */
+  restartPolicy: string
+  autoRemove: boolean
+  networkMode: string
+  privileged: boolean
+  /** 字节；未限制为 null（Docker 用 0 表示未限制，后端转成 null） */
+  memoryLimitBytes: number | null
+  /** 十亿分之一核；未限制为 null */
+  nanoCpus: number | null
+}
+
+/** 容器挂载 */
+export interface ContainerMountDetail {
+  /** `bind` / `volume` / `tmpfs` */
+  type: string
+  source: string
+  destination: string
+  readWrite: boolean
+}
+
+/** 容器网络接入信息 */
+export interface ContainerNetworkDetail {
+  name: string
+  ipAddress: string
+  gateway: string
+  macAddress: string
+}
+
+/** 容器详情（对应后端 inspect 的精选投影） */
+export interface ContainerDetail {
+  id: string
+  name: string
+  created: string
+  /** 镜像名（后端取 `Config.Image`，不是 inspect 顶层的镜像 ID） */
+  image: string
+  state: ContainerState
+  config: ContainerConfigDetail
+  hostConfig: ContainerHostConfigDetail
+  mounts: ContainerMountDetail[]
+  networks: ContainerNetworkDetail[]
+}
+
+/** 容器日志（**整段文本**，不是行数组——见后端类型注释） */
+export interface ContainerLogsResult {
+  containerId: string
+  content: string
+}
+
+/** 创建容器的结果 */
+export interface ContainerCreatedResult {
+  containerId: string
+  /** 守护进程给的提示（如「端口未映射」）；无提示时为空数组。**不要当错误处理**。 */
+  warnings: string[]
 }

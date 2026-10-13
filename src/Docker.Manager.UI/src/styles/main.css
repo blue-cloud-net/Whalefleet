@@ -43,13 +43,20 @@
 
   /* ===== 状态三元组 =====
      online / offline / unknown 在 StatusDot、HostCard、HostSelector
-     等处重复出现过三遍相同的 green/red/gray 组合，收口成令牌。 */
+     等处重复出现过三遍相同的 green/red/gray 组合，收口成令牌。
+
+     ⚠️ 第三类 `warn`（琥珀）是 0.0.11 为**容器过渡态**补的：容器有
+     `paused` / `restarting` / `removing` 这类「既不是正常也不是异常」的中间态，
+     把它塞进 ok 或 down 都会让用户以为出了问题。用第四个语义色而不是复用，
+     才不必在文案层反复解释「暂停不是警告」。 */
   --status-ok: 22 163 74;
   --status-down: 220 38 38;
+  --status-warn: 217 119 6;
   --status-idle: 148 163 184;
   /* 半透明铺底与主色分列：暗色下靠透明度调淡，而非换一个更深的纯色 */
   --status-ok-soft: 240 253 244;
   --status-down-soft: 254 242 242;
+  --status-warn-soft: 255 251 235;
   --status-idle-soft: 248 250 252;
 
   /* 层级刻度：顶栏 sticky、卡片悬浮、浮层、toast 各有归属，不再随手写 z-20 */
@@ -92,9 +99,11 @@ html.dark {
 
   --status-ok: 74 222 128;
   --status-down: 248 113 113;
+  --status-warn: 251 191 36;
   --status-idle: 100 116 139;
   --status-ok-soft: 34 197 94;
   --status-down-soft: 239 68 68;
+  --status-warn-soft: 245 158 11;
   --status-idle-soft: 100 116 139;
 
   /* 暗色下阴影几乎不可见，改用更亮的边框与更深的天花板 */
@@ -371,4 +380,70 @@ html.dark {
     var(--border-subtle) 63%
   );
   background-size: 400% 100%;
+}
+/* ==================================================================
+ * 0.0.11 容器页的布局类
+ *
+ * 这几个类刻意留在 CSS 里而不是写成 UnoCSS shortcut：
+ * 它们服务的是 `<dl>` / `<table>` 这类**语义标签**的排版，
+ * 拆成一长串原子类后，`<dl>` 上那行会长到没人能一眼看出它长什么样。
+ * ================================================================== */
+
+/* 键值对网格：标签窄、值宽，标签右对齐后长值不会把布局挤歪。
+   `minmax` 而不是固定列宽——有的字段只有一个字符（如「否」），固定宽会浪费横向空间。 */
+.app-kv {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.75rem 1.5rem;
+}
+
+.app-kv > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.app-kv dt {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* 值允许换行：环境变量值、内存上限这类内容长度不可控，
+   `overflow-wrap` 不到就会把卡片撑出横向滚动条。 */
+.app-kv dd {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-body);
+  overflow-wrap: anywhere;
+}
+
+.app-table th,
+.app-table td {
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: top;
+}
+
+.app-table th {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.app-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* 守护进程提示列表：这些提示通常一两行，最多可能十几行（每个端口一条），
+   给一个左边框 + 缩进让它读起来是「附注」而不是正文。 */
+.app-warn-list {
+  margin: 0;
+  padding-left: 0.875rem;
+  border-left: 2px solid rgb(var(--status-warn) / 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  color: var(--text-muted);
 }

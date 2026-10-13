@@ -108,6 +108,8 @@ export default defineConfig({
         'ok-soft': 'rgb(var(--status-ok-soft) / <alpha-value>)',
         down: 'rgb(var(--status-down) / <alpha-value>)',
         'down-soft': 'rgb(var(--status-down-soft) / <alpha-value>)',
+        warn: 'rgb(var(--status-warn) / <alpha-value>)',
+        'warn-soft': 'rgb(var(--status-warn-soft) / <alpha-value>)',
         idle: 'rgb(var(--status-idle) / <alpha-value>)',
         'idle-soft': 'rgb(var(--status-idle-soft) / <alpha-value>)'
       }
@@ -173,7 +175,20 @@ export default defineConfig({
 
       // ===== 排版辅助 =====
       'app-truncate': 'min-w-0 truncate',
-      'app-tabular': 'tabular-nums'
+      'app-tabular': 'tabular-nums',
+
+      // ===== 详情页表格（0.0.11）=====
+      // 不用 el-table：详情的挂载 / 网络只有几行，引一整套表格组件（排序、分列、虚拟滚动）
+      // 换不来任何好处，反而让样式受 EP 主题摆布。
+      'app-table-wrap': 'overflow-x-auto',
+      'app-table': 'w-full text-left text-sm border-collapse',
+      'app-table-head': 'text-xs font-medium text-content-muted border-b border-line-subtle',
+      'app-table-cell': 'py-2 pr-4 align-top border-b border-line-subtle/60',
+
+      // ===== 等宽 / 预格式化文本（0.0.11）=====
+      // `break-all` 不能省：容器日志与环境变量里的长串（连接串、token）会把卡片撑破。
+      'app-log': 'max-h-[60vh] overflow-auto px-4 py-3 sm:px-5 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all',
+      'app-log-list': 'flex flex-col gap-1'
     }
   ],
   // 一律过一遍存在性校验：Carbon 无 `-alt` 变体，写错名字只会静默丢图标（见 assertIconsExist）
