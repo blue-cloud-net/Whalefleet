@@ -1,0 +1,221 @@
+
+/* ============================================================
+   设计令牌（Design Tokens）
+   ------------------------------------------------------------
+   与 uno.config.ts 的 shortcuts 配合：令牌放在这里，原子类通过
+   预设变量消费。这样换主题 / 调圆角只需改一处。
+   ============================================================ */
+:root {
+  /* 圆角刻度 */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 999px;
+
+  /* 层级：正文背景 / 卡片 / 卡片悬浮 / 浮层（下沉阴影） */
+  --shadow-xs: 0 1px 2px rgb(15 23 42 / 0.04);
+  --shadow-sm: 0 1px 3px rgb(15 23 42 / 0.06), 0 1px 2px rgb(15 23 42 / 0.04);
+  --shadow-md: 0 4px 12px rgb(15 23 42 / 0.08), 0 2px 4px rgb(15 23 42 / 0.04);
+  --shadow-lg: 0 12px 28px rgb(15 23 42 / 0.12), 0 4px 8px rgb(15 23 42 / 0.06);
+
+  /* 主题感知的表面色 */
+  --surface-page: #f6f8fa;
+  --surface-card: #ffffff;
+  --surface-sunken: #f1f5f9;
+  --border-subtle: #e2e8f0;
+
+  /* 品牌色阴影（跟随三色主题） */
+  --shadow-brand: 0 8px 24px rgb(var(--brand-500) / 0.18);
+
+  /* 动效时长，统一节奏避免各组件各自为政 */
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* 顶栏高度（布局与阴影分层共用，避免写死两处） */
+  --header-h: 4rem;
+}
+
+html.dark {
+  --surface-page: #0b0f14;
+  --surface-card: #141a21;
+  --surface-sunken: #1b232c;
+  --border-subtle: #2a3441;
+
+  /* 暗色下阴影几乎不可见，改用更亮的边框与更深的天花板 */
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.4), 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-md: 0 4px 12px rgb(0 0 0 / 0.45), 0 2px 4px rgb(0 0 0 / 0.3);
+  --shadow-lg: 0 12px 28px rgb(0 0 0 / 0.55), 0 4px 8px rgb(0 0 0 / 0.4);
+
+  --shadow-brand: 0 8px 24px rgb(var(--brand-500) / 0.28);
+}
+
+html {
+  /* 文本选中色跟随品牌色，避免默认蓝色割裂 */
+  ::selection {
+    background: rgb(var(--brand-500) / 0.25);
+  }
+
+  /* 焦点环统一：仅键盘可见（:focus-visible），鼠标点击不出现 */
+  :focus-visible {
+    outline: 2px solid rgb(var(--brand-500));
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+}
+
+body {
+  background: var(--surface-page);
+  color: #0f172a;
+  transition: background-color var(--duration-base) var(--ease-out), color var(--duration-base) var(--ease-out);
+}
+
+html.dark body {
+  color: #e2e8f0;
+}
+
+/* ============================================================
+   滚动条：默认样式在亮/暗下都很丑，这里统一收编
+   ============================================================ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(148 163 184 / 0.5) transparent;
+}
+
+html.dark * {
+  scrollbar-color: rgb(71 85 105 / 0.7) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: rgb(148 163 184 / 0.45);
+  border-radius: var(--radius-full);
+  border: 2px solid transparent;
+  background-clip: content-box;
+  transition: background-color var(--duration-base) var(--ease-out);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(100 116 139 / 0.7);
+}
+
+html.dark *::-webkit-scrollbar-thumb {
+  background-color: rgb(71 85 105 / 0.6);
+}
+
+html.dark *::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(100 116 139 / 0.8);
+}
+
+/* ============================================================
+   页面级过渡：路由切换时内容淡入，消除「硬切」的廉价感
+   ============================================================ */
+.app-view-enter-active {
+  transition: opacity var(--duration-slow) var(--ease-out), transform var(--duration-slow) var(--ease-out);
+}
+
+.app-view-leave-active {
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.app-view-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.app-view-leave-to {
+  opacity: 0;
+}
+
+/* ============================================================
+   在线状态脉冲：让「在线」主机在总览里一眼可辨
+   ============================================================ */
+@keyframes status-pulse {
+  0% {
+    box-shadow: 0 0 0 0 currentColor;
+    opacity: 0.7;
+  }
+  70% {
+    box-shadow: 0 0 0 6px transparent;
+    opacity: 0;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+    opacity: 0;
+  }
+}
+
+.status-dot-pulse::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  animation: status-pulse 2s var(--ease-out) infinite;
+}
+
+/* 尊重系统的「减少动态效果」偏好 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .status-dot-pulse::after {
+    animation: none;
+  }
+}
+
+/* ============================================================
+   Element Plus 细节对齐：让内置组件融入自定义表面色
+   ============================================================ */
+
+/* 卡片 / 弹层圆角与令牌对齐 */
+.el-card,
+.el-dialog,
+.el-drawer,
+.el-dropdown-menu {
+  border-radius: var(--radius-lg);
+}
+
+.el-dialog,
+.el-drawer {
+  box-shadow: var(--shadow-lg);
+}
+
+/* 下拉菜单：默认项内边距偏紧，与整体节奏不齐 */
+.el-dropdown-menu__item {
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+.el-dropdown-menu__item:not(.is-disabled):hover {
+  background-color: rgb(var(--brand-500) / 0.1);
+}
+
+/* 按钮：关闭 Element Plus 默认的粗暴过渡，换成统一节奏 */
+.el-button {
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+/* 顶部提示条（ElMessage）不要拖影 */
+.el-message {
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(8px);
+}
