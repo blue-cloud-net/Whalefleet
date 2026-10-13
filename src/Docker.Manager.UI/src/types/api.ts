@@ -66,6 +66,12 @@ export const ErrorCode = {
   HostUnreachable: 1301,
   /** 主机已停用 */
   HostDisabled: 1302,
+  /** 主机名已被占用 */
+  HostNameAlreadyExists: 1303,
+  /** 分组名已被占用 */
+  GroupNameAlreadyExists: 1304,
+  /** 分组不存在 */
+  GroupNotFound: 1305,
 
   // ===== 1400-1499 资源操作 =====
   /** Docker 资源（容器 / 镜像 / Volume / Network）不存在 */
@@ -347,4 +353,211 @@ export interface ContainerCreatedResult {
   containerId: string
   /** 守护进程给的提示（如「端口未映射」）；无提示时为空数组。**不要当错误处理**。 */
   warnings: string[]
+}
+
+/* ==================================================================
+ * 镜像（对应后端 `Docker.Manager.Application.Images`，0.0.10 已实现）
+ * ================================================================== */
+
+/**
+ * 镜像列表项。
+ *
+ * `repoTags` 为**空数组**表示悬挂镜像（Docker 内部用 `<none>:<none>` 占位，
+ * 后端已把它过滤掉）——界面要显示「`<none>`」而不是一行空白，
+ * 并且仍允许按 ID 删除。
+ */
+export interface ImageSummary {
+  /** 完整镜像 ID（`sha256:…`） */
+  id: string
+  repoTags: string[]
+  repoDigests: string[]
+  /** 创建时间（ISO 8601） */
+  created: string
+  /** 字节 */
+  size: number
+  /** 与其他镜像共享的字节数 */
+  sharedSize: number
+  /** 引用该镜像的容器数 */
+  containerCount: number
+}
+
+export interface ImageListResult {
+  items: ImageSummary[]
+  total: number
+  pageIndex: number
+  pageSize: number
+}
+
+/**
+ * 镜像详情（后端 inspect 的**精选投影**）。
+ *
+ * ⚠️ `env` 与 `labels` 可能含敏感值（有人把构建参数写进 `ENV` / `LABEL`），
+ * 因此详情页要给出提示；列表项刻意不带这些字段。
+ */
+export interface ImageDetail {
+  id: string
+  repoTags: string[]
+  repoDigests: string[]
+  created: string
+  size: number
+  architecture: string
+  os: string
+  /** 仅 Windows 镜像有值 */
+  osVersion: string
+  author: string
+  comment: string
+  env: string[]
+  cmd: string[]
+  entrypoint: string[]
+  /** 形如 `80/tcp`（后端已去重并去掉空对象） */
+  exposedPorts: string[]
+  /** 形如 `/var/cache/nginx` */
+  volumes: string[]
+  labels: Record<string, string>
+  workingDir: string
+  layerCount: number
+}
+
+/** 拉取镜像的结果（后端在拉取后额外 inspect 一次，因此直接带出大小与标签） */
+export interface ImagePullResult {
+  imageId: string
+  /** 完整引用，如 `nginx:latest` */
+  reference: string
+  size: number
+  repoTags: string[]
+}
+
+/**
+ * 删除镜像的结果。
+ *
+ * `untagged` 非空是常态：一个镜像 ID 常挂多个标签，删掉其中一个时镜像本体仍在。
+ * 界面必须把被解绑的标签告诉用户，否则会出现「我删了镜像，列表里另一个标签还在」的困惑。
+ */
+export interface ImageRemovedResult {
+  untagged: string[]
+  deleted: string[]
+}
+
+/* ==================================================================
+ * 主机管理（admin，对应后端 `Docker.Manager.Application.Hosts`）
+ * ================================================================== */
+
+/** 主机认证方式（**只有方式，不含任何凭据内容**） */
+export type HostAuthKind = 'none' | 'tls' | 'basic'
+
+/**
+ * 管理端点返回的主机对象。
+ *
+ * 与展示用的 `HostOverview` 有两处关键差别，不要互相替代：
+ * - `id` 是**主键**（Guid，用于权限外键与审计）；`HostOverview.id` 是**主机名**（等于路径里的 hostId）
+ * - `reachable` 是可空布尔：`null` = **未探测**（create / update 不探活，写操作不该被网络超时拖住）。
+ *   把它当 `false` 会把「没测」显示成「离线」。
+ */
+export interface AdminHostSummary {
+  /** 主键（Guid） */
+  id: string
+  /** 主机名——对外标识，也是路径里的 hostId */
+  name: string
+  type: 'socket' | 'tcp'
+  endpoint: string
+  enabled: boolean
+  reachable: boolean | null
+  authKind: HostAuthKind
+  /** 所属分组主键；null = 未分组 */
+  groupId: string | null
+}
+
+/** TLS 凭据输入（三项路径均必填） */
+export interface TlsConfigInput {
+  caCertificatePath: string
+  clientCertificatePath: string
+  clientKeyPath: string
+  /** 私钥加密口令；未加密时留空 */
+  clientKeyPassword?: string
+}
+
+/** Basic 凭据输入 */
+export interface BasicAuthInput {
+  username: string
+  password: string
+}
+
+/** 创建主机的请求体（`tlsConfig` 与 `basicAuth` 互斥，都省略即无认证） */
+export interface CreateHostPayload {
+  name: string
+  type: 'socket' | 'tcp'
+  endpoint: string
+  tlsConfig?: TlsConfigInput
+  basicAuth?: BasicAuthInput
+}
+
+/**
+ * 更新主机的请求体。
+ *
+ * **不含 `name`**：主机名是对外标识（路径里的 hostId 就是它），改名会让已发放的深链失效。
+ * `clearCredentials` 用于「改回无认证」——JSON 分不清「没给 tlsConfig」与「tlsConfig: null」，
+ * 没有它就没有表达方式（详见 docs/api-spec.md）。
+ */
+export interface UpdateHostPayload {
+  endpoint?: string
+  tlsConfig?: TlsConfigInput
+  basicAuth?: BasicAuthInput
+  clearCredentials?: boolean
+  enabled?: boolean
+}
+
+/** 测试未保存配置的请求体（刻意不带 hostId） */
+export interface TestHostPayload {
+  type: 'socket' | 'tcp'
+  endpoint: string
+  tlsConfig?: TlsConfigInput
+  basicAuth?: BasicAuthInput
+}
+
+/* ==================================================================
+ * 用户管理（admin，对应后端 `Docker.Manager.Application.Users`）
+ * ================================================================== */
+
+/**
+ * 用户列表项。
+ *
+ * `role` 是**角色名**（数据，不是枚举）：后端支持自定义角色，因此这里声明为 `string`，
+ * 界面直接展示名字，不做白名单校验。
+ */
+export interface AdminUserSummary {
+  id: string
+  username: string
+  role: string
+  /** 创建时间（ISO 8601） */
+  creationTime: string
+}
+
+export interface UserListResult {
+  items: AdminUserSummary[]
+  total: number
+  pageIndex: number
+  pageSize: number
+}
+
+/* ==================================================================
+ * 主机分组（0.0.13）
+ * ================================================================== */
+
+/**
+ * 主机分组。
+ *
+ * **是展示信息，不是权限边界**：「谁能操作哪台主机」由 0.3.0 的资源权限表回答。
+ *
+ * `name` 是管理员输入的数据（自定义分组直接展示）；内置的三个分组由后端种入固定名
+ * （`production` / `staging` / `local`），前端用 `host.group.<name>` 取 i18n 文案，
+ * 因此内置分组在中英文界面下都能正确显示，而自定义分组按用户输入原样展示
+ * （用户数据不翻译——把管理员输入的「预发布」硬翻成英文只会更难懂）。
+ */
+export interface HostGroupSummary {
+  id: string
+  name: string
+  description: string | null
+  sortOrder: number
+  /** 组内主机数（后端聚合，避免前端自己数） */
+  hostCount: number
 }
