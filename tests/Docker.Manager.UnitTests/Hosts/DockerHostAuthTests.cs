@@ -73,11 +73,11 @@ public class DockerHostAuthTests
     }
 
     [Theory]
-    [InlineData("""{ "clientCertificatePath": "/c.pem", "clientKeyPath": "/k.pem" }""", "CaCertificatePath")]
-    [InlineData("""{ "caCertificatePath": "/ca.pem", "clientKeyPath": "/k.pem" }""", "ClientCertificatePath")]
-    [InlineData("""{ "caCertificatePath": "/ca.pem", "clientCertificatePath": "/c.pem" }""", "ClientKeyPath")]
-    [InlineData("""{ "caCertificatePath": "  ", "clientCertificatePath": "/c.pem", "clientKeyPath": "/k.pem" }""", "CaCertificatePath")]
-    public void From_Tls_缺字段时以字段名报错(string json, string missingField)
+    [InlineData("""{ "clientCertificatePath": "/c.pem", "clientKeyPath": "/k.pem" }""", "caCertificatePath")]
+    [InlineData("""{ "caCertificatePath": "/ca.pem", "clientKeyPath": "/k.pem" }""", "clientCertificatePath")]
+    [InlineData("""{ "caCertificatePath": "/ca.pem", "clientCertificatePath": "/c.pem" }""", "clientKeyPath")]
+    [InlineData("""{ "caCertificatePath": "  ", "clientCertificatePath": "/c.pem", "clientKeyPath": "/k.pem" }""", "caCertificatePath")]
+    public void From_Tls_缺字段时以线上字段名报错(string json, string missingField)
     {
         var act = () => DockerHostAuth.From(HostCredentials.FromJson(DockerHostAuthKind.Tls, json));
 

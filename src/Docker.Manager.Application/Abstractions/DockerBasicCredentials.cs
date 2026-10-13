@@ -32,14 +32,15 @@ public sealed record DockerBasicCredentials
     {
         var payload = CredentialsJson.Deserialize<Payload>(configJson, Description);
 
+        // 字段名用线上名（小驼峰），与请求体里的键一致。
         return new DockerBasicCredentials
         {
-            Username = CredentialsJson.RequireText(payload.Username, nameof(Payload.Username), Description),
+            Username = CredentialsJson.RequireText(payload.Username, "username", Description),
             // 密码只判空、不去空白：口令首尾的空格是合法字符，Trim 会把它悄悄改掉。
             Password = String.IsNullOrEmpty(payload.Password)
                 ? throw new Common.BusinessException(
                     Common.ErrorCodes.HostUnreachable,
-                    $"{Description} 凭据缺少必填字段 {nameof(Payload.Password)}")
+                    $"{Description} 凭据缺少必填字段 password")
                 : payload.Password,
         };
     }

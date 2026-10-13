@@ -48,19 +48,21 @@ public sealed record DockerTlsCredentials
     {
         var payload = CredentialsJson.Deserialize<Payload>(configJson, Description);
 
+        // 字段名用**线上名（小驼峰）**而不是 C# 属性名：报错要冲着用户写的那个键，
+        // 否则用户拿 "CaCertificatePath" 去搜请求体是搜不到的。
         return new DockerTlsCredentials
         {
             CaCertificatePath = CredentialsJson.RequireText(
                 payload.CaCertificatePath,
-                nameof(Payload.CaCertificatePath),
+                "caCertificatePath",
                 Description),
             ClientCertificatePath = CredentialsJson.RequireText(
                 payload.ClientCertificatePath,
-                nameof(Payload.ClientCertificatePath),
+                "clientCertificatePath",
                 Description),
             ClientKeyPath = CredentialsJson.RequireText(
                 payload.ClientKeyPath,
-                nameof(Payload.ClientKeyPath),
+                "clientKeyPath",
                 Description),
             ClientKeyPassword = payload.ClientKeyPassword,
         };
