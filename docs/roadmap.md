@@ -46,7 +46,7 @@
 | `0.0.7` | 前端登录页与基础布局 | ✅ | 布局 / 主题 / 国际化 / 两段式导航；登录页接真实 API；顶栏与侧边栏拆成独立组件（面包屑由纯函数派生） |
 | `0.0.8` | Docker 主机抽象 | ✅ | 数据层 / 客户端池 / 访问器三层 + 当前主机中间件 + TLS·Basic 认证 + 主机与用户管理 API；管理界面排 0.0.13 |
 | `0.0.9` | 容器 API 后端 | ✅ | 查询（list / inspect / logs）与变更（create / start / stop / restart / remove）全部落地；11 + 19 条端点集成测试（含真实守护进程上的容器生命周期） |
-| `0.0.10` | 镜像 API 后端 | ⬜ | 仅占位视图 |
+| `0.0.10` | 镜像 API 后端 | ✅ | 列表（含搜索）/ 详情 / 拉取 / 删除四个端点全部落地；23 条端点集成测试 |
 | `0.0.11` | 前端：容器 UI | ⬜ | 仅 `HostSelector` 等通用件已提前落地 |
 | `0.0.12` | 前端：镜像 UI | ⬜ | 仅占位视图 |
 | `0.0.13` | 前端：管理 UI + MVP 打磨 | ⬜ | 仅 `EmptyState` 等通用件已提前落地 |
@@ -396,19 +396,21 @@ CI：
 
 ---
 
-### 0.0.10 ⬜ — 镜像 API 后端
+### 0.0.10 ✅ — 镜像 API 后端
 
 **目标**：镜像 CRUD + 拉取（含进度回传）。
 
 后端：
 - 镜像 API：
-  - `POST /api/v1/hosts/{hostId}/images/list`（分页）
-  - `POST /api/v1/hosts/{hostId}/images/pull`（`image` + `tag`）
-  - `POST /api/v1/hosts/{hostId}/images/remove`（`imageId` + `force`）
-  - `POST /api/v1/hosts/{hostId}/images/inspect`（`imageId`）
-- Pull 进度：使用 `IProgress<JSONMessage>` 在服务端聚合，**0.0.10 不接入 SignalR**，仅在响应 `data` 一次性返回最终结果；进度信息写到 Serilog 日志。**SignalR 实时进度推迟到 0.3.0**
+  - ✅ `POST /api/v1/hosts/{hostId}/images/list`（`all` / `search` / 分页；分页在服务端内存完成，`pageSize` 上限 100 且夹紧后的值回显）
+  - ✅ `POST /api/v1/hosts/{hostId}/images/pull`（`image` + `tag?` + `platform?`）
+  - ✅ `POST /api/v1/hosts/{hostId}/images/remove`（`imageId` + `force?`；**不**传 `noPrune`）
+  - ✅ `POST /api/v1/hosts/{hostId}/images/inspect`（精选投影）
+- ✅ Pull 进度：使用 `IProgress<JSONMessage>` 在服务端聚合，**0.0.10 不接入 SignalR**，仅在响应 `data` 一次性返回最终结果；进度信息写到 Serilog 日志。**SignalR 实时进度推迟到 0.3.0**
+- ✅ 拉取失败有两条路径：「镜像不存在」由 SDK 抛异常 → `1401`；「仓库拒绕 / 网络中断」只在进度流里 → 检查后转 `1402`
 
 **验收**：pull `nginx:latest` 完成后返回镜像 ID 与大小。
+✅ 已达成：四个端点均落地并由集成测试覆盖（含真实守护进程上的拉取成功路径与「删除只解绑标签、镜像本体保留」语义）。
 
 ---
 
