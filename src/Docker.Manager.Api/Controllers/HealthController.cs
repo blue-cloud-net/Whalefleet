@@ -22,7 +22,7 @@ public sealed class HealthController : ControllerBase
     [HttpGet]
     public IActionResult Get()
     {
-        return Ok(new
+        return this.Ok(new
         {
             status = "ok",
             timestamp = DateTimeOffset.UtcNow,

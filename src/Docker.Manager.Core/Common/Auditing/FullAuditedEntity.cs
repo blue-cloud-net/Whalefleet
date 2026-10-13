@@ -1,5 +1,3 @@
-using Docker.Manager.Core.Common;
-
 namespace Docker.Manager.Core.Common.Auditing;
 
 /// <summary>
@@ -41,13 +39,13 @@ public abstract class FullAuditedEntity<TId, TUserKey> :
     /// <summary>
     /// 标记软删除。幂等：重复调用会刷新删除时间与删除者。
     /// </summary>
-    /// <param name="utcNow">删除时间，必须为 UTC。</param>
+    /// <param name="deletionTime">删除时间，必须为 UTC。</param>
     /// <param name="deleterId">删除者标识；传 <c>default(TUserKey)</c> 表示系统操作。</param>
-    public void Delete(DateTime utcNow, TUserKey deleterId)
+    public void Delete(DateTime deletionTime, TUserKey deleterId)
     {
-        IsDeleted = true;
-        DeletionTime = utcNow;
-        DeleterId = deleterId;
+        this.IsDeleted = true;
+        this.DeletionTime = deletionTime;
+        this.DeleterId = deleterId;
     }
 
     /// <summary>
@@ -55,8 +53,8 @@ public abstract class FullAuditedEntity<TId, TUserKey> :
     /// </summary>
     public void Restore()
     {
-        IsDeleted = false;
-        DeletionTime = null;
-        DeleterId = default!;
+        this.IsDeleted = false;
+        this.DeletionTime = null;
+        this.DeleterId = default!;
     }
 }

@@ -74,7 +74,7 @@ public sealed class ExceptionHandlingMiddleware
         catch (Exception exception)
         {
             // 无法在 catch 块之外使用无参 throw，因此把重抛决策留在本 catch 内。
-            if (!await HandleExceptionAsync(context, exception).ConfigureAwait(false))
+            if (!await this.HandleExceptionAsync(context, exception).ConfigureAwait(false))
             {
                 throw;
             }

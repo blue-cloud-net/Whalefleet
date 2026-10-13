@@ -28,38 +28,27 @@ public abstract class Entity<TId>
     public override bool Equals(object? obj)
     {
         if (obj is not Entity<TId> other)
-        {
             return false;
-        }
 
         if (ReferenceEquals(this, other))
-        {
             return true;
-        }
 
-        if (GetType() != other.GetType())
-        {
+        if (this.GetType() != other.GetType())
             return false;
-        }
 
-        if (Id is null || other.Id is null)
-        {
-            return false;
-        }
-
-        return EqualityComparer<TId>.Default.Equals(Id, other.Id);
+        return EqualityComparer<TId>.Default.Equals(this.Id, other.Id);
     }
 
     /// <summary>
     /// 哈希码以 Id 为基础。
     /// </summary>
-    public override int GetHashCode() => Id is null ? 0 : EqualityComparer<TId>.Default.GetHashCode(Id);
+    public override int GetHashCode() => this.Id is null ? 0 : EqualityComparer<TId>.Default.GetHashCode(this.Id);
 
     /// <summary>
     /// 由派生类实现：判定业务层面的等价性（用于跨类型业务比较，例如不同命名空间但同语义的实体）。
     /// </summary>
     /// <remarks>默认实现即 <see cref="Equals(global::System.Object?)"/>，大多数场景无需重写。</remarks>
-    protected virtual bool EntityEquals(Entity<TId> other) => Equals(other);
+    protected virtual bool EntityEquals(Entity<TId> other) => this.Equals(other);
 
     public static bool operator ==(Entity<TId>? left, Entity<TId>? right) =>
         left is null ? right is null : left.Equals(right);

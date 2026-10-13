@@ -33,7 +33,7 @@ public class BusinessException : Exception
     public BusinessException(int code, string message)
         : base(message)
     {
-        Code = code;
+        this.Code = code;
     }
 
     /// <summary>
@@ -45,7 +45,7 @@ public class BusinessException : Exception
     public BusinessException(int code, string message, Exception innerException)
         : base(message, innerException)
     {
-        Code = code;
+        this.Code = code;
     }
 
     /// <summary>

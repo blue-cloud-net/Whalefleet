@@ -13,7 +13,7 @@ internal sealed class GuidCreationAudited : CreationAuditedEntity<Guid, Guid>
     {
     }
 
-    public GuidCreationAudited(Guid id) => Id = id;
+    public GuidCreationAudited(Guid id) => this.Id = id;
 }
 
 /// <summary>
@@ -45,7 +45,7 @@ internal sealed class GuidAudited : AuditedEntity<Guid, Guid>
     {
     }
 
-    public GuidAudited(Guid id) => Id = id;
+    public GuidAudited(Guid id) => this.Id = id;
 }
 
 /// <summary>
@@ -57,7 +57,7 @@ internal sealed class GuidFullAudited : FullAuditedEntity<Guid, Guid>
     {
     }
 
-    public GuidFullAudited(Guid id) => Id = id;
+    public GuidFullAudited(Guid id) => this.Id = id;
 }
 
 /// <summary>

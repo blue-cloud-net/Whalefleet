@@ -1,5 +1,3 @@
-using Docker.Manager.Core.Common;
-
 namespace Docker.Manager.Core.Common.Auditing;
 
 /// <summary>
@@ -31,11 +29,11 @@ public abstract class AuditedEntity<TId, TUserKey> :
     /// <summary>
     /// 标记修改审计信息。<b>覆盖式</b>赋值：每次成功修改都应调用一次，以最后一次为准。
     /// </summary>
-    /// <param name="utcNow">最后修改时间，必须为 UTC。</param>
-    /// <param name="modifierId">最后修改者标识；传 <c>default(TUserKey)</c> 表示系统操作。</param>
-    public void MarkModified(DateTime utcNow, TUserKey modifierId)
+    /// <param name="lastModificationTime">最后修改时间，必须为 UTC。</param>
+    /// <param name="lastModifierId">最后修改者标识；传 <c>default(TUserKey)</c> 表示系统操作。</param>
+    public void MarkModified(DateTime lastModificationTime, TUserKey lastModifierId)
     {
-        LastModificationTime = utcNow;
-        LastModifierId = modifierId;
+        this.LastModificationTime = lastModificationTime;
+        this.LastModifierId = lastModifierId;
     }
 }

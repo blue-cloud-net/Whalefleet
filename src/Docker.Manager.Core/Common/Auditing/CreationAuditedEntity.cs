@@ -1,5 +1,3 @@
-using Docker.Manager.Core.Common;
-
 namespace Docker.Manager.Core.Common.Auditing;
 
 /// <summary>
@@ -33,11 +31,11 @@ public abstract class CreationAuditedEntity<TId, TUserKey> : Entity<TId>, ICreat
     /// <summary>
     /// 标记创建审计信息。<b>覆盖式</b>赋值：重复调用以最后一次为准。
     /// </summary>
-    /// <param name="utcNow">创建时间，必须为 UTC。</param>
+    /// <param name="creationTime">创建时间，必须为 UTC。</param>
     /// <param name="creatorId">创建者标识；传 <c>default(TUserKey)</c> 表示系统操作。</param>
-    public void MarkCreated(DateTime utcNow, TUserKey creatorId)
+    public void MarkCreated(DateTime creationTime, TUserKey creatorId)
     {
-        CreationTime = utcNow;
-        CreatorId = creatorId;
+        this.CreationTime = creationTime;
+        this.CreatorId = creatorId;
     }
 }

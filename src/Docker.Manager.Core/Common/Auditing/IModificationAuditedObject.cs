@@ -8,7 +8,7 @@ namespace Docker.Manager.Core.Common.Auditing;
 /// 与 <see cref="ICreationAuditedObject{TUserKey}"/> 一样采用<b>默认值哨兵</b>表达"系统操作"，
 /// 且 <c>LastModifierId</c> 仅在 <c>LastModificationTime</c> 非空时才有意义。
 /// </remarks>
-public interface IModificationAuditedObject<TUserKey> : IHasModificationTime
+public interface IModificationAuditedObject<out TUserKey> : IHasModificationTime
 {
     /// <summary>
     /// 最后修改者标识；<c>default(TUserKey)</c> 表示系统操作（无登录用户）。

@@ -25,13 +25,13 @@ public abstract class ValueObject
     /// </summary>
     public override bool Equals(object? obj)
     {
-        if (obj is null || obj.GetType() != GetType())
+        if (obj is null || obj.GetType() != this.GetType())
         {
             return false;
         }
 
         var other = (ValueObject)obj;
-        return GetEqualityComponents().SequenceEqual(other.GetEqualityComponents());
+        return this.GetEqualityComponents().SequenceEqual(other.GetEqualityComponents());
     }
 
     /// <summary>
@@ -40,7 +40,7 @@ public abstract class ValueObject
     public override int GetHashCode()
     {
         var hash = new HashCode();
-        foreach (var component in GetEqualityComponents())
+        foreach (var component in this.GetEqualityComponents())
         {
             hash.Add(component);
         }
