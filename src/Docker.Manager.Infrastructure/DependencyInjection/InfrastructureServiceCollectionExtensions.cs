@@ -90,7 +90,7 @@ public static class InfrastructureServiceCollectionExtensions
 
         services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
 
-        // 初始管理员引导（0.0.4，原属 0.0.6）：注册为单例，与 DatabaseInitializer 同属启动阶段。
+        // 初始管理员引导（0.0.4，原属部署迭代）：注册为单例，与 DatabaseInitializer 同属启动阶段。
         services.AddSingleton<IAdminBootstrapper, AdminBootstrapper>();
 
         // 令牌服务（0.0.4）：HS256 签名密钥缺失或过短在启动时即失败。
@@ -103,7 +103,7 @@ public static class InfrastructureServiceCollectionExtensions
                 $"Jwt:Secret 缺失或不足 {JwtOptions.MinSecretLengthBytes} 字节，或 AccessTokenLifetime / RefreshTokenLifetime 非正值")
             .ValidateOnStart();
 
-        // 初始管理员引导配置（0.0.4，原属 0.0.6）。
+        // 初始管理员引导配置（0.0.4，原属部署迭代）。
         // 刻意不加 ValidateOnStart：它只在 users 表为空时才有意义，
         // 强行校验会让「已经建过账号、但环境里残留了弱密码变量」的环境起不来。
         services
