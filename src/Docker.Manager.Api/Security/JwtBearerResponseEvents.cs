@@ -39,7 +39,7 @@ internal static class JwtBearerResponseEvents
         // 只有"签名与结构都对、只是过期"这一种情况才回 1101；
         // 其余（未携带、签名错、格式错、issuer/audience 不符）一律 1100，
         // 避免把内部失败原因泄漏给客户端。
-        var code = context.AuthenticateFailure is SecurityTokenExpiredException
+        var code = IsExpired(context.AuthenticateFailure)
             ? ErrorCodes.TokenExpired
             : ErrorCodes.Unauthenticated;
 
@@ -65,6 +65,28 @@ internal static class JwtBearerResponseEvents
 
         await WriteAsync(context.HttpContext, ErrorCodes.ResourceForbidden).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// 判断鉴权失败是否由「令牌已过期」引起。
+    /// </summary>
+    /// <remarks>
+    /// <para><b>必须同时判两种异常类型</b>，因为它们取决于运行时用的是哪个令牌处理器：
+    /// 新的 <c>JsonWebTokenHandler</c>（.NET 8+ 的默认）抛
+    /// <see cref="SecurityTokenInvalidLifetimeException"/>，旧的 <c>JwtSecurityTokenHandler</c> 抛
+    /// <see cref="SecurityTokenExpiredException"/>。不要因为"看起来重复"而删掉任一支。</para>
+    /// <para><see cref="SecurityTokenInvalidLifetimeException"/> 同时覆盖「尚未生效（<c>nbf</c> 在未来）」
+    /// 与「已过期」两种情况，因此必须再看 <see cref="SecurityTokenInvalidLifetimeException.Expires"/> 是否
+    /// 真的已过——把时钟偏差误报成"已过期"会让前端白白走一遭刷新（而刷新也救不了）。</para>
+    /// </remarks>
+    /// <param name="failure">鉴权失败异常；可能为 <see langword="null"/>。</param>
+    /// <returns>确属过期返回 <see langword="true"/>。</returns>
+    private static bool IsExpired(Exception? failure) => failure switch
+    {
+        SecurityTokenExpiredException => true,
+        SecurityTokenInvalidLifetimeException invalid =>
+            invalid.Expires is not null && invalid.Expires <= DateTime.UtcNow,
+        _ => false,
+    };
 
     /// <summary>
     /// 按错误码写出统一的 <c>ApiResult</c> 错误响应。

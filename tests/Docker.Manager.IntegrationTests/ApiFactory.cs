@@ -94,6 +94,12 @@ public class ApiFactory : WebApplicationFactory<Program>
 
                 // JWT 签名密钥（缺失会导致启动校验失败）。
                 ["Jwt:Secret"] = TestJwtSecret,
+
+                // 认证端点测试会真实调用 Argon2；用便宜参数避免整套测试被 KDF 拖慢。
+                // 参数强度由 Argon2PasswordHasherTests 用默认值单独覆盖。
+                ["Security:Argon2:MemorySizeKiB"] = "8192",
+                ["Security:Argon2:Iterations"] = "1",
+                ["Security:Argon2:Parallelism"] = "1",
             };
 
             foreach (var (key, value) in _settings)
