@@ -85,7 +85,7 @@
 - ✅ `tests/Docker.Manager.UnitTests/` 引入 xUnit + FluentAssertions + coverlet 骨架（占位烟雾用例验证测试链路）。详细覆盖节奏：0.0.3 Argon2id 哈希、0.0.4 登录、0.0.8 引入 Testcontainers 集成测试
 
 CI：
-- ✅ `.github/workflows/ci.yml`：push / pull_request 到 `main` / `develop` 触发。步骤：`dotnet restore` → `dotnet build -c Release`（warn-as-error）→ `dotnet test -c Release`。NuGet 包缓存（`~/.nuget/packages`，key 基于 `*.csproj` + `Directory.Packages.props`）
+- ✅ `.github/workflows/ci.yml`：push / pull_request 到 `main` / `dev` 触发。步骤：`dotnet restore` → `dotnet build -c Release`（warn-as-error）→ `dotnet test -c Release`。NuGet 包缓存（`~/.nuget/packages`，key 基于 `*.csproj` + `Directory.Packages.props`）
 
 仓库：
 - ✅ `README.md` 占位（详细完善在 0.0.13）
@@ -161,7 +161,7 @@ CI：
 - ⬜ `ICurrentUser`（`Application/Abstractions/`）抽象当前登录用户；`RepositoryBase` 注入
   `ICurrentUser` + `TimeProvider` 完成审计填充
 - 🚧 `User` 实体继承 `AuditedEntity<TId, TUserKey>`（记录创建 + 修改审计）（`AuditedEntity` 基类已就绪，`User` 实体未建）
-- ⬜ Argon2id 密码哈希（`Isopoh.Cryptography.Argon2`），禁止明文落库与日志
+- ⬜ Argon2id 密码哈希（`Konscious.Security.Cryptography.Argon2`，MIT），禁止明文落库与日志
 - ⬜ 单元测试覆盖哈希/校验
 
 ---
@@ -185,7 +185,7 @@ CI：
 
 **目标**：完整认证闭环 + 前端可对接后端。
 
-> **进度（2026-10-10）**：🚧 前端 `web/` 工作区**提前开工**（与后端并行）：Vite 代理、axios 拦截器、Pinia 持久化、路由守卫均已就位；后端 `refresh` / `logout` / 安全响应头 / 密码强度校验尚未开工。
+> **进度（2026-10-10）**：🚧 前端 `src/Docker.Manager.UI/` 工作区**提前开工**（与后端并行）：Vite 代理、axios 拦截器、Pinia 持久化、路由守卫均已就位；后端 `refresh` / `logout` / 安全响应头 / 密码强度校验尚未开工。
 
 后端：
 - ⬜ `POST /api/v1/auth/refresh`：用 refresh token 换新 access
@@ -194,7 +194,7 @@ CI：
 - ⬜ 密码强度校验工具类（≥10 字符、含字母+数字或符号）
 
 前端：
-- ✅ `src/web/` 工作区，Vite + Vue 3 + TypeScript + Element Plus 骨架（实际路径为 `web/`，非 `src/web/`）
+- ✅ `src/Docker.Manager.UI/` 工作区，Vite + Vue 3 + TypeScript + Element Plus 骨架
 - ✅ `vite.config.ts` 配置 `/api` 与 `/hubs` 代理到 `http://localhost:8080`
 - 🚧 Pinia `useUserStore`（user、accessToken、refreshToken 持久化到 localStorage）（落地为 `stores/auth.ts` + persistedstate）
 - 🚧 Axios 实例 + 拦截器：自动注入 Authorization、`401` 时尝试 refresh 并重发原请求（注入 ✅；`401` → refresh 重发待后端就绪后补）
@@ -343,8 +343,8 @@ CI：
 **目标**：可视化容器管理。
 
 前端：
-- API 封装层 `src/web/src/api/container.ts`：RPC 风格方法封装
-- `src/web/src/stores/host.ts`：Pinia 当前主机选择 + 持久化
+- API 封装层 `src/Docker.Manager.UI/src/api/container.ts`：RPC 风格方法封装
+- `src/Docker.Manager.UI/src/stores/host.ts`：Pinia 当前主机选择
 - **顶栏 `HostSelector` 下拉组件**（`components/business/HostSelector.vue`）：主机作用域显示当前主机名 + 状态点，全局作用域显示「选择主机」占位；列出可访问主机，**切换后停留在当前资源页**；写入 Pinia `useHostStore` → 请求拦截器自动带 `X-Host-Id`（仅主机作用域）；admin 可见「管理主机」入口
 - `ContainerListView.vue`：表格（名称、镜像、状态、端口、创建时间）+ 操作按钮（启动/停止/重启/删除）+ 状态自动刷新（轮询 5 秒）
 - **`CreateContainerDialog.vue`**：可视化创建表单（镜像下拉 + 名称 + 端口映射 + 环境变量键值对 + Volume 挂载 + 重启策略选择 + 高级选项折叠面板「网络模式 / 资源限制 / capabilities」）

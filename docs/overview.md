@@ -62,7 +62,7 @@ Docker.Manager vs Portainer
 |---|---|
 | GitHub repo | `blue-cloud-net/docker-manager` |
 | GitHub Container Registry | `ghcr.io/blue-cloud-net/docker-manager` |
-| 主分支 | `main`（仅稳定发布）+ `develop`（集成分支） |
+| 主分支 | `main`（仅稳定发布）+ `dev`（集成分支） |
 | 许可证 | MIT |
 
 详细路线图见 [roadmap.md](./roadmap.md)。
@@ -71,7 +71,7 @@ Docker.Manager vs Portainer
 
 ## 镜像分发策略
 
-- **开发期**：前后端分离运行。前端通过 Vite dev server（`src/web/`），后端通过 `dotnet run`，通过 Vite 代理 `/api` 与 `/hubs` 到 `http://localhost:8080`。
+- **开发期**：前后端分离运行。前端通过 Vite dev server（`src/Docker.Manager.UI/`），后端通过 `dotnet run`，通过 Vite 代理 `/api` 与 `/hubs` 到 `http://localhost:8080`。
 - **生产期**：**一体化镜像**——单个 GHCR 镜像同时托管前端构建产物（`dist/`）与后端运行时（.NET runtime + ASP.NET Core）。多阶段 Dockerfile 构建，非 root 用户 `app`（UID 10001）运行，根文件系统只读，可写路径仅 `/app/data` 卷。
 
 ---

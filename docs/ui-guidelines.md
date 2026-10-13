@@ -57,10 +57,10 @@ UnoCSS 默认 + 自定义：
 
 | 层 | 用途 | 示例 | 位置 |
 |---|---|---|---|
-| **Layout 层** | 顶级布局 | `AppLayout`、`AuthLayout` | `src/web/src/layouts/` |
-| **通用组件** | 跨页面复用 | `EmptyState`、`StatusBadge`、`JsonTree`、`CopyableText`、`ConfirmDialog`、`CommandPalette` | `src/web/src/components/common/` |
-| **业务组件** | 领域专用 | `ContainerStatusBadge`、`ImageSize`、`PortMappingEditor`、`EnvVarEditor`、`VolumeMountEditor` | `src/web/src/components/business/` |
-| **View 层** | 路由对应的页面 | 每个路由一个 .vue 文件 | `src/web/src/views/` |
+| **Layout 层** | 顶级布局 | `AppLayout`、`AuthLayout` | `src/Docker.Manager.UI/src/layouts/` |
+| **通用组件** | 跨页面复用 | `EmptyState`、`StatusBadge`、`JsonTree`、`CopyableText`、`ConfirmDialog`、`CommandPalette` | `src/Docker.Manager.UI/src/components/common/` |
+| **业务组件** | 领域专用 | `ContainerStatusBadge`、`ImageSize`、`PortMappingEditor`、`EnvVarEditor`、`VolumeMountEditor` | `src/Docker.Manager.UI/src/components/business/` |
+| **View 层** | 路由对应的页面 | 每个路由一个 .vue 文件 | `src/Docker.Manager.UI/src/views/` |
 
 ---
 
@@ -291,7 +291,7 @@ interface RouteMeta {
 ## 文件组织约定
 
 ```
-src/web/src/
+src/Docker.Manager.UI/src/
 ├── api/                   # API 封装（RPC 风格方法）
 ├── assets/                # 静态资源
 ├── components/

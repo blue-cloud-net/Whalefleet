@@ -757,10 +757,10 @@ const connection = new HubConnectionBuilder()
 ```dockerfile
 # Stage 1: 前端构建
 FROM node:20-alpine AS frontend
-WORKDIR /src/web
-COPY src/web/package*.json ./
+WORKDIR /src/Docker.Manager.UI
+COPY src/Docker.Manager.UI/package*.json ./
 RUN npm ci
-COPY src/web/ ./
+COPY src/Docker.Manager.UI/ ./
 RUN npm run build  # 产物 → dist/
 
 # Stage 2: 后端构建
@@ -775,7 +775,7 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 RUN useradd -u 10001 -m app
 WORKDIR /app
 COPY --from=backend --chown=app:app /app/publish ./
-COPY --from=frontend --chown=app:app /src/web/dist ./wwwroot
+COPY --from=frontend --chown=app:app /src/Docker.Manager.UI/dist ./wwwroot
 COPY scripts/backup.sh /app/scripts/
 USER app
 EXPOSE 8080
@@ -791,7 +791,7 @@ ENTRYPOINT ["dotnet", "Docker.Manager.Api.dll"]
 ### 目录结构
 
 ```
-src/web/src/
+src/Docker.Manager.UI/src/
 ├── api/                   # API 封装（RPC 风格方法）
 ├── assets/                # 静态资源
 ├── components/

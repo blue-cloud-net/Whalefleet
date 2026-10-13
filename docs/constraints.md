@@ -19,7 +19,7 @@
 | Docker Basic 认证 | `Docker.DotNet.Enhanced.BasicAuth` | 最新稳定 | 远程 TCP 可选 Basic |
 | 数据访问 | Dapper | **2.1.89** | 手写 SQL，不引 ORM |
 | 数据库 | SQLite + `Microsoft.Data.Sqlite` | **10.0.12**（跟随 .NET） | 单节点嵌入式，**WAL 模式**启用 |
-| 密码哈希 | `Isopoh.Cryptography.Argon2`（**待定**） | 落地时再定 | Argon2id。⚠️ 该包在 NuGet 上的许可为 **CC-BY-4.0**，与本项目 MIT 许可并不契合；落地前需与 MIT 许可的候选（如 `Konscious.Security.Cryptography.Argon2`）比较后再定 |
+| 密码哈希 | `Konscious.Security.Cryptography.Argon2` | **1.3.1** | Argon2id。选它而非 `Isopoh.Cryptography.Argon2`：Isopoh 采用 **CC-BY-4.0**（Creative Commons 内容许可，官方不建议用于软件），与本项目 MIT 许可不契合；Konscious 为 **MIT** 且生态用量最大。⚠️ 它只输出原始字节，PHC 编码串（`$argon2id$v=19$m=…,t=…,p=…$salt$hash`）由本项目 `Core/Auth/PasswordHash` 值对象自建 |
 | JWT | `Microsoft.AspNetCore.Authentication.JwtBearer` | 跟随 .NET | 内置 |
 | 实时通信 | ASP.NET Core SignalR | 10 | 原生集成 |
 | SignalR 客户端 | `@microsoft/signalr` | **9+** | 跟随 .NET 主版本 |
@@ -165,7 +165,7 @@
 
 | 项 | 策略 |
 |----|------|
-| 密码哈希 | **Argon2id**（`Isopoh.Cryptography.Argon2`），禁止明文落库与日志 |
+| 密码哈希 | **Argon2id**（`Konscious.Security.Cryptography.Argon2` 1.3.1，MIT），禁止明文落库与日志 |
 | 密码强度 | ≥10 字符，含字母 + 数字或符号 |
 | JWT 算法 | HS256 |
 | JWT access token 有效期 | **15 分钟** |
@@ -260,7 +260,7 @@ socket-proxy 默认仅授予 `GET`（只读 + 列出），如需写操作（创�
 
 | 项 | 策略 |
 |----|------|
-| 主分支 | `main`（仅稳定发布）+ `develop`（集成分支） |
+| 主分支 | `main`（仅稳定发布）+ `dev`（集成分支） |
 | 分支保护 | 1 review + CI 通过 |
 | 合并策略 | Squash merge |
 | PR 标题 | 走 Conventional Commits（squash merge 后成为主 commit） |
