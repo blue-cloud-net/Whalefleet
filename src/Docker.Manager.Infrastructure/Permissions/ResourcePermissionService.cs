@@ -45,9 +45,7 @@ internal sealed class ResourcePermissionService : IResourcePermissionService
         DockerHost host,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(host);
-
-        if (this.IsAdministrator)
+        if (this.IsHostVisible(userId, host))
         {
             return Task.CompletedTask;
         }
@@ -62,6 +60,16 @@ internal sealed class ResourcePermissionService : IResourcePermissionService
         throw new BusinessException(
             ErrorCodes.HostForbidden,
             $"无权访问主机「{host.Name}」。逐资源授权将在 0.3.0 提供。");
+    }
+
+    /// <inheritdoc />
+    public bool IsHostVisible(Guid userId, DockerHost host)
+    {
+        ArgumentNullException.ThrowIfNull(host);
+
+        // 与 EnsureHostVisibleAsync 共用同一条规则：这里放行、那里拒绝，
+        // 就会出现“列表里看不到、但直接访问又能进”的偏差。
+        return this.IsAdministrator;
     }
 
     /// <summary>

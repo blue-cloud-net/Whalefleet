@@ -35,4 +35,19 @@ public interface IResourcePermissionService
     /// 漏判一处就是一个越权入口。
     /// </remarks>
     Task EnsureHostVisibleAsync(Guid userId, DockerHost host, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 判断指定用户对指定主机是否可见（<b>不</b>抛异常）。
+    /// </summary>
+    /// <param name="userId">发起操作的用户主键。</param>
+    /// <param name="host">目标主机。</param>
+    /// <returns>可见返回 <see langword="true"/>；否则返回 <see langword="false"/>。</returns>
+    /// <remarks>
+    /// <para><b>为什么在「保证可见」之外还要一个「能否可见」</b>：列表场景下没有「被拒绝的那个对象」——
+    /// 要做的是一道过滤，把不可见的<em>滤掉</em>。若只提供抛异常的版本，调用方只能为每一台主机
+    /// try/catch 一次，把正常的过滤写成异常流。</para>
+    /// <para>两者的判定规则必须一致：<see cref="EnsureHostVisibleAsync"/> 的实现应复用本方法的结论，
+    /// 否则会出现「列表里看不到、但直接访问又能进」这种最危险的偏差。</para>
+    /// </remarks>
+    bool IsHostVisible(Guid userId, DockerHost host);
 }
