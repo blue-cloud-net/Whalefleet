@@ -126,7 +126,7 @@ dotnet list src/Docker.Manager.Application/Docker.Manager.Application.csproj pac
 | 值对象 | 名词，继承 `ValueObject`，**必须不可变** | `HostEndpoint`、`PortMapping`、`ContainerStatus` |
 | 枚举 | 名词，位于对应实体的命名空间下 | `DockerHostType`、`UserRole` |
 | 外部资源接口 | `IXxxFactory` / `IXxxAccessor`，定义在 `Application/Abstractions/` | `IDockerClientFactory`、`IDockerHostAccessor` |
-| 持久化接口 | `IXxxRepository`，定义在 `Core`，实现在 `Infrastructure/Persistence/` | `IUserRepository`、`IHostRepository` |
+| 持久化接口 | `IXxxRepository`，定义在 `Core`，实现在 `Infrastructure/Persistence/`。CRUD 共同部分继承 `Common.IRepository<TEntity, TId>` | `IUserRepository`、`IHostRepository` |
 | 应用服务 | `XxxService`，位于 `Application/Services/` | `AuthService`、`ContainerService` |
 | DTO | `XxxDto` / `XxxRequest` / `XxxResponse` | `LoginRequest`、`ContainerDto` |
 | Controller | `XxxController`，继承 `ControllerBase` | `AuthController`、`ContainerController` |
@@ -172,92 +172,154 @@ dotnet list src/Docker.Manager.Application/Docker.Manager.Application.csproj pac
 | **实体跨边界互相持有引用** | `Container` 持有 `User` 对象；`User` 持有 `Host` 对象 | 只保留 ID 引用（`UserId`、`HostId`），按 ID 查询 |
 | **`Core` 引用 NuGet 包** | `Core.csproj` 含 `PackageReference` | 移除；确需 BCL 之外的能力就移到 `Application` / `Infrastructure` |
 | **`Application` 引用 `Infrastructure`** | 应用服务直接 `new SqliteConnection()` | 在 `Application/Abstractions` 定义接口，`Infrastructure` 实现并注入 |
-| **持久化接口返回活连接** | `IHostRepository.ListAsync()` 返回的对象里带 `DockerClient` | 仓储只负责持久化；客户端获取走 `IDockerClientFactory` |
+| **持久化接口返回活连接** | `IHostRepository.QueryAllListAsync()` 返回的对象里带 `DockerClient` | 仓储只负责持久化；客户端获取走 `IDockerClientFactory` |
 
-**代码示例：`DockerHost` 实体骨架（0.0.8 规划示意）**
+### 实体清单（0.0.3 / 0.0.8 已落地）
 
-> 以下代码**仅作示例**，实际 `DockerHost` 在 0.0.8 迭代才落地。
+| 实体 | 位置 | 基类 | 业务键与唯一性 | 关键不变量 |
+|------|------|------|----------------|-----------|
+| `Role` | `Core/Users/Role.cs` | `FullAuditedEntity<Guid, Guid>` | `name`（小写文本，`COLLATE NOCASE` 部分唯一索引） | 标识自动转小写、2–32 字符、仅 `[A-Za-z0-9._-]`；**标识不可改**；内置角色不可删（`Retire` + 仓储 `WHERE is_built_in = 0` 双重保证） |
+| `User` | `Core/Users/User.cs` | `FullAuditedEntity<Guid, Guid>` | `username`（`COLLATE NOCASE` 部分唯一索引） | 去首尾空白后 3–32 字符，仅 `[A-Za-z0-9._-]`；密码哈希非空；`RoleId` 非空；**用户名不可改** |
+| `DockerHost` | `Core/Hosts/DockerHost.cs` | `FullAuditedEntity<Guid, Guid>` | `name`（同上） | 名称 1–64 且无控制字符、**不可改**（它是对外主机标识）；连接方式与端点形态不得矛盾；连接方式 / 端点 / 凭据必须成组更新 |
+| `RefreshToken` | `Core/Auth/RefreshToken.cs` | `CreationAuditedEntity<Guid, Guid>` | `token_hash` 唯一 | 只存哈希（非原文）；归属用户非空；`IsActiveAt` = 未撤销且未过期 |
+| `UserHostPermission` | `Core/Permissions/` | `FullAuditedEntity<Guid, Guid>` | `(user_id, host_id)` 部分唯一索引 | 权限位不得含未定义位；`Has` 对组合位要求**全部**具备 |
+| `UserContainerPermission` | `Core/Permissions/` | `FullAuditedEntity<Guid, Guid>` | `(user_id, host_id, container_id)` | 容器标识必须与主机成对出现（容器 ID 只在单台守护进程内唯一） |
 
-````csharp
-// src/Docker.Manager.Core/Hosts/DockerHost.cs
-namespace Docker.Manager.Core.Hosts;
+> 权限实体的**表与仓储实现排到 0.3.0**：本迭代只落地实体与仓储接口，不建表、不注册 DI。
 
-public sealed class DockerHost : Entity<Guid>
-{
-    /// <summary>显示名（唯一）。</summary>
-    public string Name { get; private set; } = default!;
+**值对象**：`HostEndpoint`（端点原文，不可变、按值相等）、`HostCredentials`（认证方式 + 不透明 JSON 载荷，
+`ToString()` 只输出认证方式、**不泄漏载荷**）。
 
-    /// <summary>连接描述。</summary>
-    public HostEndpoint Endpoint { get; private set; } = default!;
+**枚举归属**：`DockerHostType`、`DockerHostAuthKind` 定义在 `Core/Hosts`——它们同时是 `Core` 的实体与
+`Application` 的连接描述（`DockerHostConnection` / `IDockerClientFactory`）的取值域；放最内层可避免
+两个同名枚举并互做映射。`HostPermissions` / `ContainerPermissions` 在 `Core/Permissions`
+（标志枚举用复数命名，与 `[Flags]` 惯例一致）。
 
-    /// <summary>是否启用；停用后不再接受该主机的请求。</summary>
-    public bool Enabled { get; private set; }
+**角色是数据，不是枚举**（0.0.3 修订）：原 `UserRole` 枚举**已删除**，改为 `roles` 表 +
+`Core/Users/Role` 实体。理由：枚举把「系统有哪些角色」焊死在编译期，新增角色要改代码 + 发版。
+现在管理员可在运行时增删改角色，新增角色无需发版。
+枚举只保留给**封闭集合**用（如 `DockerHostType` 这类由外部协议决定、不随部署变化的值）。
 
-    // 私有构造：仅供静态工厂使用，确保对象一诞生就满足全部不变量
-    private DockerHost() { }
+**角色的三个正交字段**：
 
-    /// <summary>注册一台新的 Docker 主机。</summary>
-    public static DockerHost Register(Guid id, string name, HostEndpoint endpoint)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        ArgumentNullException.ThrowIfNull(endpoint);
+| 字段 | 作用 | 约束 |
+|------|------|------|
+| `name` + `display_name` + `description` | 面向用户展示（“运维：可操作已授权主机上的容器…”） | `name` 进 JWT claim 与 `[Authorize(Roles = …)]`，字符集受限且**不可改** |
+| `is_built_in` | 内置角色随系统发布 | **不可删除**：`Role.Retire()` 抛 `InvalidOperationException`，仓储再以 `WHERE is_built_in = 0` 兜底（绕过实体也删不掉） |
+| `is_default` | 创建用户未指定角色时采用 | 全库**至多一个**，由 `IRoleRepository.SetDefaultAsync` 在事务内保证 |
 
-        return new DockerHost
-        {
-            Id = id,
-            Name = name,
-            Endpoint = endpoint,
-            Enabled = true,
-        };
-    }
+**内置角色**（迁移种入，主键固定，便于运维脚本引用）：
 
-    /// <summary>停用该主机（幂等）。</summary>
-    public void Disable()
-    {
-        Enabled = false;
-    }
+| `name` | 可读名称 | 职责 | 默认 |
+|--------|---------|------|:---:|
+| `admin` | 管理员 | 可管理用户、主机与全部资源；`[Authorize(Roles = "admin")]` 依赖此角色 | |
+| `operator` | 运维 | 对已授权主机上的容器、镜像、数据卷与网络有操作权限 | |
+| `viewer` | 只读 | 对已授权资源仅可查看，不可修改 | |
+| `auditor` | 审计 | 只读，并可查看操作审计（审计能力于 0.3.0 落地） | ✅ |
 
-    /// <summary>重新启用该主机。</summary>
-    public void Enable() => Enabled = true;
-}
+**角色不编码资源范围**：角色只是身份标签，“某用户能碰哪些主机 / 容器”由 0.3.0 的资源权限表承担。
+因此不会出现“新建一个角色就等于新增一套权限”这种隐性授权。
+若日后需要“按角色批量授权”，应在 `user_host_permissions` 上增加角色维度，而非往角色上挂权限。
 
-// src/Docker.Manager.Core/Hosts/HostEndpoint.cs
-public sealed class HostEndpoint : ValueObject
-{
-    public string Url { get; }
+**为什么这样继承**
 
-    public HostEndpoint(string url)
-    {
-        if (string.IsNullOrWhiteSpace(url))
-        {
-            throw new ArgumentException("HostEndpoint URL 不能为空", nameof(url));
-        }
+- `User` / `DockerHost` 需要**软删除**：用户名与主机名是业务键，删除后必须可复用
+  （靠部分唯一索引 `WHERE is_deleted = 0`），因此用 `FullAuditedEntity`。
+- `RefreshToken` 是**一次性凭据**：撤销由 `revoked_at` 表达、过期后由维护任务物理删除，
+  既不需要修改审计也不需要软删除，因此只用 `CreationAuditedEntity`。
+- 未引入 `SoftDeleteEntity`：只需"标记删除"的实体自行实现 `ISoftDelete` 即可。
 
-        Url = url;
-    }
+**审计由谁填**：`Infrastructure/Persistence/RepositoryBase` 持有 `ICurrentUser` 与 `TimeProvider`，
+在插入 / 更新 / 软删除前调用 `MarkCreated` / `MarkModified` / `Delete`。
+⚠️ 这些 helper 的泛型约束必须是**审计基类**（`CreationAuditedEntity` 一族）——审计*接口*只声明只读契约，
+约束到接口就调不到 `Mark*`。
 
-    protected override IEnumerable<object?> GetEqualityComponents()
-    {
-        yield return Url;
-    }
-}
+**`hosts` 的认证信息为什么是两列**：`auth_kind`（需要能独立读出与索引）+ `auth_config_json`
+（结构尚未定型的载荷）。实体对外只有一个 `Credentials` 值对象，这两列是它的**持久化投影**
+（`internal` 属性），因为 Dapper 的物化模型是「一列 → 一成员」，无法把两列拼成一个值对象。
 
-// src/Docker.Manager.Core/Hosts/IHostRepository.cs
-public interface IHostRepository
-{
-    Task<DockerHost?> GetAsync(Guid id, CancellationToken ct = default);
-    Task<IReadOnlyList<DockerHost>> ListAsync(CancellationToken ct = default);
-    Task AddAsync(DockerHost host, CancellationToken ct = default);
-    Task RemoveAsync(Guid id, CancellationToken ct = default);
-}
-````
+**完整实现**见 `src/Docker.Manager.Core/{Users,Hosts,Auth,Permissions}/`；
+仓储契约 `IUserRepository` / `IHostRepository` / `IRoleRepository` / `IRefreshTokenRepository` 定义在 `Core`，
+实现在 `Infrastructure/Persistence/`。仓储的「未找到」以 `Task<bool>` 返回，
+**不抛**业务异常——是否把 `false` 转成 `1201` / `1300` 由应用服务决定，仓储不承担错误码语义。
 
-要点回顾：
+#### 仓储抽象：共同契约 + 模板基类
 
-- `DockerHost` 继承 `Entity<Guid>`，行为（`Disable` / `Enable`）在实体自身
-- `HostEndpoint` 是不可变值对象，构造时校验不变量
-- `IHostRepository` 定义在 `Core`，实现在 `Infrastructure/Persistence`
-- 私有构造 + 静态工厂确保不变量在创建时即成立
+持久化分两层，避免每个仓储都重写一遍相同的控制流：
+
+| 层 | 位置 | 职责 |
+|----|------|------|
+| `IRepository<TEntity, TId>` | `Core/Common/` | **契约**：声明四个 CRUD（`QueryByIdAsync` / `AddAsync` / `UpdateAsync` / `RemoveByIdAsync`）+ 一个全量列表（`QueryAllListAsync`）。只放真正同构的成员 |
+| `RepositoryBase<TEntity, TId>` | `Infrastructure/Persistence/` | **实现**：连接管理、审计填充、`affected == 1` → `bool` 的翻译、软删除默认模板 |
+
+具体仓储接口（`IUserRepository` 等）继承 `IRepository<…>` 后**只保留自己特有的查询**——
+按用户名 / 按令牌哈希 / 分页 / 计数 / 改默认角色。把这些硬塞进基接口只会得到一堆
+「本仓储不支持」的空实现。
+
+**派生仓储只需提供四个钩子**：
+
+```csharp
+protected abstract Task<TEntity?> QueryByIdAsync(DbConnection connection, TId id, CancellationToken ct);
+protected abstract string QueryAllSql { get; }
+protected abstract Task<int>  ExecuteInsertAsync(DbConnection connection, TEntity entity, CancellationToken ct);
+protected abstract Task<bool> ExecuteUpdateAsync(DbConnection connection, TEntity entity, CancellationToken ct);
+```
+
+> ⚠️ `QueryAllSql` 交出去的是**整段 SQL**（投影列 + 软删除过滤 + `ORDER BY`），不是由基类拿表名拼装出来的。
+> 原因有二：`refresh_tokens` 没有 `is_deleted` 列，基类无从判断该不该追加 `is_deleted = 0`；
+> 且各表的合理顺序本就不同（`hosts` 按创建时间、`roles` 按内置优先）——**排序不进基类**。
+
+「开连接 → 填审计 → 执行 → 翻译返回值」这套顺序现在只有一份，因此
+**「忘了填审计」「忘了过滤软删除」「忘了判 affected == 1」都不再可能**。
+
+**两处刻意保留的覆写**（默认模板不适用时）：
+
+| 仓储 | 覆写 | 原因 |
+|------|------|------|
+| `SqliteRoleRepository` | `RemoveAsync` | 内置角色不可删（`WHERE is_built_in = 0`），且删除时必须清 `is_default`（否则默认角色被删后「创建用户取默认角色」悬空） |
+| `SqliteRefreshTokenRepository` | `RemoveAsync` + 新增 `QueryByIdAsync` | 令牌**不参与软删除**，删除是物理 `DELETE`，基类的「软删除模板」在这里是错的 |
+
+> ⚠️ 审计填充方法里用的是**运行时类型判断**（`is AuditedEntity<…>`）而非泛型约束：
+> `<TEntity>` 只能约束到 `Entity<TId>`（覆盖全部实体），而 `MarkCreated` / `MarkModified` / `Delete`
+> 分别定义在不同审计基类上。约束到具体基类会让基类无法服务「只带部分审计」的实体。
+
+### 表结构（0.0.3 已落地）
+
+三张表的权威定义是内嵌迁移脚本
+`src/Docker.Manager.Infrastructure/Persistence/Schema/Migrations/000N_*.sql`；
+本节只记录**设计要点**，不复制 DDL（避免两处漂移）。
+
+| 表 | 迁移脚本 | 要点 |
+|----|----------|------|
+| `users` | `0001_users.sql`（`0004` 重建） | 主键与审计人一律 TEXT（规范小写 Guid）；`role_id` 为指向 `roles(id)` 的**外键**（0.0.3 原为 `role` 枚举名文本）；软删除列 `is_deleted`；`ux_users_username` = `UNIQUE (username COLLATE NOCASE) WHERE is_deleted = 0`；`ix_users_role_id` |
+| `roles` | `0004_roles.sql` | `name` 唯一（部分索引 + `COLLATE NOCASE`）；`ux_roles_default` = `UNIQUE (is_default) WHERE is_default = 1 AND is_deleted = 0`，**在数据层保证默认角色至多一个**；`is_built_in` 内置标记 |
+| `hosts` | `0002_hosts.sql` | `type` = `socket`\|`tcp`（小写文本）；`endpoint` 存**规范化前**原文；`auth_kind` = `none`\|`tls`\|`basic`；`auth_config_json` 在无认证时为 NULL；`ux_hosts_name` 同 users |
+| `refresh_tokens` | `0003_refresh_tokens.sql` | 无软删除列；`ux_refresh_tokens_token_hash` 唯一；`ix_*_user_id` / `ix_*_expires_at` 支撑「登出所有设备」与过期清理；**不建** `user_id → users(id)` 外键（用户是软删除的，外键带不来额外保护却会让清理脚本更复杂） |
+
+**迁移机制**：`PRAGMA user_version` 记录已应用到第几版，脚本文件名前缀即目标版本（必须从 1 起**连续**编号，
+否则启动失败）；每个脚本与其版本号写入**同一事务**，因此中断只会留下"该脚本整体未应用"。
+
+**改列用重建表**（`0004_roles.sql` 为例）：SQLite 的 `ALTER TABLE` 不能改列类型 / 约束，
+因此 `users.role` → `role_id REFERENCES roles(id)` 走官方模式：
+建 `users_new` → `INSERT ... SELECT` 搬数据（用 `LEFT JOIN` + `COALESCE` 把旧枚举名映射到角色主键，
+无匹配时落到默认角色，**避免 `NOT NULL` 把整个迁移卡死**）→ `DROP TABLE users` → `RENAME` →
+重建索引（`DROP TABLE` 会连带删掉旧索引，必须一并补回）。
+
+**启动顺序**：`DatabaseInitializer` 在宿主**开始监听之前**执行「迁移 → 启用 WAL → 种入默认主机」。
+初始化失败即启动失败，不会让第一个请求撞上 `no such table`。
+
+**默认主机**（0.0.8）：`hosts` 表为空时种入
+`id = 00000000-0000-0000-0000-000000000001`、`name = local`、`type = socket`、`endpoint = /var/run/docker.sock`，
+审计人取默认值哨兵（启动引导无登录用户）。
+判空依据是**物理行数**而非仓储的业务计数——默认主机被软删除时业务计数为 0，若据此再次种入会与残留行主键冲突。
+
+**Dapper 的两个硬约束**（已踩坑，勿回退）：
+
+1. 必须开启 `MatchNamesWithUnderscores`，否则 `creation_time` 静默喂不进 `CreationTime`；
+2. **参数绑定路径会绕过 `ITypeHandler`**（值类型直接装箱）——库中形态有约定的值类型（Guid、枚举）
+   必须在写入与查询**两侧**用 `StorageTextExtensions.ToStorageText()` 显式转文本，
+   否则 Guid 按驱动默认写成**大写**（与文档 / 运维脚本里的小写字面量不一致，手写 SQL 查不到行）、
+   枚举会落成 `0` / `1`。读取侧仍由类型处理器兜底（同时容忍文本与整数）。
 
 ---
 
@@ -289,17 +351,20 @@ Hub 鉴权：JWT 通过 `?access_token=...` 查询参数传递（WebSocket 不�
 
 - **`Application/Abstractions` 层定义接口**：`IDockerClientFactory`、`IDockerHostAccessor`、`IContainerOperations`、`IImageOperations` 等
 - **`Infrastructure/Docker` 层实现**：基于 [Docker.DotNet.Enhanced](https://github.com/testcontainers/Docker.DotNet)（fork），使用 `DockerClientBuilder` 风格
-- **0.0.8 起支持多主机**：按**规范化连接串**缓存客户端（多主机名指向同一守护进程即共享连接），并提供 `Invalidate` 与空闲回收；连接描述 `DockerHostConnection` 定义在 `Application/Abstractions`
-- **后续**：TCP + TLS / Basic 认证（`DockerHostAuth` 槽位已预留），主机来源由配置切换为 `hosts` 表
+- **0.0.8 起支持多主机**：主机来源是 `hosts` 表（**不再是配置**），由 Scoped 的 `IDockerHostAccessor` 按**主机名**解析；客户端由 Singleton 的 `IDockerClientPool` 按**规范化连接串**池化（多主机名指向同一守护进程即共享连接），并提供 `Invalidate` 与空闲回收；连接描述 `DockerHostConnection` 定义在 `Application/Abstractions`
+- **后续**：TCP + TLS / Basic 认证（`DockerHostAuth` 已带凭据指纹槽位）
 
 ### 数据访问层
 
-- **持久化接口**（`IUserRepository`、`IHostRepository` 等）定义在 `Docker.Manager.Core/`
-- **仓储实现**位于 `Docker.Manager.Infrastructure/Persistence/`：使用 `Dapper` 执行手写 SQL
-- 数据库：SQLite + `Microsoft.Data.Sqlite`，**WAL 模式**启用（PRAGMA journal_mode=WAL）
-- 文件存储：`/app/data/docker-manager.db`
-- 应用启动时自动执行建表 SQL（若表不存在）
-- 存储内容：用户信息、资源授权关系、Docker 主机配置、Registry 凭据（加密）
+- **持久化接口**（`IUserRepository`、`IHostRepository`、`IRefreshTokenRepository` 等）定义在 `Docker.Manager.Core/`
+- **仓储实现**位于 `Docker.Manager.Infrastructure/Persistence/`：使用 `Dapper` 执行手写 SQL，
+  共同继承 `RepositoryBase`（连接工厂 + 审计填充 + 软删除约定）
+- 数据库：SQLite + `Microsoft.Data.Sqlite`；连接串、外键约束与忙等待由 `SqliteConnectionFactory` 统一施加
+- 文件存储：配置项 `Persistence:DatabasePath`（生产 `/app/data/docker-manager.db`、开发 `data/docker-manager.db`）
+- **WAL 模式**启用（`PRAGMA journal_mode=WAL`；文件级属性，设置一次持久生效）
+- 应用启动时（开始监听**之前**）自动执行**版本化迁移**（`PRAGMA user_version` + 内嵌 `000N_*.sql`）
+- 单次操作一个连接（用完还池），不提供跨仓储事务——0.0.3 的业务写入均为单语句
+- 存储内容：用户信息、资源授权关系、Docker 主机配置、刷新令牌哈希、Registry 凭据（加密，0.2.0 起）
 
 ---
 
@@ -439,53 +504,85 @@ Hub 鉴权：JWT 通过 `?access_token=...` 查询参数传递（WebSocket 不�
 
 ## 多主机架构（0.0.8 起）
 
+职责按「谁知道什么」切三层——解析主机（Scoped，要查库）、池化客户端（Singleton，要跨请求存活）、创建客户端（无状态）：
+
 ```
-HTTP Request                ASP.NET Core               Docker.DotNet
-─────────────              ─────────────              ────────────
-                          ┌──────────────────┐
-X-Host-Id: prod-host-1 →  │ IDockerHost     │  →  ┌──────────────────┐
-                          │ Accessor (Scoped)│     │ IDockerClient   │
-                          │                  │     │ Factory         │
-                          │ 解析 hostId      │     │                  │
-                          │ 查 hosts 表      │     │ 缓存 / 按需创建  │
-                          │ 校验可见性       │     │ DockerClient    │
-                          └────────┬─────────┘     └────────┬─────────┘
-                                   │                        │
-                                   ▼                        ▼
-                          ┌──────────────────┐     ┌──────────────────┐
-                          │ IDockerClient    │ →  │ Docker.DotNet    │
-                          │ (hostId 对应的   │     │ .Enhanced        │
-                          │  缓存实例)       │     │ DockerClient     │
-                          └──────────────────┘     └──────────────────┘
+HTTP Request
+─────────────
+   │  hostId = 主机名（hosts.name，不区分大小写）
+   ▼
+┌─────────────────────────────────┐
+│ IDockerHostAccessor   (Scoped)  │
+│  · 查 hosts 表解析主机          │  未找到 → 1300；已停用 → 1302
+│  · 校验 enabled                 │
+│  · 探活：临时客户端+Ping+释放   │  不经池，不污染生产连接
+└────────────────┬────────────────┘
+                 │ DockerHostConnection
+                 ▼
+┌─────────────────────────────────┐
+│ IDockerClientPool     (Singleton)│
+│  · 池键 = 规范化连接串 [+凭据指纹]│  同端点的主机名共享客户端
+│  · 命中即复用；未命中转交工厂   │
+│  · 空闲超时回收 / Invalidate    │
+│  · 进程退出统一释放             │
+└────────────────┬────────────────┘
+                 │ 未命中
+                 ▼
+┌─────────────────────────────────┐
+│ IDockerClientFactory  (无状态)  │
+│  · 规范化端点 → DockerClientBuilder│
+└────────────────┬────────────────┘
+                 ▼
+      Docker.DotNet.Enhanced DockerClient
 ```
 
 ### `IDockerHostAccessor`（Scoped 服务）
 
-从请求 Header `X-Host-Id`（缺省 `"local"`）解析当前 host：
+**主机来源是 `hosts` 表，不再是配置**。`hostId` 即主机名（不区分大小写）；`DockerHost.Id`（Guid）
+只用于权限外键与审计，**不**进 URL / Header：
 
 ```csharp
 public interface IDockerHostAccessor
 {
-    string HostId { get; }              // 当前请求的 host id
-    Task<Host> GetCurrentAsync();       // 从 hosts 表查当前 host 配置
-    Task<bool> CanAccessAsync(string hostId);  // 检查当前用户是否有权限访问
+    Task<DockerHost> ResolveAsync(string hostId, CancellationToken ct = default);          // 1300
+    Task<IDockerClient> GetClientAsync(string hostId, CancellationToken ct = default);     // 1300 / 1302 / 1301
+    Task<bool> TestConnectionAsync(DockerHostConnection connection, CancellationToken ct = default);
 }
 ```
 
-### `IDockerClientFactory`（Singleton 服务）
+> **Scoped 的原因**：它依赖 `IHostRepository`（其取值来自当前请求）。池是 Singleton，二者生命周期不同，
+> 因此「解析主机」与「池化客户端」分属两层。这也让 Singleton 侧**不依赖** Scoped 仓储——不会构成捕获依赖。
+>
+> **0.3.0 起**再加上基于请求 Header `X-Host-Id` 的「当前主机」解析与可见性校验。
 
-按**规范化连接串**返回缓存的客户端。`hostId` 只是"配置（0.0.8 起为数据库）里的一个名字"，**不参与缓存键**：
+### `IDockerClientFactory` 与 `IDockerClientPool`
+
+**工厂只负责创建、池只负责复用**——原先「创建 + 缓存 + 回收」挤在一个类里，既让工厂承担了池的职责，
+也让「连接存活判定」这种只有持有池条目才做得了的事混进了构建逻辑：
 
 ```csharp
+// 无状态：给一份连接描述，还一个新建的客户端（生命周期归调用方）
 public interface IDockerClientFactory
 {
-    Task<IDockerClient> GetClientAsync(string hostId, CancellationToken cancellationToken = default);
-    Task<bool> TestConnectionAsync(DockerHostConnection connection, CancellationToken cancellationToken = default);
-    void Invalidate(string hostId);
+    IDockerClient CreateClient(DockerHostConnection connection);
+}
+
+// Singleton：复用、空闲回收、失效、释放
+public interface IDockerClientPool
+{
+    IDockerClient GetOrCreate(DockerHostConnection connection);  // 只借不还
+    void Invalidate(DockerHostConnection connection);
 }
 ```
 
-**为什么按连接而不是按主机缓存**：多个主机名可能指向同一个守护进程（如 `local` 与 `local-alias`，或同一台机器的 socket 与 socket-proxy）。以连接串为键可让它们共享同一个客户端与 HTTP 连接池——切换主机时连接不会被重建，这正是「多主机随时切换」体验的前提。`DockerHostConnection`（`Application/Abstractions`）即"连接描述"，0.0.8 由 `Core` 中的 `DockerHost` 实体映射而来。
+> **为什么叫池而不是缓存**：池里装的是操作系统资源（socket + 后台线程 + 底层 HTTP 连接池），
+> 而复用它们正是它存在的理由——重建客户端的代价（丢掉已建立的连接与连接池）恰恰是它要避免的。
+> 它具备收缩空闲（`ReapIdleClients`）、容量天然有界（= 主机数）与集中释放（`Dispose`）三项「池」的特征。
+>
+> **契约：只借不还。**调用方借用后**不得**自行释放客户端，生命周期归池管理
+> （与 `IHttpClientFactory` 同一套路，因此不构成「泄漏」）。
+
+**为什么按连接而不是按主机池化**：多个主机名可能指向同一个守护进程（如 `local` 与 `local-alias`，或同一台机器的 socket 与 socket-proxy）。以连接串为键可让它们共享同一个客户端与 HTTP 连接池——切换主机时连接不会被重建，这正是「多主机随时切换」体验的前提。`DockerHostConnection`（`Application/Abstractions`）即"连接描述"，由 `DockerHostConnection.From(DockerHost)` 从 `Core` 的 `DockerHost` 实体映射而来（`HostId` 取主机名）。
 
 **端点规范化**（`Infrastructure/Docker/DockerEndpointNormalizer`）把各种写法收敛成唯一形式，否则"同一守护进程"会被误判成多条连接：
 
@@ -497,13 +594,13 @@ public interface IDockerClientFactory
 
 > ⚠️ 三个斜杠是刻意的：`unix://var/run/docker.sock` 会被 `Uri` 解析成 `Host="var"` + `AbsolutePath="/run/docker.sock"`（指向错误路径）；只有三斜杠形式的 `AbsolutePath` 才是完整 socket 路径。
 
-**缓存生命周期**：
+**池生命周期**：
 
 | 触发 | 行为 |
 |------|------|
 | 正常取用 | 客户端驻留进程内存，HTTP 连接池持续复用 |
-| `Invalidate(hostId)` | 主机配置变更 / 删除后调用：移出缓存并释放（同端点的其他主机名一并受影响） |
-| 空闲超时 | 默认 30 分钟（`Docker:ClientCache:IdleTimeout`）：取用时惰性判定 + 后台任务周期扫描（`ReapInterval`）。任一设为 0 即禁用回收 |
+| `Invalidate(connection)` | 主机配置变更 / 删除后调用（传变更**前**的连接描述）：移出池并释放（同端点的其他主机名一并受影响） |
+| 空闲超时 | 默认 30 分钟（`Docker:Pool:IdleTimeout`）：取用时惰性判定 + 后台任务周期扫描（`ReapInterval`）。任一设为 0 即禁用回收 |
 | 进程退出 | DI 释放全部客户端 |
 
 > **构建失败必定清条目**：`Lazy<T>` 会永久缓存异常，不移除的话一次失败之后就再也无法重试。
@@ -537,15 +634,22 @@ public interface IDockerClientFactory
 
 ### 默认主机（0.0.8 启动时）
 
-启动时若 `hosts` 表为空，自动插入默认主机：
+`hosts` 表为空时（按**物理行数**判断）由 `DatabaseInitializer` 种入一台默认主机：
 
-```sql
-INSERT INTO hosts (id, name, type, endpoint, enabled, creation_time, creator_id)
-VALUES ('00000000-0000-0000-0000-000000000001', 'local', 'socket', '/var/run/docker.sock', 1, datetime('now'), '00000000-0000-0000-0000-000000000000');
-```
+| 列 | 值 |
+|----|-----|
+| `id` | `00000000-0000-0000-0000-000000000001`（固定，便于运维脚本引用） |
+| `name` | `local` |
+| `type` | `socket` |
+| `endpoint` | `/var/run/docker.sock`（存原文，取连接时再规范化） |
+| `auth_kind` | `none` |
+| `auth_config_json` | `NULL` |
+| `enabled` | `1` |
+| `creator_id` | `00000000-0000-0000-0000-000000000000`（`Guid.Empty` = 系统操作，启动引导无登录用户） |
 
-> 列名遵循「实体属性 ↔ 数据库列同名（仅大小写风格不同）」的约定，详见
-> [实体审计与软删除](#实体审计与软删除)。`creator_id` 取 `Guid.Empty` 表示**系统操作**（启动引导无登录用户）。
+> 写入走 `IHostRepository`（审计由 `RepositoryBase` 用 `TimeProvider` / `ICurrentUser` 填充），
+> 而不是裸 SQL——因此无需在此维护一份必须与 DDL 对齐的插入语句。
+> 判空用物理行数的原因见 [表结构](#表结构003-已落地)。
 
 ---
 
@@ -819,7 +923,8 @@ services:
       - JWT__SECRET=<your-strong-secret-≥32-bytes>
       - ADMIN__USER=admin
       - ADMIN__PASSWORD=<initial-strong-password>
-      - DOCKER__HOSTS__0__ENDPOINT=tcp://socket-proxy:2375
+      # 主机不再是配置项（0.0.8 起为 hosts 表）：默认只有 local（/var/run/docker.sock），
+      # 指向 socket-proxy 等其他主机请在启动后通过管理界面添加。
     volumes:
       - ./data:/app/data
       - ./scripts:/app/scripts

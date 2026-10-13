@@ -74,32 +74,46 @@ UnoCSS 默认 + 自定义：
 |--------|--------|---------|------|
 | `global` | 总览 / 全局设置 | admin + user | 0.0.7+ |
 | `global` | 管理：主机管理 / 用户管理 | **admin only** | 0.0.13 / 0.0.8 |
-| `host` | 返回总览 + 概览 / 容器 / 镜像 / 数据卷 / 网络 | admin + user | 0.0.7+ |
+| `host` | 概览（从主机名 header 进入，不占菜单位） | admin + user | 0.0.7+ |
+| `host` | 状态 / 编排 / 容器 / 镜像 / 数据卷 / 网络 / 事件 | admin + user | 0.0.7+ |
 | `host` | （0.4.0+）Stacks / Registries | admin | 0.4.0 |
 
 - 菜单项**图标 + 标题 + 可选描述**三列布局（>1024px 显示描述）
 - 当前路由对应菜单项**高亮**：左侧蓝色指示条 + 文字加粗
 - 折叠状态记 localStorage（key: `sidebar_collapsed`）
-- **主机作用域的侧栏顶部**额外渲染主机名 header（状态点 + 主机名）与「返回总览」链接
-- 纯重定向路由（`hosts/:hostId`）必须声明 `meta.showInSidebar: false`，
-  否则会被当成菜单项，因缺 `meta.title` 而在 `t(undefined)` 处抛错
+- **主机作用域的侧边栏顶部**额外渲染主机名 header（状态点 + 主机名）、「概览」入口与「返回总览」链接
+- 路由声明顺序即菜单顺序；调整 `router/index.ts` 中的**排列顺序**即可改变菜单顺序
+- 纯重定向路由（`hosts/:hostId`）与内容与其他菜单项重叠的页面（`host-dashboard`）
+  **必须**声明 `meta.showInSidebar: false`，否则会被当成菜单项，因缺 `meta.title` 而在 `t(undefined)` 处抛错
 
-### 总览页主机列表（长条形）
+### 总览页主机列表（长条形 + 分组）
 
-总览页用**长条形**条目而非卡片网格（便于横向对比多台服务器的同类指标）：
+总览页用**长条形**条目而非卡片网格（便于横向对比多台服务器的同类指标），并按**分组**聚合：
 
 ```
-┌────────────────────────────────────────────────────────────┐
-│ ● local  本地 Socket          ┃ ▢  ┃ ▢  ┃ ▢  ┃ ▢   在线  [进入] │
-│   /var/run/docker.sock        ┃容器┃镜像┃卷  ┃网络          │
-├────────────────────────────────────────────────────────────┤
-│ ● prod-01  远程 TCP           ┃ ▢  ┃ ▢  ┃ ▢  ┃ ▢   在线  [进入] │
-│   tcp://10.0.0.11:2376        ┃容器┃镜像┃卷  ┃网络          │
-└────────────────────────────────────────────────────────────┘
+生产环境  1 台
+┌────────────────────────────────────────────────────────────────────┐
+│ ● prod-01  远程 TCP          ┃ ▢ ┃ ▢ ┃ ▢ ┃ ▢        在线 ✎ ℹ 📈  → │
+│   tcp://10.0.0.11:2376        ┃容┃图┃卷┃网                          │
+│   linux/aarch64 · Docker 27.3.1 · 已运行 3 天 17 小时                │
+└────────────────────────────────────────────────────────────────────┘
+
+测试环境  1 台
+┌────────────────────────────────────────────────────────────────────┐
+│ ● staging-01  远程 TCP      ┃ ▢ ┃ ▢ ┃ ▢ ┃ ▢           离线 ✎ ℹ 📈  → │
+│   tcp://10.0.0.21:2375     （版本/运行时长缺失 → 整行省略）        │
+└────────────────────────────────────────────────────────────────────┘
+
+未分组  0 台  ← 无成员的分组不渲染
 ```
 
-- 一行一台主机：`名称 + 类型` / `endpoint` ｜ 四个资源计数 ｜ `状态 + 进入`
+- 一行一台主机：`名称 + 类型` / `endpoint` / `版本与运行时长` ｜ 四个资源计数 ｜ `状态 + 行内按钮 + 箭头`
+- **整行可点**进入主机（`role="button"` + `tabindex="0"` + `@keydown` 响应 Enter/Space）
+- 行内三个图标按钮：**编辑**（admin-only，占位）/ **详情** / **状态图**，均用 `@click.stop` 避免触发整行导航
+- 分组按 `order` 升序；**无成员的分组不渲染**；未分组主机恒排在末尾
+- 分组显示名走 i18n（store 只存 key），主机数用复数语法（`{count} 台 | {count} 台`）
 - 窄屏（<1024px）用 `flex-wrap` 折行，不做横向滚动
+- 版本 / 运行时长等元信息**缺失时整行省略**，不显示占位符
 - 计数在后端聚合接口就绪前显示占位 `—`
 
 ### 顶栏组件（从左到右）
@@ -231,13 +245,16 @@ UnoCSS 默认 + 自定义：
 
   ─── 主机作用域（scope: 'host'）───
   /hosts/:hostId                    → redirect → /hosts/:hostId/dashboard
-  /hosts/:hostId/dashboard          → HostDashboardView（该主机概览）
+  /hosts/:hostId/dashboard          → HostDashboardView（落地页，承载「主机信息」卡片；不进侧边栏）
+  /hosts/:hostId/status             → HostStatusView（状态图，菜单第一项）
+  /hosts/:hostId/stacks             → StacksView（编排 / Compose，0.4.0 占位）
   /hosts/:hostId/containers         → ContainersView
     /hosts/:hostId/containers/:id   → ContainerDetailView (tab: info / logs / stats / inspect)
   /hosts/:hostId/images             → ImagesView
   /hosts/:hostId/volumes            → VolumesView      (0.2.0+)
   /hosts/:hostId/networks           → NetworksView     (0.2.0+)
-  /hosts/:hostId/stacks             → StackListView    (0.4.0+)
+  /hosts/:hostId/events             → EventsView       (操作审计，1.0.0+ 占位)
+  /hosts/:hostId/stacks/:name       → StackDetailView  (0.4.0+)
   /hosts/:hostId/registries         → RegistryListView (0.4.0+)
 ```
 

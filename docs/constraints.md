@@ -17,9 +17,9 @@
 | Docker 交互 | [`Docker.DotNet.Enhanced`](https://github.com/testcontainers/Docker.DotNet) | **4.3.3** | fork 自 `dotnet/Docker.DotNet`；面向 Docker Engine API **v29.4.1**（实际版本与守护进程协商）；AOT 兼容 |
 | Docker TLS 认证 | `Docker.DotNet.Enhanced.X509` | 最新稳定 | 远程 TCP 可选 TLS |
 | Docker Basic 认证 | `Docker.DotNet.Enhanced.BasicAuth` | 最新稳定 | 远程 TCP 可选 Basic |
-| 数据访问 | Dapper | 最新稳定 | 手写 SQL，不引 ORM |
-| 数据库 | SQLite + `Microsoft.Data.Sqlite` | 跟随 .NET | 单节点嵌入式，**WAL 模式**启用 |
-| 密码哈希 | `Isopoh.Cryptography.Argon2` | 最新稳定 | Argon2id |
+| 数据访问 | Dapper | **2.1.89** | 手写 SQL，不引 ORM |
+| 数据库 | SQLite + `Microsoft.Data.Sqlite` | **10.0.12**（跟随 .NET） | 单节点嵌入式，**WAL 模式**启用 |
+| 密码哈希 | `Isopoh.Cryptography.Argon2`（**待定**） | 落地时再定 | Argon2id。⚠️ 该包在 NuGet 上的许可为 **CC-BY-4.0**，与本项目 MIT 许可并不契合；落地前需与 MIT 许可的候选（如 `Konscious.Security.Cryptography.Argon2`）比较后再定 |
 | JWT | `Microsoft.AspNetCore.Authentication.JwtBearer` | 跟随 .NET | 内置 |
 | 实时通信 | ASP.NET Core SignalR | 10 | 原生集成 |
 | SignalR 客户端 | `@microsoft/signalr` | **9+** | 跟随 .NET 主版本 |
@@ -61,8 +61,8 @@
 |----|------|
 | 实体命名 | 名词单数，继承 `Docker.Manager.Core.Common.Entity<TId>` |
 | 值对象命名 | 名词，继承 `Docker.Manager.Core.Common.ValueObject`，**必须不可变**（init-only 或 readonly） |
-| 枚举命名 | 名词（如 `DockerHostType`、`UserRole`），与对应实体同命名空间 |
-| 持久化接口 | `IXxxRepository`，定义在 `Core`，实现在 `Infrastructure/Persistence/`。**不允许反向依赖**（`Core` 不得引用 Dapper / SQLite 等） |
+| 枚举命名 | 名词（如 `DockerHostType`、`HostPermissions`），与对应实体同命名空间。**仅用于封闭集合**；可运行时扩展的概念（如角色）必须建模为表 + 实体，**不得**用枚举 |
+| 持久化接口 | `IXxxRepository`，定义在 `Core`，实现在 `Infrastructure/Persistence/`。**不允许反向依赖**（`Core` 不得引用 Dapper / SQLite 等）。CRUD 共同部分继承 `Core/Common/IRepository<TEntity, TId>`，具体接口只写自己特有的查询 |
 | 外部资源接口 | `IXxxFactory` / `IXxxAccessor` 等，定义在 `Application/Abstractions/`，实现在 `Infrastructure/`。典型：`IDockerClientFactory`、`IDockerHostAccessor` |
 | 充血要求 | 实体的行为与不变量写在实体方法内（推荐「私有构造 + 静态工厂」），不得只当数据袋 |
 | 审计接口 | `Core/Common/Auditing/`，**全部只读**（`get` 无 `set`）。细粒度：`IHasCreationTime` / `IHasModificationTime` / `ISoftDelete` / `IHasDeletionTime` / `ICreationAuditedObject<TUserKey>` / `IModificationAuditedObject<TUserKey>` / `IAuditedObject<TUserKey>` / `IDeletionAuditedObject<TUserKey>` / `IFullAuditedObject<TUserKey>` |
@@ -127,7 +127,7 @@
 
 | 规则 | 说明 | 示例 |
 |------|------|------|
-| 层级分隔 | 用 **`__`（双下划线）** 表达配置键中的 `:` | `Docker:Hosts:0:Endpoint` → `DOCKER__HOSTS__0__ENDPOINT` |
+| 层级分隔 | 用 **`__`（双下划线）** 表达配置键中的 `:` | `Docker:Pool:IdleTimeout` → `DOCKER__POOL__IDLETIMEOUT` |
 | 数组 | 用**数字下标**表达索引 | `Cors:AllowedOrigins:0` → `CORS__ALLOWEDORIGINS__0` |
 | 大小写 | 键比较**不区分大小写**（`ConfigurationKeyComparer` 与各 provider 的字典均为 OrdinalIgnoreCase），故 `JWT__Secret` 与 `JWT__SECRET` 等价。**新增配置项统一采用全大写下划线风格** | — |
 
@@ -135,12 +135,16 @@
 
 | 配置键 | 环境变量 | 默认值 | 引入版本 |
 |--------|---------|--------|---------|
-| `Docker:Hosts:0:Name` | `DOCKER__HOSTS__0__NAME` | `local` | 0.0.8 |
-| `Docker:Hosts:0:Type` | `DOCKER__HOSTS__0__TYPE` | `Socket` | 0.0.8 |
-| `Docker:Hosts:0:Endpoint` | `DOCKER__HOSTS__0__ENDPOINT` | `/var/run/docker.sock` | 0.0.8 |
-| `Docker:ClientCache:IdleTimeout` | `DOCKER__CLIENTCACHE__IDLETIMEOUT` | `00:30:00` | 0.0.8 |
+| `Docker:Pool:IdleTimeout` | `DOCKER__POOL__IDLETIMEOUT` | `00:30:00` | 0.0.8 |
+| `Docker:Pool:ReapInterval` | `DOCKER__POOL__REAPINTERVAL` | `00:05:00` | 0.0.8 |
+| `Persistence:DatabasePath` | `PERSISTENCE__DATABASEPATH` | 生产 `/app/data/docker-manager.db`、开发 `data/docker-manager.db` | 0.0.3 |
+| `Persistence:CommandTimeoutSeconds` | `PERSISTENCE__COMMANDTIMEOUTSECONDS` | `30` | 0.0.3 |
 | `Cors:AllowedOrigins:0` | `CORS__ALLOWEDORIGINS__0` | （空，拒绝全部跨域） | 0.0.2 |
 | `Urls` | `URLS` | `http://+:8080` | 0.0.2 |
+
+> **主机不是配置项**（0.0.8 起）：`Docker:Hosts` 已删除。主机是 `hosts` 表里的数据；首次启动时若表为空，
+> 宿主会种入一台默认主机（`name=local`、`type=socket`、`endpoint=/var/run/docker.sock`）。
+> 其余主机待 0.0.8 的主机管理 API（`POST /api/v1/host/create`）落地后通过界面添加。
 | `Jwt:Secret` | `JWT__SECRET` | （无，缺失则启动失败） | 0.0.4 |
 | `Admin:User` | `ADMIN__USER` | （无） | 0.0.6 |
 | `Admin:Password` | `ADMIN__PASSWORD` | （无） | 0.0.6 |
@@ -219,7 +223,9 @@ services:
     image: ghcr.io/blue-cloud-net/docker-manager:latest
     depends_on: [socket-proxy]
     environment:
-      - DOCKER__HOSTS__0__ENDPOINT=tcp://socket-proxy:2375
+      # 主机不再是配置项（0.0.8 起为 hosts 表）：默认只有 local（/var/run/docker.sock），
+      # 指向 socket-proxy 等其他主机请在启动后通过管理界面添加。
+      - PERSISTENCE__DATABASEPATH=/app/data/docker-manager.db
     volumes:
       - ./data:/app/data
 ```

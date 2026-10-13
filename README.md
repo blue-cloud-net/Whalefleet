@@ -57,7 +57,8 @@ services:
       - JWT__SECRET=<your-strong-secret-≥32-bytes>
       - ADMIN__USER=admin
       - ADMIN__PASSWORD=<initial-strong-password>
-      - DOCKER__HOSTS__0__ENDPOINT=tcp://socket-proxy:2375
+      # 主机不再是配置项（0.0.8 起为 hosts 表）：默认只有 local（/var/run/docker.sock），
+      # 指向 socket-proxy 等其他主机请在启动后通过管理界面添加。
     volumes:
       - ./data:/app/data
       - ./scripts:/app/scripts

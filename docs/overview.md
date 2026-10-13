@@ -98,7 +98,9 @@ services:
     image: ghcr.io/blue-cloud-net/docker-manager:latest
     depends_on: [socket-proxy]
     environment:
-      - DOCKER__HOSTS__0__ENDPOINT=tcp://socket-proxy:2375
+      # 主机不再是配置项（0.0.8 起为 hosts 表）：默认只有 local（/var/run/docker.sock），
+      # 指向 socket-proxy 等其他主机请在启动后通过管理界面添加。
+      - PERSISTENCE__DATABASEPATH=/app/data/docker-manager.db
 ```
 
 socket-proxy 作为只读代理，将 Docker API 权限限定到最小子集。如必须直挂 socket，请确保 Docker.Manager 实例仅暴露给可信网络。

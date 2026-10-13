@@ -116,6 +116,7 @@
 | `1202` | 400 | 密码强度不满足要求 | 0.0.5 |
 | `1300` | 404 | 主机不存在 | 0.0.8 |
 | `1301` | 502 | 主机连通性失败 | 0.0.13 |
+| `1302` | 400 | 主机已停用 | 0.0.8 |
 | `1401` | 404 | 容器 / 镜像 / Volume / Network 不存在 | 0.0.9 |
 | `1402` | 500 | Docker API 调用失败 | 0.0.9 |
 | `1403` | 408 | Docker 操作超时 | 0.0.9 |
@@ -211,7 +212,7 @@ X-Host-Id: <hostId>     # 默认 "local"（本地 socket）
 | 操作 | 路径 | 角色 | 说明 |
 |------|------|------|------|
 | 获取列表 | `POST /api/v1/user/list` | admin | 分页 |
-| 创建用户 | `POST /api/v1/user/create` | admin | Body: `{ username, password, role: "admin"\|"user" }` |
+| 创建用户 | `POST /api/v1/user/create` | admin | Body: `{ username, password, role?: "admin"\|"operator"\|"viewer"\|"auditor"\|<自定义> }`；`role` 省略时取**默认角色**（当前为 `auditor`，可由管理员修改） |
 | 删除用户 | `POST /api/v1/user/delete` | admin | Body: `{ userId }` |
 | 修改密码 | `POST /api/v1/user/update-password` | 任意（自身） / admin（他人） | Body: `{ userId?, oldPassword?, newPassword }` |
 

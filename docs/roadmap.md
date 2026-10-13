@@ -137,7 +137,7 @@ CI：
 - ✅ `POST /api/v1/dev/throw` → 500 + `{"success":false,"code":9999,"message":"服务器内部错误","data":null}`，且响应体无堆栈 / 异常类型名 / 源码位置
 - ✅ 未知路由 → 404 + `code 1001`
 - ✅ `Origin: http://evil.example` → 无 `Access-Control-Allow-Origin`；配置白名单后仅命中项回显
-- ✅ 环境变量 `DOCKER__HOSTS__0__ENDPOINT` 可覆盖 `IOptions<DockerClientFactoryOptions>` 的 `Hosts[0].Endpoint`
+- ✅ 环境变量 `DOCKER__POOL__IDLETIMEOUT` 可覆盖 `IOptions<DockerClientFactoryOptions>` 的 `Pool.IdleTimeout`
 - ✅ 日志文件按天生成于预期路径，且同一次 5xx 只产生一条 `Error` 日志
 - ✅ `dotnet test` 同时跑通 UnitTests 与 IntegrationTests
 
@@ -248,7 +248,12 @@ CI：
   - ✅ **主机作用域进入 URL**（`/hosts/:hostId/**`），可深链 / 可分享；路由守卫负责把 `hostId` 同步到 `useHostStore`，未知 hostId 重定向 `/overview`
   - ✅ `X-Host-Id` 仅在主机作用域注入（全局请求不携带）
   - ✅ 侧边栏菜单**从路由表自动派生**（按 `meta.scope` / `showInSidebar` / `requiresAdmin` 过滤），新增路由无需改布局
-- ✅ **总览页 `OverviewView.vue`**：登录后的默认落地页。**长条形**列出所有可见主机（名称 / 类型 / endpoint / 状态点 / 四类资源计数 / 进入按钮）+ 总数与在线数摘要；点击「进入」切换到该主机作用域
+- **总览页 `OverviewView.vue`**：登录后的默认落地页。**长条形**列出所有可见主机（名称 / 类型 / endpoint / 版本与运行时长 / 四类资源计数 / 状态 + 行内按钮）+ 总数与在线数摘要；**整行可点**进入主机作用域
+  - **主机分组**：按 `order` 聚合展示（生产 / 测试 / 本机 / 未分组），无成员的分组不渲染
+  - **行内操作**：编辑（admin，占位）/ 查看详情 / 状态图，均 `@click.stop` 防止触发整行导航
+- **主机状态页 `HostStatusView.vue` + `HostStatusPanel.vue`**：运行状态（在线/离线）、运行时长、四类资源计数与 CPU/内存占位（真实数据待 SignalR 0.3.0）。总览卡片的「详情 / 状态图」按钮与该页**复用同一组件**
+- **主机侧边栏菜单（7 项）**：状态 / 编排 / 容器 / 镜像 / 数据卷 / 网络 / 事件。其中**编排**（Compose，排 0.4.0）与**事件**（操作审计，排 1.0.0 之后）本次**仅建占位菜单与占位页**，不调整 roadmap 排期
+- **`useHostStore` 不做持久化**：hosts / groups 来自后端，快照必然陈旧；`currentId` 由 URL 驱动，无需 localStorage（旧版本的持久化键在启动时一次性清理）
 - 🚧 **顶栏组件**：`Breadcrumb.vue`、`UserMenu.vue`（无独立组件文件，功能内联在 `AppLayout.vue`）
 - 🚧 **侧边栏组件**：`Sidebar.vue`（按 `route.meta.showInSidebar` 与 `requiresAdmin` 过滤）（同上，内联实现）
 - ✅ 国际化：vue-i18n，`locales/zh-CN.json` / `locales/en-US.json`；key 用 dotted 命名，缺失 fallback 英文
@@ -263,19 +268,27 @@ CI：
 
 **目标**：可注册多个 Docker 主机，按主机切换操作。
 
-> **进度（2026-10-10）**：🚧 「多主机连接模型 + 客户端缓存工厂」这一层已完成（`DockerHostConnection` / `DockerHostAuth` / `DockerHostType` / `DockerClientFactory` 缓存与空闲回收 / 连通性测试），但**缺数据层与 API 入口**：`hosts` 表、`IDockerHostAccessor`、主机 / 用户管理 API 均未开工。
+> **进度（2026-10-13）**：🚧 后端「数据层 → 客户端池 → 主机解析」已打通：`hosts` 表与默认主机种子已落地；
+> 客户端按 **工厂（无状态创建）/ 池（Singleton 复用与回收）/ 访问器（Scoped 查库解析）** 三层拆分，主机来源从配置切到数据库。
+> **仍缺 API 入口**：主机管理 API、用户管理 API、`X-Host-Id` 解析与可见性校验。
 
 后端：
-- ⬜ 新建 `hosts` 表（id、name、type=socket|tcp、endpoint、tls_config_json、enabled、creation_time、creator_id）
-- ⬜ 启动时若 hosts 表为空，插入默认主机：`name="local"`、`type=socket`、`endpoint="/var/run/docker.sock"`
-- ⬜ `Infrastructure` 项目额外引入 `Docker.DotNet.Enhanced.X509` + `Docker.DotNet.Enhanced.BasicAuth`
-- ✅ `IDockerClientFactory`（在 `Core` 中定义接口，`Infrastructure` 实现）：按 `hostId` 返回缓存的 `DockerClient` 实例
-  - ✅ 使用 `DockerClientBuilder` 风格
+- ✅ 新建 `hosts` 表（id、name、type=socket|tcp、endpoint、auth_kind、auth_config_json、enabled、审计列）
+  - ✅ `name` 不区分大小写唯一（`WHERE is_deleted = 0` 部分索引），且**不可改**（它是对外主机标识）
+- ✅ 启动时若 hosts 表为空，插入默认主机：`name="local"`、`type=socket`、`endpoint="/var/run/docker.sock"`
+- ✅ **主机来源改为数据库**：`Docker:Hosts` 配置节删除；`Docker:ClientCache` 更名为 `Docker:Pool`
+- ✅ `IDockerClientPool`（Singleton）：按**规范化连接串**池化客户端，同端点的主机名共享连接
+  - ✅ 空闲超时回收（`ReapIdleClients` + 后台任务）、`Invalidate`、进程退出统一释放
+  - ✅ 构建失败必定清条目（`Lazy<T>` 会永久缓存异常，不然一次失败后就再也无法重试）
+- ✅ `IDockerHostAccessor`（Scoped）：`hostId`（主机名）→ `hosts` 表 → 客户端；`Enabled=false` → `1302`
+  - ✅ 连通性测试（临时客户端 + Ping，**不经池**）
+  - ⬜ 从请求 Header `X-Host-Id`（缺省 `"local"`）解析当前 host（与 0.3.0 的可见性校验一起做）
+- ✅ `IDockerClientFactory`（无状态）：只用 `DockerClientBuilder` 创建客户端
   - ✅ socket：`WithEndpoint(new Uri("unix:///var/run/docker.sock"))`
   - ✅ TCP（无认证）：`WithEndpoint(new Uri("tcp://host:2375"))`
+  - ⬜ `Infrastructure` 项目额外引入 `Docker.DotNet.Enhanced.X509` + `Docker.DotNet.Enhanced.BasicAuth`
   - ⬜ TCP + TLS：`WithEndpoint(...)` + `WithAuthProvider(new CertificateCredentials(cert))`
   - ⬜ TCP + Basic：`WithEndpoint(...)` + `WithAuthProvider(new BasicAuthCredentials(user, pass))`
-- ⬜ `IDockerHostAccessor`：Scoped 服务，从请求 Header `X-Host-Id`（缺省 `"local"`）解析当前 host
 - ⬜ 主机管理 API（admin 专用）：
   - ⬜ `POST /api/v1/host/list` / `create` / `update` / `delete` / `test`
 - ⬜ 用户管理 API（admin 专用）：
