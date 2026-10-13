@@ -35,10 +35,21 @@ const TONE_ICON: Record<string, string> = {
 </script>
 
 <template>
-  <div class="app-card-interactive p-4 flex items-start gap-3.5">
+  <!--
+    `items-center` 而非 `items-start`：图标块与右侧文字列高度并不相等
+    （数值 24px + 标签 12px + mt-1 = 44px，比 40px 的图标块高），
+    顶对齐会让数值的下缘凸出图标底边 4px，看上去像「数字掉出图标外面」。
+    居中对齐后两者边界齐平；出现 hint 撑高文字列时也保持居中而不会顶飞。
+  -->
+  <div class="app-card-interactive p-4 flex items-center gap-3.5">
+    <!--
+      图标块 h-11（44px）精确等于文字列高度，保证上下边界齐平；
+      字号 text-xl（20px × presetIcons 的 1.2 倍 = 24px），与 24px 的数值
+      等大——早先 text-lg（18px）渲染出的字形比数值小一号，看着"图标偏小"。
+    -->
     <span
       v-if="icon"
-      class="w-10 h-10 rounded-lg grid place-items-center text-lg shrink-0"
+      class="w-11 h-11 rounded-lg grid place-items-center text-xl shrink-0"
       :class="TONE_ICON[tone]"
       aria-hidden="true"
     >
