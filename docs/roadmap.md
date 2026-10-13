@@ -33,18 +33,18 @@
 > 3. 一个版本内**不再有任何 ⬜ 条目**时，才能把标题从 🚧 改成 ✅。
 > 4. 「验收」小节是**该版本的收口清单**，只有它整体打 ✅ 才算真正交付。
 
-### 当前进度（截至 2026-10-10）
+### 当前进度（截至 2026-10-13）
 
 | 版本 | 主题 | 状态 | 备注 |
 |------|------|:---:|------|
 | `0.0.1` | 项目骨架 + CI 骨架 | ✅ | 4 个分层项目 + Central Package Management + `/healthz` |
 | `0.0.2` | 后端基础设施 | ✅ | 异常管道 / 统一响应 / 错误码分层 / CORS / 集成测试载体 |
-| `0.0.3` | 数据层与密码安全 | 🚧 | 实体审计基座已落地；SQLite / Dapper / 仓储 / Argon2 未开工 |
-| `0.0.4` | 认证 API（核心） | ⬜ | 依赖 0.0.3 的用户表 |
-| `0.0.5` | 认证完善 + 前端基础设施 | 🚧 | 前端工作区、代理、axios 层已就位；后端 refresh / logout 未开工 |
-| `0.0.6` | 部署底座与初始管理员引导 | ⬜ | |
-| `0.0.7` | 前端登录页与基础布局 | 🚧 | 与后端**并行**推进；布局 / 主题 / 国际化 / 两段式导航已落地 |
-| `0.0.8` | Docker 主机抽象 | 🚧 | 主机连接模型 + 客户端缓存工厂已完成；`hosts` 表与主机 API 未开工 |
+| `0.0.3` | 数据层与密码安全 | 🚧 | SQLite / Dapper / 迁移 `0001–0004` / 四个仓储 / 审计填充均已落地；**仅缺 Argon2id 哈希** |
+| `0.0.4` | 认证 API（核心） | ⬜ | 依赖 0.0.3 的密码哈希 |
+| `0.0.5` | 认证完善 + 前端基础设施 | 🚧 | 前端工作区、代理、axios 层已就位；后端 refresh / logout / 安全头 / 密码强度未开工 |
+| `0.0.6` | 部署底座与初始管理员引导 | ⬜ | 其中**初始管理员引导**将随 0.0.4 一并落地（否则登录无法端到端验证） |
+| `0.0.7` | 前端登录页与基础布局 | 🚧 | 与后端**并行**推进；布局 / 主题 / 国际化 / 两段式导航已落地；登录页 UI 完成但未接后端 |
+| `0.0.8` | Docker 主机抽象 | 🚧 | `hosts` 表 + 默认主机种子 + 工厂/池/访问器三层已落地；缺 API 入口 / TLS-Basic / 当前主机解析 |
 | `0.0.9` | 容器 API 后端 | ⬜ | 仅占位视图 |
 | `0.0.10` | 镜像 API 后端 | ⬜ | 仅占位视图 |
 | `0.0.11` | 前端：容器 UI | ⬜ | 仅 `HostSelector` 等通用件已提前落地 |
@@ -147,20 +147,21 @@ CI：
 
 **目标**：用户表可创建，密码可哈希校验。
 
-> **进度（2026-10-10）**：🚧 实体审计与软删除基座（`Core/Common/Auditing/` 9 个细粒度接口 + 3 级基类）已落地并写入 [architecture.md](./architecture.md)；`User` 实体、SQLite 初始化、Dapper 仓储与 Argon2id 哈希均未开工。
+> **进度（2026-10-13）**：🚧 除**密码哈希**外的全部内容已落地——SQLite 初始化（含外键 / `busy_timeout`）、Dapper 接入、架构迁移 `0001–0004`、四个仓储（`users` / `hosts` / `roles` / `refresh_tokens`）与实体审计填充均已写入 [architecture.md](./architecture.md) 与 `Infrastructure/Persistence`。**仅剩 Argon2id 哈希**。
 
 后端：
-- ⬜ SQLite 初始化（`/app/data/docker-manager.db`，目录不存在自动创建）
-- ⬜ Dapper 接入，仓储层抽象 `IUserRepository`
-- ⬜ 启动时建 `users` 表（id、username、password_hash、role、creation_time、creator_id）
+- ✅ SQLite 初始化（`/app/data/docker-manager.db`，目录不存在自动创建）
+- ✅ Dapper 接入，仓储层抽象 `IUserRepository`（另含 `IHostRepository` / `IRoleRepository` / `IRefreshTokenRepository`）
+- ✅ 启动时建 `users` 表（id、username、password_hash、role_id、审计列）
   - ✅ 列名遵循「属性名 ↔ 列名同名、仅大小写风格不同」的审计列约定（`docs/architecture.md` 实体审计与软删除）
   - ✅ Dapper 直接物化充血实体：实体给**非公开无参构造**即可，**不建 Row DTO、不加 InternalsVisibleTo**；
     须开启 `MatchNamesWithUnderscores` 才能把 `creation_time` 映射到 `CreationTime`
-  - ⬜ `IUserRepository` 实现继承 `Infrastructure/Persistence/RepositoryBase`，插入 / 更新时调用
+  - ✅ `IUserRepository` 实现继承 `Infrastructure/Persistence/RepositoryBase`，插入 / 更新时调用
     `MarkCreated` / `MarkModified` 写入审计（值取自 `TimeProvider` 与 `ICurrentUser`）
-- ⬜ `ICurrentUser`（`Application/Abstractions/`）抽象当前登录用户；`RepositoryBase` 注入
-  `ICurrentUser` + `TimeProvider` 完成审计填充
-- 🚧 `User` 实体继承 `AuditedEntity<TId, TUserKey>`（记录创建 + 修改审计）（`AuditedEntity` 基类已就绪，`User` 实体未建）
+- ✅ `ICurrentUser`（`Application/Abstractions/`）抽象当前登录用户；`RepositoryBase` 注入
+  `ICurrentUser` + `TimeProvider` 完成审计填充（0.0.4 认证落地后由 Api 层实现替换占位实现）
+- ✅ `User` 实体继承 `FullAuditedEntity<TId, TUserKey>`（创建 + 修改 + **软删除**审计）
+- ✅ 角色从 `UserRole` 枚举改为 `roles` 表 + `IRoleRepository`（`users.role_id` 外键），内置 admin / operator / viewer / auditor 四角色
 - ⬜ Argon2id 密码哈希（`Konscious.Security.Cryptography.Argon2`，MIT），禁止明文落库与日志
 - ⬜ 单元测试覆盖哈希/校验
 
