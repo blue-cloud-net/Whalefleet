@@ -45,7 +45,7 @@
 | `0.0.6` | 部署底座与初始管理员引导 | 🚧 | **初始管理员引导已随 0.0.4 落地**；Dockerfile / compose / CI 增强 / 社区文档未开工 |
 | `0.0.7` | 前端登录页与基础布局 | ✅ | 布局 / 主题 / 国际化 / 两段式导航；登录页接真实 API；顶栏与侧边栏拆成独立组件（面包屑由纯函数派生） |
 | `0.0.8` | Docker 主机抽象 | ✅ | 数据层 / 客户端池 / 访问器三层 + 当前主机中间件 + TLS·Basic 认证 + 主机与用户管理 API；管理界面排 0.0.13 |
-| `0.0.9` | 容器 API 后端 | 🚧 | 查询端点（`list` / `inspect` / `logs`）已落地；创建与生命周期端点未开工 |
+| `0.0.9` | 容器 API 后端 | ✅ | 查询（list / inspect / logs）与变更（create / start / stop / restart / remove）全部落地；11 + 19 条端点集成测试（含真实守护进程上的容器生命周期） |
 | `0.0.10` | 镜像 API 后端 | ⬜ | 仅占位视图 |
 | `0.0.11` | 前端：容器 UI | ⬜ | 仅 `HostSelector` 等通用件已提前落地 |
 | `0.0.12` | 前端：镜像 UI | ⬜ | 仅占位视图 |
@@ -369,26 +369,26 @@ CI：
 
 ---
 
-### 0.0.9 🚧 — 容器 API 后端
+### 0.0.9 ✅ — 容器 API 后端
 
 **目标**：所有容器 CRUD 操作可通过 API 完成。
 
 后端：
 - 容器 API：
-  - **`POST /api/v1/hosts/{hostId}/containers/create`**（`CreateContainerParameters` 精选字段映射）——⬜ 未开工
+  - ✅ **`POST /api/v1/hosts/{hostId}/containers/create`**（`CreateContainerParameters` **精选字段**：镜像 / 名称 / 命令 / 入口点 / 环境变量 / 标签 / 端口 / 挂载 / 重启策略 / 自动删除 / 网络 / 主机名 / 工作目录 / TTY / stdin）
   - ✅ `POST /api/v1/hosts/{hostId}/containers/list`（支持 `all` + 分页）——分页在服务端内存完成（Docker 无分页参数），`pageSize` 上限 100 且夹紧后的值回显
   - ✅ `POST /api/v1/hosts/{hostId}/containers/inspect`（精选投影：状态 / 启动配置 / 宿主配置 / 挂载 / 网络）
   - ✅ `POST /api/v1/hosts/{hostId}/containers/logs`（`tail` / `since` / `timestamps` / `includeStderr`；**不含** `follow`，实时流归 0.3.0）
-  - ⬜ `start` / `stop` / `restart` / `remove` 未开工
+  - ✅ `start` / `stop` / `restart` / `remove`（前三个幂等：守护进程的 `304` 按成功处理；`remove` 不带 `force` 删运行中容器返回 `1404`/409）
 - ✅ 所有接口走 `IDockerHostAccessor` 获取客户端，按 host 粒度做可见性校验（`CurrentHostMiddleware`，0.0.8 落地）
-- ✅ `Docker.DotNet.Enhanced` 异常统一映射（`DockerErrorTranslator`，0.0.8 落地）：
+- ✅ `Docker.DotNet.Enhanced` 异常统一映射（`DockerErrorTranslator`，0.0.8 落地；0.0.9 补 `409` → `1404`）：
   - `DockerApiException` → 通用 Docker 错误（code 1402）
   - `DockerContainerNotFoundException` → code 1401（资源不存在）
   - `DockerImageNotFoundException` → code 1401
   - `TaskCanceledException` → code 1403（操作超时）
 
 **验收**：curl 完整跑通容器 create/list/start/stop/restart/remove/logs/inspect；非授权 host 返回 code 1501。
-⬜ 未达成：create/list/start/stop/restart/remove/logs/inspect 中查询三个已通（集成测试覆盖），变更五个待 P6-4。
+✅ 已达成：八个端点全部落地，并由集成测试覆盖（查询 11 条 + 变更 19 条，其中「生命周期」用例在真实守护进程上跑完 create → start → stop → remove → 1401）。
 
 ---
 
