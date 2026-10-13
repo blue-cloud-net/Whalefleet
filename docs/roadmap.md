@@ -41,7 +41,7 @@
 | `0.0.2` | 后端基础设施 | ✅ | 异常管道 / 统一响应 / 错误码分层 / CORS / 集成测试载体 |
 | `0.0.3` | 数据层与密码安全 | ✅ | SQLite / Dapper / 迁移 `0001–0004` / 四个仓储 / 审计填充 / **Argon2id 密码哈希**全部落地 |
 | `0.0.4` | 认证 API（核心） | ✅ | 登录 / 当前用户 / JWT 中间件 / 限流 / 防枚举 / 初始管理员引导（原属 0.0.6）；refresh 与 logout 属 0.0.5 |
-| `0.0.5` | 认证完善 + 前端基础设施 | 🚧 | 前端工作区、代理、axios 层已就位；后端 refresh / logout / 安全头 / 密码强度未开工 |
+| `0.0.5` | 认证完善 + 前端基础设施 | ✅ | refresh / logout / 安全响应头 / 密码强度；前端接入真实登录并实现 401 静默续期 |
 | `0.0.6` | 部署底座与初始管理员引导 | 🚧 | **初始管理员引导已随 0.0.4 落地**；Dockerfile / compose / CI 增强 / 社区文档未开工 |
 | `0.0.7` | 前端登录页与基础布局 | 🚧 | 与后端**并行**推进；布局 / 主题 / 国际化 / 两段式导航已落地；登录页 UI 完成但未接后端 |
 | `0.0.8` | Docker 主机抽象 | 🚧 | `hosts` 表 + 默认主机种子 + 工厂/池/访问器三层已落地；缺 API 入口 / TLS-Basic / 当前主机解析 |
@@ -214,26 +214,35 @@ CI：
 
 ---
 
-### 0.0.5 🚧 — 认证完善 + 前端基础设施
+### 0.0.5 ✅ — 认证完善 + 前端基础设施
 
 **目标**：完整认证闭环 + 前端可对接后端。
 
-> **进度（2026-10-10）**：🚧 前端 `src/Docker.Manager.UI/` 工作区**提前开工**（与后端并行）：Vite 代理、axios 拦截器、Pinia 持久化、路由守卫均已就位；后端 `refresh` / `logout` / 安全响应头 / 密码强度校验尚未开工。
+> **完成（2026-10-13）**：后端与前端全部落地。作为附带的稳定性修复，
+> 集成测试宿主改用**非池化连接**（`Persistence:Pooling=false`）——原先清理时调用的
+> `SqliteConnection.ClearAllPools()` 是进程级操作，会释放并行运行的其他测试正在用的连接句柄，
+> 实测造成约 1/14 概率的偶发失败。
 
 后端：
-- ⬜ `POST /api/v1/auth/refresh`：用 refresh token 换新 access
-- ⬜ `POST /api/v1/auth/logout`：撤销当前 refresh token（写入黑名单表）
-- ⬜ 安全响应头中间件：X-Content-Type-Options=nosniff、X-Frame-Options=DENY、Referrer-Policy=no-referrer
-- ⬜ 密码强度校验工具类（≥10 字符、含字母+数字或符号）
+- ✅ `POST /api/v1/auth/refresh`：轮换刷新令牌（旧令牌立即作废，并用 `replaced_by_token_hash` 标记令牌族）
+- ✅ `POST /api/v1/auth/logout`：撤销当前 refresh token（复用令牌表的 `revoked_at`，**不**另建黑名单表）
+- ✅ 安全响应头中间件：`X-Content-Type-Options=nosniff`、`X-Frame-Options=DENY`、`Referrer-Policy=no-referrer`
+  （用 `Response.OnStarting` 挂载——异常处理中间件的 `Response.Clear()` 会清掉直接赋值的响应头）
+- ✅ 密码强度校验工具类（≥10 字符、含字母+数字或符号）——落地为 `PasswordPolicy`，登录与初始管理员引导共用
 
 前端：
 - ✅ `src/Docker.Manager.UI/` 工作区，Vite + Vue 3 + TypeScript + Element Plus 骨架
 - ✅ `vite.config.ts` 配置 `/api` 与 `/hubs` 代理到 `http://localhost:8080`
-- 🚧 Pinia `useUserStore`（user、accessToken、refreshToken 持久化到 localStorage）（落地为 `stores/auth.ts` + persistedstate）
-- 🚧 Axios 实例 + 拦截器：自动注入 Authorization、`401` 时尝试 refresh 并重发原请求（注入 ✅；`401` → refresh 重发待后端就绪后补）
+- ✅ Pinia `useAuthStore`（user、accessToken、refreshToken 持久化到 localStorage）
+- ✅ Axios 实例 + 拦截器：注入 Authorization、`401` 时静默刷新一次并重发原请求
+  （**并发 401 只刷一次**——刷新令牌是一次性的，多刷会被服务端判定为重放）
 - ✅ Vue Router 全局守卫：未登录跳 `/login`（另含 `requiresAdmin` 拦截与 hostId 同步）
+- ✅ 登录页接 `POST /api/v1/auth/login`；失败文案按**错误码**映射 i18n（不透出后端中文 message）
 
-**验收**：登录页表单提交 → 拿到 token 跳首页；token 过期自动刷新。
+**验收**：登录页表单提交 → 拿到 token 跳首页；token 过期自动刷新。✅
+
+**轮换语义**（完整表见 [api-spec.md](./api-spec.md)）：已被轮换的旧刷新令牌再次使用 → 判定为重放 →
+撤销该用户**全部**刷新令牌；登出后的令牌再次使用 → 仅拒绝，不牵连其他会话。
 
 ---
 

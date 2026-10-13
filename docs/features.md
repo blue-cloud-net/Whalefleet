@@ -24,8 +24,8 @@
 | 功能 | 说明 | 阶段 |
 |------|------|------|
 | ✅ 登录 | 用户名密码登录，返回 JWT access + refresh token | 0.0.4 |
-| ⬜ 刷新令牌 | 用 refresh token 换取新 access token | 0.0.5 |
-| ⬜ 登出 | 撤销当前 refresh token（黑名单表） | 0.0.5 |
+| ✅ 刷新令牌 | 用 refresh token 换取新 access token（**轮换**：旧令牌立即作废，重放则撤销该用户全部会话） | 0.0.5 |
+| ✅ 登出 | 撤销当前 refresh token（复用令牌表的 `revoked_at`，不另建黑名单表） | 0.0.5 |
 | ✅ 初始管理员引导 | 环境变量 `ADMIN__USER` + `ADMIN__PASSWORD` 自动创建首个 admin | 0.0.6 |
 | ⬜ 修改密码 | 用户修改自身密码（从顶栏用户菜单进入） | 0.0.13 |
 | ✅ 登录速率限制 | 按 IP + 用户名 5 次/分钟 → 429 | 0.0.4 |
