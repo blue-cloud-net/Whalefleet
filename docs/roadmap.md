@@ -47,7 +47,7 @@
 | `0.0.8` | Docker 主机抽象 | ✅ | 数据层 / 客户端池 / 访问器三层 + 当前主机中间件 + TLS·Basic 认证 + 主机与用户管理 API；管理界面排 0.0.13 |
 | `0.0.9` | 容器 API 后端 | ✅ | 查询（list / inspect / logs）与变更（create / start / stop / restart / remove）全部落地；11 + 19 条端点集成测试（含真实守护进程上的容器生命周期） |
 | `0.0.10` | 镜像 API 后端 | ✅ | 列表（含搜索）/ 详情 / 拉取 / 删除四个端点全部落地；23 条端点集成测试 |
-| `0.0.11` | 前端：容器 UI | ⬜ | 仅 `HostSelector` 等通用件已提前落地 |
+| `0.0.11` | 前端：容器 UI | 🚧 | 列表 / 生命周期操作 / 创建表单 / 日志 / 详情已落地；`HostSelector` 与「状态自动刷新」待接 |
 | `0.0.12` | 前端：镜像 UI | ⬜ | 仅占位视图 |
 | `0.0.13` | 前端：管理 UI + MVP 打磨 | ⬜ | 仅 `EmptyState` 等通用件已提前落地 |
 | `0.1.0-rc.1` | MVP 候选发布 | ⬜ | |
@@ -414,18 +414,19 @@ CI：
 
 ---
 
-### 0.0.11 ⬜ — 前端：容器 UI
+### 0.0.11 🚧 — 前端：容器 UI
 
 **目标**：可视化容器管理。
 
 前端：
-- API 封装层 `src/Docker.Manager.UI/src/api/container.ts`：RPC 风格方法封装
-- `src/Docker.Manager.UI/src/stores/host.ts`：Pinia 当前主机选择
-- **顶栏 `HostSelector` 下拉组件**（`components/business/HostSelector.vue`）：主机作用域显示当前主机名 + 状态点，全局作用域显示「选择主机」占位；列出可访问主机，**切换后停留在当前资源页**；写入 Pinia `useHostStore` → 路由跳转到 `/hosts/{新hostId}/{当前资源页}`；admin 可见「管理主机」入口
-- `ContainerListView.vue`：表格（名称、镜像、状态、端口、创建时间）+ 操作按钮（启动/停止/重启/删除）+ 状态自动刷新（轮询 5 秒）
-- **`CreateContainerDialog.vue`**：可视化创建表单（镜像下拉 + 名称 + 端口映射 + 环境变量键值对 + Volume 挂载 + 重启策略选择 + 高级选项折叠面板「网络模式 / 资源限制 / capabilities」）
-- `ContainerLogsView.vue`：行数选择 + tail 加载 + 时间过滤 + 自动滚动开关
-- `ContainerInspectView.vue`：JSON 树形展示 + 基本信息卡片
+- ✅ API 封装层 `src/Docker.Manager.UI/src/api/container.ts`：RPC 风格方法封装（八个端点全覆盖）
+- ✅ 容器状态语义映射 `src/utils/container-status.ts`：状态→色调（含独立的**过渡态**一档）、端口展示、字节格式化
+- ⬜ `src/Docker.Manager.UI/src/stores/host.ts`：Pinia 当前主机选择（**已由 0.0.7 / 0.0.8 提前落地**）
+- ⬜ **顶栏 `HostSelector` 下拉组件**（`components/business/HostSelector.vue`）：主机作用域显示当前主机名 + 状态点，全局作用域显示「选择主机」占位；列出可访问主机，**切换后停留在当前资源页**；写入 Pinia `useHostStore` → 路由跳转到 `/hosts/{新hostId}/{当前资源页}`；admin 可见「管理主机」入口（**已由 0.0.7 提前落地**）
+- ✅ `ContainerListView`（实现为 `views/ContainersView.vue`）：表格（名称、镜像、状态、端口、创建时间）+ 操作按钮（启动/停止/重启/删除）+ 状态自动刷新（轮询 **5 秒**，页面隐藏时暂停，失败不打断轮询）
+- ✅ **`CreateContainerDialog.vue`**：可视化创建表单（镜像 + 名称 + 端口映射 + 环境变量 + Volume 挂载 + 重启策略 + 折叠的高级选项）；行式文本输入配**提交前校验与行号定位**；创建成功后可直接「立即启动」
+- ✅ `ContainerLogsView.vue`：行数选择 + tail 加载 + 时间戳 / stderr 开关（自动滚动不在本版范围：后端不支持 `follow`，实时流归 0.3.0）
+- ✅ `ContainerInspectView.vue`：分组卡片展示（基本信息 / 宿主配置 / 启动配置 / 挂载 / 网络 / 环境变量 / 标签），**不是** JSON 树
 
 ---
 
