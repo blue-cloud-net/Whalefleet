@@ -565,8 +565,9 @@ HTTP Request
 | 基础设施侧 | **不提供**占位实现（与 `ICurrentUser` 不同）：服务层不注入 `ICurrentHost`，也就不存在「无请求上下文的消费方」；确实没有主机时读到 `null` 就是正确答案 |
 | 取值来源 | `HttpContext.GetRouteData().Values["hostId"]`，**不是**请求头（`X-Host-Id` 方案已废弃）。取到的是**库里的 `Name`**（规范形态），因此 URL 里的大小写不影响后续取值 |
 | 中间件 | `CurrentHostMiddleware`——Singleton 中间件不能构造注入 Scoped 服务，故用 `InvokeAsync(HttpContext, ICurrentHostAccessor, IDockerHostAccessor)` **方法注入**。管道注册走公开扩展 `UseCurrentHost()`（中间件本体是 internal，但接线入口公开，便于集成测试用与生产一致的顺序接线） |
-| 存在性校验 | 中间件**会解析主机**（`IDockerHostAccessor.ResolveAsync`）：未知主机在进入控制器之前就变成 `1300`/404，主机作用域端点无需各自重复校验。代价是每请求多一次按主机名的索引查询（相对后续 Docker 调用可忽略）；0.3.0 的资源可见性校验也挂在这里 |
-| 管道位置 | `UseAuthentication()` 之后（0.3.0 的可见性校验要读 `HttpContext.User`）、`MapControllers()` 之前 |
+| 存在性校验 | 中间件**会解析主机**（`IDockerHostAccessor.ResolveAsync`）：未知主机在进入控制器之前就变成 `1300`/404，主机作用域端点无需各自重复校验。代价是每请求多一次按主机名的索引查询（相对后续 Docker 调用可忽略） |
+| 可见性校验 | 紧接着解析之后调用 `IResourcePermissionService.EnsureHostVisibleAsync`：无权限 → `1501`/403。挂在这里意味着**每个主机作用域端点自动受保护**，无需各自写一遍。0.0.9 起的策略是「管理员放行 / 非管理员一律拒绝」（逐资源授权表在 0.3.0 落地，拿不准就拒绝：fail-closed） |
+| 管道位置 | `UseAuthentication()` 之后（可见性校验要读 `HttpContext.User`）、`MapControllers()` 之前 |
 | 缺省值 | **无**。全局作用域端点没有该路由段；主机作用域端点由路由模板保证其存在 |
 | 消费方 | Api 层控制器与后续主机作用域端点（首个在 0.0.9 的容器 API） |
 | 服务层 | **不注入** `ICurrentHost`。服务方法显式接收 `hostId` 参数 |
@@ -592,7 +593,8 @@ public interface IDockerHostAccessor
 > 因此「解析主机」与「池化客户端」分属两层。这也让 Singleton 侧**不依赖** Scoped 仓储——不会构成捕获依赖。
 >
 > **0.0.8 起**由 Api 中间件从**路由值** `hostId` 解析「当前主机」（写入 Scoped `ICurrentHost`）；
-> **0.3.0 起**在此之上再加资源可见性校验。旧 `X-Host-Id` 请求头方案已废弃。
+> **0.0.9 起**在此之上加资源可见性校验（`IResourcePermissionService`，当前策略见 `CurrentHostMiddleware` 的可见性行）；
+> 0.3.0 落地逐资源授权表后改为查表。旧 `X-Host-Id` 请求头方案已废弃。
 
 ### `IDockerClientFactory` 与 `IDockerClientPool`
 
