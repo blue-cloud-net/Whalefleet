@@ -221,6 +221,8 @@ public class CurrentHostMiddlewareTests : IAsyncLifetime
             this.Deny
                 ? throw new BusinessException(ErrorCodes.HostForbidden, $"无权访问主机「{host.Name}」")
                 : Task.CompletedTask;
+
+        public bool IsHostVisible(Guid userId, DockerHost host) => !this.Deny;
     }
 
     /// <summary>

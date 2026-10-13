@@ -13,15 +13,17 @@ using Xunit;
 namespace Docker.Manager.IntegrationTests.Endpoints;
 
 /// <summary>
-/// 主机概览端点（<c>/api/v1/hosts/{hostId}/overview</c>）的端到端测试。
+/// 主机查询端点（<c>/api/v1/hosts/list</c> 与 <c>/api/v1/hosts/{hostId}/overview</c>）的端到端测试。
 /// </summary>
 /// <remarks>
-/// 这组用例补的是 0.0.8 的两个遗留项：主机版本信息（<c>GetVersionAsync</c>）与主机启动时间
-/// （<c>GetSystemInfoAsync</c> 的 <c>SystemTime</c>）——它们此前只在 <c>docs/features.md</c>
-/// 里被标着「属于 0.0.8」，代码里并没有对应端点。
+/// <para>这两个端点喂的是前端总览页与主机选择器，因此除了「读得到数据」之外，还要证明两件容易被写错的事：
+/// 列表对**非管理员**返回空数组（而不是 403），以及概览在主机离线时返回 <c>status=offline</c>
+/// （而不是 502）——界面要把离线显示成一个状态，不是一个错误。</para>
+/// <para>「主机离线」的分支不在本组用例里构造：本机守护进程可用，而关掉守护进程不是测试能做的事
+/// （那属于 0.3.0 健康轮询的验证范围）。</para>
 /// </remarks>
 #pragma warning disable CA1001
-public class HostOverviewEndpointsTests : IAsyncLifetime
+public class HostsEndpointsTests : IAsyncLifetime
 #pragma warning restore CA1001
 {
     private const string _password = "StrongP@ss123";
@@ -63,17 +65,56 @@ public class HostOverviewEndpointsTests : IAsyncLifetime
     public async Task DisposeAsync() => await _factory.DisposeAsync();
 
     [Fact]
-    public async Task 未认证_返回401()
+    public async Task 列表_未认证返回401()
     {
         using var client = _factory.CreateClient();
 
-        using var response = await client.PostAsync($"/api/v1/hosts/{_localHost}/overview", content: null);
+        using var response = await client.PostAsync("/api/v1/hosts/list", content: null);
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
-    public async Task 未知主机_返回1300()
+    public async Task 列表_非管理员返回空数组而不是403()
+    {
+        using var client = await CreateAuthenticatedClientAsync(_operatorName);
+
+        using var response = await client.PostAsync("/api/v1/hosts/list", content: null);
+
+        // 逐资源授权表落地前是 fail-closed：非管理员看不到任何主机。
+        // 但列表用「空数组」表达这件事——返回 403 会让前端的主机选择器整块报错，
+        // 而它本该显示「暂无可用主机」。
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var hosts = await ReadDataAsync<List<HostPayload>>(response);
+        hosts.Should().BeEmpty();
+    }
+
+    [DockerFact]
+    public async Task 列表_管理员可见本机且状态为在线()
+    {
+        using var client = await CreateAuthenticatedClientAsync(_adminName);
+
+        using var response = await client.PostAsync("/api/v1/hosts/list", content: null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var hosts = await ReadDataAsync<List<HostPayload>>(response);
+        var local = hosts.Should().ContainSingle(host => host.Id == _localHost).Subject;
+
+        // Id 是主机名（前端路由与深链用的就是它），不是 hosts.id 那个 Guid。
+        local.Name.Should().Be(_localHost);
+        local.Enabled.Should().BeTrue();
+        local.Status.Should().Be("online");
+
+        // 列表刻意不取这几项：它们要额外调用守护进程，主机一多列表就会明显变慢。
+        local.Counts.Should().BeNull();
+        local.Version.Should().BeNull();
+        local.StartedAt.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task 概览_未知主机返回1300()
     {
         using var client = await CreateAuthenticatedClientAsync(_adminName);
 
@@ -84,19 +125,19 @@ public class HostOverviewEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task 非管理员访问主机_返回1501()
+    public async Task 概览_非管理员返回1501()
     {
         using var client = await CreateAuthenticatedClientAsync(_operatorName);
 
         using var response = await client.PostAsync($"/api/v1/hosts/{_localHost}/overview", content: null);
 
-        // 与容器端点同一条可见性策略（fail-closed），因此这里同样先得到 403 而不是去连守护进程。
+        // 单台概览走 CurrentHostMiddleware 的可见性校验，因此是 403 而不是空对象。
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await ReadCodeAsync(response)).Should().Be(ErrorCodes.HostForbidden);
     }
 
     [DockerFact]
-    public async Task 查询_返回版本与运行摘要()
+    public async Task 概览_返回版本与资源计数()
     {
         using var client = await CreateAuthenticatedClientAsync(_adminName);
 
@@ -104,27 +145,26 @@ public class HostOverviewEndpointsTests : IAsyncLifetime
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var data = await ReadDataAsync<OverviewPayload>(response);
+        var overview = await ReadDataAsync<HostPayload>(response);
 
-        data.Version.Version.Should().NotBeNullOrWhiteSpace("真实守护进程必然有引擎版本");
-        data.Version.ApiVersion.Should().NotBeNullOrWhiteSpace();
-        data.Version.Os.Should().NotBeNullOrWhiteSpace();
-        data.Version.Arch.Should().NotBeNullOrWhiteSpace();
+        overview.Id.Should().Be(_localHost);
+        overview.Status.Should().Be("online");
 
-        data.Runtime.Containers.Should().BeGreaterThanOrEqualTo(0);
-        data.Runtime.ContainersRunning.Should().BeLessThanOrEqualTo(data.Runtime.Containers);
-        data.Runtime.Cpus.Should().BeGreaterThan(0);
-        data.Runtime.MemoryTotalBytes.Should().BeGreaterThan(0);
+        overview.Version.Should().NotBeNull();
+        overview.Version!.Version.Should().NotBeNullOrWhiteSpace("真实守护进程必然有引擎版本");
+        overview.Version.ApiVersion.Should().NotBeNullOrWhiteSpace();
+        overview.Version.Os.Should().NotBeNullOrWhiteSpace();
+        overview.Version.Arch.Should().NotBeNullOrWhiteSpace();
 
-        // 启动时刻与「已运行秒数」要么都有、要么都没有（拿不到时刻时给 0 会被读成「刚刚启动」）。
-        if (data.Runtime.StartedAt is not null)
-        {
-            data.Runtime.UptimeSeconds.Should().NotBeNull().And.BeGreaterThanOrEqualTo(0);
-        }
-        else
-        {
-            data.Runtime.UptimeSeconds.Should().BeNull();
-        }
+        overview.Counts.Should().NotBeNull();
+        overview.Counts!.Containers.Should().BeGreaterThanOrEqualTo(0);
+        overview.Counts.Images.Should().BeGreaterThanOrEqualTo(0);
+
+        // 卷 / 网络计数至少含 Docker 自建的 bridge 等，因此必然 > 0。
+        overview.Counts.Volumes.Should().BeGreaterThan(0);
+        overview.Counts.Networks.Should().BeGreaterThan(0);
+
+        overview.StartedAt.Should().NotBeNull();
     }
 
     private async Task<HttpClient> CreateAuthenticatedClientAsync(string username)
@@ -163,18 +203,21 @@ public class HostOverviewEndpointsTests : IAsyncLifetime
         return JsonDocument.Parse(json).RootElement.Clone();
     }
 
-    /// <summary>主机概览响应的投影（只取断言用得到的字段）。</summary>
-    private sealed record OverviewPayload(VersionPayload Version, RuntimePayload Runtime);
-
-    private sealed record VersionPayload(string Version, string ApiVersion, string Os, string Arch);
-
-    private sealed record RuntimePayload(
-        long Containers,
-        long ContainersRunning,
-        long Cpus,
-        long MemoryTotalBytes,
+    /// <summary>主机概览响应的投影（只取断言用得到的字段；对应前端的 <c>HostOverview</c>）。</summary>
+    private sealed record HostPayload(
+        string Id,
+        string Name,
+        string Type,
+        string Endpoint,
+        bool Enabled,
+        string Status,
+        CountsPayload? Counts,
         DateTimeOffset? StartedAt,
-        long? UptimeSeconds);
+        VersionPayload? Version);
+
+    private sealed record CountsPayload(long Containers, long Images, long Volumes, long Networks);
+
+    private sealed record VersionPayload(string? Version, string? ApiVersion, string? Os, string? Arch);
 
     private sealed record LoginPayload(string AccessToken);
 }
