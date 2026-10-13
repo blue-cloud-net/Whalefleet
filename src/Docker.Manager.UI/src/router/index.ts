@@ -7,7 +7,7 @@ import { useHostStore } from '@/stores/host'
  *
  * **两段式信息架构**（Portainer 式）：
  *   - `scope: 'global'` —— 全局作用域。登录后的默认落地页是「总览」，
- *     展示所有服务器；此作用域不携带 `X-Host-Id`。
+ *     展示所有服务器；此作用域的请求路径不含 `hostId`。
  *   - `scope: 'host'` —— 主机作用域。路径形如 `/hosts/:hostId/containers`，
  *     由总览页的「进入」按钮进入，URL 自带 `hostId`（可深链 / 可分享）。
  *
@@ -173,7 +173,7 @@ router.beforeEach((to) => {
     }
     host.setCurrent(hostId)
   } else {
-    // 全局作用域：清空当前主机，避免 X-Host-Id 残留
+    // 全局作用域：清空当前主机，避免界面还停留在某台机器的上下文里
     host.clearCurrent()
   }
 

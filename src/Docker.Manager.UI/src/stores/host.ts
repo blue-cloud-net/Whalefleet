@@ -60,7 +60,7 @@ export const DEFAULT_HOSTS: HostOverview[] = [
  * 主机 store：主机列表 + 分组 + 当前选中主机。
  *
  * 作用域约定（与 router 的 `meta.scope` 对应）：
- *   - **全局作用域**（总览 / 全局设置 / 主机管理 / 用户管理）：`currentId` 为空串，不注入 `X-Host-Id`
+ *   - **全局作用域**（总览 / 全局设置 / 主机管理 / 用户管理）：`currentId` 为空串
  *   - **主机作用域**（`/hosts/:hostId/**`）：`currentId` 等于路由里的 `hostId`，由路由守卫写入
  *
  * URL 是唯一事实来源，store 只做镜像，因此刷新 / 深链都能还原作用域。
