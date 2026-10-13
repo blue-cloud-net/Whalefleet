@@ -124,15 +124,21 @@ function onKeydown(e: KeyboardEvent) {
       </p>
     </div>
 
-    <!-- 资源计数（占位）：横向紧凑排布，每项「图标 + 数值 + 名称」竖排对齐 -->
-    <div class="flex items-stretch gap-1.5 shrink-0">
+    <!--
+      资源计数（占位）：每项「图标 + 数值 + 名称」竖排对齐。
+
+      宽度按断点给两档：窄屏保持 w-16，否则四块 96px + 12px 间隔 = 420px 会把
+      整行撑破（390px 视口下卡片横向溢出 11px）；宽屏才放到 w-24 让「数据卷」
+      这类三字标签有足够留白（实测 64px 时内容区仅余 4px）。
+    -->
+    <div class="flex items-stretch gap-1.5 sm:gap-3 shrink-0">
       <div
         v-for="s in stats"
         :key="s.key"
-        class="app-stat-tile w-16 flex flex-col items-center justify-center gap-0.5"
+        class="app-stat-tile w-16 sm:w-24 flex flex-col items-center justify-center gap-0.5 sm:gap-1"
       >
-        <span class="text-base leading-none text-content-faint" :class="s.icon" />
-        <span class="text-sm font-semibold leading-tight app-tabular text-content-body">
+        <span class="text-base sm:text-lg leading-none text-content-faint" :class="s.icon" />
+        <span class="text-sm sm:text-base font-semibold leading-tight app-tabular text-content-body">
           {{ host.counts ? host.counts[s.key as keyof typeof host.counts] : '—' }}
         </span>
         <span class="text-xs leading-none text-content-faint">{{ s.label }}</span>
