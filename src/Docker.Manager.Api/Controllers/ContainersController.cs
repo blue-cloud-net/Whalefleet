@@ -122,4 +122,148 @@ public sealed class ContainersController : ControllerBase
 
         return this.Ok(ApiResults.Ok(logs));
     }
+
+    /// <summary>
+    /// 创建容器（仅创建，不自动启动）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">创建请求（精选字段；详见 <c>docs/api-spec.md</c>）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应，<c>data</c> 为新容器 ID 与守护进程提示。</returns>
+    /// <response code="200">创建成功（**不**代表容器已启动）。</response>
+    /// <response code="400">字段非法（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机（<c>1300</c>）或镜像（<c>1401</c>）不存在。</response>
+    [HttpPost("create")]
+    [ProducesResponseType(typeof(ApiResult<ContainerCreatedResult>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> CreateAsync(
+        string hostId,
+        [FromBody] CreateContainerRequest request,
+        CancellationToken cancellationToken)
+    {
+        var created = await _containers.CreateAsync(hostId, request, cancellationToken).ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok(created));
+    }
+
+    /// <summary>
+    /// 启动容器。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">启动请求（容器标识）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应（无 <c>data</c> 字段）。</returns>
+    /// <response code="200">启动成功（已在运行的容器同样返回 200）。</response>
+    /// <response code="400">容器标识为空（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机（<c>1300</c>）或容器（<c>1401</c>）不存在。</response>
+    [HttpPost("start")]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> StartAsync(
+        string hostId,
+        [FromBody] StartContainerRequest request,
+        CancellationToken cancellationToken)
+    {
+        await _containers.StartAsync(hostId, request, cancellationToken).ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok());
+    }
+
+    /// <summary>
+    /// 停止容器（先 SIGTERM，等待超时后 SIGKILL）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">停止请求（容器标识、等待秒数）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应（无 <c>data</c> 字段）。</returns>
+    /// <response code="200">停止成功（已停止的容器同样返回 200）。</response>
+    /// <response code="400">容器标识为空或 <c>waitSeconds</c> 越界（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机（<c>1300</c>）或容器（<c>1401</c>）不存在。</response>
+    /// <response code="408">停止超时（<c>1403</c>）。</response>
+    [HttpPost("stop")]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status408RequestTimeout)]
+    public async Task<IActionResult> StopAsync(
+        string hostId,
+        [FromBody] StopContainerRequest request,
+        CancellationToken cancellationToken)
+    {
+        await _containers.StopAsync(hostId, request, cancellationToken).ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok());
+    }
+
+    /// <summary>
+    /// 重启容器。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">重启请求（容器标识）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应（无 <c>data</c> 字段）。</returns>
+    /// <response code="200">重启成功。</response>
+    /// <response code="400">容器标识为空（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机（<c>1300</c>）或容器（<c>1401</c>）不存在。</response>
+    [HttpPost("restart")]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RestartAsync(
+        string hostId,
+        [FromBody] RestartContainerRequest request,
+        CancellationToken cancellationToken)
+    {
+        await _containers.RestartAsync(hostId, request, cancellationToken).ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok());
+    }
+
+    /// <summary>
+    /// 删除容器（**不**连带删除数据卷）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">删除请求（容器标识、是否强制）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应（无 <c>data</c> 字段）。</returns>
+    /// <response code="200">删除成功。</response>
+    /// <response code="400">容器标识为空（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机（<c>1300</c>）或容器（<c>1401</c>）不存在。</response>
+    /// <response code="409">容器正在运行且未指定 <c>force</c>（<c>1404</c>）。</response>
+    [HttpPost("remove")]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> RemoveAsync(
+        string hostId,
+        [FromBody] RemoveContainerRequest request,
+        CancellationToken cancellationToken)
+    {
+        await _containers.RemoveAsync(hostId, request, cancellationToken).ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok());
+    }
 }
