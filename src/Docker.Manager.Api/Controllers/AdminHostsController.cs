@@ -1,4 +1,5 @@
 using Docker.Manager.Application.Common;
+using Docker.Manager.Application.HostGroups;
 using Docker.Manager.Application.Hosts;
 using Docker.Manager.Core.Users;
 using Microsoft.AspNetCore.Authorization;
@@ -25,17 +26,21 @@ namespace Docker.Manager.Api.Controllers;
 public sealed class AdminHostsController : ControllerBase
 {
     private readonly HostService _hosts;
+    private readonly HostGroupService _groups;
 
     /// <summary>
     /// 初始化主机管理控制器。
     /// </summary>
     /// <param name="hosts">主机管理用例。</param>
-    /// <exception cref="ArgumentNullException"><paramref name="hosts"/> 为 <see langword="null"/>。</exception>
-    public AdminHostsController(HostService hosts)
+    /// <param name="groups">分组用例（归属调整用）。</param>
+    /// <exception cref="ArgumentNullException">任一参数为 <see langword="null"/>。</exception>
+    public AdminHostsController(HostService hosts, HostGroupService groups)
     {
         ArgumentNullException.ThrowIfNull(hosts);
+        ArgumentNullException.ThrowIfNull(groups);
 
         _hosts = hosts;
+        _groups = groups;
     }
 
     /// <summary>
@@ -116,6 +121,34 @@ public sealed class AdminHostsController : ControllerBase
     public async Task<IActionResult> DeleteAsync(string hostId, CancellationToken cancellationToken)
     {
         await _hosts.DeleteAsync(hostId, cancellationToken).ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok());
+    }
+
+    /// <summary>
+    /// 调整主机的分组归属（<c>groupId</c> 传 <c>null</c> 即移出分组）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">归属请求。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应（无 <c>data</c> 字段）。</returns>
+    /// <response code="200">调整成功。</response>
+    /// <response code="404">主机不存在（<c>1300</c>）或分组不存在（<c>1305</c>）。</response>
+    /// <remarks>
+    /// <b>为什么单设端点而不是塞进 <c>{hostId}/update</c></b>：那边的语义是「字段未提供表示不改」，
+    /// 于是「移到未分组」就没有表达方式——JSON 分不清「没给 <c>groupId</c>」与「<c>groupId: null</c>」。
+    /// 凭据那边为同一个原因额外加了 <c>clearCredentials</c> 开关；这里直接给一个显式端点，
+    /// 语义只有一个：「把主机设为这个组，或不属于任何组」。
+    /// </remarks>
+    [HttpPost("{hostId}/group")]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> AssignGroupAsync(
+        string hostId,
+        [FromBody] AssignHostGroupRequest request,
+        CancellationToken cancellationToken)
+    {
+        await _groups.AssignHostAsync(hostId, request, cancellationToken).ConfigureAwait(false);
 
         return this.Ok(ApiResults.Ok());
     }
