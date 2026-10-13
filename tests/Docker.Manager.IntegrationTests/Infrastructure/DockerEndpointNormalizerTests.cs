@@ -15,6 +15,8 @@ namespace Docker.Manager.IntegrationTests.Infrastructure;
 /// <para>其中对 <see cref="Uri.AbsolutePath"/> 的断言尤为关键——它守住了
 /// <c>unix://var/run/docker.sock</c> 这类写法被 <see cref="Uri"/> 解析成
 /// <c>Host="var"</c> + <c>Path="/run/docker.sock"</c> 的陷阱。</para>
+/// <para><c>https://</c> 是 TLS 的<b>唯一声明</b>（库按 scheme 选传输，且客户端证书只会
+/// 用在 TLS 通道上），因此它的规范化规则也由本组守住：默认端口 2376 而非 2375。</para>
 /// </remarks>
 public class DockerEndpointNormalizerTests
 {
@@ -98,12 +100,35 @@ public class DockerEndpointNormalizerTests
     }
 
     [Theory]
+    [InlineData("https://host:2376", "https://host:2376")]
+    [InlineData("https://host", "https://host:2376")]
+    [InlineData("HTTPS://Docker.Example", "https://docker.example:2376")]
+    [InlineData("https://[::1]", "https://[::1]:2376")]
+    [InlineData("https://proxy.example:2376/docker", "https://proxy.example:2376/docker")]
+    public void HttpsEndpoints_ShouldNormalizeToHttpsAndTlsDefaultPort(string input, string expected)
+    {
+        var succeeded = DockerEndpointNormalizer.TryNormalize(
+            DockerHostType.Tcp,
+            input,
+            out var normalized,
+            out var error);
+
+        succeeded.Should().BeTrue($"端点「{input}」应当合法：{error}");
+        normalized.CanonicalEndpoint.Should().Be(expected);
+        normalized.EndpointUri.Scheme.Should().Be("https");
+
+        // 默认端口必须与明文区分：发错端口只会得到一个连不上的超时，很难看出是端口猜错了。
+        normalized.EndpointUri.Port.Should().Be(DockerEndpointNormalizer.DefaultTlsPort);
+    }
+
+    [Theory]
     [InlineData(DockerHostType.Socket, "/var/run/docker.sock")]
     [InlineData(DockerHostType.Socket, "unix://var/run/docker.sock")]
     [InlineData(DockerHostType.Socket, "//./pipe/docker_engine")]
     [InlineData(DockerHostType.Tcp, "127.0.0.1")]
     [InlineData(DockerHostType.Tcp, "http://DOCKER.example:2375")]
     [InlineData(DockerHostType.Tcp, "tcp://[::1]:2375")]
+    [InlineData(DockerHostType.Tcp, "https://DOCKER.example")]
     public void Normalization_ShouldBeIdempotent(DockerHostType type, string input)
     {
         DockerEndpointNormalizer.TryNormalize(type, input, out var once, out var firstError)
@@ -129,7 +154,6 @@ public class DockerEndpointNormalizerTests
     [InlineData(DockerHostType.Tcp, "tcp://host:abc")]
     [InlineData(DockerHostType.Tcp, "tcp://host:0")]
     [InlineData(DockerHostType.Tcp, "tcp://host:99999")]
-    [InlineData(DockerHostType.Tcp, "https://host:2376")]
     [InlineData(DockerHostType.Tcp, "tcp://user:pass@host:2375")]
 
     [InlineData((DockerHostType)999, "tcp://host:2375")]

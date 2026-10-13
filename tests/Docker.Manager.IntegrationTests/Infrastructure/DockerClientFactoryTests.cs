@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using Docker.DotNet;
 using Docker.Manager.Application.Abstractions;
 using Docker.Manager.Application.Common;
@@ -91,4 +93,196 @@ public class DockerClientFactoryTests
         Type = type,
         Endpoint = endpoint,
     };
+
+    [Fact]
+    public void CreateClient_ShouldBuildClientWithBasicAuthOverTls()
+    {
+        var factory = CreateFactory();
+        var connection = Connection("remote", DockerHostType.Tcp, "https://docker.example")
+            with { Auth = BasicAuth("admin", "s3cret") };
+
+        using var client = factory.CreateClient(connection);
+
+        client.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void CreateClient_ShouldBuildClientWithBasicAuthOverPlainTcp()
+    {
+        // 明文 + Basic 不阻断（内网专线上确实有人这么用），但必须在日志里留痕——
+        // 这条用例同时守住"不因为不安全就拒绝连接"这个选择。
+        var factory = CreateFactory();
+        var connection = Connection("remote", DockerHostType.Tcp, "tcp://docker.example:2375")
+            with { Auth = BasicAuth("admin", "s3cret") };
+
+        using var client = factory.CreateClient(connection);
+
+        client.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void CreateClient_ShouldBuildClientWithTlsCertificates()
+    {
+        using var files = TlsCertificateFiles.Create();
+        var factory = CreateFactory();
+        var connection = Connection("remote", DockerHostType.Tcp, "https://docker.example:2376")
+            with { Auth = TlsAuth(files) };
+
+        // 先自证夹具是配套的：证书与私钥必须能配对，否则失败会指向工厂而浪费排查时间。
+        using (var probe = X509Certificate2.CreateFromPemFile(files.CertificatePath, files.KeyPath))
+        {
+            probe.HasPrivateKey.Should().BeTrue();
+        }
+
+        // 客户端构建会真正读取 PEM（因此这条用例同时验证了证书加载路径）；
+        // 建立连接要等 Ping，不在本测试范围内。
+        using var client = factory.CreateClient(connection);
+
+        client.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void CreateClient_ShouldRejectTlsCredentialsOnPlainTcpEndpoint()
+    {
+        // 明文端点配了客户端证书：库不会把证书发出去，连接会"看起来启用了 TLS"却是明文——
+        // 这种静默降级必须在构建阶段就拦下。
+        using var files = TlsCertificateFiles.Create();
+        var factory = CreateFactory();
+        var connection = Connection("remote", DockerHostType.Tcp, "tcp://docker.example:2375")
+            with { Auth = TlsAuth(files) };
+
+        var act = () => factory.CreateClient(connection);
+
+        (act.Should().Throw<BusinessException>())
+            .Which.Code.Should().Be(ErrorCodes.HostUnreachable);
+        act.Should().Throw<BusinessException>().WithMessage("*https://*");
+    }
+
+    [Fact]
+    public void CreateClient_ShouldThrowHostUnreachableWhenCertificateFilesMissing()
+    {
+        var missing = Path.Combine(Path.GetTempPath(), "dm-missing-cert", Guid.NewGuid().ToString("N"));
+
+        var factory = CreateFactory();
+        var connection = Connection("remote", DockerHostType.Tcp, "https://docker.example:2376")
+            with
+            {
+                Auth = TlsAuthWithPaths(
+                    Path.Combine(missing, "ca.pem"),
+                    Path.Combine(missing, "cert.pem"),
+                    Path.Combine(missing, "key.pem")),
+            };
+
+        var act = () => factory.CreateClient(connection);
+
+        (act.Should().Throw<BusinessException>())
+            .Which.Code.Should().Be(ErrorCodes.HostUnreachable);
+    }
+
+    [Fact]
+    public void CreateClient_ShouldThrowWhenAuthPayloadMissing()
+    {
+        // 直接构造出"声明了认证但没带凭据"的记录：应得到可读的业务错误，而不是空引用异常。
+        var factory = CreateFactory();
+        var connection = Connection("remote", DockerHostType.Tcp, "https://docker.example:2376")
+            with { Auth = new DockerHostAuth { Kind = DockerHostAuthKind.Tls } };
+
+        var act = () => factory.CreateClient(connection);
+
+        (act.Should().Throw<BusinessException>())
+            .Which.Code.Should().Be(ErrorCodes.HostUnreachable);
+    }
+
+    private static DockerHostAuth BasicAuth(string username, string password) =>
+        DockerHostAuth.From(HostCredentials.FromJson(
+            DockerHostAuthKind.Basic,
+            $$"""{ "username": "{{username}}", "password": "{{password}}" }"""));
+
+    private static DockerHostAuth TlsAuth(TlsCertificateFiles files) =>
+        TlsAuthWithPaths(files.CaPath, files.CertificatePath, files.KeyPath);
+
+    private static DockerHostAuth TlsAuthWithPaths(string caPath, string certPath, string keyPath) =>
+        DockerHostAuth.From(HostCredentials.FromJson(
+            DockerHostAuthKind.Tls,
+            $$"""
+            {
+              "caCertificatePath": "{{caPath}}",
+              "clientCertificatePath": "{{certPath}}",
+              "clientKeyPath": "{{keyPath}}"
+            }
+            """));
+
+    /// <summary>
+    /// 临时目录里的一套自签证书（CA + 客户端证书 + 私钥，均为 PEM）。
+    /// </summary>
+    /// <remarks>
+    /// 真造证书而不是造假路径：证书加载本身就是被测路径的一部分，
+    /// 用不存在的路径测只能证明"会报错"，证明不了"合法证书能连上"。
+    /// </remarks>
+    private sealed class TlsCertificateFiles : IDisposable
+    {
+        private readonly string _directory;
+
+        private TlsCertificateFiles(string directory, string caPath, string certificatePath, string keyPath)
+        {
+            _directory = directory;
+            this.CaPath = caPath;
+            this.CertificatePath = certificatePath;
+            this.KeyPath = keyPath;
+        }
+
+        internal string CaPath { get; }
+
+        internal string CertificatePath { get; }
+
+        internal string KeyPath { get; }
+
+        internal static TlsCertificateFiles Create()
+        {
+            var directory = Path.Combine(
+                Path.GetTempPath(),
+                "docker-manager-tls-tests",
+                Guid.NewGuid().ToString("N"));
+
+            Directory.CreateDirectory(directory);
+
+            using var caKey = RSA.Create(2048);
+            var caRequest = new CertificateRequest(
+                "CN=docker-manager-test-ca",
+                caKey,
+                HashAlgorithmName.SHA256,
+                RSASignaturePadding.Pkcs1);
+            using var caCertificate = caRequest.CreateSelfSigned(
+                DateTimeOffset.UtcNow.AddDays(-1),
+                DateTimeOffset.UtcNow.AddDays(1));
+
+            using var clientKey = RSA.Create(2048);
+            var clientRequest = new CertificateRequest(
+                "CN=docker-manager-test-client",
+                clientKey,
+                HashAlgorithmName.SHA256,
+                RSASignaturePadding.Pkcs1);
+            using var clientCertificate = clientRequest.CreateSelfSigned(
+                DateTimeOffset.UtcNow.AddDays(-1),
+                DateTimeOffset.UtcNow.AddDays(1));
+
+            var caPath = Path.Combine(directory, "ca.pem");
+            var certificatePath = Path.Combine(directory, "cert.pem");
+            var keyPath = Path.Combine(directory, "key.pem");
+
+            File.WriteAllText(caPath, caCertificate.ExportCertificatePem());
+            File.WriteAllText(certificatePath, clientCertificate.ExportCertificatePem());
+            File.WriteAllText(keyPath, clientKey.ExportPkcs8PrivateKeyPem());
+
+            return new TlsCertificateFiles(directory, caPath, certificatePath, keyPath);
+        }
+
+        public void Dispose()
+        {
+            if (Directory.Exists(_directory))
+            {
+                Directory.Delete(_directory, recursive: true);
+            }
+        }
+    }
 }

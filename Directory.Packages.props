@@ -41,6 +41,9 @@
 
     <!-- ============ Docker SDK ============ -->
     <PackageVersion Include="Docker.DotNet.Enhanced" Version="4.3.3" />
+    <!-- 认证处理器：与主包同版本。X509 = 客户端证书（TLS 双向认证）；BasicAuth = 用户名/密码。 -->
+    <PackageVersion Include="Docker.DotNet.Enhanced.BasicAuth" Version="4.3.3" />
+    <PackageVersion Include="Docker.DotNet.Enhanced.X509" Version="4.3.3" />
 
     <!-- ============ 安全（密码哈希） ============ -->
     <!-- MIT 许可（本项目亦为 MIT）。它只输出原始字节，PHC 编码串由 Core/Auth/PasswordHash 值对象负责。

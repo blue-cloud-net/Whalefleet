@@ -19,6 +19,10 @@
 
   <ItemGroup>
     <PackageReference Include="Docker.DotNet.Enhanced" />
+    <!-- 认证处理器（0.0.8）：TLS 客户端证书 / HTTP Basic。二者都是「认证提供器」实现，
+         需显式引用才会被加载；不引用时只能用无认证连接。 -->
+    <PackageReference Include="Docker.DotNet.Enhanced.BasicAuth" />
+    <PackageReference Include="Docker.DotNet.Enhanced.X509" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />

@@ -29,7 +29,15 @@ namespace Docker.Manager.Infrastructure.Docker;
 ///     <term><c>tcp://HOST:2375</c>、<c>host:2375</c>、<c>http://host</c></term>
 ///     <description><c>tcp://host:2375</c></description>
 ///   </item>
+///   <item>
+///     <term><c>https://HOST:2376</c>、<c>https://host</c>（TLS）</term>
+///     <description><c>https://host:2376</c></description>
+///   </item>
 /// </list>
+/// <para><b>TLS 为什么用 <c>https://</c> 而不是另加一个开关</b>：库按端点 scheme 选传输，
+/// 且客户端证书只会在 TLS 通道上被使用。因此「端点写成 https」本身就是「这条连接要 TLS」的
+/// 唯一声明，不会出现「配了证书却走了明文」这种静默降级。默认端口取 2376
+/// （与 <c>docker --tlsverify</c> 的约定一致），区别于明文的 2375。</para>
 /// <para><b>关于三个斜杠</b>：<c>unix://var/run/docker.sock</c> 会被 <see cref="Uri"/> 解析成
 /// <c>Host="var"</c> + <c>AbsolutePath="/run/docker.sock"</c>，与直觉相悖。实测两种写法都能连通
 /// Docker 守护进程，但只有三斜杠形式的 <c>AbsolutePath</c> 才是完整 socket 路径，
@@ -44,12 +52,18 @@ public static class DockerEndpointNormalizer
     /// </summary>
     public const int DefaultTcpPort = 2375;
 
+    /// <summary>
+    /// TLS 端点（<c>https://</c>）在未显式给出端口时使用的 Docker 默认加密端口。
+    /// </summary>
+    public const int DefaultTlsPort = 2376;
+
     private const string _unixScheme = "unix://";
     private const string _npipeScheme = "npipe://";
     private const string _npipePrefix = "npipe://./pipe/";
     private const string _npipeWindowsPrefix = @"\\.\pipe\";
     private const string _npipeSlashPrefix = "//./pipe/";
     private const string _tcpScheme = "tcp://";
+    private const string _httpsScheme = "https://";
     private const string _schemeSeparator = "://";
 
     /// <summary>
@@ -179,6 +193,7 @@ public static class DockerEndpointNormalizer
 
         var remainder = raw;
         var separatorIndex = raw.IndexOf(_schemeSeparator, StringComparison.Ordinal);
+        var isTls = false;
 
         if (separatorIndex > 0)
         {
@@ -186,10 +201,9 @@ public static class DockerEndpointNormalizer
 
             if (scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
             {
-                return Fail("TLS 端点（https://）于 0.0.8 落地，当前请使用明文 tcp://", out normalized, out error);
+                isTls = true;
             }
-
-            if (!scheme.Equals("tcp", StringComparison.OrdinalIgnoreCase)
+            else if (!scheme.Equals("tcp", StringComparison.OrdinalIgnoreCase)
                 && !scheme.Equals("http", StringComparison.OrdinalIgnoreCase))
             {
                 return Fail($"TCP 端点不支持该协议前缀：{scheme}://", out normalized, out error);
@@ -200,7 +214,10 @@ public static class DockerEndpointNormalizer
 
         if (remainder.Contains('@', StringComparison.Ordinal))
         {
-            return Fail("TCP 端点不支持内嵌账号密码，Basic 认证于 0.0.8 落地", out normalized, out error);
+            return Fail(
+                "TCP 端点不支持内嵌账号密码（端点会进日志），Basic 凭据请放到认证配置里",
+                out normalized,
+                out error);
         }
 
         var slashIndex = remainder.IndexOf('/', StringComparison.Ordinal);
@@ -209,10 +226,15 @@ public static class DockerEndpointNormalizer
 
         if (authority.Length == 0)
         {
-            return Fail("TCP 端点缺少主机名（如 tcp://host:2375）", out normalized, out error);
+            return Fail(
+                "TCP 端点缺少主机名（如 tcp://host:2375 或 https://host:2376）",
+                out normalized,
+                out error);
         }
 
-        if (!TrySplitAuthority(authority, out var host, out var port, out error))
+        var defaultPort = isTls ? DefaultTlsPort : DefaultTcpPort;
+
+        if (!TrySplitAuthority(authority, defaultPort, out var host, out var port, out error))
         {
             normalized = default;
             return false;
@@ -223,17 +245,22 @@ public static class DockerEndpointNormalizer
             return Fail($"TCP 端点端口超出范围（1-65535）：{port}", out normalized, out error);
         }
 
-        var canonical = $"{_tcpScheme}{host.ToLowerInvariant()}:{port}{path}";
+        var canonical = $"{(isTls ? _httpsScheme : _tcpScheme)}{host.ToLowerInvariant()}:{port}{path}";
 
         return Uri.TryCreate(canonical, UriKind.Absolute, out var uri)
             ? Succeed(uri, canonical, out normalized, out error)
             : Fail($"TCP 端点无法解析：{raw}", out normalized, out error);
     }
 
-    private static bool TrySplitAuthority(string authority, out string host, out int port, out string? error)
+    private static bool TrySplitAuthority(
+        string authority,
+        int defaultPort,
+        out string host,
+        out int port,
+        out string? error)
     {
         host = String.Empty;
-        port = DefaultTcpPort;
+        port = defaultPort;
         error = null;
 
         if (authority.StartsWith('['))
@@ -281,7 +308,7 @@ public static class DockerEndpointNormalizer
 
         if (host.Length == 0)
         {
-            error = "TCP 端点缺少主机名（如 tcp://host:2375）";
+            error = "TCP 端点缺少主机名（如 tcp://host:2375 或 https://host:2376）";
             return false;
         }
 
