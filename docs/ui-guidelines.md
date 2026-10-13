@@ -306,7 +306,7 @@ HOST_TONE_RAIL[tone]                // 卡片左侧色条
 | 总览（所有服务器） | `i-carbon-dashboard` |
 | 全局设置 | `i-carbon-settings-adjust` |
 | 主机管理 / 服务器分组标题 | `i-carbon-data-center` |
-| 主机（总览统计磁贴） | `i-carbon-data-center-alt` |
+| 主机（总览统计磁贴） | `i-carbon-data-center` |
 | 主机分组 / 未分组 | `i-carbon-folder` / `i-carbon-folder-off` |
 | 容器 | `i-carbon-container-software` |
 | 镜像 | `i-carbon-image` |
@@ -326,6 +326,17 @@ HOST_TONE_RAIL[tone]                // 卡片左侧色条
 
 > 动态拼接的图标类（写在 `router/index.ts` 的 `meta.icon` 等处）**必须进 `uno.config.ts` 的
 > `safelist`**，否则构建时被摇树移除，表现为「图标不显示」。
+
+> **图标名必须是 Carbon 里真实存在的名字。** Carbon 没有 `-alt` 变体
+> （`data-center-alt`、`server`、`cluster` 全部不存在），UnoCSS 对不存在的图标
+> **只告警不报错**，编译照过，运行时表现为「底色方块在、图标不见」。
+> `uno.config.ts` 的 `assertIconsExist()` 会在 `vite dev/build` 时对全部 safelist
+> 图标做存在性校验并直接抛错，新增图标时用这条兜住。
+>
+> ```bash
+> # 想确认某个名字存在与否：
+> node -e "const i=require('@iconify-json/carbon/icons.json');console.log(!!i.icons['<名字>'])"
+> ```
 
 ---
 
