@@ -8,6 +8,10 @@ import elementEn from 'element-plus/es/locale/lang/en'
 import 'virtual:uno.css'
 import '@unocss/reset/tailwind.css'
 import 'element-plus/dist/index.css'
+// Element Plus 的暗色主题是**独立可选包**：`<html class="dark">` 本身不会让它变色，
+// 必须额外引入 dark/css-vars.css，否则下拉菜单 / 弹窗 / 按钮组等浮层在暗色下仍是白底。
+import 'element-plus/theme-chalk/dark/css-vars.css'
+// 放在最后：本文件里的令牌与 Element Plus 变量桥接要覆盖库自带值
 import '@/styles/main.css'
 
 import App from './App.vue'

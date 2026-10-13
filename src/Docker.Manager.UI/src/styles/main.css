@@ -53,6 +53,54 @@ html.dark {
   --shadow-brand: 0 8px 24px rgb(var(--brand-500) / 0.28);
 }
 
+/* ============================================================
+   主色色阶（blue / green / purple）
+   ------------------------------------------------------------
+   uno.config.ts 把 brand.50~900 映射为 rgb(var(--brand-N) / <alpha-value>)，
+   所以这里必须写**空格分隔的 RGB 通道**，不能写十六进制色值，
+   否则所有 brand-* 原子类会因 var() 非法而静默失效。
+   基色取自 docs/ui-guidelines.md：蓝 #409EFF、绿 #67C23A、紫 #7A40B8。
+   ============================================================ */
+:root,
+html.theme-blue {
+  --brand-50: 239 246 255;
+  --brand-100: 219 234 254;
+  --brand-200: 191 219 254;
+  --brand-300: 147 197 253;
+  --brand-400: 96 165 250;
+  --brand-500: 64 158 255;
+  --brand-600: 45 128 214;
+  --brand-700: 30 96 160;
+  --brand-800: 22 72 120;
+  --brand-900: 15 51 88;
+}
+
+html.theme-green {
+  --brand-50: 240 249 235;
+  --brand-100: 220 243 205;
+  --brand-200: 195 233 165;
+  --brand-300: 152 221 118;
+  --brand-400: 118 202 71;
+  --brand-500: 103 194 58;
+  --brand-600: 82 155 46;
+  --brand-700: 62 116 35;
+  --brand-800: 46 87 26;
+  --brand-900: 33 62 19;
+}
+
+html.theme-purple {
+  --brand-50: 246 243 255;
+  --brand-100: 237 233 254;
+  --brand-200: 221 214 254;
+  --brand-300: 196 181 253;
+  --brand-400: 157 122 219;
+  --brand-500: 122 64 184;
+  --brand-600: 104 40 190;
+  --brand-700: 86 33 168;
+  --brand-800: 68 26 134;
+  --brand-900: 51 20 100;
+}
+
 html {
   /* 文本选中色跟随品牌色，避免默认蓝色割裂 */
   ::selection {
@@ -183,6 +231,53 @@ html.dark *::-webkit-scrollbar-thumb:hover {
 /* ============================================================
    Element Plus 细节对齐：让内置组件融入自定义表面色
    ============================================================ */
+
+/* 变量桥接：Element Plus 走 --el-* 变量，本项目走 --surface-* / --border-subtle。
+   不桥接的话，EP 自带的暗色表面（#141414）会和我们的卡片（#141a21）对不上，
+   浮层与页面会出现肉眼可见的色差。放在本文件靠后位置以覆盖库自带值。 */
+:root {
+  /* 主色跟随三色主题；light-N 由 color-mix 派生，避免手写 5 份色阶 */
+  --el-color-primary: rgb(var(--brand-500));
+  --el-color-primary-dark-2: color-mix(in srgb, var(--el-color-primary) 80%, #000);
+  --el-color-primary-light-3: color-mix(in srgb, var(--el-color-primary) 70%, #fff);
+  --el-color-primary-light-5: color-mix(in srgb, var(--el-color-primary) 50%, #fff);
+  --el-color-primary-light-7: color-mix(in srgb, var(--el-color-primary) 30%, #fff);
+  --el-color-primary-light-8: color-mix(in srgb, var(--el-color-primary) 20%, #fff);
+  --el-color-primary-light-9: color-mix(in srgb, var(--el-color-primary) 10%, #fff);
+
+  --el-bg-color-page: var(--surface-page);
+  --el-bg-color: var(--surface-card);
+  --el-bg-color-overlay: var(--surface-card);
+  --el-fill-color-blank: var(--surface-card);
+
+  --el-border-color: var(--border-subtle);
+  --el-border-color-light: color-mix(in srgb, var(--border-subtle) 78%, transparent);
+  --el-border-color-lighter: color-mix(in srgb, var(--border-subtle) 60%, transparent);
+  --el-border-color-extra-light: color-mix(in srgb, var(--border-subtle) 45%, transparent);
+
+  --el-text-color-primary: #1f2937;
+  --el-text-color-regular: #4b5563;
+  --el-text-color-secondary: #6b7280;
+  --el-text-color-placeholder: #9ca3af;
+
+  --el-box-shadow-lighter: var(--shadow-xs);
+  --el-box-shadow-light: var(--shadow-sm);
+  --el-box-shadow: var(--shadow-md);
+  --el-box-shadow-dark: var(--shadow-lg);
+}
+
+html.dark {
+  --el-text-color-primary: #e2e8f0;
+  --el-text-color-regular: #cbd5e1;
+  --el-text-color-secondary: #94a3b8;
+  --el-text-color-placeholder: #64748b;
+  --el-border-color-dark: color-mix(in srgb, var(--border-subtle) 100%, #fff 10%);
+  --el-border-color-darker: color-mix(in srgb, var(--border-subtle) 100%, #fff 20%);
+  --el-mask-color: rgb(11 15 20 / 0.8);
+  /* 浮层投影在暗色下几乎不可见，换成带天花的深阴影把层级拉开 */
+  --el-box-shadow: var(--shadow-lg);
+  --el-box-shadow-dark: var(--shadow-lg);
+}
 
 /* 卡片 / 弹层圆角与令牌对齐 */
 .el-card,

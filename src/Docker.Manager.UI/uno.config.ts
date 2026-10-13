@@ -5,6 +5,9 @@ import { defineConfig, presetIcons, presetTypography, presetUno } from 'unocss'
 //  - presetTypography：prose 风格排版
 //  - presetIcons：Iconify 按需加载（默认使用 carbon 图标集）
 export default defineConfig({
+  // 主题开关由 <html class="dark"> 驱动（见 stores/theme.ts），必须用 class 模式。
+  // 默认的 prefers-color-scheme 会让「手动选亮色但系统是暗色」时无法保持亮色，反之亦然。
+  darkMode: 'class',
   presets: [
     presetUno(),
     presetTypography(),
