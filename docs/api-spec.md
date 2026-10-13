@@ -367,47 +367,56 @@ POST /api/v1/hosts/{hostId}/containers/list
 
 ---
 
-### 主机查询（0.0.8）
+### 主机查询（0.0.8 / 0.0.9，**已实现**）
 
 | 操作 | 路径 | 角色 | 说明 |
 |------|------|------|------|
-| 可见主机列表 | `POST /api/v1/hosts/list` | 任意已登录 | 返回**当前用户可见**的主机（含 `status`）；admin 调用时返回全部 |
-| 单台概览 | `POST /api/v1/hosts/{hostId}/overview` | 任意已登录 | 返回单台主机的 `version` / `runtime`（运行摘要）；失败形态 `1300`/404、`1302`/400、`1501`/403。**0.0.8 / 0.0.9 已实现** |
+| 可见主机列表 | `POST /api/v1/hosts/list` | 任意已登录 | 返回**当前用户可见**的主机（含 `status`）；admin 调用时返回全部，非 admin 当前返回**空数组** |
+| 单台概览 | `POST /api/v1/hosts/{hostId}/overview` | 任意已登录 | 返回单台主机的 `version` / `counts` / `startedAt`；失败形态 `1300`/404、`1501`/403 |
 
-**`overview` 的响应形态**（0.0.9 已实现）：
+**两个端点共用同一个响应形状**（列表里取不到的字段为 `null`，对应界面上的「—」占位）：
 
 ```jsonc
-// POST /api/v1/hosts/local/overview
+// POST /api/v1/hosts/local/overview     （列表接口返回同形状的数组）
 // Request: 无 Body
 // Response.data
 {
-  "version": {                                  // 来自 /version
-    "version": "27.3.1",
-    "apiVersion": "1.47", "minApiVersion": "1.24",
-    "os": "linux", "arch": "x86_64",
-    "goVersion": "go1.22.7", "kernelVersion": "6.8.0-45-generic",
-    "experimental": false
-  },
-  "runtime": {                                  // 来自 /info
-    "name": "dev-01", "serverVersion": "27.3.1",
-    "startedAt": "2026-01-02T03:04:05.678+00:00",  // 拿不到为 null
-    "uptimeSeconds": 86400,                        // startedAt 为 null 时同样为 null
-    "containers": 12, "containersRunning": 8,
-    "containersPaused": 0, "containersStopped": 4,
-    "images": 30, "cpus": 8, "memoryTotalBytes": 16803856384,
-    "operatingSystem": "Ubuntu 24.04.1 LTS"
+  "id": "local",                       // **等于主机名**，也是路径里的 hostId（不是 hosts.id 那个 Guid）
+  "name": "local",
+  "type": "socket",                    // socket | tcp
+  "endpoint": "/var/run/docker.sock",
+  "enabled": true,
+  "status": "online",                  // online | offline | unknown
+  "counts": { "containers": 12, "images": 30, "volumes": 5, "networks": 4 },  // 列表接口为 null
+  "startedAt": "2026-01-02T03:04:05.678+00:00",                                // 列表接口为 null
+  "version": {                         // 列表接口为 null（离线时也为 null）
+    "version": "27.3.1", "apiVersion": "1.47",
+    "os": "linux", "arch": "x86_64", "goVersion": "go1.22.7"
   }
 }
 ```
 
-> **为什么拆成 `version` / `runtime`**：它们来自守护进程的两个不同接口（`/version` 与 `/info`），
-> 字段重名也不少（`version` / `serverVersion`、`os` / `operatingSystem`）。分组之后调用方一眼能看出
-> 字段来源，0.3.0 给其中一块加缓存也不必动契约。
+> **两个端点为什么共用一个形状**：前端把「主机列表」与「单台概览」都装进同一个 `HostOverview` 类型，
+> 列表里缺的字段本来就是「这趟没取」。分成两个类型只会让前端每处都写两次字段访问。
 >
-> **`uptimeSeconds` 由服务端算**：让每个客户端各算一次会把「前端时钟不准」变成
-> 「主机运行时长是负数」。拿不到 `startedAt` 时一并返回 `null`——给 0 会被读成「刚刚启动」。
+> **`id` 是主机名而不是 `hosts.id`（Guid）**：前端的路由、主机切换与深链用的都是主机名；
+> 把 Guid 放进来会立刻多出一个「界面上的 id 与 URL 里的 hostId 不是同一个东西」的坑。
+> Guid 只用于权限外键与审计。
 >
-> **本端点会真的连守护进程**（与列表里的轻量 ping 不同），因此主机离线时返回 `1301`/502。
+> **列表刻意不含 `counts` / `version` / `startedAt`**：取它们要额外调用守护进程（版本一次、计数四次），
+> 主机一多列表就会明显变慢甚至超时。列表只对每台主机做一次轻量探测（`/version`），
+> 那两项由概览接口按需取。
+>
+> **`status` 有三态**：`online` / `offline` / `unknown`。探测失败但原因不属于「连不上」
+> （凭据过期、TLS 握手异常、守护进程返回无法解释的错误）记 `unknown`——
+> 一律报 `offline` 会让人去查网络，而真正的病因在别处。
+>
+> **主机离线不是错误**：概览对离线 / 已停用主机返回 `200` + `status: "offline"` + 空字段，
+> 而不是 `502`——界面要把离线显示成一个状态，不是一个错误页。只有「主机本身不存在」才是 `1300`/404。
+>
+> **非管理员当前拿到空列表**：0.3.0 的逐资源授权表落地前是 fail-closed。列表用**空数组**表达
+> 「没有可见主机」，而不是 403——后者会让前端的主机选择器整块报错，而它本该显示「暂无可用主机」。
+> 单台概览则仍走 403/`1501`（那是明确的一次越权访问）。
 
 > **为什么要与 `admin/hosts/list` 分开**：总览页与侧栏主机选择器对**所有角色**可见，
 > 而 `admin/hosts/list` 是主机管理页专用（含管理操作所需的完整信息）。
