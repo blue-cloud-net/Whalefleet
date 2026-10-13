@@ -66,6 +66,15 @@ public sealed class DockerHost : FullAuditedEntity<Guid, Guid>
     public HostCredentials Credentials => HostCredentials.FromJson(this.AuthKind, this.AuthConfigJson);
 
     /// <summary>
+    /// 所属分组；<see langword="null"/> 表示未分组。
+    /// </summary>
+    /// <remarks>
+    /// 分组是**展示性**概念（总览页按组聚合），不参与任何授权判定——
+    /// 「谁能操作哪台主机」由 0.3.0 的资源权限表回答。见 <see cref="HostGroup"/>。
+    /// </remarks>
+    public Guid? GroupId { get; private set; }
+
+    /// <summary>
     /// 是否启用。停用后不再接受指向该主机的资源请求（由应用服务判定）。
     /// </summary>
     public bool Enabled { get; private set; }
@@ -140,6 +149,17 @@ public sealed class DockerHost : FullAuditedEntity<Guid, Guid>
     /// 启用主机（幂等）。
     /// </summary>
     public void Enable() => this.Enabled = true;
+
+    /// <summary>
+    /// 调整分组归属。
+    /// </summary>
+    /// <param name="groupId">目标分组主键；传 <see langword="null"/> 表示移出分组。</param>
+    /// <remarks>
+    /// 只做「把归属写进实体」这一件事：**目标分组是否存在由应用服务校验**。
+    /// 实体不注入仓储（那会把持久化依赖带进 Core），而外键约束只能拦住「指向不存在的行」，
+    /// 拦不住「指向一个已软删除的分组」——后者会表现为「主机莫名出现在未分组」。
+    /// </remarks>
+    public void AssignGroup(Guid? groupId) => this.GroupId = groupId;
 
     /// <summary>
     /// 停用主机（幂等）。

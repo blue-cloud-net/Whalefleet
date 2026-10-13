@@ -40,6 +40,26 @@ public interface IHostRepository : Common.IRepository<DockerHost, Guid>
     /// <returns>主机数量。</returns>
     Task<int> CountAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// 查询某个分组下的全部主机。
+    /// </summary>
+    /// <param name="groupId">分组主键。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>该分组的主机（顺序同全量列表：创建时间升序，同时间再按名称）。</returns>
+    /// <remarks>
+    /// 删除分组前需要把组内主机逐台改成未分组。刻意<b>不</b>提供「一条 UPDATE 批量置空」：
+    /// 那会绕过 <c>RepositoryBase</c> 的审计填充（<c>last_modification_time</c> 等），
+    /// 让「谁在什么时候把主机挪出了分组」永久丢失。分组与组内主机的数量都是个位数到两位数，
+    /// 逐台更新的代价可以忽略。
+    /// </remarks>
+    Task<IReadOnlyList<DockerHost>> QueryByGroupAsync(
+        Guid groupId,
+        CancellationToken cancellationToken = default);
 
-
+    /// <summary>
+    /// 统计各分组下的主机数（分组列表用它显示「N 台」，避免前端自己遍历）。
+    /// </summary>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>分组主键 → 主机数；未分组的主机不在结果里。</returns>
+    Task<IReadOnlyDictionary<Guid, int>> CountByGroupAsync(CancellationToken cancellationToken = default);
 }
