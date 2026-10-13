@@ -24,6 +24,10 @@ builder.Host.UseSerilog((context, services, loggerConfiguration) =>
 builder.Services.AddApplication(builder.Configuration);
 builder.Services.AddInfrastructure(builder.Configuration);
 
+// JWT 鉴权中间件 + 当前用户解析。
+// 必须在 AddInfrastructure 之后：它会用 Api 层实现替换 ICurrentUser 的占位注册。
+builder.Services.AddApiAuthentication(builder.Configuration);
+
 // CORS 白名单（默认空 = 完全拒绝跨域；开发环境走 Vite 代理，无需放行）
 builder.Services.AddApiCors(builder.Configuration);
 
@@ -78,13 +82,19 @@ app.UseSerilogRequestLogging(options =>
 // 3) 空响应体的 4xx/5xx（未知路由、405 等）统一包装为 ApiResult。
 app.UseStatusCodePages(StatusCodePageHandler.HandleAsync);
 
-// 4) CORS：白名单为空时不会注册默认策略，等价于完全拒绝跨域。
+// 5) CORS：白名单为空时不会注册默认策略，等价于完全拒绝跨域。
 app.UseCors();
+
+// 6) 鉴权：必须在 UseCors 之后、MapControllers() 之前。
+//    - UseAuthentication 填充 HttpContext.User（ICurrentUser 依赖它）
+//    - UseAuthorization 执行 [Authorize] / [Authorize(Roles = …)]
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapControllers();
 app.MapHealthChecks("/healthz");
 
-// 5) 开发专用故障注入端点：仅 Development 环境注册，生产环境不存在该路由。
+// 7) 开发专用故障注入端点：仅 Development 环境注册，生产环境不存在该路由。
 //    用于验证「异常 → 统一 ApiResult 错误响应」，并供集成测试复用。
 if (app.Environment.IsDevelopment())
 {

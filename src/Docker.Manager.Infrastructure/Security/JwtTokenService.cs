@@ -21,12 +21,6 @@ namespace Docker.Manager.Infrastructure.Security;
 /// </remarks>
 internal sealed class JwtTokenService : ITokenService
 {
-    /// <summary>
-    /// 角色声明名。刻意用短名 <c>role</c> 并在 Api 层关闭入站声明映射，
-    /// 使 <c>[Authorize(Roles = "admin")]</c> 的行为不依赖框架的默认映射表。
-    /// </summary>
-    public const string RoleClaimName = "role";
-
     private readonly JwtOptions _options;
     private readonly JsonWebTokenHandler _handler = new();
     private readonly SigningCredentials _signingCredentials;
@@ -69,10 +63,10 @@ internal sealed class JwtTokenService : ITokenService
             // nbf 会让"刚登录成功就拿到的令牌"立刻被判定为无效。
             Claims = new Dictionary<string, object>(StringComparer.Ordinal)
             {
-                [JwtRegisteredClaimNames.Sub] = userId.ToString("D"),
-                [JwtRegisteredClaimNames.UniqueName] = username,
-                [JwtRegisteredClaimNames.Jti] = Guid.NewGuid().ToString("N"),
-                [RoleClaimName] = roleName,
+                [JwtClaimNames.Subject] = userId.ToString("D"),
+                [JwtClaimNames.UniqueName] = username,
+                [JwtClaimNames.Jti] = Guid.NewGuid().ToString("N"),
+                [JwtClaimNames.Role] = roleName,
             },
         };
 

@@ -41,7 +41,7 @@ public class JwtTokenServiceTests
 
         principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value.Should().Be(_userId.ToString("D"));
         principal.FindFirst(JwtRegisteredClaimNames.UniqueName)?.Value.Should().Be("admin");
-        principal.FindFirst(JwtTokenService.RoleClaimName)?.Value.Should().Be("admin");
+        principal.FindFirst(JwtClaimNames.Role)?.Value.Should().Be("admin");
         principal.FindFirst(JwtRegisteredClaimNames.Jti)?.Value.Should().NotBeNullOrEmpty();
     }
 
