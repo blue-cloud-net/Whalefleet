@@ -9,7 +9,9 @@ import tseslint from 'typescript-eslint'
  * 不引入格式化类规则——格式化交由 Prettier 负责，避免 `lint` 与 `format` 互相打架。
  */
 export default tseslint.config(
-  { ignores: ['dist/**', 'coverage/**', 'node_modules/**'] },
+  // public/mockServiceWorker.js 由 `msw init` 生成，文件头自带 eslint-disable，
+  // 反倒会触发 "Unused eslint-disable directive" 警告。生成物不应进 lint。
+  { ignores: ['dist/**', 'coverage/**', 'node_modules/**', 'public/mockServiceWorker.js'] },
 
   js.configs.recommended,
   ...tseslint.configs.recommended,
