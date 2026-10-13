@@ -241,3 +241,108 @@ describe('场景切换', () => {
     expect((overview.json.data as HostOverview).counts?.containers).toBe(12)
   })
 })
+/**
+ * 容器端点的契约守卫（0.0.11）。
+ *
+ * 重点不在「返回了数据」，而在**后端那几个容易被前端忽略的语义**被复刻了：
+ * `pageSize` 夹紧后回显、`force` 缺失时的 409、`tail` 越界。
+ * 前端若按自己的请求值去算分页，下面第一条就会挂。
+ */
+describe('容器端点', () => {
+  it('列表回显夹紧后的 pageSize（请求 5000 → 100）', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/containers/list', {
+      pageIndex: 0,
+      pageSize: 5000
+    })
+
+    expect(status).toBe(200)
+
+    const data = json.data as { pageSize: number; pageIndex: number; total: number }
+    expect(data.pageSize).toBe(100)
+    expect(data.pageIndex).toBe(0)
+    expect(data.total).toBeGreaterThan(0)
+  })
+
+  it('all=false 只列运行中的容器', async () => {
+    const all = await post('/api/v1/hosts/local/containers/list', { all: true })
+    const runningOnly = await post('/api/v1/hosts/local/containers/list', { all: false })
+
+    const allData = all.json.data as { items: { state: string }[] }
+    const runningData = runningOnly.json.data as { items: { state: string }[] }
+
+    expect(allData.items.length).toBeGreaterThan(runningData.items.length)
+    expect(runningData.items.every((item) => item.state === 'running')).toBe(true)
+  })
+
+  it('不带 force 删除运行中的容器 → 409 / 1404', async () => {
+    // 这条语义是前端「先停止容器」提示的唯一来源，mock 不复刻它就永远测不到。
+    const list = await post('/api/v1/hosts/local/containers/list', { all: true })
+    const items = (list.json.data as { items: { id: string; state: string }[] }).items
+    const running = items.find((item) => item.state === 'running')
+
+    expect(running, '夹具里必须有一个运行中的容器，否则本条测不到 409').toBeDefined()
+
+    const { status, json } = await post('/api/v1/hosts/local/containers/remove', {
+      containerId: running!.id
+    })
+
+    expect(status).toBe(409)
+    expect(json.code).toBe(ErrorCode.DockerResourceConflict)
+  })
+
+  it('带 force 删除运行中的容器 → 成功', async () => {
+    const list = await post('/api/v1/hosts/local/containers/list', { all: true })
+    const items = (list.json.data as { items: { id: string; state: string }[] }).items
+    const running = items.find((item) => item.state === 'running')!
+
+    const { status, json } = await post('/api/v1/hosts/local/containers/remove', {
+      containerId: running.id,
+      force: true
+    })
+
+    expect(status).toBe(200)
+    expect(json.success).toBe(true)
+  })
+
+  it('logs 的 tail 越界 → 1000（不是静默截断）', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/containers/logs', {
+      containerId: 'whatever',
+      tail: 10001
+    })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.ValidationFailed)
+  })
+
+  it('create 成功时回带 warnings（是提示，不是错误）', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/containers/create', {
+      image: 'nginx:alpine'
+    })
+
+    expect(status).toBe(200)
+
+    const data = json.data as { containerId: string; warnings: string[] }
+    expect(data.containerId).toBeTruthy()
+    expect(Array.isArray(data.warnings)).toBe(true)
+    expect(data.warnings.length).toBeGreaterThan(0)
+  })
+
+  it('容器不存在 → 1401 / 404', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/containers/inspect', {
+      containerId: 'no-such-container'
+    })
+
+    expect(status).toBe(404)
+    expect(json.code).toBe(ErrorCode.DockerResourceNotFound)
+  })
+
+  it('empty 场景下列表为空数组而不是报错', async () => {
+    setMockScenario('empty')
+
+    const { status, json } = await post('/api/v1/hosts/local/containers/list', { all: true })
+
+    expect(status).toBe(200)
+    expect((json.data as { items: unknown[]; total: number }).items).toEqual([])
+    expect((json.data as { total: number }).total).toBe(0)
+  })
+})
