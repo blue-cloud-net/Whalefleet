@@ -1,10 +1,16 @@
 import { describe, expect, it, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { useHostStore, DEFAULT_HOSTS, DEFAULT_HOST_GROUPS } from '../src/stores/host'
+import { useHostStore, DEFAULT_HOST_GROUPS } from '../src/stores/host'
+import { MOCK_HOSTS_DEFAULT } from '../src/mocks/data/hosts'
 import type { HostOverview } from '../src/types/api'
 
 beforeEach(() => {
   setActivePinia(createPinia())
+  // 主机数据不再由 store 内置（改由 API 加载），因此测试需显式铺数据。
+  // 同时铺上分组，否则 groupedHosts 恒为空。
+  const host = useHostStore()
+  host.setGroups([...DEFAULT_HOST_GROUPS])
+  host.setHosts([...MOCK_HOSTS_DEFAULT])
 })
 
 describe('主机 store — 作用域', () => {
@@ -53,7 +59,7 @@ describe('主机 store — 分组聚合', () => {
       endpoint: 'tcp://10.0.0.99:2375',
       enabled: true
     }
-    host.setHosts([...DEFAULT_HOSTS, loose])
+    host.setHosts([...MOCK_HOSTS_DEFAULT, loose])
 
     const last = host.groupedHosts[host.groupedHosts.length - 1]
     expect(last.group).toBeNull()

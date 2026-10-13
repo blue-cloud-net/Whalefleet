@@ -20,6 +20,7 @@ import { i18n } from './locales'
 import { useThemeStore } from './stores/theme'
 import { useAuthStore } from './stores/auth'
 import { purgeLegacyHostStorage } from './stores/host'
+import { shouldUseMock } from './mocks/switch'
 
 const app = createApp(App)
 
@@ -28,6 +29,30 @@ const pinia = createPinia()
 pinia.use(piniaPluginPersistedstate)
 app.use(pinia)
 
+// ===== mock worker =====
+//
+// ⚠️ **必须在 `app.use(router)` 之前**，不只是 `app.mount()` 之前。
+//
+// Vue Router 4 的 `install()` 会**立刻触发首次导航**，而路由守卫里
+// `await host.ensureLoaded()` 会打出第一个业务请求。若 mock 还没就绪，
+// 这个请求就会漏到 Vite 代理 → 后端未启动时返回 `500 text/plain`，
+// 页面显示「主机列表加载失败」，但 MOCK 角标却是亮的——极难定位。
+//
+// 门控是 `import.meta.env.DEV && (...)`：Vite 在生产构建时把 DEV 静态替换为
+// false，整段分支连同动态 import 一起被摇掉——不依赖「运行时判断」来保证不进产物。
+//
+// 开关有两个来源：环境变量（需重启 dev server）与运行时开关（localStorage / URL，
+// 免重启）。见 `src/mocks/switch.ts`。
+// 门控**必须写在调用点**：`import.meta.env.DEV` 被 Vite 常量折叠为 false 后，
+// 整个 if 分支连同 `await import('./mocks/browser')` 一起被摇掉。
+// （若把 DEV 判断藏进 shouldUseMock() 内部，动态 import 仍会打进产物——实测多出 260KB。）
+const mockEnabled = import.meta.env.DEV && shouldUseMock()
+if (mockEnabled) {
+  const { startMockWorker } = await import('./mocks/browser')
+  await startMockWorker()
+}
+
+// ⚠️ 顺序敏感：放在 mock 之后（见上方说明）
 app.use(router)
 app.use(i18n)
 app.use(ElementPlus)
