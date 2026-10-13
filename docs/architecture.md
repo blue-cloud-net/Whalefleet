@@ -536,6 +536,42 @@ HTTP Request
       Docker.DotNet.Enhanced DockerClient
 ```
 
+### 主机名约束（不可变标识）
+
+`DockerHost.Name` 不只是显示名——它是**业务标识**：前端路由（`/hosts/:hostId/...`）、API 路径
+（`/api/v1/hosts/{hostId}/...`）与 `IDockerHostAccessor` 的入参都用它。因此它的取值域必须同时满足
+「人类可读」「URL 安全」「唯一」。
+
+| 约束 | 值 | 理由 |
+|------|-----|------|
+| 长度 | 1–64（去首尾空白后） | — |
+| 字符集 | **`[A-Za-z0-9._-]`** | 保证可直接进 URL，无需百分号编码；也避免 `?` `#` `%` `/` 破坏路径语义，以及换行符造成的日志注入 |
+| 唯一性 | 不区分大小写（`UNIQUE (name COLLATE NOCASE) WHERE is_deleted = 0`） | 部分索引让软删除后的同名主机可被再次使用 |
+| 可变性 | **不可修改**（实体**没有** `Rename`） | 改名会让已分享的 URL、外部脚本与历史日志全部失效 |
+
+> **为什么收紧字符集**（0.0.8）：`NormalizeName` 最初只禁控制字符，但注释里已写明「URL 与 `X-Host-Id` 都用它」——
+> 主机名含空格或 `/` 时 URL 会被拆错段，`?` `#` `%` 会截断路径。收紧使校验规则与实际用法对齐。
+> 该规则**只在创建时校验**，不做历史数据回溯迁移。
+
+### 当前主机解析（`ICurrentHost`）
+
+`ICurrentHost`（`Application/Abstractions`）与 `ICurrentUser` 并列，语义是「当前请求针对哪台主机」；
+由 **Api 层中间件**从**路由值** `hostId` 填充：
+
+| 项 | 约定 |
+|----|------|
+| 契约 | `string? HostId { get; }`——`null` 表示**无主机上下文**（后台任务、启动引导、全局作用域端点） |
+| 实现 | Api 层 `HttpContextCurrentHost`（Scoped，可写）；Infrastructure 提供占位实现 `SystemCurrentHost`（恒为 `null`） |
+| 取值来源 | `HttpContext.GetRouteData().Values["hostId"]`，**不是**请求头（`X-Host-Id` 方案已废弃） |
+| 中间件 | `CurrentHostMiddleware`——Singleton 中间件不能构造注入 Scoped 服务，故用 `InvokeAsync(HttpContext, ICurrentHostAccessor)` **方法注入** |
+| 管道位置 | `UseAuthentication()` 之后、`MapControllers()` 之前 |
+| 缺省值 | **无**。全局作用域端点没有该路由段；主机作用域端点由路由模板保证其存在 |
+| 消费方 | 仅 **Api 层控制器**——它们把 `hostId` 显式传给应用服务 |
+| 服务层 | **不注入** `ICurrentHost`。服务方法显式接收 `hostId` 参数 |
+
+> **为什么服务层不注入**：后台维护任务（如令牌清理）与单元测试里不存在 HTTP 请求，
+> 注入式取值会静默拿到 `null` 或错值；显式参数则让「必须有主机」在编译期就可见。
+
 ### `IDockerHostAccessor`（Scoped 服务）
 
 **主机来源是 `hosts` 表，不再是配置**。`hostId` 即主机名（不区分大小写）；`DockerHost.Id`（Guid）
@@ -651,6 +687,23 @@ public interface IDockerClientPool
 > 写入走 `IHostRepository`（审计由 `RepositoryBase` 用 `TimeProvider` / `ICurrentUser` 填充），
 > 而不是裸 SQL——因此无需在此维护一份必须与 DDL 对齐的插入语句。
 > 判空用物理行数的原因见 [表结构](#表结构003-已落地)。
+
+### 主机凭据（`auth_config_json`）
+
+`hosts.auth_kind` 是枚举（`none` / `tls` / `basic`），`auth_config_json` 存该方式对应的**不透明载荷**：
+
+| `auth_kind` | `auth_config_json` 结构 |
+|-------------|------------------------|
+| `none` | `NULL` |
+| `tls` | `{ "ca": "<PEM>", "cert": "<PEM>", "key": "<PEM>" }`（三项均可省略，用于「仅校验服务端 CA」的场景） |
+| `basic` | `{ "username": "...", "password": "..." }` |
+
+> **实体侧不做 JSON 解析**：`DockerHost` 只把它当作两个 `internal` 投影属性（`AuthKind` / `AuthConfigJson`），
+> 对外暴露计算属性 `Credentials`（`HostCredentials` 值对象）。原因见
+> [持久化实体物化约定](#持久化实体物化约定dapper)——Dapper 物化是「一列 → 一成员」，拼不出值对象。
+>
+> **不得进日志**：`HostCredentials.ToString()` 刻意不输出载荷；凭据参与连接池键时只取
+> `SHA256(kind + configJson)` 的前 16 字节指纹。
 
 ---
 

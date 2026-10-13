@@ -141,13 +141,21 @@
 | `Persistence:CommandTimeoutSeconds` | `PERSISTENCE__COMMANDTIMEOUTSECONDS` | `30` | 0.0.3 |
 | `Cors:AllowedOrigins:0` | `CORS__ALLOWEDORIGINS__0` | （空，拒绝全部跨域） | 0.0.2 |
 | `Urls` | `URLS` | `http://+:8080` | 0.0.2 |
+| `Security:Argon2:MemorySizeKiB` | `SECURITY__ARGON2__MEMORYSIZEKIB` | `65536`（64 MiB） | 0.0.3 |
+| `Security:Argon2:Iterations` | `SECURITY__ARGON2__ITERATIONS` | `3` | 0.0.3 |
+| `Security:Argon2:Parallelism` | `SECURITY__ARGON2__PARALLELISM` | `4` | 0.0.3 |
+| `Security:Argon2:SaltSizeBytes` | `SECURITY__ARGON2__SALTSIZEBYTES` | `16` | 0.0.3 |
+| `Security:Argon2:HashSizeBytes` | `SECURITY__ARGON2__HASHSIZEBYTES` | `32` | 0.0.3 |
+| `Jwt:Secret` | `JWT__SECRET` | （无；**缺失或 < 32 字节则启动失败**） | 0.0.4 |
+| `Jwt:Issuer` / `Jwt:Audience` | `JWT__ISSUER` / `JWT__AUDIENCE` | `docker-manager` | 0.0.4 |
+| `Jwt:AccessTokenLifetime` | `JWT__ACCESSTOKENLIFETIME` | `00:15:00` | 0.0.4 |
+| `Jwt:RefreshTokenLifetime` | `JWT__REFRESHTOKENLIFETIME` | `7.00:00:00` | 0.0.4 |
+| `Admin:User` | `ADMIN__USER` | （无；**仅 `users` 表为空时**用于引导） | 0.0.6 |
+| `Admin:Password` | `ADMIN__PASSWORD` | （无；同上） | 0.0.6 |
 
 > **主机不是配置项**（0.0.8 起）：`Docker:Hosts` 已删除。主机是 `hosts` 表里的数据；首次启动时若表为空，
 > 宿主会种入一台默认主机（`name=local`、`type=socket`、`endpoint=/var/run/docker.sock`）。
 > 其余主机待 0.0.8 的主机管理 API（`POST /api/v1/admin/hosts/create`）落地后通过界面添加。
-| `Jwt:Secret` | `JWT__SECRET` | （无，缺失则启动失败） | 0.0.4 |
-| `Admin:User` | `ADMIN__USER` | （无） | 0.0.6 |
-| `Admin:Password` | `ADMIN__PASSWORD` | （无） | 0.0.6 |
 
 > ⚠️ **`Urls` 与 `ASPNETCORE_URLS` 的关系**（0.0.2 实测确认）：`appsettings.json` 中的 `Urls` 优先级**高于** `ASPNETCORE_URLS` 环境变量与 `launchSettings.json` 的 `applicationUrl`——因为 `WebApplicationBuilder` 把应用配置层叠加在含 `ASPNETCORE_` 前缀环境变量的宿主配置之上。
 >
