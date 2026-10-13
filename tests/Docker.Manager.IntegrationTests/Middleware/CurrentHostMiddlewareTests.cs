@@ -5,6 +5,7 @@ using Docker.Manager.Api.Middleware;
 using Docker.Manager.Application.Abstractions;
 using Docker.Manager.Application.Common;
 using Docker.Manager.Core.Hosts;
+using Docker.Manager.Core.Users;
 using FluentAssertions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -33,20 +34,25 @@ public class CurrentHostMiddlewareTests : IAsyncLifetime
 {
     private WebApplication _app = null!;
     private HttpClient _client = null!;
+    private StubPermissionService _permission = null!;
 
     /// <inheritdoc />
     public async Task InitializeAsync()
     {
         var builder = WebApplication.CreateSlimBuilder();
 
+        _permission = new StubPermissionService();
+
         builder.WebHost.UseTestServer();
         builder.Services.AddRouting();
         builder.Services.AddSingleton<IDockerHostAccessor>(HostsWithLocal());
+        builder.Services.AddSingleton<ICurrentUser>(new StubCurrentUser(Role.AdminName));
+        builder.Services.AddSingleton<IResourcePermissionService>(_permission);
         builder.Services.AddApiCurrentHost();
 
         _app = builder.Build();
         _app.UseRouting();
-        _app.Use(MapHostNotFoundTo404);
+        _app.Use(MapBusinessFailureToStatusCode);
         _app.UseCurrentHost();
         _app.MapPost("/api/v1/hosts/{hostId}/probe", (ICurrentHost currentHost) =>
             Results.Json(new ProbePayload(currentHost.HostId)));
@@ -114,6 +120,29 @@ public class CurrentHostMiddlewareTests : IAsyncLifetime
         payload!.HostId.Should().BeNull();
     }
 
+    [Fact]
+    public async Task 无权限_在进入端点之前返回403()
+    {
+        _permission.Deny = true;
+
+        var response = await _client.PostAsync("/api/v1/hosts/local/probe", content: null);
+
+        // 端点根本没跑：这是「批量保护」的价值——无需每个端点自己写一遍权限校验。
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await response.Content.ReadAsStringAsync()).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task 全局作用域_不做主机可见性校验()
+    {
+        // 全局端点没有主机上下文，不该因为权限服务拒绝而被拦（它压根不针对某台主机）。
+        _permission.Deny = true;
+
+        var response = await _client.PostAsync("/api/v1/global-probe", content: null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
     private static StubHostAccessor HostsWithLocal()
     {
         var accessor = new StubHostAccessor();
@@ -127,27 +156,72 @@ public class CurrentHostMiddlewareTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// 把「主机不存在」映射成 404。
+    /// 把业务失败映射成状态码。
     /// </summary>
     /// <remarks>
     /// 真实应用里这一步由 <c>ExceptionHandlingMiddleware</c> 统一完成；本测试只关心
-    /// 「未知主机在中间件层就失败、不会进入端点」，因此用最小映射代替整条错误管道，
+    /// 「未知主机会在中间件层失败、且不进入端点」，因此用最小映射代替整条错误管道，
     /// 避免把被测对象和错误处理耦在一起。
     /// </remarks>
-    private static async Task MapHostNotFoundTo404(HttpContext context, RequestDelegate next)
+    private static async Task MapBusinessFailureToStatusCode(HttpContext context, RequestDelegate next)
     {
         try
         {
             await next(context);
         }
-        catch (BusinessException exception) when (exception.Code == ErrorCodes.HostNotFound)
+        catch (BusinessException exception)
+            when (exception.Code == ErrorCodes.HostNotFound || exception.Code == ErrorCodes.HostForbidden)
         {
-            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            context.Response.StatusCode = exception.Code == ErrorCodes.HostNotFound
+                ? StatusCodes.Status404NotFound
+                : StatusCodes.Status403Forbidden;
         }
     }
 
     /// <summary>探针端点的响应体：回显端点读到的「当前主机」。</summary>
     private sealed record ProbePayload(string? HostId);
+
+    /// <summary>当前用户替身：角色可切换，用于验证管理员/非管理员两条路径。</summary>
+    /// <remarks>
+    /// 用显式字段而不是主构造器参数：主构造器参数同时被捕获进状态又用来初始化属性时会触发 CS9124。
+    /// </remarks>
+    private sealed class StubCurrentUser : ICurrentUser
+    {
+        private readonly bool _authenticated;
+
+        internal StubCurrentUser(string? role)
+        {
+            this.Role = role;
+            _authenticated = role is not null;
+            this.UserId = role is null ? null : Guid.NewGuid();
+        }
+
+        public bool IsAuthenticated => _authenticated;
+
+        public Guid? UserId { get; }
+
+        public string? Username => "stub";
+
+        public string? Role { get; }
+    }
+
+    /// <summary>
+    /// 权限服务替身：默认放行，<see cref="Deny"/> 打开时拒绝。
+    /// </summary>
+    /// <remarks>真实实现（管理员放行 / 非管理员拒绝）由 <c>ResourcePermissionServiceTests</c> 覆盖。</remarks>
+    private sealed class StubPermissionService : IResourcePermissionService
+    {
+        /// <summary>是否拒绝访问（模拟非管理员访问未授权主机）。</summary>
+        internal bool Deny { get; set; }
+
+        public Task EnsureHostVisibleAsync(
+            Guid userId,
+            DockerHost host,
+            CancellationToken cancellationToken = default) =>
+            this.Deny
+                ? throw new BusinessException(ErrorCodes.HostForbidden, $"无权访问主机「{host.Name}」")
+                : Task.CompletedTask;
+    }
 
     /// <summary>
     /// 主机访问器替身：只实现本测试用到的解析，其余方法一旦被调用即失败。

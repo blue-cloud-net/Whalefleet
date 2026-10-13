@@ -9,10 +9,9 @@ namespace Docker.Manager.Api.Middleware;
 /// </summary>
 /// <remarks>
 /// <para><b>为什么在这解析而不是各控制器各解析一次</b>：主机作用域端点的路径形如
-/// <c>/api/v1/hosts/{hostId}/...</c>，「这台主机存在吗」对它们全部成立。
-/// 放在中间件里做，未知主机就统一变成 <c>1300</c>/404，控制器可以直接信任路径里的
-/// <c>hostId</c>，不必各自重复一遍校验。0.3.0 的资源可见性校验也挂在这里（那时需要主机 <c>Id</c>，
-/// 正好是本次已经解析出来的实体）。</para>
+/// <c>/api/v1/hosts/{hostId}/...</c>，「这台主机存在吗」「这个人有权用它吗」对它们全部成立。
+/// 放在中间件里做，未知主机统一变成 <c>1300</c>/404、无权限统一变成 <c>1501</c>/403，
+/// 控制器可以直接信任路径里的 <c>hostId</c>，不必各自重复一遍校验。</para>
 /// <para><b>代价</b>：主机作用域的每个请求多一次按主机名的查询（<c>ux_hosts_name</c> 唯一索引命中）。
 /// 与后续真正的 Docker 调用相比可以忽略；若 0.3.0 的权限校验需要复用实体，再考虑把实体本身缓存到
 /// 请求级。</para>
@@ -49,21 +48,27 @@ internal sealed class CurrentHostMiddleware
     }
 
     /// <summary>
-    /// 解析当前主机并继续管道。
+    /// 解析当前主机、校验可见性，并继续管道。
     /// </summary>
     /// <param name="context">当前 HTTP 上下文。</param>
     /// <param name="currentHost">当前主机上下文的写入侧（从请求作用域解析）。</param>
     /// <param name="hosts">主机访问器（用于校验主机确实存在）。</param>
+    /// <param name="currentUser">当前登录用户（可见性校验需要角色与主体）。</param>
+    /// <param name="permissions">资源级权限校验。</param>
     /// <returns>表示异步操作的任务。</returns>
     /// <exception cref="ArgumentNullException">任一参数为 <see langword="null"/>。</exception>
     public async Task InvokeAsync(
         HttpContext context,
         ICurrentHostAccessor currentHost,
-        IDockerHostAccessor hosts)
+        IDockerHostAccessor hosts,
+        ICurrentUser currentUser,
+        IResourcePermissionService permissions)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(currentHost);
         ArgumentNullException.ThrowIfNull(hosts);
+        ArgumentNullException.ThrowIfNull(currentUser);
+        ArgumentNullException.ThrowIfNull(permissions);
 
         var hostId = context.GetRouteData().Values[RouteValueKey] as string;
 
@@ -72,6 +77,13 @@ internal sealed class CurrentHostMiddleware
             // 解析同时校验「主机存在」，失败抛 BusinessException(1300) → 全局异常中间件转 404。
             // 用库里的 Name 而不是原始路径片段：URL 里的大小写不应影响后续取值。
             var host = await hosts.ResolveAsync(hostId, context.RequestAborted).ConfigureAwait(false);
+
+            // 可见性校验挂在解析之后、端点之前：0.0.9 起的每个主机作用域端点自动受保护，
+            // 不必各写一遍。未认证请求（UserId 为空）在这里会被当作非管理员拒掉（fail-closed）；
+            // 带 [Authorize] 的端点其实在更早的 UseAuthorization 就已经 401。
+            await permissions
+                .EnsureHostVisibleAsync(currentUser.UserId ?? Guid.Empty, host, context.RequestAborted)
+                .ConfigureAwait(false);
 
             currentHost.Set(host.Name);
         }
