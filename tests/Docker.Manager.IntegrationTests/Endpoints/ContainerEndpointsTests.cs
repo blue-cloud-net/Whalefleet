@@ -39,6 +39,9 @@ public class ContainerEndpointsTests : IAsyncLifetime
         PropertyNameCaseInsensitive = true,
     };
 
+    private static readonly string[] _noEqualsSignEnv = ["NO_EQUALS_SIGN"];
+    private static readonly string[] _sleepCommand = ["sleep", "60"];
+
     private ApiFactory _factory = null!;
 
     /// <inheritdoc />
@@ -259,7 +262,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
         // 因此由服务端提前拒掉并指出到底是哪一项。
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/create",
-            new { image = "nginx:latest", env = new[] { "NO_EQUALS_SIGN" } });
+            new { image = "nginx:latest", env = _noEqualsSignEnv });
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await ReadCodeAsync(response)).Should().Be(ErrorCodes.ValidationFailed);
@@ -396,7 +399,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
             var created = await PostDataAsync<CreatedPayload>(
                 client,
                 "create",
-                new { image, name, cmd = new[] { "sleep", "60" } });
+                new { image, name, cmd = _sleepCommand });
 
             containerId = created.ContainerId;
             containerId.Should().NotBeNullOrWhiteSpace();
