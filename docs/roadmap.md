@@ -43,7 +43,7 @@
 | `0.0.4` | 认证 API（核心） | ✅ | 登录 / 当前用户 / JWT 中间件 / 限流 / 防枚举 / 初始管理员引导（原属 0.0.6）；refresh 与 logout 属 0.0.5 |
 | `0.0.5` | 认证完善 + 前端基础设施 | ✅ | refresh / logout / 安全响应头 / 密码强度；前端接入真实登录并实现 401 静默续期 |
 | `0.0.6` | 部署底座与初始管理员引导 | 🚧 | **初始管理员引导已随 0.0.4 落地**；Dockerfile / compose / CI 增强 / 社区文档未开工 |
-| `0.0.7` | 前端登录页与基础布局 | 🚧 | 与后端**并行**推进；布局 / 主题 / 国际化 / 两段式导航已落地；登录页 UI 完成但未接后端 |
+| `0.0.7` | 前端登录页与基础布局 | ✅ | 布局 / 主题 / 国际化 / 两段式导航；登录页接真实 API；顶栏与侧边栏拆成独立组件（面包屑由纯函数派生） |
 | `0.0.8` | Docker 主机抽象 | 🚧 | `hosts` 表 + 默认主机种子 + 工厂/池/访问器三层已落地；缺 API 入口 / TLS-Basic / 当前主机解析 |
 | `0.0.9` | 容器 API 后端 | ⬜ | 仅占位视图 |
 | `0.0.10` | 镜像 API 后端 | ⬜ | 仅占位视图 |
@@ -277,16 +277,17 @@ CI：
 
 ---
 
-### 0.0.7 🚧 — 前端登录页与基础布局
+### 0.0.7 ✅ — 前端登录页与基础布局
 
 **目标**：可视化的登录体验 + 全局导航骨架 + UnoCSS/主题/快捷键基建。
 
-> **进度（2026-10-10）**：🚧 前端**先行推进**，不阻塞后端主线。UnoCSS、主题系统、两段式导航、总览页、国际化、路由守卫已完成；登录页与后端尚未接通。
+> **完成（2026-10-13）**：登录页已于 0.0.5 接通后端；本次把内联在 `AppLayout.vue` 里的
+> 顶栏与侧边栏拆成独立组件（`layouts/`），并补上面包屑。快捷键属 0.0.13，不在本版范围。
 
 前端（详细见 `docs/ui-guidelines.md`）：
 - ✅ **UnoCSS 接入**：`unocss` + `presetUno` + `presetTypography` + `presetIcons`（Iconify 按需）
 - ✅ **主题系统**：`composables/useTheme.ts`（亮色 / 暗色 / 跟随系统 + 蓝/绿/紫主题色）
-- 🚧 `LoginView.vue`：居中卡片 + Element Plus 表单 + 主题切换按钮（UI 完成，未接后端登录 API）
+- ✅ `LoginView.vue`：居中卡片 + Element Plus 表单 + 主题切换按钮（已接 `POST /api/v1/auth/login`，失败按错误码映射 i18n）
 - ✅ **主布局** `layouts/AppLayout.vue`：顶栏 64px + 左侧 200px 可折叠侧边栏 + 内容区；移动端侧边栏变抽屉
   - ✅ **两段式信息架构**：全局作用域（`meta.scope='global'`：总览 / 全局设置 / 主机管理 / 用户管理）与主机作用域（`meta.scope='host'`：`/hosts/:hostId/{dashboard,containers,images,volumes,networks}`）使用**不同侧边栏菜单**
   - ✅ **主机作用域进入 URL**（`/hosts/:hostId/**`），可深链 / 可分享；路由守卫负责把 `hostId` 同步到 `useHostStore`，未知 hostId 重定向 `/overview`
@@ -298,13 +299,16 @@ CI：
 - **主机状态页 `HostStatusView.vue` + `HostStatusPanel.vue`**：运行状态（在线/离线）、运行时长、四类资源计数与 CPU/内存占位（真实数据待 SignalR 0.3.0）。总览卡片的「详情 / 状态图」按钮与该页**复用同一组件**
 - **主机侧边栏菜单（7 项）**：状态 / 编排 / 容器 / 镜像 / 数据卷 / 网络 / 事件。其中**编排**（Compose，排 0.4.0）与**事件**（操作审计，排 1.0.0 之后）本次**仅建占位菜单与占位页**，不调整 roadmap 排期
 - **`useHostStore` 不做持久化**：hosts / groups 来自后端，快照必然陈旧；`currentId` 由 URL 驱动，无需 localStorage（旧版本的持久化键在启动时一次性清理）
-- 🚧 **顶栏组件**：`Breadcrumb.vue`、`UserMenu.vue`（无独立组件文件，功能内联在 `AppLayout.vue`）
-- 🚧 **侧边栏组件**：`Sidebar.vue`（按 `route.meta.showInSidebar` 与 `requiresAdmin` 过滤）（同上，内联实现）
+- ✅ **顶栏组件**：`AppBreadcrumb.vue`（层级由 `utils/breadcrumbs.ts` 纯函数派生，已被单测覆盖）、
+  `UserMenu.vue`（用户名 / 角色标签 / 登出）。主题与语言仍是顶栏独立控件（切换频繁，
+  藏进下拉多一次点击），修改密码随 0.0.13 落在同一个下拉里
+- ✅ **侧边栏组件**：`AppSidebar.vue`（桌面侧栏 + 移动端抽屉，只负责容器与断点）
+  + `SidebarNav.vue`（菜单内容，两处复用；按 `route.meta.showInSidebar` / `scope` / `requiresAdmin` 过滤）
 - ✅ 国际化：vue-i18n，`locales/zh-CN.json` / `locales/en-US.json`；key 用 dotted 命名，缺失 fallback 英文
-- 🚧 占位首页 `DashboardView.vue`（落地为按主机作用域的 `HostDashboardView.vue`）
+- ✅ 占位首页 `HostDashboardView.vue`（按主机作用域，作为 `/hosts/:hostId` 的落地页）
 - ✅ 路由守卫实现未登录跳 `/login` 与 `requiresAdmin` 拦截
 
-**验收**：登录页英文/中文切换正常；切换主题颜色变化；侧边栏可折叠且状态持久化；移动端（375px）侧边栏变抽屉可正常开关。
+**验收**：登录页英文/中文切换正常 ✅；切换主题颜色变化 ✅；侧边栏可折叠且状态持久化 ✅（`stores/theme.ts` 的 `sidebarCollapsed`）；移动端（375px）侧边栏变抽屉可正常开关 ✅。
 
 ---
 
