@@ -445,12 +445,12 @@ POST /api/v1/hosts/{hostId}/containers/list
 
 | 操作 | 路径 | 阶段 | 说明 |
 |------|------|------|------|
-| **创建容器** | `POST /api/v1/hosts/{hostId}/containers/create` | 0.0.9 | Body: `{ image, name, ports, env, volumes, restart, ... }`（完整 `CreateContainerParameters` 字段映射） |
+| **创建容器** | `POST /api/v1/hosts/{hostId}/containers/create` | 0.0.9 | Body: `{ image, name?, cmd?, entrypoint?, env?, labels?, ports?, volumes?, restartPolicy?, autoRemove?, network?, hostname?, workingDir?, tty?, stdinOpen? }`（**精选子集**，非全部 `CreateContainerParameters` 字段，理由见下文） |
 | 获取列表 | `POST /api/v1/hosts/{hostId}/containers/list` | 0.0.9 | Body: `{ all?, pageIndex?, pageSize? }`；分页在服务端**内存**完成（Docker 无分页参数），`pageSize` 上限 100 |
 | 启动 | `POST /api/v1/hosts/{hostId}/containers/start` | 0.0.9 | Body: `{ containerId }` |
-| 停止 | `POST /api/v1/hosts/{hostId}/containers/stop` | 0.0.9 | Body: `{ containerId, waitSeconds? }` |
+| 停止 | `POST /api/v1/hosts/{hostId}/containers/stop` | 0.0.9 | Body: `{ containerId, waitSeconds? }`；`waitSeconds` 取值 0–300（默认 10，与 Docker 一致） |
 | 重启 | `POST /api/v1/hosts/{hostId}/containers/restart` | 0.0.9 | Body: `{ containerId }` |
-| 删除 | `POST /api/v1/hosts/{hostId}/containers/remove` | 0.0.9 | Body: `{ containerId, force? }` |
+| 删除 | `POST /api/v1/hosts/{hostId}/containers/remove` | 0.0.9 | Body: `{ containerId, force? }`；不带 `force` 删运行中的容器返回 `1404`/409 |
 | **批量删除** | `POST /api/v1/hosts/{hostId}/containers/batch-remove` | 0.2.0 | Body: `{ containerIds: [...] }`，返回每个的成功/失败状态 |
 | 获取日志 | `POST /api/v1/hosts/{hostId}/containers/logs` | 0.0.9 | Body: `{ containerId, tail?, since?, timestamps?, includeStderr? }`；`tail` 取值 0–10000，省略表示全部；**不支持** `follow` |
 | 获取详情 | `POST /api/v1/hosts/{hostId}/containers/inspect` | 0.0.9 | Body: `{ containerId }` |
@@ -544,6 +544,68 @@ POST /api/v1/hosts/{hostId}/containers/list
 > **日志不做实时跟随**：一次性 HTTP 响应跟着日志流只会把连接挂到容器退出；实时流是 0.3.0
 > 的 SignalR 推送要解决的事。`tail` 越界（负数或 > 10000）返回 `1000`/400 而**不是**静默截断——
 > 调用方要 100 万行却只拿到 1 万行，会误以为「日志就这么多」。
+
+#### 变更端点的请求 / 响应形态（0.0.9 已实现）
+
+```jsonc
+// POST /api/v1/hosts/local/containers/create
+// Request
+{
+  "image": "nginx:latest",                    // 必填
+  "name": "web-1",                            // 可省略（省略时由 Docker 随机命名）
+  "cmd": ["nginx", "-g", "daemon off;"],
+  "entrypoint": ["/docker-entrypoint.sh"],
+  "env": ["TZ=Asia/Shanghai", "MODE=prod"],     // KEY=VALUE；缺等号会被拒为 1000
+  "labels": { "com.example.owner": "web" },
+  "ports": [{ "containerPort": 80, "hostPort": 8080, "type": "tcp", "hostIp": "127.0.0.1" }],
+  "volumes": [{ "source": "/srv/html", "destination": "/usr/share/nginx/html", "readOnly": true }],
+  "restartPolicy": "unless-stopped",           // no / always / on-failure / unless-stopped
+  "autoRemove": false,
+  "network": "bridge",
+  "hostname": "web-1", "workingDir": "/app", "tty": false, "stdinOpen": false
+}
+// Response.data
+{
+  "containerId": "3f2c…",
+  "warnings": ["…"]    // Docker 的提示（如“端口未映射”）；无提示时为空数组，字段始终存在
+}
+```
+
+> **`create` 不回带容器名**：未指定名称时名字由守护进程随机生成，要拿到它就得再 `inspect` 一次；
+> 创建已经成功，为了补一个展示字段再发一次请求（万一失败还会把成功报成错误）并不划算——
+> 名字在列表接口里就能看到。
+
+```jsonc
+// 启动 / 停止 / 重启 / 删除
+// Request
+{ "containerId": "web-1" }            // start / restart
+{ "containerId": "web-1", "waitSeconds": 10 }   // stop
+{ "containerId": "web-1", "force": true }       // remove
+// Response
+{ "success": true, "code": 0, "message": "操作成功" }   // 这四个端点无 data 字段
+```
+
+> **为什么 `create` 只映射精选字段而不是全部 `CreateContainerParameters`**：那个模型有上百个字段
+> （`Ulimits` / `DeviceRequests` / `BlkioWeightDevice` / `Sysctls` …），其中绝大多数在运维面板里
+> 永远不会出现。全量透传等于把 SDK 的字段集当成对外契约：SDK 升级就要改前端，而调用方也无法从
+> 文档里看出「到底哪些字段真的会被用上」。当前暴露的是**日常创建容器真正会设的**那一组；
+> 需要 `--cap-add` / `--device` 这类高级选项时再按需逐个补齐（每个字段都要配语义说明与校验）。
+>
+> **`force` 与 409**：Docker 不允许删除运行中的容器，不带 `force` 时守护进程返回 409，
+> 本服务映射成 `1404`/409 并提示“先停止容器”——归成 `1402`/500 会把「你先停一下」
+> 说成「服务端挂了」。若容器**已经不存在**，`remove` 一律返回 `1401`/404（如实报告，
+> 不假装删掉了什么）。
+>
+> **启动 / 停止 / 重启是幂等的**：启动已在运行的容器、停止已停止的容器时，守护进程返回
+> `304 Not Modified`；本服务把它当作成功（`200`）。否则前端重复点一下按钮就会看到 500。
+> 删除不适用该规则（见上）。
+>
+> **`restartPolicy` 用 Docker 线上写法**（`no` / `always` / `on-failure` / `unless-stopped`），
+> 枚举值非法返回 `1000`；不写等同 `no`。
+>
+> **端口与挂载的校验**：`containerPort` 必填且为 1–65535；`hostPort` 省略表示**随机映射**
+> （仅暴露不绑定）；`volumes[].source` 与 `destination` 均不可为空，`readOnly` 省略为可写。
+> 挂载路径的合法性最终由守护进程裁定（它的错误会以 `1000`/400 返回）。
 
 ---
 
