@@ -1,5 +1,7 @@
 using System.Globalization;
+using System.Net;
 using System.Text;
+using Docker.DotNet;
 using Docker.DotNet.Models;
 using Docker.Manager.Application.Abstractions;
 using Docker.Manager.Application.Common;
@@ -40,6 +42,9 @@ public sealed class ContainerService
     /// 调用方要 100 万行却只拿到 1 万行，会以为「日志就这么多」——错误比静默截断诚实。
     /// </remarks>
     private const int MaxLogTail = 10000;
+
+    /// <summary><c>waitSeconds</c> 上限。</summary>
+    private const int MaxWaitSeconds = 300;
 
     private readonly IDockerHostAccessor _accessor;
     private readonly ILogger<ContainerService> _logger;
@@ -191,6 +196,505 @@ public sealed class ContainerService
 
         return new ContainerLogsResult(containerId, collector.ToString());
     }
+
+    /// <summary>
+    /// 创建容器（仅创建，<b>不</b>自动启动）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">创建请求（精选字段）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>新容器的 ID 与守护进程提示。</returns>
+    /// <exception cref="BusinessException">
+    /// 字段非法（<c>1000</c>）、镜像不存在（<c>1401</c>）、主机不可达（<c>1301</c>）或 Docker 调用失败（<c>1402</c>）。
+    /// </exception>
+    /// <remarks>
+    /// <b>为什么创建与启动分开</b>：两者失败原因完全不同（镜像 / 参数 vs 端口占用 / 依赖未就绪），
+    /// 合成一步会让「容器建出来了但没起来」变成一个既不是成功也不是可重试失败的中间态——
+    /// 分开后调用方看得见中间结果，也能在启动失败时重试而不重建容器。
+    /// </remarks>
+    public async Task<ContainerCreatedResult> CreateAsync(
+        string hostId,
+        CreateContainerRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var parameters = BuildCreateParameters(request);
+        var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
+
+        var created = await DockerErrorTranslator.ExecuteAsync(
+            () => client.Containers.CreateContainerAsync(parameters, cancellationToken),
+            $"镜像 {parameters.Image}",
+            cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation(
+            "主机 {HostId} 创建容器 {ContainerId}（镜像={Image}，名称={Name}）",
+            hostId,
+            created.ID,
+            parameters.Image,
+            parameters.Name ?? "（随机）");
+
+        return new ContainerCreatedResult(created.ID, created.Warnings is null ? [] : [.. created.Warnings]);
+    }
+
+    /// <summary>
+    /// 启动容器。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">启动请求（容器标识）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>表示异步操作的任务。</returns>
+    /// <exception cref="BusinessException">容器标识为空（<c>1000</c>）、容器不存在（<c>1401</c>）或 Docker 调用失败（<c>1402</c>）。</exception>
+    public async Task StartAsync(
+        string hostId,
+        StartContainerRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var containerId = RequireContainerId(request.ContainerId);
+        var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
+
+        await this.ExecuteStateChangeAsync(
+            () => client.Containers.StartContainerAsync(containerId, new ContainerStartParameters(), cancellationToken),
+            containerId,
+            "启动",
+            cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation("主机 {HostId} 启动容器 {ContainerId}", hostId, containerId);
+    }
+
+    /// <summary>
+    /// 停止容器（先发 SIGTERM，超时后 SIGKILL）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">停止请求（容器标识、等待秒数）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>表示异步操作的任务。</returns>
+    /// <exception cref="BusinessException">容器标识为空或 <c>waitSeconds</c> 越界（<c>1000</c>）、容器不存在（<c>1401</c>）或 Docker 调用失败（<c>1402</c>）。</exception>
+    public async Task StopAsync(
+        string hostId,
+        StopContainerRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var containerId = RequireContainerId(request.ContainerId);
+        var waitSeconds = RequireWaitSeconds(request.WaitSeconds);
+        var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
+
+        // 省略等待秒数时不传值：由守护进程用它自己的默认值（10 秒），
+        // 在服务端写死同一个数字只会在 Docker 改默认值时静默跑偏。
+        var parameters = new ContainerStopParameters { WaitBeforeKillSeconds = waitSeconds };
+
+        await this.ExecuteStateChangeAsync(
+            () => client.Containers.StopContainerAsync(containerId, parameters, cancellationToken),
+            containerId,
+            "停止",
+            cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation(
+            "主机 {HostId} 停止容器 {ContainerId}（等待={WaitSeconds}）",
+            hostId,
+            containerId,
+            waitSeconds?.ToString(CultureInfo.InvariantCulture) ?? "默认");
+    }
+
+    /// <summary>
+    /// 重启容器。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">重启请求（容器标识）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>表示异步操作的任务。</returns>
+    /// <exception cref="BusinessException">容器标识为空（<c>1000</c>）、容器不存在（<c>1401</c>）或 Docker 调用失败（<c>1402</c>）。</exception>
+    public async Task RestartAsync(
+        string hostId,
+        RestartContainerRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var containerId = RequireContainerId(request.ContainerId);
+        var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
+
+        await this.ExecuteStateChangeAsync(
+            () => client.Containers.RestartContainerAsync(containerId, new ContainerRestartParameters(), cancellationToken),
+            containerId,
+            "重启",
+            cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation("主机 {HostId} 重启容器 {ContainerId}", hostId, containerId);
+    }
+
+    /// <summary>
+    /// 删除容器。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">删除请求（容器标识、是否强制）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>表示异步操作的任务。</returns>
+    /// <exception cref="BusinessException">
+    /// 容器标识为空（<c>1000</c>）、容器不存在（<c>1401</c>）、
+    /// 运行中且未指定 <c>force</c>（<c>1404</c>）或 Docker 调用失败（<c>1402</c>）。
+    /// </exception>
+    /// <remarks>
+    /// <b>不删数据卷</b>：即使容器用了匿名卷，也不传 <c>RemoveVolumes</c>——删容器顺手删卷是
+    /// 不可逆的数据丢失，而 API 里没有任何地方能让调用方看出「这次删除顺便带走了数据」。
+    /// </remarks>
+    public async Task RemoveAsync(
+        string hostId,
+        RemoveContainerRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var containerId = RequireContainerId(request.ContainerId);
+        var force = request.Force ?? false;
+        var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
+
+        var parameters = new ContainerRemoveParameters { Force = force, RemoveVolumes = false };
+
+        await DockerErrorTranslator.ExecuteAsync(
+            () => client.Containers.RemoveContainerAsync(containerId, parameters, cancellationToken),
+            $"容器 {containerId}",
+            cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation("主机 {HostId} 删除容器 {ContainerId}（强制={Force}）", hostId, containerId, force);
+    }
+
+    /// <summary>
+    /// 执行「目标状态已达成就算成功」的容器状态变更。
+    /// </summary>
+    /// <param name="operation">Docker 调用。</param>
+    /// <param name="containerId">容器标识（用于日志与错误消息）。</param>
+    /// <param name="action">动作名（用于日志）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>表示异步操作的任务。</returns>
+    /// <remarks>
+    /// <para>启动已在运行的容器、停止已停止的容器时，守护进程返回 <c>304 Not Modified</c>。
+    /// SDK 把它当失败抛出来，于是「重复点一下按钮」会变成一个 500——而这明明是成功的语义。</para>
+    /// <para>类中只有这三个（启动 / 停止 / 重启）是幂等的；<b>删除</b>不适用：容器已经没了应当如实
+    /// 报 <c>1401</c>，而不是假装删掉了什么。</para>
+    /// </remarks>
+    private async Task ExecuteStateChangeAsync(
+        Func<Task> operation,
+        string containerId,
+        string action,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await DockerErrorTranslator
+                .ExecuteAsync(operation, $"容器 {containerId}", cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (BusinessException exception) when (
+            exception.InnerException is DockerApiException { StatusCode: HttpStatusCode.NotModified })
+        {
+            _logger.LogDebug(
+                "容器 {ContainerId} 已处于「{Action}」的目标状态，按成功处理（守护进程返回 304）",
+                containerId,
+                action);
+        }
+    }
+
+    /// <summary>
+    /// 把创建请求映射成 SDK 参数，并完成全部本地校验。
+    /// </summary>
+    /// <param name="request">创建请求。</param>
+    /// <returns>可直接提交给守护进程的参数。</returns>
+    /// <exception cref="BusinessException">任一字段非法（<c>1000</c>）。</exception>
+    /// <remarks>
+    /// 在本地尽量把能判的都判掉，而不是把请求原样丢给守护进程再看它报不报错：
+    /// 本地校验能给出<b>指向具体字段</b>的中文消息，而守护进程的 400 只会说「invalid parameter」。
+    /// </remarks>
+    // SDK 把 Cmd / Env / Labels / WorkingDir / NetworkMode / PortBinding.HostIP 这类字段声明为**非空**，
+    // 但它们实际都是可选的：SDK 序列化时会省略 null（与 Docker 的「未指定」语义一致），
+    // 而传空数组 / 空串会被当成「显式清空」——例如把 Cmd 传成 [] 会让容器不带任何启动命令。
+    // 因此这里必须传 null，只用 pragma 关掉与 SDK 标注的不一致。
+#pragma warning disable CS8601
+    private static CreateContainerParameters BuildCreateParameters(CreateContainerRequest request)
+    {
+        var (exposedPorts, portBindings) = BuildPorts(request.Ports);
+
+        return new CreateContainerParameters
+        {
+            Image = RequireImage(request.Image),
+            Name = RequireContainerName(request.Name),
+            Cmd = request.Cmd is null ? null : [.. request.Cmd],
+            Entrypoint = request.Entrypoint is null ? null : [.. request.Entrypoint],
+            Env = RequireEnv(request.Env),
+            Labels = request.Labels is null
+                ? null
+                : new Dictionary<string, string>(request.Labels, StringComparer.Ordinal),
+            WorkingDir = request.WorkingDir,
+            Hostname = request.Hostname,
+            Tty = request.Tty ?? false,
+            OpenStdin = request.StdinOpen ?? false,
+            ExposedPorts = exposedPorts,
+            HostConfig = new HostConfig
+            {
+                AutoRemove = request.AutoRemove ?? false,
+                NetworkMode = request.Network,
+                Binds = RequireVolumes(request.Volumes),
+                PortBindings = portBindings,
+                RestartPolicy = BuildRestartPolicy(request.RestartPolicy),
+            },
+        };
+    }
+
+    /// <summary>
+    /// 构建端口暴露与端口绑定两半参数。
+    /// </summary>
+    /// <param name="ports">请求里的端口映射。</param>
+    /// <returns>暴露端口字典与绑定字典（无端口时为两个 <see langword="null"/>）。</returns>
+    /// <exception cref="BusinessException">端口越界、协议非法或同一端口重复（<c>1000</c>）。</exception>
+    /// <remarks>
+    /// Docker 的创建接口把端口拆成两个字段（<c>ExposedPorts</c> 与 <c>HostConfig.PortBindings</c>），
+    /// 键都是 <c>"容器端口/协议"</c>。对外只暴露一个有语义的 <c>containerPort</c>，
+    /// 由这里负责把它翻译成两侧的键——两处键一旦拼得不一致，容器能建出来但端口不通。
+    /// </remarks>
+    private static (IDictionary<string, EmptyStruct>? Exposed, IDictionary<string, IList<PortBinding>>? Bindings)
+        BuildPorts(IReadOnlyList<ContainerPortMapping>? ports)
+    {
+        if (ports is not { Count: > 0 })
+        {
+            return (null, null);
+        }
+
+        var exposed = new Dictionary<string, EmptyStruct>(StringComparer.Ordinal);
+        var bindings = new Dictionary<string, IList<PortBinding>>(StringComparer.Ordinal);
+
+        foreach (var port in ports)
+        {
+            RequirePortNumber(port.ContainerPort, "containerPort");
+
+            var protocol = RequireProtocol(port.Type);
+            var key = $"{port.ContainerPort.ToString(CultureInfo.InvariantCulture)}/{protocol}";
+
+            if (!exposed.TryAdd(key, default))
+            {
+                throw new BusinessException(ErrorCodes.ValidationFailed, $"端口 {key} 在请求里出现了多次");
+            }
+
+            if (port.HostPort is not { } hostPort)
+            {
+                // 只暴露不绑定（等价于 Dockerfile 的 EXPOSE）：随机映射到宿主端口。
+                continue;
+            }
+
+            RequirePortNumber(hostPort, "hostPort");
+
+            bindings[key] =
+            [
+                new PortBinding
+                {
+                    HostPort = hostPort.ToString(CultureInfo.InvariantCulture),
+                    // 空字符串会被守护进程当成「未指定」，显式转成 null 免得依赖它对空串的宽容。
+                    HostIP = string.IsNullOrWhiteSpace(port.HostIp) ? null : port.HostIp.Trim(),
+                },
+            ];
+        }
+
+        return (exposed, bindings);
+    }
+#pragma warning restore CS8601
+
+    /// <summary>
+    /// 校验镜像名。
+    /// </summary>
+    /// <param name="image">请求里的镜像名。</param>
+    /// <returns>去空白后的镜像名。</returns>
+    /// <exception cref="BusinessException">为空时抛 <c>1000</c>。</exception>
+    private static string RequireImage(string? image) =>
+        string.IsNullOrWhiteSpace(image)
+            ? throw new BusinessException(ErrorCodes.ValidationFailed, "image 不能为空")
+            : image.Trim();
+
+    /// <summary>
+    /// 校验容器名。
+    /// </summary>
+    /// <param name="name">请求里的容器名。</param>
+    /// <returns>去空白后的容器名；未指定时为 <see langword="null"/>（由守护进程随机命名）。</returns>
+    /// <exception cref="BusinessException">字符集非法时抛 <c>1000</c>。</exception>
+    /// <remarks>规则来自 <c>docker run --name</c>：以字母或数字开头，其后只允许字母、数字与 <c>_ . -</c>。</remarks>
+    private static string? RequireContainerName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return null;
+        }
+
+        var trimmed = name.Trim();
+        var isValid = char.IsAsciiLetterOrDigit(trimmed[0])
+            && trimmed.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '.' or '-');
+
+        return isValid
+            ? trimmed
+            : throw new BusinessException(
+                ErrorCodes.ValidationFailed,
+                $"容器名「{name}」只能包含字母、数字与 _ . -，且必须以字母或数字开头");
+    }
+
+    /// <summary>
+    /// 校验环境变量列表。
+    /// </summary>
+    /// <param name="env">请求里的环境变量。</param>
+    /// <returns>原样透传的环境变量；未指定时为 <see langword="null"/>。</returns>
+    /// <exception cref="BusinessException">不是 <c>KEY=VALUE</c> 形式或 KEY 为空时抛 <c>1000</c>。</exception>
+    private static IList<string>? RequireEnv(IReadOnlyList<string>? env)
+    {
+        if (env is not { Count: > 0 })
+        {
+            return null;
+        }
+
+        var values = new List<string>(env.Count);
+
+        foreach (var entry in env)
+        {
+            if (entry?.IndexOf('=') is not > 0)
+            {
+                throw new BusinessException(
+                    ErrorCodes.ValidationFailed,
+                    $"环境变量「{entry}」必须是 KEY=VALUE 形式且 KEY 不能为空");
+            }
+
+            values.Add(entry);
+        }
+
+        return values;
+    }
+
+    /// <summary>
+    /// 校验挂载列表并拼成 <c>Binds</c> 形式。
+    /// </summary>
+    /// <param name="volumes">请求里的挂载。</param>
+    /// <returns><c>source:destination[:ro]</c> 列表；未指定时为 <see langword="null"/>。</returns>
+    /// <exception cref="BusinessException">来源或目标为空时抛 <c>1000</c>。</exception>
+    /// <remarks>
+    /// 用 <c>Binds</c> 而非 <c>Mounts</c>：前者同时支持宿主路径与具名卷（由守护进程判定），
+    /// 后者需要调用方先说清楚是哪种挂载（<c>bind</c> / <c>volume</c>）——对外少一个必填字段。
+    /// 路径本身的合法性（是否存在、是否允许访问）交给守护进程判定。
+    /// </remarks>
+    private static IList<string>? RequireVolumes(IReadOnlyList<ContainerVolumeMapping>? volumes)
+    {
+        if (volumes is not { Count: > 0 })
+        {
+            return null;
+        }
+
+        var binds = new List<string>(volumes.Count);
+
+        foreach (var volume in volumes)
+        {
+            var source = RequireText(volume.Source, "volumes[].source");
+            var destination = RequireText(volume.Destination, "volumes[].destination");
+
+            binds.Add(volume.ReadOnly == true ? $"{source}:{destination}:ro" : $"{source}:{destination}");
+        }
+
+        return binds;
+    }
+
+    /// <summary>
+    /// 校验重启策略并映射成 SDK 枚举。
+    /// </summary>
+    /// <param name="policy">请求里的重启策略（Docker 线上写法）。</param>
+    /// <returns>SDK 的重启策略对象；未指定时为 <c>no</c>。</returns>
+    /// <exception cref="BusinessException">取值非法时抛 <c>1000</c>。</exception>
+    private static RestartPolicy BuildRestartPolicy(string? policy)
+    {
+        if (string.IsNullOrWhiteSpace(policy))
+        {
+            return new RestartPolicy { Name = RestartPolicyKind.No };
+        }
+
+        var kind = policy.Trim().ToLowerInvariant() switch
+        {
+            "no" => RestartPolicyKind.No,
+            "always" => RestartPolicyKind.Always,
+            "on-failure" => RestartPolicyKind.OnFailure,
+            "unless-stopped" => RestartPolicyKind.UnlessStopped,
+            _ => throw new BusinessException(
+                ErrorCodes.ValidationFailed,
+                $"restartPolicy「{policy}」非法，只能是 no / always / on-failure / unless-stopped"),
+        };
+
+        return new RestartPolicy { Name = kind };
+    }
+
+    /// <summary>
+    /// 校验端口号范围。
+    /// </summary>
+    /// <param name="port">端口号。</param>
+    /// <param name="field">出错消息里的字段名（线上写法）。</param>
+    /// <exception cref="BusinessException">越界时抛 <c>1000</c>。</exception>
+    private static void RequirePortNumber(int port, string field)
+    {
+        if (port is < 1 or > 65535)
+        {
+            throw new BusinessException(
+                ErrorCodes.ValidationFailed,
+                $"{field} 必须在 1 到 65535 之间（当前 {port.ToString(CultureInfo.InvariantCulture)}）");
+        }
+    }
+
+    /// <summary>
+    /// 校验并归一化端口协议。
+    /// </summary>
+    /// <param name="protocol">请求里的协议。</param>
+    /// <returns><c>tcp</c> 或 <c>udp</c>。</returns>
+    /// <exception cref="BusinessException">取值非法时抛 <c>1000</c>。</exception>
+    private static string RequireProtocol(string? protocol)
+    {
+        if (string.IsNullOrWhiteSpace(protocol))
+        {
+            return "tcp";
+        }
+
+        var normalized = protocol.Trim().ToLowerInvariant();
+
+        return normalized is "tcp" or "udp"
+            ? normalized
+            : throw new BusinessException(
+                ErrorCodes.ValidationFailed,
+                $"协议「{protocol}」非法，只能是 tcp / udp");
+    }
+
+    /// <summary>
+    /// 校验必填文本字段。
+    /// </summary>
+    /// <param name="value">字段值。</param>
+    /// <param name="field">出错消息里的字段名（线上写法）。</param>
+    /// <returns>去空白后的文本。</returns>
+    /// <exception cref="BusinessException">为空时抛 <c>1000</c>。</exception>
+    private static string RequireText(string? value, string field) =>
+        string.IsNullOrWhiteSpace(value)
+            ? throw new BusinessException(ErrorCodes.ValidationFailed, $"{field} 不能为空")
+            : value.Trim();
+
+    /// <summary>
+    /// <c>waitSeconds</c> 范围校验。
+    /// </summary>
+    /// <param name="waitSeconds">请求里的等待秒数。</param>
+    /// <returns>去空白后的秒数；未指定时为 <see langword="null"/>（用守护进程默认值）。</returns>
+    /// <exception cref="BusinessException">越界时抛 <c>1000</c>。</exception>
+    /// <remarks>上限 300 秒：再长的优雅停止已经与「卡死」无法区分，与其让请求挂在那里不如直接报错。</remarks>
+    private static uint? RequireWaitSeconds(int? waitSeconds) => waitSeconds switch
+    {
+        null => null,
+        < 0 or > MaxWaitSeconds => throw new BusinessException(
+            ErrorCodes.ValidationFailed,
+            $"waitSeconds 必须在 0 到 {MaxWaitSeconds} 之间（省略表示用 Docker 默认值）"),
+        _ => (uint)waitSeconds.Value,
+    };
 
     /// <summary>
     /// 容器标识必填校验。

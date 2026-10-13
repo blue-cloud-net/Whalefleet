@@ -179,3 +179,16 @@ public sealed record ContainerNetworkDetail(string Name, string IpAddress, strin
 /// 需要结构化时是 0.3.0 的实时流要解决的问题。
 /// </remarks>
 public sealed record ContainerLogsResult(string ContainerId, string Content);
+
+/// <summary>
+/// 创建容器的结果。
+/// </summary>
+/// <param name="ContainerId">新容器的完整 ID（由守护进程生成）。</param>
+/// <param name="Warnings">守护进程的提示（如「端口未映射」）；无提示时为空列表。</param>
+/// <remarks>
+/// <b>为什么回带 <c>Warnings</c></b>：Docker 会在创建成功的同时给出警告（例如请求里的宿主端口
+/// 没有被实际绑定）。只返回 ID 会把这些提示丢掉，而它们往往正是「容器起来了但访问不通」的原因。
+/// <para>这里<b>不</b>返回容器名：未指定名称时名字由守护进程随机生成，要拿到它就得再 inspect 一次；
+/// 而创建已经成功，为了补一个展示字段再发一次请求（失败了还会把成功当成错误）并不划算。</para>
+/// </remarks>
+public sealed record ContainerCreatedResult(string ContainerId, IReadOnlyList<string> Warnings);
