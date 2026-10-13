@@ -70,7 +70,11 @@ var app = builder.Build();
 // 1) 全局异常处理：必须是管道中第一个中间件，否则注册在它之前的中间件抛出的异常不会被捕获。
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
-// 2) 请求日志：包裹内层管道。
+// 2) 安全响应头：中间件内部用 Response.OnStarting 挂载，因此即便是由外层异常处理写出的
+//    错误响应也带得上（那个路径会调用 Response.Clear()，直接赋的响应头会被清掉）。
+app.UseMiddleware<SecurityHeadersMiddleware>();
+
+// 3) 请求日志：包裹内层管道。
 //    异常已由上一层完整记录（含堆栈与 TraceId），这里把「发生异常」的请求降级为 Debug，
 //    避免同一次 5xx 产生两条 Error 日志、导致告警重复计数。
 app.UseSerilogRequestLogging(options =>
@@ -80,7 +84,7 @@ app.UseSerilogRequestLogging(options =>
         : LogEventLevel.Debug;
 });
 
-// 3) 空响应体的 4xx/5xx（未知路由、405 等）统一包装为 ApiResult。
+// 4) 空响应体的 4xx/5xx（未知路由、405 等）统一包装为 ApiResult。
 app.UseStatusCodePages(StatusCodePageHandler.HandleAsync);
 
 // 5) CORS：白名单为空时不会注册默认策略，等价于完全拒绝跨域。
