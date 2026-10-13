@@ -139,6 +139,7 @@
 | `Docker:Pool:ReapInterval` | `DOCKER__POOL__REAPINTERVAL` | `00:05:00` | 0.0.8 |
 | `Persistence:DatabasePath` | `PERSISTENCE__DATABASEPATH` | 生产 `/app/data/docker-manager.db`、开发 `data/docker-manager.db` | 0.0.3 |
 | `Persistence:CommandTimeoutSeconds` | `PERSISTENCE__COMMANDTIMEOUTSECONDS` | `30` | 0.0.3 |
+| `Persistence:Pooling` | `PERSISTENCE__POOLING` | `true` | 0.0.5 |
 | `Cors:AllowedOrigins:0` | `CORS__ALLOWEDORIGINS__0` | （空，拒绝全部跨域） | 0.0.2 |
 | `Urls` | `URLS` | `http://+:8080` | 0.0.2 |
 | `Security:Argon2:MemorySizeKiB` | `SECURITY__ARGON2__MEMORYSIZEKIB` | `65536`（64 MiB） | 0.0.3 |
@@ -164,6 +165,14 @@
 > 2. 无前缀环境变量：`URLS=http://0.0.0.0:9090`
 
 > **配置校验**：不合法的配置在**启动时**即失败（`ValidateOnStart`），不会拖到第一次请求。例如 `Cors:AllowedOrigins` 含尾斜杠会直接导致启动失败。
+
+> **`Persistence:Pooling` 为什么可关**（0.0.5 起）：驱动默认开连接池，池会一直占住数据库文件。
+> 生产环境应当保持开启（省掉每次操作的文件打开）；但**集成测试必须关闭**——
+> 测试之间要靠删除临时目录来清理，池化连接会让文件被占住，
+> 而清池的唯一手段 `SqliteConnection.ClearAllPools()` 是**进程级全局操作**，
+> 会连带释放并行运行的其他测试正在使用的连接句柄（实测表现为偶发
+> `ObjectDisposedException: SQLitePCL.sqlite3`）。关掉池化后每个连接用完即释放，
+> 测试之间自然隔离，不再需要任何全局清理。
 
 ---
 
