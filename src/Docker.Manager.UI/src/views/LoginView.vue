@@ -6,13 +6,12 @@ import { useTheme } from '@/composables/useTheme'
 import { useAuthStore } from '@/stores/auth'
 import { setLocale, type AppLocale } from '@/locales'
 import LangSwitcher from '@/components/common/LangSwitcher.vue'
-import ThemeSwitcher from '@/components/common/ThemeSwitcher.vue'
 
 const { t, locale } = useI18n()
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
-const { mode, color, resolvedMode, setMode, setColor } = useTheme()
+const { color, resolvedMode, setMode, setColor } = useTheme()
 
 const formRef = ref()
 const loading = ref(false)

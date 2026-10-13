@@ -6,7 +6,6 @@ import { useHostStore } from '@/stores/host'
 import { formatUptime, formatDateTime, type DurationUnits } from '@/utils/datetime'
 import PageHeader from '@/components/common/PageHeader.vue'
 import SectionCard from '@/components/common/SectionCard.vue'
-import StatCard from '@/components/common/StatCard.vue'
 import StatusDot from '@/components/common/StatusDot.vue'
 
 const route = useRoute()
