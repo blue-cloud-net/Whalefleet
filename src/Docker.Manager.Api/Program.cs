@@ -29,6 +29,9 @@ builder.Services.AddInfrastructure(builder.Configuration);
 // 必须在 AddInfrastructure 之后：它会用 Api 层实现替换 ICurrentUser 的占位注册。
 builder.Services.AddApiAuthentication(builder.Configuration);
 
+// 当前主机上下文（Scoped）：由 CurrentHostMiddleware 从路由值 hostId 填充。
+builder.Services.AddApiCurrentHost();
+
 // CORS 白名单（默认空 = 完全拒绝跨域；开发环境走 Vite 代理，无需放行）
 builder.Services.AddApiCors(builder.Configuration);
 
@@ -96,10 +99,15 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// 7) 当前主机：从路由值 hostId 解析并写入 Scoped ICurrentHost；主机不存在则 1300/404。
+//    放在鉴权之后：0.3.0 的资源可见性校验要读 HttpContext.User。
+//    放在 MapControllers 之前：控制器与后续的主机作用域端点要能读到它。
+app.UseCurrentHost();
+
 app.MapControllers();
 app.MapHealthChecks("/healthz");
 
-// 7) 开发专用故障注入端点：仅 Development 环境注册，生产环境不存在该路由。
+// 8) 开发专用故障注入端点：仅 Development 环境注册，生产环境不存在该路由。
 //    用于验证「异常 → 统一 ApiResult 错误响应」，并供集成测试复用。
 if (app.Environment.IsDevelopment())
 {
