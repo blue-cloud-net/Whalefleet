@@ -103,6 +103,20 @@ const routes: RouteRecordRaw[] = [
         meta: { scope: 'host', icon: 'i-carbon-container-software', title: 'nav.containers' }
       },
       {
+        // 容器详情。两级而非一级：列表页要先能进，详情才有意图可循。
+        // 与 logs 同理不进侧边栏——它们是从列表跳进去的下级页，不是菜单项。
+        path: 'hosts/:hostId/containers/:id/inspect',
+        name: 'host-container-inspect',
+        component: () => import('@/views/ContainerInspectView.vue'),
+        meta: { scope: 'host', showInSidebar: false, title: 'container.detail.title' }
+      },
+      {
+        path: 'hosts/:hostId/containers/:id/logs',
+        name: 'host-container-logs',
+        component: () => import('@/views/ContainerLogsView.vue'),
+        meta: { scope: 'host', showInSidebar: false, title: 'container.logs.title' }
+      },
+      {
         path: 'hosts/:hostId/images',
         name: 'host-images',
         component: () => import('@/views/ImagesView.vue'),

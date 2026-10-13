@@ -1,6 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import { ErrorCode, fail, httpStatusOf } from './envelope'
 import { authHandlers } from './handlers/auth'
+import { containerHandlers } from './handlers/containers'
 import { hostHandlers } from './handlers/hosts'
 import { resolveScenario, type MockScenario } from './scenarios'
 
@@ -37,14 +38,15 @@ export const handlers = [
     })
   }),
   ...authHandlers(() => currentScenario),
-  ...hostHandlers(() => currentScenario)
+  ...hostHandlers(() => currentScenario),
+  ...containerHandlers(() => currentScenario)
 ]
 
 /**
  * 未被 handler 覆盖的请求。
  *
  * 一律 `bypass`（放行到真实后端）而不是 `error`：
- * 本轮 mock 只覆盖认证与主机两域，允许「认证走真后端 + 主机走 mock」的混合调试，
+ * 本轮 mock 只覆盖认证 / 主机 / 容器三域，允许「认证走真后端 + 其余走 mock」的混合调试，
  * 也避免新增后端端点时前端被 mock 挡住而误判。
  */
 export const onUnhandledRequest = 'bypass' as const

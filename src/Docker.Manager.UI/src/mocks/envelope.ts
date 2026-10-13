@@ -64,6 +64,8 @@ export const ErrorCode = {
   DockerApiFailed: 1402,
   /** Docker 操作超时 → 408 */
   DockerTimeout: 1403,
+  /** 资源当前状态不允许该操作 → 409（如不带 force 删除运行中的容器） */
+  DockerResourceConflict: 1404,
 
   /** 无权限访问此资源 → 403 */
   ResourceForbidden: 1500,
@@ -111,6 +113,7 @@ export const ERROR_HTTP_STATUS: Record<number, number> = {
   [ErrorCode.DockerResourceNotFound]: 404,
   [ErrorCode.DockerApiFailed]: 500,
   [ErrorCode.DockerTimeout]: 408,
+  [ErrorCode.DockerResourceConflict]: 409,
 
   [ErrorCode.ResourceForbidden]: 403,
   [ErrorCode.HostForbidden]: 403,
@@ -146,6 +149,7 @@ export const ERROR_MESSAGES: Record<number, string> = {
   [ErrorCode.DockerResourceNotFound]: '容器 / 镜像 / Volume / Network 不存在',
   [ErrorCode.DockerApiFailed]: 'Docker API 调用失败',
   [ErrorCode.DockerTimeout]: 'Docker 操作超时',
+  [ErrorCode.DockerResourceConflict]: '资源当前状态不允许该操作',
 
   [ErrorCode.ResourceForbidden]: '无权限访问此资源',
   [ErrorCode.HostForbidden]: '无权限访问此主机',
