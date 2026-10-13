@@ -119,4 +119,18 @@ public sealed class DockerHostAccessor : IDockerHostAccessor
             client?.Dispose();
         }
     }
+
+    /// <inheritdoc />
+    public void Invalidate(DockerHostConnection connection)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+
+        // 直接转发给池：池只认连接描述，不需要（也不该）知道主机名。
+        _pool.Invalidate(connection);
+
+        _logger.LogInformation(
+            "已让主机客户端失效（HostId={HostId}，Connection={Connection}）",
+            connection.HostId,
+            connection.Endpoint);
+    }
 }

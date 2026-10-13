@@ -172,5 +172,8 @@ public class CurrentHostMiddlewareTests : IAsyncLifetime
             DockerHostConnection connection,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException("本测试不测连通性。");
+
+        public void Invalidate(DockerHostConnection connection) =>
+            throw new NotSupportedException("本测试不失效客户端。");
     }
 }

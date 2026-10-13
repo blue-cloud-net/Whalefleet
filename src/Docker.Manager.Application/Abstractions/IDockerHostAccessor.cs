@@ -51,10 +51,22 @@ public interface IDockerHostAccessor
     /// </summary>
     /// <remarks>
     /// 入参是连接描述而非主机标识，因此也能测试「尚未保存的主机配置」
-    /// （对应 <c>POST /api/v1/host/test</c>）。
+    /// （对应 <c>POST /api/v1/admin/hosts/test</c>）。
     /// </remarks>
     /// <param name="connection">待测试的 Docker 主机连接描述。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>连通返回 <c>true</c>；端点非法、守护进程不可达等情况一律返回 <c>false</c>（不抛异常）。</returns>
     Task<bool> TestConnectionAsync(DockerHostConnection connection, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 让指定连接在客户端池中缓存的客户端失效（主机配置变更或删除后调用）。
+    /// </summary>
+    /// <remarks>
+    /// <para>池按「规范化端点 + 凭据指纹」复用客户端，因此这里要传<b>变更前</b>的连接描述——
+    /// 用变更后的算出来的是新键，旧条目会留在池里继续被复用（表现为「改了配置没生效」）。</para>
+    /// <para>之所以由访问器转发而不是让应用服务直接拿池：池是 <c>Infrastructure</c> 的内部设施，
+    /// 应用层只应该看到「这台主机的客户端作废了」这一语义。</para>
+    /// </remarks>
+    /// <param name="connection">要失效的连接描述（变更前的形态）。</param>
+    void Invalidate(DockerHostConnection connection);
 }
