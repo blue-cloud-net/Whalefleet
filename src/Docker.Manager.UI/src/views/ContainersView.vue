@@ -8,6 +8,7 @@ import SectionCard from '@/components/common/SectionCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import IconActionButton from '@/components/common/IconActionButton.vue'
 import CreateContainerDialog from '@/components/business/CreateContainerDialog.vue'
+import { onActionRequest } from '@/composables/useActionBus'
 import {
   listContainers,
   removeContainer,
@@ -60,6 +61,11 @@ const error = ref<string | null>(null)
 const busyIds = ref<Set<string>>(new Set())
 const createDialogVisible = ref(false)
 const lastSyncedAt = ref<number | null>(null)
+
+// 命令面板 / 快捷键的「创建容器」经动作总线转到这里（对话框开关仍归本页所有）
+onActionRequest('createContainer', () => {
+  createDialogVisible.value = true
+})
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 

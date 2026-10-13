@@ -8,6 +8,7 @@ import SectionCard from '@/components/common/SectionCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import IconActionButton from '@/components/common/IconActionButton.vue'
 import PullImageDialog from '@/components/business/PullImageDialog.vue'
+import { onActionRequest } from '@/composables/useActionBus'
 import { listImages, removeImage } from '@/api/image'
 import { ApiRequestError } from '@/api'
 import { formatBytes } from '@/utils/container-status'
@@ -46,6 +47,11 @@ const error = ref<string | null>(null)
 /** 正在删除的镜像 id：让对应按钮转圈，而不是整页转圈 */
 const busyIds = ref<Set<string>>(new Set())
 const pullDialogVisible = ref(false)
+
+// 命令面板 / 快捷键的「拉取镜像」经动作总线转到这里（对话框开关仍归本页所有）
+onActionRequest('pullImage', () => {
+  pullDialogVisible.value = true
+})
 
 /** URL 上的 hostId。**以它为准**而不是 store.currentId：深链进入时 store 可能还没被守卫写入。 */
 const hostId = computed(() => String(route.params.hostId ?? ''))
