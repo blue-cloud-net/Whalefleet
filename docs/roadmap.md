@@ -40,9 +40,9 @@
 | `0.0.1` | 项目骨架 + CI 骨架 | ✅ | 4 个分层项目 + Central Package Management + `/healthz` |
 | `0.0.2` | 后端基础设施 | ✅ | 异常管道 / 统一响应 / 错误码分层 / CORS / 集成测试载体 |
 | `0.0.3` | 数据层与密码安全 | ✅ | SQLite / Dapper / 迁移 `0001–0004` / 四个仓储 / 审计填充 / **Argon2id 密码哈希**全部落地 |
-| `0.0.4` | 认证 API（核心） | ⬜ | 依赖 0.0.3 的密码哈希 |
+| `0.0.4` | 认证 API（核心） | ✅ | 登录 / 当前用户 / JWT 中间件 / 限流 / 防枚举 / 初始管理员引导（原属 0.0.6）；refresh 与 logout 属 0.0.5 |
 | `0.0.5` | 认证完善 + 前端基础设施 | 🚧 | 前端工作区、代理、axios 层已就位；后端 refresh / logout / 安全头 / 密码强度未开工 |
-| `0.0.6` | 部署底座与初始管理员引导 | ⬜ | 其中**初始管理员引导**将随 0.0.4 一并落地（否则登录无法端到端验证） |
+| `0.0.6` | 部署底座与初始管理员引导 | 🚧 | **初始管理员引导已随 0.0.4 落地**；Dockerfile / compose / CI 增强 / 社区文档未开工 |
 | `0.0.7` | 前端登录页与基础布局 | 🚧 | 与后端**并行**推进；布局 / 主题 / 国际化 / 两段式导航已落地；登录页 UI 完成但未接后端 |
 | `0.0.8` | Docker 主机抽象 | 🚧 | `hosts` 表 + 默认主机种子 + 工厂/池/访问器三层已落地；缺 API 入口 / TLS-Basic / 当前主机解析 |
 | `0.0.9` | 容器 API 后端 | ⬜ | 仅占位视图 |
@@ -178,18 +178,39 @@ CI：
 
 ---
 
-### 0.0.4 ⬜ — 认证 API（核心）
+### 0.0.4 ✅ — 认证 API（核心）
 
 **目标**：可通过 API 登录拿到 JWT。
 
-后端：
-- JWT access token（HS256，15 分钟）+ refresh token（随机 32 字节 base64，7 天）
-- `POST /api/v1/auth/login`：校验用户名/密码，返回 access + refresh
-- `[Authorize]` 中间件 + 角色检查 `[Authorize(Roles = "admin")]`
-- 登录速率限制（按 IP + 用户名，5 次/分钟 → 429）
-- 单元测试覆盖登录成功/失败/锁定
+> **完成（2026-10-13）**：除 `refresh` / `logout` / 安全响应头 / 密码强度校验（属 0.0.5）外均已落地。
+> 设计细节见 [architecture.md](./architecture.md) 的「鉴权架构」。
 
-**验收**：curl 测试登录成功 → 用 access token 调用受保护接口 → 不带 token 返回 401。
+后端：
+- ✅ JWT access token（HS256，15 分钟）+ refresh token（随机 32 字节 base64url，7 天）
+  - ✅ 声明：`sub` / `unique_name` / `role` / `jti`——集中定义于 `Application/Abstractions/JwtClaimNames`
+    （签发方在 Infrastructure、验证方在 Api，声明名必须有一处共同定义）
+  - ✅ 密钥经 `Jwt:Secret` 配置，**缺失或不足 32 字节则启动失败**（`ValidateOnStart`）
+  - ✅ 刷新令牌落库的是 **SHA-256 哈希**（base64url，属持久化契约）；原文只在签发那一刻返回给客户端
+- ✅ `POST /api/v1/auth/login`：校验用户名/密码，返回 access + refresh
+  - ✅ **防用户名枚举（两层）**：用户名不存在与密码错误返回**完全相同的错误码与文案**；
+    且用户不存在时也执行一次等价成本的**哑元校验**，使响应耗时不可区分
+  - ✅ **失败计数**：按 IP + 用户名 **5 次/分钟 → 429**；窗口自首次失败起算，登录成功则清零
+- ✅ `POST /api/v1/auth/me`：需认证；返回当前用户摘要（前端刷新页面时校验持久化的 token）
+- ✅ `[Authorize]` 中间件 + 角色检查 `[Authorize(Roles = "admin")]`
+  - ✅ `ICurrentUser` 的 Api 层实现接管 Infrastructure 的占位实现（`services.Replace`）
+  - ✅ 鉴权失败同样返回统一 `ApiResult`，并区分 `1100`（未认证）/ `1101`（**已过期**）/ `1500`（无权限）
+- ✅ 初始管理员引导（**原属 0.0.6，因鸡生蛋问题提前到本版**）
+- ✅ 集成测试覆盖：登录成功、凭据错误、枚举不可区分、限流锁定与窗口过期、令牌过期 / 篡改 / 异密钥 / 格式非法
+
+**验收**：
+- ✅ `curl` 登录成功拿到双令牌 → 用 access token 调 `POST /api/v1/auth/me` 成功 → 不带 token 返回 401 + `1100`
+- ✅ 过期 token 返回 401 + `1101`（与 `1100` 可区分——0.0.5 的静默刷新依赖这一区分）
+- ✅ `dotnet test -c Release` 全绿（本迭代新增 **63** 个用例，全量 532）
+- ✅ 手工：`ADMIN__USER=admin ADMIN__PASSWORD=StrongP@ss123 dotnet run` → 用 admin 登录成功
+
+> ⚠️ **已知缺口（留给 0.0.6）**：反代后 `Connection.RemoteIpAddress` 是代理 IP，
+> 而本项目尚未启用 `ForwardedHeaders`（需配合可信代理白名单）——
+> 不加会将所有用户的登录失败算进同一个限流桶。
 
 ---
 
@@ -221,8 +242,10 @@ CI：
 **目标**：`docker run` 一行启动可登录。
 
 后端：
-- 启动时检测 `users` 表是否为空：若空，按环境变量 `ADMIN__USER` + `ADMIN__PASSWORD` 创建 admin（密码强度校验）
-- 健康检查端点 `GET /healthz` 增强：返回 SQLite 连通性
+- ✅ （**已随 0.0.4 落地**）启动时检测 `users` 表是否为空：若空，按环境变量 `ADMIN__USER` + `ADMIN__PASSWORD` 创建 admin（密码强度校验）
+  - ✅ 判空用**物理行数**（裸 `SELECT COUNT(1)`）而非仓储计数——软删除会让业务计数为 0，从而导致重复引导并撞用户名唯一索引
+  - ✅ 密码强度不满足 → **启动失败**；凭据未配置 → 只记 Warning 并正常启动
+- ⬜ 健康检查端点 `GET /healthz` 增强：返回 SQLite 连通性
 - Dockerfile 多阶段构建（builder 阶段：Node + .NET SDK；runtime 阶段：仅 .NET runtime + dist）
 - 非 root 用户 `app`（UID 10001）运行，根文件系统只读，data 卷可写
 - `/healthz` 健康检查命令
