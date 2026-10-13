@@ -91,7 +91,13 @@ const stats = computed(() => [
     </div>
 
     <!-- 分组主机列表 -->
-    <div class="app-stack">
+    <!--
+      用 `app-section`（mt-6 sm:mt-8）而不是 `app-stack`：这里需要的是「统计条」与
+      「分组列表」两个**区块**之间的间距，而 `app-stack` 的 gap-4 只在同一 flex 容器
+      的多个子元素之间生效——下面的骨架/错误/分组/空状态是 v-if 互斥分支，同时只会
+      渲染一个，gap 永远不生效，统计条与首个分组标题因此贴在一起。
+    -->
+    <div class="app-section">
       <!-- 加载中：形状与真实主机行一致的骨架 -->
       <div v-if="showSkeleton" class="space-y-2.5" aria-busy="true" :aria-label="t('common.loading')">
         <el-skeleton v-for="i in 3" :key="i" animated class="app-card">
