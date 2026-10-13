@@ -51,6 +51,7 @@ public static class ErrorCodeCatalog
             [ErrorCodes.DockerResourceNotFound] = (ErrorCategory.NotFound, "容器 / 镜像 / Volume / Network 不存在"),
             [ErrorCodes.DockerApiFailed] = (ErrorCategory.Internal, "Docker API 调用失败"),
             [ErrorCodes.DockerTimeout] = (ErrorCategory.Timeout, "Docker 操作超时"),
+            [ErrorCodes.DockerResourceConflict] = (ErrorCategory.Conflict, "资源当前状态不允许该操作"),
 
             [ErrorCodes.ResourceForbidden] = (ErrorCategory.Forbidden, "无权限访问此资源"),
             [ErrorCodes.HostForbidden] = (ErrorCategory.Forbidden, "无权限访问此主机"),

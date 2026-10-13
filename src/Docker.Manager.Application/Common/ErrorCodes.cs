@@ -95,6 +95,13 @@ public static class ErrorCodes
     /// <summary>Docker 操作超时（HTTP 408）。</summary>
     public const int DockerTimeout = 1403;
 
+    /// <summary>资源当前状态不允许该操作（HTTP 409）。</summary>
+    /// <remarks>
+    /// 典型场景：不带 <c>force</c> 删除运行中的容器、删除仍被容器占用的镜像。
+    /// 守护进程用 409 表达这些情况，归成 <c>1402</c>/500 会让「先停容器再重试」变成「服务端炸了」。
+    /// </remarks>
+    public const int DockerResourceConflict = 1404;
+
     // ==================== 1500-1599 资源权限 ====================
 
     /// <summary>无权限访问此资源（HTTP 403）。</summary>

@@ -34,6 +34,13 @@ public enum ErrorCategory
     /// <summary>已认证但无权限执行该操作。</summary>
     Forbidden,
 
+    /// <summary>资源当前状态不允许该操作（如删除运行中的容器）。</summary>
+    /// <remarks>
+    /// 与 <see cref="Validation"/> 分开：请求参数本身完全合法，是<b>目标资源的状态</b>不允许——
+    /// 映射成 400 会让调用方去查自己的请求体，而真正该做的是先停掉容器再重试。
+    /// </remarks>
+    Conflict,
+
     /// <summary>上游依赖（Docker 守护进程等）失败。</summary>
     UpstreamFailure,
 

@@ -121,6 +121,14 @@ public static class DockerErrorTranslator
                     $"{resourceDescription}不存在",
                     exception),
 
+            // 409：请求本身合法，是资源当前状态不允许（删除运行中的容器、删除被占用的镜像）。
+            // 归成 1402/500 会让「先停容器再重试」看起来像服务端故障，前端也无从给出可操作的提示。
+            DockerApiException { StatusCode: HttpStatusCode.Conflict } =>
+                new BusinessException(
+                    ErrorCodes.DockerResourceConflict,
+                    $"{resourceDescription}的当前状态不允许该操作（如需强制操作请在请求里显式指定）",
+                    exception),
+
             DockerApiException apiException =>
                 new BusinessException(
                     ErrorCodes.DockerApiFailed,
