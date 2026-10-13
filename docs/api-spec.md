@@ -1,21 +1,34 @@
 # API 规范
 
-## RPC 风格约定
+## 请求风格约定
 
-本项目 API 采用 **RPC 风格**（非 RESTful）：
+本项目 API 采用 **RPC 风格**（非 RESTful），并叠加**主机作用域路径**：
 
 - 所有请求使用 `POST` 方法
-- URL 表达动作，格式为 `/api/v1/{resource}/{action}`
-- 参数统一放在请求 Body（JSON）中，不使用路径参数与查询字符串（分页除外）
+- URL 表达动作，格式为 `/api/v1/{作用域}/{resource}/{action}`
+- 除 `hostId` 外，参数统一放在请求 Body（JSON）中，不使用查询字符串（分页除外）
 - 响应体统一使用 `ApiResult<T>` 格式（见「统一响应格式」）
+
+### 两条作用域
+
+| 作用域 | 路径形态 | 示例 |
+|---|---|---|
+| **主机作用域** | `/api/v1/hosts/{hostId}/{resource}/{action}` | `POST /api/v1/hosts/local/containers/start` |
+| **全局作用域** | `/api/v1/auth/{action}`、`/api/v1/admin/{resource}/{action}` | `POST /api/v1/auth/login`、`POST /api/v1/admin/users/list` |
+
+### 不变式：`hostId` 只出现在路径中
+
+**任何请求 Body 都不得包含 `hostId` 字段**——主机标识一律由路径承载（作用域），或由路径段指定（被管理的资源）。这条不变式彻底消除了「URL 说一台机器、Body 说另一台」的可能。
+
+> **为什么主机标识走路径而不是 Body 或请求头**（0.0.8 定案）：前端路由本身已是 `/hosts/:hostId/...`（可深链、可分享），API 路径与之同构可消除两处真相；且目标主机直接出现在访问日志里，排查「操作打到了哪台机器」的成本最低。旧 `X-Host-Id` 请求头方案已**废弃**，不再接受。
 
 **示例对比**
 
-| RESTful（不采用） | RPC 风格（本项目） |
+| RESTful（不采用） | 本项目（RPC 风格 + 主机作用域路径） |
 |---|---|
-| `PUT /api/v1/containers/{id}` | `POST /api/v1/container/start` |
-| `DELETE /api/v1/containers/{id}` | `POST /api/v1/container/remove` |
-| `GET /api/v1/containers` | `POST /api/v1/container/list` |
+| `PUT /api/v1/hosts/local/containers/{id}` | `POST /api/v1/hosts/local/containers/start` |
+| `DELETE /api/v1/hosts/local/images/{id}` | `POST /api/v1/hosts/local/images/remove` |
+| `GET /api/v1/hosts/local/containers` | `POST /api/v1/hosts/local/containers/list` |
 
 ---
 
@@ -159,15 +172,27 @@
 
 ---
 
-## 多主机 Header
+## 多主机路径
 
-业务接口请求 Body 内携带 `hostId`；前端 axios 拦截器自动从 Pinia store 读取并注入到 `X-Host-Id` Header：
+主机作用域的接口把 `hostId` 放在路径首段：
 
 ```
-X-Host-Id: <hostId>     # 默认 "local"（本地 socket）
+POST /api/v1/hosts/{hostId}/containers/list
+                     ↑
+                主机名（hostname）
 ```
 
-后端 `IDockerHostAccessor` 从 Header 解析 hostId；缺省回退到 `local`。
+| 项 | 约定 |
+|----|------|
+| `hostId` 取值 | `DockerHost.Name`（**主机名**，如 `local` / `prod-01`），**不是** `hosts.id`（Guid 只用于权限外键与审计） |
+| 字符集 | `[A-Za-z0-9._-]`，长度 1–64——保证可直接进 URL，无需百分号编码 |
+| 大小写 | 主机名唯一性**不区分大小写**，`/hosts/LOCAL/...` 与 `/hosts/local/...` 等价 |
+| 可变性 | 主机名**不可修改**——它同时是 URL 的一部分与对外契约 |
+| 解析 | Api 中间件从路由值取 `hostId` → 写入 Scoped `ICurrentHost` → `IDockerHostAccessor` 据其解析主机实体并取 Docker 客户端 |
+| 不存在 / 已停用 | `1300`（404）/ `1302`（400） |
+| 缺省值 | **无**。全局作用域端点不含该段；主机作用域端点必须显式给出 |
+
+> **Hub 与 WebSocket 路径**（0.3.0 / 0.4.0）同样遵循「主机进路径」；`NotificationHub` 是**唯一**的全局 Hub，不含 `hostId`。
 
 ---
 
@@ -180,7 +205,7 @@ X-Host-Id: <hostId>     # 默认 "local"（本地 socket）
 | 登录 | `POST /api/v1/auth/login` | 0.0.4 | 返回 accessToken + refreshToken |
 | 刷新 Token | `POST /api/v1/auth/refresh` | 0.0.5 | 用 refreshToken 换新 accessToken |
 | 登出 | `POST /api/v1/auth/logout` | 0.0.5 | 撤销当前 refreshToken |
-| 终端短时 Token | `POST /api/v1/auth/terminal-token` | 0.4.0 | 返回 5 分钟过期的 terminalToken，仅用于 WebSocket `/ws/container/exec` |
+| 终端短时 Token | `POST /api/v1/auth/terminal-token` | 0.4.0 | 返回 5 分钟过期的 terminalToken，仅用于 WebSocket `/ws/hosts/{hostId}/containers/exec` |
 
 **请求/响应示例**：
 
@@ -211,10 +236,10 @@ X-Host-Id: <hostId>     # 默认 "local"（本地 socket）
 
 | 操作 | 路径 | 角色 | 说明 |
 |------|------|------|------|
-| 获取列表 | `POST /api/v1/user/list` | admin | 分页 |
-| 创建用户 | `POST /api/v1/user/create` | admin | Body: `{ username, password, role?: "admin"\|"operator"\|"viewer"\|"auditor"\|<自定义> }`；`role` 省略时取**默认角色**（当前为 `auditor`，可由管理员修改） |
-| 删除用户 | `POST /api/v1/user/delete` | admin | Body: `{ userId }` |
-| 修改密码 | `POST /api/v1/user/update-password` | 任意（自身） / admin（他人） | Body: `{ userId?, oldPassword?, newPassword }` |
+| 获取列表 | `POST /api/v1/admin/users/list` | admin | 分页 |
+| 创建用户 | `POST /api/v1/admin/users/create` | admin | Body: `{ username, password, role?: "admin"\|"operator"\|"viewer"\|"auditor"\|<自定义> }`；`role` 省略时取**默认角色**（当前为 `auditor`，可由管理员修改） |
+| 删除用户 | `POST /api/v1/admin/users/delete` | admin | Body: `{ userId }` |
+| 修改密码 | `POST /api/v1/admin/users/update-password` | 任意（自身） / admin（他人） | Body: `{ userId?, oldPassword?, newPassword }` |
 
 ---
 
@@ -222,11 +247,11 @@ X-Host-Id: <hostId>     # 默认 "local"（本地 socket）
 
 | 操作 | 路径 | 角色 | 说明 |
 |------|------|------|------|
-| 获取列表 | `POST /api/v1/host/list` | admin | 包含所有主机的连通状态 |
-| 创建主机 | `POST /api/v1/host/create` | admin | Body: `{ name, type: "socket"\|"tcp", endpoint, tlsConfig?, basicAuth? }` |
-| 更新主机 | `POST /api/v1/host/update` | admin | Body: `{ hostId, name?, endpoint?, tlsConfig?, basicAuth?, enabled? }` |
-| 删除主机 | `POST /api/v1/host/delete` | admin | Body: `{ hostId }` |
-| 测试主机 | `POST /api/v1/host/test` | admin | Body: `{ type, endpoint, tlsConfig?, basicAuth? }` |
+| 获取列表 | `POST /api/v1/admin/hosts/list` | admin | 包含所有主机的连通状态 |
+| 创建主机 | `POST /api/v1/admin/hosts/create` | admin | Body: `{ name, type: "socket"\|"tcp", endpoint, tlsConfig?, basicAuth? }` |
+| 更新主机 | `POST /api/v1/admin/hosts/{hostId}/update` | admin | Body: `{ endpoint?, tlsConfig?, basicAuth?, enabled? }`——**不含 `name`**（主机名不可改，它是对外标识） |
+| 删除主机 | `POST /api/v1/admin/hosts/{hostId}/delete` | admin | 无 Body |
+| 测试主机 | `POST /api/v1/admin/hosts/test` | admin | Body: `{ type, endpoint, tlsConfig?, basicAuth? }`——测试**未保存**的配置，故不带 `hostId` |
 
 ---
 
@@ -234,15 +259,15 @@ X-Host-Id: <hostId>     # 默认 "local"（本地 socket）
 
 | 操作 | 路径 | 阶段 | 说明 |
 |------|------|------|------|
-| **创建容器** | `POST /api/v1/container/create` | 0.0.9 | Body: `{ hostId, image, name, ports, env, volumes, restart, ... }`（完整 `CreateContainerParameters` 字段映射） |
-| 获取列表 | `POST /api/v1/container/list` | 0.0.9 | Body: `{ hostId, all?, pageIndex, pageSize }` |
-| 启动 | `POST /api/v1/container/start` | 0.0.9 | Body: `{ hostId, containerId }` |
-| 停止 | `POST /api/v1/container/stop` | 0.0.9 | Body: `{ hostId, containerId, waitSeconds? }` |
-| 重启 | `POST /api/v1/container/restart` | 0.0.9 | Body: `{ hostId, containerId }` |
-| 删除 | `POST /api/v1/container/remove` | 0.0.9 | Body: `{ hostId, containerId, force? }` |
-| **批量删除** | `POST /api/v1/container/batch-remove` | 0.2.0 | Body: `{ hostId, containerIds: [...] }`，返回每个的成功/失败状态 |
-| 获取日志 | `POST /api/v1/container/logs` | 0.0.9 | Body: `{ hostId, containerId, tail?, since?, timestamps? }` |
-| 获取详情 | `POST /api/v1/container/inspect` | 0.0.9 | Body: `{ hostId, containerId }` |
+| **创建容器** | `POST /api/v1/hosts/{hostId}/containers/create` | 0.0.9 | Body: `{ image, name, ports, env, volumes, restart, ... }`（完整 `CreateContainerParameters` 字段映射） |
+| 获取列表 | `POST /api/v1/hosts/{hostId}/containers/list` | 0.0.9 | Body: `{ all?, pageIndex, pageSize }` |
+| 启动 | `POST /api/v1/hosts/{hostId}/containers/start` | 0.0.9 | Body: `{ containerId }` |
+| 停止 | `POST /api/v1/hosts/{hostId}/containers/stop` | 0.0.9 | Body: `{ containerId, waitSeconds? }` |
+| 重启 | `POST /api/v1/hosts/{hostId}/containers/restart` | 0.0.9 | Body: `{ containerId }` |
+| 删除 | `POST /api/v1/hosts/{hostId}/containers/remove` | 0.0.9 | Body: `{ containerId, force? }` |
+| **批量删除** | `POST /api/v1/hosts/{hostId}/containers/batch-remove` | 0.2.0 | Body: `{ containerIds: [...] }`，返回每个的成功/失败状态 |
+| 获取日志 | `POST /api/v1/hosts/{hostId}/containers/logs` | 0.0.9 | Body: `{ containerId, tail?, since?, timestamps? }` |
+| 获取详情 | `POST /api/v1/hosts/{hostId}/containers/inspect` | 0.0.9 | Body: `{ containerId }` |
 
 ---
 
@@ -250,13 +275,13 @@ X-Host-Id: <hostId>     # 默认 "local"（本地 socket）
 
 | 操作 | 路径 | 阶段 | 说明 |
 |------|------|------|------|
-| 获取列表 | `POST /api/v1/image/list` | 0.0.10 | Body: `{ hostId, pageIndex, pageSize }` |
-| 拉取 | `POST /api/v1/image/pull` | 0.0.10 | Body: `{ hostId, image, tag }`；0.0.10 一次性返回结果，0.3.0 改 SignalR 实时进度 |
-| 删除 | `POST /api/v1/image/remove` | 0.0.10 | Body: `{ hostId, imageId, force? }` |
-| **批量删除** | `POST /api/v1/image/batch-remove` | 0.2.0 | Body: `{ hostId, imageIds: [...] }` |
-| 获取详情 | `POST /api/v1/image/inspect` | 0.0.10 | Body: `{ hostId, imageId }` |
-| **构建镜像** | `POST /api/v1/image/build` | 0.2.0 | multipart: Dockerfile + context tar；通过 SignalR 临时频道推送进度 |
-| **Push 镜像** | `POST /api/v1/image/push` | 0.4.0 | Body: `{ hostId, imageId, registryId }` |
+| 获取列表 | `POST /api/v1/hosts/{hostId}/images/list` | 0.0.10 | Body: `{ pageIndex, pageSize }` |
+| 拉取 | `POST /api/v1/hosts/{hostId}/images/pull` | 0.0.10 | Body: `{ image, tag }`；0.0.10 一次性返回结果，0.3.0 改 SignalR 实时进度 |
+| 删除 | `POST /api/v1/hosts/{hostId}/images/remove` | 0.0.10 | Body: `{ imageId, force? }` |
+| **批量删除** | `POST /api/v1/hosts/{hostId}/images/batch-remove` | 0.2.0 | Body: `{ imageIds: [...] }` |
+| 获取详情 | `POST /api/v1/hosts/{hostId}/images/inspect` | 0.0.10 | Body: `{ imageId }` |
+| **构建镜像** | `POST /api/v1/hosts/{hostId}/images/build` | 0.2.0 | multipart: Dockerfile + context tar；通过 SignalR 临时频道推送进度 |
+| **Push 镜像** | `POST /api/v1/hosts/{hostId}/images/push` | 0.4.0 | Body: `{ imageId, registryId }` |
 
 ---
 
@@ -264,11 +289,11 @@ X-Host-Id: <hostId>     # 默认 "local"（本地 socket）
 
 | 操作 | 路径 | 说明 |
 |------|------|------|
-| 获取列表 | `POST /api/v1/volume/list` | Body: `{ hostId }` |
-| 创建 | `POST /api/v1/volume/create` | Body: `{ hostId, name, driver?, driverOpts?, labels? }` |
-| 删除 | `POST /api/v1/volume/remove` | Body: `{ hostId, name, force? }` |
-| **批量删除** | `POST /api/v1/volume/batch-remove` | Body: `{ hostId, names: [...] }` |
-| 获取详情 | `POST /api/v1/volume/inspect` | Body: `{ hostId, name }` |
+| 获取列表 | `POST /api/v1/hosts/{hostId}/volumes/list` | 无 Body |
+| 创建 | `POST /api/v1/hosts/{hostId}/volumes/create` | Body: `{ name, driver?, driverOpts?, labels? }` |
+| 删除 | `POST /api/v1/hosts/{hostId}/volumes/remove` | Body: `{ name, force? }` |
+| **批量删除** | `POST /api/v1/hosts/{hostId}/volumes/batch-remove` | Body: `{ names: [...] }` |
+| 获取详情 | `POST /api/v1/hosts/{hostId}/volumes/inspect` | Body: `{ name }` |
 
 ---
 
@@ -276,10 +301,10 @@ X-Host-Id: <hostId>     # 默认 "local"（本地 socket）
 
 | 操作 | 路径 | 说明 |
 |------|------|------|
-| 获取列表 | `POST /api/v1/network/list` | Body: `{ hostId }` |
-| 创建 | `POST /api/v1/network/create` | Body: `{ hostId, name, driver?, subnet?, gateway?, ipRange?, attachable?, labels? }` |
-| 删除 | `POST /api/v1/network/remove` | Body: `{ hostId, networkId }` |
-| 获取详情 | `POST /api/v1/network/inspect` | Body: `{ hostId, networkId }` |
+| 获取列表 | `POST /api/v1/hosts/{hostId}/networks/list` | 无 Body |
+| 创建 | `POST /api/v1/hosts/{hostId}/networks/create` | Body: `{ name, driver?, subnet?, gateway?, ipRange?, attachable?, labels? }` |
+| 删除 | `POST /api/v1/hosts/{hostId}/networks/remove` | Body: `{ networkId }` |
+| 获取详情 | `POST /api/v1/hosts/{hostId}/networks/inspect` | Body: `{ networkId }` |
 
 ---
 
@@ -287,11 +312,11 @@ X-Host-Id: <hostId>     # 默认 "local"（本地 socket）
 
 | 操作 | 路径 | 说明 |
 |------|------|------|
-| 获取列表 | `POST /api/v1/stack/list` | Body: `{ hostId }` |
-| 部署 | `POST /api/v1/stack/deploy` | Body: `{ hostId, name, composeContent }`（YAML 文本） |
-| 更新 | `POST /api/v1/stack/update` | Body: `{ hostId, name, composeContent }` |
-| 停止 | `POST /api/v1/stack/stop` | Body: `{ hostId, name }` |
-| 删除 | `POST /api/v1/stack/remove` | Body: `{ hostId, name }` |
+| 获取列表 | `POST /api/v1/hosts/{hostId}/stacks/list` | 无 Body |
+| 部署 | `POST /api/v1/hosts/{hostId}/stacks/deploy` | Body: `{ name, composeContent }`（YAML 文本） |
+| 更新 | `POST /api/v1/hosts/{hostId}/stacks/update` | Body: `{ name, composeContent }` |
+| 停止 | `POST /api/v1/hosts/{hostId}/stacks/stop` | Body: `{ name }` |
+| 删除 | `POST /api/v1/hosts/{hostId}/stacks/remove` | Body: `{ name }` |
 
 ---
 
@@ -307,9 +332,9 @@ X-Host-Id: <hostId>     # 默认 "local"（本地 socket）
 
 | 操作 | 路径 | 角色 | 说明 |
 |------|------|------|------|
-| 列表 | `POST /api/v1/permission/list` | admin | Body: `{ userId?, hostId? }` |
-| 授权 | `POST /api/v1/permission/grant` | admin | Body: `{ userId, hostId, permissions: ["read", "write", "admin"], containerIds? }` |
-| 撤销 | `POST /api/v1/permission/revoke` | admin | Body: `{ userId, hostId, permissions?, containerIds? }` |
+| 列表 | `POST /api/v1/admin/hosts/{hostId}/permissions/list` | admin | Body: `{ userId? }` |
+| 授权 | `POST /api/v1/admin/hosts/{hostId}/permissions/grant` | admin | Body: `{ userId, permissions: ["read", "write", "admin"], containerIds? }` |
+| 撤销 | `POST /api/v1/admin/hosts/{hostId}/permissions/revoke` | admin | Body: `{ userId, permissions?, containerIds? }` |
 
 ---
 
@@ -319,9 +344,9 @@ X-Host-Id: <hostId>     # 默认 "local"（本地 socket）
 
 | Hub | 路径 | 说明 |
 |-----|------|------|
-| `ContainerLogHub` | `/hubs/container-log` | 实时日志流 |
-| `ContainerStatsHub` | `/hubs/container-stats` | 实时监控数据 |
-| `NotificationHub` | `/hubs/notification` | 系统事件通知 |
+| `ContainerLogHub` | `/hubs/hosts/{hostId}/container-log` | 实时日志流（主机作用域） |
+| `ContainerStatsHub` | `/hubs/hosts/{hostId}/container-stats` | 实时监控数据（主机作用域） |
+| `NotificationHub` | `/hubs/notification` | 系统事件通知（**全局**，不含 `hostId`） |
 
 **鉴权**：JWT 通过 `?access_token=...` 查询参数传递（WebSocket 不支持自定义 Header）。
 
@@ -376,7 +401,7 @@ X-Host-Id: <hostId>     # 默认 "local"（本地 socket）
 
 容器 exec 终端使用**原生 WebSocket**，不走 SignalR（独立的原始双向流）：
 
-- **连接路径**：`/ws/container/exec?containerId={id}&cmd=/bin/sh&token={terminalToken}`
+- **连接路径**：`/ws/hosts/{hostId}/containers/exec?containerId={id}&cmd=/bin/sh&token={terminalToken}`
 - **协议**：原始二进制流，前端使用 `xterm.js` + `AttachAddon` 对接
 - **认证**：使用**专门的 short-lived terminal token**（5 分钟过期，由 `POST /api/v1/auth/terminal-token` 签发），**不接受 access token**
 - **流程**：
@@ -392,8 +417,8 @@ X-Host-Id: <hostId>     # 默认 "local"（本地 socket）
 
 以下 API **v1.0（0.x + 1.0.0）不做**：
 
-- ❌ `POST /api/v1/container/exec`（一次性 exec）
-- ❌ `POST /api/v1/container/stats`（一次性 stats）
+- ❌ `POST /api/v1/hosts/{hostId}/containers/exec`（一次性 exec）
+- ❌ `POST /api/v1/hosts/{hostId}/containers/stats`（一次性 stats）
 - ❌ `POST /api/v1/system/prune`（容器/镜像/网络/卷清理）
 - ❌ OAuth / OIDC 登录相关 API
 - ❌ 审计日志相关 API

@@ -275,16 +275,16 @@ interface RouteMeta {
 }
 ```
 
-### 作用域与 `X-Host-Id` 的关系
+### 作用域与 API 路径的关系
 
-| 场景 | `useHostStore.currentId` | 是否发 `X-Host-Id` |
-|------|--------------------------|-------------------|
-| 全局作用域路由 | `''`（守卫调 `clearCurrent()`） | ❌ 不发 |
-| 主机作用域路由 | URL 的 `:hostId`（守卫调 `setCurrent()`） | ✅ 发送 |
+| 场景 | `useHostStore.currentId` | 请求路径 |
+|------|--------------------------|----------|
+| 全局作用域路由 | `''`（守卫调 `clearCurrent()`） | `/api/v1/auth/...`、`/api/v1/admin/...`（**无** `hostId` 段） |
+| 主机作用域路由 | URL 的 `:hostId`（守卫调 `setCurrent()`） | `/api/v1/hosts/{hostId}/...` |
 | 未知 hostId | 守卫直接重定向 `/overview` | — |
 
-`api/index.ts` 的请求拦截器**仅当 `currentId` 非空**才写入 `X-Host-Id`；
-若无条件发送会让后端把总览 / 主机管理请求误当作针对某台机器的资源操作。
+`src/api/*.ts` 的每个方法**显式接收 `hostId`** 并拼进 URL；不再通过请求头传递主机标识。
+无 `hostId` 的全局端点与主机作用域端点在**路径形态上就不同**，因此不存在「把总览请求误当作某台机器的资源操作」这类问题。
 
 ---
 
@@ -300,7 +300,7 @@ src/Docker.Manager.UI/src/
 ├── composables/           # 复用 Composition 函数
 │   ├── useTheme.ts
 │   └── useShortcuts.ts
-│   # X-Host-Id 由 api/index.ts 的请求拦截器按作用域条件注入
+│   # 主机作用域请求的 URL 由各 api 模块按显式 hostId 参数拼出
 ├── layouts/
 │   ├── AppLayout.vue
 │   └── AuthLayout.vue

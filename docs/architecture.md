@@ -553,7 +553,8 @@ public interface IDockerHostAccessor
 > **Scoped 的原因**：它依赖 `IHostRepository`（其取值来自当前请求）。池是 Singleton，二者生命周期不同，
 > 因此「解析主机」与「池化客户端」分属两层。这也让 Singleton 侧**不依赖** Scoped 仓储——不会构成捕获依赖。
 >
-> **0.3.0 起**再加上基于请求 Header `X-Host-Id` 的「当前主机」解析与可见性校验。
+> **0.0.8 起**由 Api 中间件从**路由值** `hostId` 解析「当前主机」（写入 Scoped `ICurrentHost`）；
+> **0.3.0 起**在此之上再加资源可见性校验。旧 `X-Host-Id` 请求头方案已废弃。
 
 ### `IDockerClientFactory` 与 `IDockerClientPool`
 
@@ -628,9 +629,9 @@ public interface IDockerClientPool
 ### 前端集成
 
 - **顶栏 `HostSelector` 组件**（`components/business/HostSelector.vue`）：主机作用域显示当前主机名 + 状态点，全局作用域显示「选择主机」占位；列出可访问主机，**切换后停留在当前资源页**；admin 可见「管理主机」入口
-- **切换主机**：写入 Pinia `useHostStore.currentId`，由 `api/index.ts` 的请求拦截器自动带 `X-Host-Id` Header
+- **切换主机**：写入 Pinia `useHostStore.currentId`；`src/api/*.ts` 的各方法**显式接收 `hostId`** 并拼进 URL（`/api/v1/hosts/{hostId}/...`），不再使用请求头
 - **作用域驱动**：`currentId` 不是独立状态，而是路由（`/hosts/:hostId/**`）的镜像，由路由守卫在导航时写入/清空，因此刷新与深链都能正确还原作用域
-- **仅主机作用域注入 `X-Host-Id`**：全局作用域（总览 / 主机管理 / 用户管理）的请求不携带该头，否则后端会误判为针对某台机器的资源操作
+- **全局作用域的请求不含 `hostId` 路径段**：总览 / 主机管理 / 用户管理的接口路径为 `/api/v1/auth/...` 或 `/api/v1/admin/...`，天然不会指向某台主机
 
 ### 默认主机（0.0.8 启动时）
 
@@ -696,7 +697,7 @@ WebSocket 不支持自定义 Header，JWT 通过 `?access_token=...` 查询参�
 
 ```typescript
 const connection = new HubConnectionBuilder()
-  .withUrl(`/hubs/container-log?access_token=${accessToken}`)
+  .withUrl(`/hubs/hosts/${hostId}/container-log?access_token=${accessToken}`)
   .build()
 ```
 
@@ -706,10 +707,10 @@ const connection = new HubConnectionBuilder()
 
 ```
 1. 前端请求 POST /api/v1/auth/terminal-token
-   → 返回 5 分钟过期 terminalToken（仅能用于 /ws/container/exec）
+   → 返回 5 分钟过期 terminalToken（仅能用于 /ws/hosts/{hostId}/containers/exec）
 
 2. 前端建立 WebSocket:
-   new WebSocket(`ws://host/ws/container/exec?containerId=xxx&cmd=/bin/sh&token=${terminalToken}`)
+   new WebSocket(`ws://host/ws/hosts/${hostId}/containers/exec?containerId=xxx&cmd=/bin/sh&token=${terminalToken}`)
 
 3. 后端验证 terminalToken 有效性 + 检查用户对 containerId 的权限
 
@@ -800,7 +801,7 @@ src/Docker.Manager.UI/src/
 ├── composables/           # 复用 Composition 函数
 │   ├── useTheme.ts
 │   └── useShortcuts.ts
-│   # X-Host-Id 由 api/index.ts 的请求拦截器按作用域条件注入
+│   # 主机作用域请求的 URL 由各 api 模块按显式 hostId 参数拼出
 ├── layouts/
 │   ├── AppLayout.vue
 │   └── AuthLayout.vue
@@ -826,7 +827,7 @@ src/Docker.Manager.UI/src/
 | 实时日志（0.3.0） | SignalR WebSocket，`ContainerLogHub` |
 | 实时监控（0.3.0） | SignalR WebSocket，`ContainerStatsHub` |
 | 页面内通知（0.3.0） | SignalR WebSocket，`NotificationHub` |
-| 容器终端（0.4.0） | 原生 WebSocket `/ws/container/exec` + terminal token |
+| 容器终端（0.4.0） | 原生 WebSocket `/ws/hosts/{hostId}/containers/exec` + terminal token |
 
 ---
 

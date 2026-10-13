@@ -82,7 +82,7 @@
 - ✅ Serilog 控制台输出（JSON 配置 + `ReadFrom.Configuration`）
 
 测试：
-- ✅ `tests/Docker.Manager.UnitTests/` 引入 xUnit + FluentAssertions + coverlet 骨架（占位烟雾用例验证测试链路）。详细覆盖节奏：0.0.3 Argon2id 哈希、0.0.4 登录、0.0.8 引入 Testcontainers 集成测试
+- ✅ `tests/Docker.Manager.UnitTests/` 引入 xUnit + FluentAssertions + coverlet 骨架（占位烟雾用例验证测试链路）。详细覆盖节奏：0.0.3 Argon2id 哈希、0.0.4 登录、0.0.8 起集成测试使用宿主 Docker socket（`DockerFactAttribute`）
 
 CI：
 - ✅ `.github/workflows/ci.yml`：push / pull_request 到 `main` / `dev` 触发。步骤：`dotnet restore` → `dotnet build -c Release`（warn-as-error）→ `dotnet test -c Release`。NuGet 包缓存（`~/.nuget/packages`，key 基于 `*.csproj` + `Directory.Packages.props`）
@@ -104,7 +104,7 @@ CI：
 **目标**：所有后续接口的统一基线。
 
 > **0.0.2 实施决策**：
-> 1. **集成测试载体提前**：原计划 0.0.8 才引入的 `tests/Docker.Manager.IntegrationTests/` **在本迭代落地**（骨架 + `WebApplicationFactory`），用于验证 HTTP 管道级契约；0.0.8 只需追加 `Testcontainers` 依赖。
+> 1. **集成测试载体提前**：原计划 0.0.8 才引入的 `tests/Docker.Manager.IntegrationTests/` **在本迭代落地**（骨架 + `WebApplicationFactory`），用于验证 HTTP 管道级契约；0.0.8 只需追加集成测试辅助设施（`DockerFactAttribute`，探测宿主 `/var/run/docker.sock`）。
 > 2. **错误码分层**：错误码常量、语义分类与默认文案放 `Application/Common`（`ErrorCodes` / `ErrorCategory` / `ErrorCodeCatalog`）；「语义分类 → HTTP 状态码」放 `Api/Errors`（`ErrorHttpStatus`）。既避免应用层依赖 Web 概念，又让两侧都能被单测。
 > 3. **CORS 策略延迟注册**：白名单策略通过 `IConfigureOptions<CorsOptions>` 在**选项解析期**注册，而非 DI 注册期直接读配置——后者会读到尚未定型的值（集成测试注入的内存配置即属此列），导致静默地不注册任何策略。
 > 4. **`UseUrls` 改为配置**：硬编码的 `UseUrls("http://+:8080")` 改为 `appsettings.json` 的 `"Urls"` 键，使 `TestServer` 能接管监听。注意 `Urls` 优先级**高于** `ASPNETCORE_URLS`，改端口需用 `--urls` 或 `URLS`（详见 [constraints.md](./constraints.md#配置系统)）。
@@ -246,7 +246,7 @@ CI：
 - ✅ **主布局** `layouts/AppLayout.vue`：顶栏 64px + 左侧 200px 可折叠侧边栏 + 内容区；移动端侧边栏变抽屉
   - ✅ **两段式信息架构**：全局作用域（`meta.scope='global'`：总览 / 全局设置 / 主机管理 / 用户管理）与主机作用域（`meta.scope='host'`：`/hosts/:hostId/{dashboard,containers,images,volumes,networks}`）使用**不同侧边栏菜单**
   - ✅ **主机作用域进入 URL**（`/hosts/:hostId/**`），可深链 / 可分享；路由守卫负责把 `hostId` 同步到 `useHostStore`，未知 hostId 重定向 `/overview`
-  - ✅ `X-Host-Id` 仅在主机作用域注入（全局请求不携带）
+  - ✅ 主机作用域进入 API 路径（`/api/v1/hosts/{hostId}/...`），全局作用域端点不含该段
   - ✅ 侧边栏菜单**从路由表自动派生**（按 `meta.scope` / `showInSidebar` / `requiresAdmin` 过滤），新增路由无需改布局
 - **总览页 `OverviewView.vue`**：登录后的默认落地页。**长条形**列出所有可见主机（名称 / 类型 / endpoint / 版本与运行时长 / 四类资源计数 / 状态 + 行内按钮）+ 总数与在线数摘要；**整行可点**进入主机作用域
   - **主机分组**：按 `order` 聚合展示（生产 / 测试 / 本机 / 未分组），无成员的分组不渲染
@@ -270,7 +270,7 @@ CI：
 
 > **进度（2026-10-13）**：🚧 后端「数据层 → 客户端池 → 主机解析」已打通：`hosts` 表与默认主机种子已落地；
 > 客户端按 **工厂（无状态创建）/ 池（Singleton 复用与回收）/ 访问器（Scoped 查库解析）** 三层拆分，主机来源从配置切到数据库。
-> **仍缺 API 入口**：主机管理 API、用户管理 API、`X-Host-Id` 解析与可见性校验。
+> **仍缺 API 入口**：主机管理 API、用户管理 API、当前主机（路由值 `hostId`）解析与可见性校验。
 
 后端：
 - ✅ 新建 `hosts` 表（id、name、type=socket|tcp、endpoint、auth_kind、auth_config_json、enabled、审计列）
@@ -282,7 +282,7 @@ CI：
   - ✅ 构建失败必定清条目（`Lazy<T>` 会永久缓存异常，不然一次失败后就再也无法重试）
 - ✅ `IDockerHostAccessor`（Scoped）：`hostId`（主机名）→ `hosts` 表 → 客户端；`Enabled=false` → `1302`
   - ✅ 连通性测试（临时客户端 + Ping，**不经池**）
-  - ⬜ 从请求 Header `X-Host-Id`（缺省 `"local"`）解析当前 host（与 0.3.0 的可见性校验一起做）
+  - ⬜ 由 Api 中间件从**路由值** `hostId` 解析当前主机（写入 Scoped `ICurrentHost`）；路径形如 `/api/v1/hosts/{hostId}/...`，**无缺省值**（与 0.3.0 的可见性校验一起做）
 - ✅ `IDockerClientFactory`（无状态）：只用 `DockerClientBuilder` 创建客户端
   - ✅ socket：`WithEndpoint(new Uri("unix:///var/run/docker.sock"))`
   - ✅ TCP（无认证）：`WithEndpoint(new Uri("tcp://host:2375"))`
@@ -290,13 +290,13 @@ CI：
   - ⬜ TCP + TLS：`WithEndpoint(...)` + `WithAuthProvider(new CertificateCredentials(cert))`
   - ⬜ TCP + Basic：`WithEndpoint(...)` + `WithAuthProvider(new BasicAuthCredentials(user, pass))`
 - ⬜ 主机管理 API（admin 专用）：
-  - ⬜ `POST /api/v1/host/list` / `create` / `update` / `delete` / `test`
+  - ⬜ `POST /api/v1/admin/hosts/list` / `create` / `{hostId}/update` / `{hostId}/delete` / `test`
 - ⬜ 用户管理 API（admin 专用）：
-  - ⬜ `POST /api/v1/user/list` / `create` / `delete` / `update-password`
+  - ⬜ `POST /api/v1/admin/users/list` / `create` / `delete` / `update-password`
 - ⬜ `IResourcePermissionService` 接口定义（0.1.0 仅实现 host 可见性）
 
 测试（从本迭代起为强制要求）：
-- ⬜ `tests/Docker.Manager.IntegrationTests/`（**项目骨架已于 0.0.2 落地**）新增 `Testcontainers` for .NET 依赖
+- ⬜ `tests/Docker.Manager.IntegrationTests/`（**项目骨架已于 0.0.2 落地**）新增集成测试辅助设施：`DockerFactAttribute` 探测宿主 `/var/run/docker.sock`，不可达时跳过用例（**不引入 Testcontainers**，见 [constraints.md](./constraints.md#集成测试门槛)）
 - ⬜ 容器/镜像/Volume/Network 等新 API 必须配集成测试，CI 卡
 - ✅ 不设行覆盖率门槛
 
@@ -308,9 +308,9 @@ CI：
 
 后端：
 - 容器 API：
-  - **`POST /api/v1/container/create`**（`CreateContainerParameters` 完整字段映射）
-  - `POST /api/v1/container/list`（支持 `hostId` + `all` + 分页）
-  - `POST /api/v1/container/start` / `stop` / `restart` / `remove` / `logs` / `inspect`
+  - **`POST /api/v1/hosts/{hostId}/containers/create`**（`CreateContainerParameters` 完整字段映射）
+  - `POST /api/v1/hosts/{hostId}/containers/list`（支持 `all` + 分页）
+  - `POST /api/v1/hosts/{hostId}/containers/start` / `stop` / `restart` / `remove` / `logs` / `inspect`
 - 所有接口走 `IDockerHostAccessor` 获取客户端，按 host 粒度做可见性校验
 - `Docker.DotNet.Enhanced` 异常统一映射：
   - `DockerApiException` → 通用 Docker 错误（code 1402）
@@ -328,10 +328,10 @@ CI：
 
 后端：
 - 镜像 API：
-  - `POST /api/v1/image/list`（`hostId` + 分页）
-  - `POST /api/v1/image/pull`（`hostId` + `image` + `tag`）
-  - `POST /api/v1/image/remove`（`hostId` + `imageId` + `force`）
-  - `POST /api/v1/image/inspect`（`hostId` + `imageId`）
+  - `POST /api/v1/hosts/{hostId}/images/list`（分页）
+  - `POST /api/v1/hosts/{hostId}/images/pull`（`image` + `tag`）
+  - `POST /api/v1/hosts/{hostId}/images/remove`（`imageId` + `force`）
+  - `POST /api/v1/hosts/{hostId}/images/inspect`（`imageId`）
 - Pull 进度：使用 `IProgress<JSONMessage>` 在服务端聚合，**0.0.10 不接入 SignalR**，仅在响应 `data` 一次性返回最终结果；进度信息写到 Serilog 日志。**SignalR 实时进度推迟到 0.3.0**
 
 **验收**：pull `nginx:latest` 完成后返回镜像 ID 与大小。
@@ -345,7 +345,7 @@ CI：
 前端：
 - API 封装层 `src/Docker.Manager.UI/src/api/container.ts`：RPC 风格方法封装
 - `src/Docker.Manager.UI/src/stores/host.ts`：Pinia 当前主机选择
-- **顶栏 `HostSelector` 下拉组件**（`components/business/HostSelector.vue`）：主机作用域显示当前主机名 + 状态点，全局作用域显示「选择主机」占位；列出可访问主机，**切换后停留在当前资源页**；写入 Pinia `useHostStore` → 请求拦截器自动带 `X-Host-Id`（仅主机作用域）；admin 可见「管理主机」入口
+- **顶栏 `HostSelector` 下拉组件**（`components/business/HostSelector.vue`）：主机作用域显示当前主机名 + 状态点，全局作用域显示「选择主机」占位；列出可访问主机，**切换后停留在当前资源页**；写入 Pinia `useHostStore` → 路由跳转到 `/hosts/{新hostId}/{当前资源页}`；admin 可见「管理主机」入口
 - `ContainerListView.vue`：表格（名称、镜像、状态、端口、创建时间）+ 操作按钮（启动/停止/重启/删除）+ 状态自动刷新（轮询 5 秒）
 - **`CreateContainerDialog.vue`**：可视化创建表单（镜像下拉 + 名称 + 端口映射 + 环境变量键值对 + Volume 挂载 + 重启策略选择 + 高级选项折叠面板「网络模式 / 资源限制 / capabilities」）
 - `ContainerLogsView.vue`：行数选择 + tail 加载 + 时间过滤 + 自动滚动开关
@@ -441,11 +441,11 @@ CI：
 **目标**：把 Docker 主要资源类型管理补齐；支持上传 Dockerfile 构建镜像；增加批量删除能力。
 
 后端：
-- Volume API：`POST /api/v1/volume/{list,create,remove,batch-remove,inspect}`
-- Network API：`POST /api/v1/network/{list,create,remove,inspect}`
-- 镜像构建：`POST /api/v1/image/build`（multipart：Dockerfile + context tar），通过 `IProgress<JSONMessage>` 推送进度到 SignalR 临时频道（**仅本请求客户端可见**）
-- 容器批量删除：`POST /api/v1/container/batch-remove`（接受 `containerIds[]`，并行删除，返回每个的成功/失败状态）
-- 镜像批量删除：`POST /api/v1/image/batch-remove`（接受 `imageIds[]`）
+- Volume API：`POST /api/v1/hosts/{hostId}/volumes/{list,create,remove,batch-remove,inspect}`
+- Network API：`POST /api/v1/hosts/{hostId}/networks/{list,create,remove,inspect}`
+- 镜像构建：`POST /api/v1/hosts/{hostId}/images/build`（multipart：Dockerfile + context tar），通过 `IProgress<JSONMessage>` 推送进度到 SignalR 临时频道（**仅本请求客户端可见**）
+- 容器批量删除：`POST /api/v1/hosts/{hostId}/containers/batch-remove`（接受 `containerIds[]`，并行删除，返回每个的成功/失败状态）
+- 镜像批量删除：`POST /api/v1/hosts/{hostId}/images/batch-remove`（接受 `imageIds[]`）
 - 私有 Registry 凭据**存储**（暂不暴露 pull/push 入口，凭据加密落 SQLite）
 
 前端：
@@ -460,12 +460,12 @@ CI：
 **目标**：上线实时日志 / 监控 / 异常通知；落地按 host/container 粒度的资源授权。
 
 后端：
-- SignalR Hub：`/hubs/container-log`（订阅日志）、`/hubs/container-stats`（订阅统计）、`/hubs/notification`（全局通知）
+- SignalR Hub：`/hubs/hosts/{hostId}/container-log`（订阅日志）、`/hubs/hosts/{hostId}/container-stats`（订阅统计）、`/hubs/notification`（全局通知，不含 hostId）
 - Hub 鉴权：JWT 通过 `?access_token=...` 查询参数传递（WebSocket 不支持自定义 Header）
 - `ContainerEventWatcher`（后台 `Docker.Events` 监听）→ 推到 `NotificationHub`
 - 资源权限表：`user_host_permissions`（user_id × host_id，权限位 read/write/admin）、`user_container_permissions`（细粒度补充）
 - `ResourcePermissionMiddleware`：在容器/镜像/Volume/Network 操作前校验用户对 hostId（必要时 containerId）有 read/write 权限
-- 授权管理 API：`POST /api/v1/permission/{grant,revoke,list}`
+- 授权管理 API：`POST /api/v1/admin/hosts/{hostId}/permissions/{grant,revoke,list}`
 - 镜像 pull 进度改用 SignalR 推送
 
 前端：
@@ -481,11 +481,11 @@ CI：
 **目标**：覆盖 Portainer CE 90% 用户场景。
 
 后端：
-- **新增 `POST /api/v1/auth/terminal-token`**（admin/user 专用）：返回 5 分钟过期的独立短时 token，仅能用于 WebSocket 连接 `/ws/container/exec`；不继承 access token 的全 API 权限
-- WebSocket 端点 `/ws/container/exec?containerId=...&cmd=/bin/sh&token=<terminalToken>`（独立于 SignalR，原始双向流，**鉴权专用 terminal token**，不接受 access token）
-- Stack 管理：`POST /api/v1/stack/{list,deploy,update,stop,remove}`，内部用 Docker.DotNet 调用 + label 过滤（`com.docker.compose.project=<name>`）
+- **新增 `POST /api/v1/auth/terminal-token`**（admin/user 专用）：返回 5 分钟过期的独立短时 token，仅能用于 WebSocket 连接 `/ws/hosts/{hostId}/containers/exec`；不继承 access token 的全 API 权限
+- WebSocket 端点 `/ws/hosts/{hostId}/containers/exec?containerId=...&cmd=/bin/sh&token=<terminalToken>`（独立于 SignalR，原始双向流，**鉴权专用 terminal token**，不接受 access token）
+- Stack 管理：`POST /api/v1/hosts/{hostId}/stacks/{list,deploy,update,stop,remove}`，内部用 Docker.DotNet 调用 + label 过滤（`com.docker.compose.project=<name>`）
 - 私有 Registry 登录：`POST /api/v1/registry/{login,list,remove}` + 凭据安全存储（DPAPI / OS keyring）
-- 镜像 push：`POST /api/v1/image/push`（使用已配置的 Registry 凭据）
+- 镜像 push：`POST /api/v1/hosts/{hostId}/images/push`（使用已配置的 Registry 凭据）
 
 前端：
 - 容器详情页内嵌 xterm.js 终端面板（AttachAddon + FitAddon）；打开终端时先请求 terminal-token，再用其连接 WebSocket

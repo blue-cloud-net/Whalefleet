@@ -52,7 +52,7 @@
 | NuGet 包管理 | Central Package Management（`Directory.Packages.props`） | .NET 10 原生支持；所有 NuGet 版本集中管理 |
 | 代码格式化（后端） | `dotnet format` | CI 中执行 |
 | 代码格式化（前端） | Prettier + ESLint | CI 中执行 |
-| 测试（后端） | xUnit + FluentAssertions（**7.2.2，勿升 8.x**：8.x 起改为 Xceed 商业授权）+ Testcontainers（基于 Docker.DotNet.Enhanced 做集成测试） | 单元 + 集成 |
+| 测试（后端） | xUnit + FluentAssertions（**7.2.2，勿升 8.x**：8.x 起改为 Xceed 商业授权）+ `Microsoft.AspNetCore.Mvc.Testing`（集成测试宿主） | 单元 + 集成 |
 | 测试（前端） | Vitest + Vue Test Utils | 组件测试 |
 
 ### 分层与充血模型约定（0.0.1 起强制）
@@ -144,7 +144,7 @@
 
 > **主机不是配置项**（0.0.8 起）：`Docker:Hosts` 已删除。主机是 `hosts` 表里的数据；首次启动时若表为空，
 > 宿主会种入一台默认主机（`name=local`、`type=socket`、`endpoint=/var/run/docker.sock`）。
-> 其余主机待 0.0.8 的主机管理 API（`POST /api/v1/host/create`）落地后通过界面添加。
+> 其余主机待 0.0.8 的主机管理 API（`POST /api/v1/admin/hosts/create`）落地后通过界面添加。
 | `Jwt:Secret` | `JWT__SECRET` | （无，缺失则启动失败） | 0.0.4 |
 | `Admin:User` | `ADMIN__USER` | （无） | 0.0.6 |
 | `Admin:Password` | `ADMIN__PASSWORD` | （无） | 0.0.6 |
@@ -172,7 +172,7 @@
 | JWT refresh token 有效期 | **7 天**，写入数据库可撤销表 |
 | 初始管理员引导 | 环境变量 `ADMIN__USER` + `ADMIN__PASSWORD`（启动时若 `users` 表为空则创建） |
 | JWT Secret 来源 | 仅环境变量 `JWT__SECRET`；**缺失或过弱（<32 字节）则启动失败** |
-| 0.4.0 终端短时 token | `POST /api/v1/auth/terminal-token` 返回 5 分钟过期 token，**仅能用于 WebSocket `/ws/container/exec`** |
+| 0.4.0 终端短时 token | `POST /api/v1/auth/terminal-token` 返回 5 分钟过期 token，**仅能用于 WebSocket `/ws/hosts/{hostId}/containers/exec`** |
 
 ### 速率限制
 
@@ -289,17 +289,20 @@ socket-proxy 默认仅授予 `GET`（只读 + 列出），如需写操作（创�
 
 ### 集成测试门槛
 
-- **0.0.8 起强制**：每个新 API 必须配 Testcontainers 集成测试，CI 卡
+- **0.0.8 起强制**：每个新 API 必须配集成测试，CI 卡
+- 需要真实 Docker 的用例直接使用宿主 `/var/run/docker.sock`（以 `DockerFactAttribute` 在 socket 不可达时 `Skip`），**不引入 Testcontainers**——本项目的被测依赖就是宿主 Docker daemon 本身，而非需要装进容器的第三方服务
 - **不设行覆盖率门槛**（避免过度追求数字）
 
 ---
 
 ## API 约定
 
-- 风格：**RPC 风格**（非 RESTful）
+- 风格：**RPC 风格**（非 RESTful）+ **主机作用域路径**
 - 路径前缀：`/api/v1/`
-- 示例：`POST /api/v1/container/start`，而非 `POST /api/v1/containers/{id}`
-- 完整错误码分段见 [api-spec.md](./api-spec.md)
+- 两条作用域：主机作用域 `/api/v1/hosts/{hostId}/{resource}/{action}`；全局作用域 `/api/v1/auth/...` 与 `/api/v1/admin/...`
+- 示例：`POST /api/v1/hosts/local/containers/start`，而非 `PUT /api/v1/hosts/local/containers/{id}`
+- **不变式**：`hostId` 只出现在路径中，任何请求 Body 都不得含 `hostId` 字段
+- 完整错误码分段与接口清单见 [api-spec.md](./api-spec.md)
 
 ---
 
@@ -368,12 +371,12 @@ dotnet Docker.Manager.Api.dll --urls http://0.0.0.0:8080
 ### 容器终端
 
 - 0.4.0 仅 WebSocket 长连接交互式终端（xterm.js）
-- **不做一次性 exec API**（`POST /api/v1/container/exec`）
+- **不做一次性 exec API**（`POST /api/v1/hosts/{hostId}/containers/exec`）
 
 ### 容器 stats
 
 - 0.3.0 仅 SignalR 实时流
-- **不做一次性 stats API**（`POST /api/v1/container/stats` 单次查询）
+- **不做一次性 stats API**（`POST /api/v1/hosts/{hostId}/containers/stats` 单次查询）
 
 ### Prune / 清理
 

@@ -47,10 +47,10 @@
 | ⬜ 删除容器 | 删除容器，选项：force | 0.0.9 |
 | ⬜ **批量删除** | 列表页多选 + 一次性删除多个容器 | **0.2.0** |
 | ⬜ 日志查看 | 查看容器标准输出日志，支持 tail 行数 + 时间过滤 + 自动滚动 | 0.0.9 |
-| ⬜ 日志实时流 | SignalR `/hubs/container-log` 推送逐行日志 | 0.3.0 |
+| ⬜ 日志实时流 | SignalR `/hubs/hosts/{hostId}/container-log` 推送逐行日志 | 0.3.0 |
 | ⬜ 容器详情 | Inspect 完整配置信息 | 0.0.9 |
-| ⬜ 容器统计 | 实时 CPU / 内存 / 网络 I/O，SignalR `/hubs/container-stats` 推送 | 0.3.0 |
-| ⬜ 交互式终端 | WebSocket `/ws/container/exec` + xterm.js；**鉴权专用 5 分钟短时 terminal token** | 0.4.0 |
+| ⬜ 容器统计 | 实时 CPU / 内存 / 网络 I/O，SignalR `/hubs/hosts/{hostId}/container-stats` 推送 | 0.3.0 |
+| ⬜ 交互式终端 | WebSocket `/ws/hosts/{hostId}/containers/exec` + xterm.js；**鉴权专用 5 分钟短时 terminal token** | 0.4.0 |
 | ⬜ 容器异常通知 | 容器非正常退出时 SignalR `/hubs/notification` 推送 toast | 0.3.0 |
 
 ---
@@ -153,7 +153,7 @@
 |------|------|------|
 | ⬜ 主机粒度可见性 | 0.1.0 admin 看全部主机，普通 user 仅看被分配的 host | 0.0.8 |
 | ⬜ **资源粒度 RBAC** | 0.3.0 落地按 host/container 粒度的 read/write/admin 权限分配 | **0.3.0** |
-| ⬜ 授权管理 API | admin 通过 `POST /api/v1/permission/{grant,revoke,list}` 分配 / 撤销权限 | 0.3.0 |
+| ⬜ 授权管理 API | admin 通过 `POST /api/v1/admin/hosts/{hostId}/permissions/{grant,revoke,list}` 分配 / 撤销权限 | 0.3.0 |
 | ⬜ 授权管理 UI | 用户管理页增加「分配主机权限」操作 | 0.3.0 |
 
 ---
@@ -193,7 +193,7 @@
 - ❌ **OAuth / OIDC 登录** → 1.0.0 之后
 - ❌ **审计日志** → 1.0.0 之后
 - ❌ **多实例 + 外部数据库（PostgreSQL）** → 1.0.0 之后
-- ❌ **一次性 exec API**（`POST /api/v1/container/exec`） → 显式不做
+- ❌ **一次性 exec API**（`POST /api/v1/hosts/{hostId}/containers/exec`） → 显式不做
 - ❌ **一次性 stats API**（单次 `docker stats --no-stream`） → 显式不做
 - ❌ **Prune / 清理**（system / container / image / network / volume prune）→ 不在 v1.0 范围
 - ❌ **公开 demo 实例** → 1.0.0 之后再考虑
