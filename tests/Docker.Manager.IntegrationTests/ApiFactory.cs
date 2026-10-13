@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 
@@ -21,16 +22,20 @@ public class ApiFactory : WebApplicationFactory<Program>
 {
     private readonly Dictionary<string, string?> _settings = new(StringComparer.Ordinal);
     private readonly string _logDirectory;
+    private readonly string _databasePath;
 
     /// <summary>
-    /// 初始化 <see cref="ApiFactory"/>，并为本次测试分配独立的日志目录。
+    /// 初始化 <see cref="ApiFactory"/>，并为本次测试分配独立的日志目录与数据库文件。
     /// </summary>
     public ApiFactory()
     {
-        _logDirectory = Path.Combine(
+        var workingDirectory = Path.Combine(
             Path.GetTempPath(),
             "docker-manager-tests",
             Guid.NewGuid().ToString("N"));
+
+        _logDirectory = Path.Combine(workingDirectory, "logs");
+        _databasePath = Path.Combine(workingDirectory, "docker-manager.db");
     }
 
     /// <summary>
@@ -71,6 +76,11 @@ public class ApiFactory : WebApplicationFactory<Program>
 
                 // 测试只关心响应契约，压低日志级别减少噪声。
                 ["Serilog:MinimumLevel:Default"] = "Warning",
+
+                // 宿主启动时会执行数据库初始化（迁移 + 默认主机种子），
+                // 必须把库重定向到实例专属临时目录：否则测试会在 bin/ 下反复建库，
+                // 并行执行的多个宿主还会相互争抢同一个库文件。
+                ["Persistence:DatabasePath"] = _databasePath,
             };
 
             foreach (var (key, value) in _settings)
@@ -87,18 +97,27 @@ public class ApiFactory : WebApplicationFactory<Program>
     {
         base.Dispose(disposing);
 
-        if (!disposing || !Directory.Exists(_logDirectory))
+        if (!disposing)
+        {
+            return;
+        }
+
+        // 连接池会占住数据库文件，清池后才能删除临时目录。
+        SqliteConnection.ClearAllPools();
+
+        var workingDirectory = Path.GetDirectoryName(_logDirectory);
+        if (workingDirectory is null || !Directory.Exists(workingDirectory))
         {
             return;
         }
 
         try
         {
-            Directory.Delete(_logDirectory, recursive: true);
+            Directory.Delete(workingDirectory, recursive: true);
         }
         catch (IOException)
         {
-            // 日志目录清理失败不应让测试失败（Windows 上文件句柄释放可能滞后）。
+            // 临时目录清理失败不应让测试失败（Windows 上文件句柄释放可能滞后）。
         }
     }
 }

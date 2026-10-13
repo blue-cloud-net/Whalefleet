@@ -6,6 +6,7 @@ using Docker.Manager.Api.Serialization;
 using Docker.Manager.Application.Common;
 using Docker.Manager.Application.DependencyInjection;
 using Docker.Manager.Infrastructure.DependencyInjection;
+using Docker.Manager.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
 using Serilog;
 using Serilog.Events;
@@ -92,6 +93,10 @@ if (app.Environment.IsDevelopment())
         throw DevelopmentFaults.Create(kind);
     });
 }
+
+// 数据库初始化：架构迁移 → 启用 WAL → 种入默认主机。
+// 必须发生在开始监听之前——建表失败宁可启动失败，也不能让第一个请求撞上「no such table」。
+await app.Services.GetRequiredService<IDatabaseInitializer>().InitializeAsync();
 
 app.Run();
 

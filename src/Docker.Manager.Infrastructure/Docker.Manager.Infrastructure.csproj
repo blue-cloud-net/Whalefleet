@@ -27,4 +27,15 @@
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
   </ItemGroup>
 
+  <!-- 持久化：Dapper（手写 SQL 的微 ORM）+ Microsoft.Data.Sqlite（ADO.NET 提供程序） -->
+  <ItemGroup>
+    <PackageReference Include="Dapper" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+  </ItemGroup>
+
+  <!-- 建表 / 迁移脚本以嵌入资源随程序集分发，避免运行时依赖工作目录下的 .sql 文件 -->
+  <ItemGroup>
+    <EmbeddedResource Include="Persistence\Schema\Migrations\*.sql" />
+  </ItemGroup>
+
 </Project>

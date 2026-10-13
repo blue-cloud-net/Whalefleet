@@ -68,6 +68,10 @@ public static class InfrastructureServiceCollectionExtensions
         // 二者生命周期不同，故「解析主机」与「池化客户端」分属两层。
         services.AddScoped<IDockerHostAccessor, DockerHostAccessor>();
 
+        // 持久化（SQLite + Dapper）：连接工厂、架构迁移、仓储。
+        // 数据库的实际初始化（迁移 / WAL / 种子）由宿主在启动阶段显式调用
+        // IDatabaseInitializer，不在 DI 注册期执行。
+        services.AddPersistence(configuration);
 
         return services;
     }
