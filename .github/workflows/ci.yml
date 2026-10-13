@@ -3,7 +3,7 @@ name: ci
 # 触发：
 # - push 到 main / dev（集成分支）
 # - pull_request 到 main / dev
-# tag v*.*.* 由 release.yml（0.0.14 起）单独处理。
+# tag v*.*.* 由 release.yml（0.0.15 起）单独处理。
 on:
   push:
     branches: [main, dev]
