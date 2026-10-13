@@ -41,7 +41,9 @@ const stats = computed(() => [
     key: 'total',
     label: t('overview.stat.total'),
     value: hosts.value.length,
-    icon: 'i-carbon-data-center-alt',
+    // 早先写的是 `i-carbon-data-center-alt`——Carbon 图标集里没有 `-alt` 变体，
+    // 图标不渲染只留一个空底色方块（表现为「主机总数没图标」）。统一用 `data-center`。
+    icon: 'i-carbon-data-center',
     tone: 'brand' as const
   },
   {
@@ -64,7 +66,7 @@ const stats = computed(() => [
 <template>
   <div>
     <PageHeader
-      icon="i-carbon-data-center-alt"
+      icon="i-carbon-dashboard"
       :title="t('overview.title')"
       :subtitle="t('overview.subtitle')"
       narrow

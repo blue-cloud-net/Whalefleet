@@ -1,7 +1,33 @@
 import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 
 import { defineConfig, presetIcons, presetTypography, presetUno } from 'unocss'
+
+const require = createRequire(import.meta.url)
+
+/**
+ * 校验图标名在 Carbon 里真实存在。
+ *
+ * Carbon 没有 `-alt` 变体：`data-center-alt` / `server` / `cluster` 全都不存在。
+ * UnoCSS 的 presetIcons 对查不到的图标**只打印一条 warn、不中断构建**，
+ * 于是开发期毫无察觉，运行时表现为「底色方块在、图标不见」——
+ * 总览页「主机总数」磁贴就是这样丢的图标，排查了很久才定位到是名字错了。
+ *
+ * 这里把校验前移到配置加载期：不存在的图标直接抛错，dev/build 当场失败。
+ */
+function assertIconsExist(icons: string[]): string[] {
+  const carbon = require('@iconify-json/carbon/icons.json') as { icons: Record<string, unknown> }
+  const missing = icons.filter((name) => !(name.replace(/^i-carbon-/, '') in carbon.icons))
+  if (missing.length > 0) {
+    throw new Error(
+      `[uno.config] safelist 中存在 Carbon 没有的图标：\n  - ${missing.join('\n  - ')}\n` +
+        `请改用 Carbon 真实存在的名字（node -e "const i=require('@iconify-json/carbon/icons.json');` +
+        `console.log(Object.keys(i.icons).filter(n=>n.includes('<关键词>')))" 可查询）。`
+    )
+  }
+  return icons
+}
 
 /**
  * 从路由表收集侧边栏图标。
@@ -150,13 +176,15 @@ export default defineConfig({
       'app-tabular': 'tabular-nums'
     }
   ],
-  safelist: [
+  // 一律过一遍存在性校验：Carbon 无 `-alt` 变体，写错名字只会静默丢图标（见 assertIconsExist）
+  safelist: assertIconsExist([
     // ===== 路由 meta.icon 自动同步（见 collectRouteIcons）=====
     // 侧边栏图标以动态字符串出现，必须显式 safelist，否则不会生成 CSS
     ...collectRouteIcons(),
     'i-carbon-sun', 'i-carbon-moon', 'i-carbon-asleep',
     'i-carbon-user', 'i-carbon-settings', 'i-carbon-container-software',
     'i-carbon-image', 'i-carbon-data-volume', 'i-carbon-network-3',
+    'i-carbon-network-4', 'i-carbon-layers', 'i-carbon-events',
     'i-carbon-menu', 'i-carbon-close', 'i-carbon-search',
     'i-carbon-warning-alt', 'i-carbon-information',
     // 状态与导航
@@ -168,10 +196,10 @@ export default defineConfig({
     'i-carbon-edit', 'i-carbon-trash-can', 'i-carbon-copy',
     'i-carbon-folder', 'i-carbon-folder-off', 'i-carbon-meter',
     'i-carbon-cloud-offline', 'i-carbon-cloud-satellite',
-    'i-carbon-data-center-alt', 'i-carbon-user-avatar',
-    'i-carbon-user-multiple', 'i-carbon-cluster', 'i-carbon-terminal',
-    'i-carbon-settings-adjust', 'i-carbon-terminal', 'i-carbon-document',
+    'i-carbon-data-center', 'i-carbon-user-avatar',
+    'i-carbon-user-multiple', 'i-carbon-meter-alt', 'i-carbon-terminal',
+    'i-carbon-settings-adjust', 'i-carbon-document',
     'i-carbon-side-panel-open', 'i-carbon-side-panel-close',
     'i-carbon-locked', 'i-carbon-chart-line', 'i-carbon-calendar'
-  ]
+  ])
 })

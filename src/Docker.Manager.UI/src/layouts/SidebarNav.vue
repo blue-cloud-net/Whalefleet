@@ -127,7 +127,7 @@ function goHostDashboard() {
       v-else
       class="flex items-center gap-1.5 px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-content-faint"
     >
-      <span class="i-carbon-server text-xs" aria-hidden="true" />
+      <span class="i-carbon-data-center text-xs" aria-hidden="true" />
       <span class="app-truncate">{{ currentHost.name }}</span>
     </div>
 

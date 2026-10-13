@@ -34,7 +34,8 @@ const currentHost = computed(
  */
 const metrics = computed<{ label: string; icon: string }[]>(() => [
   { label: t('status.cpu'), icon: 'i-carbon-meter' },
-  { label: t('status.memory'), icon: 'i-carbon-meter--alt' },
+  // 早先误写成 `i-carbon-meter--alt`（双连字符），Carbon 里只有 `meter-alt`。
+  { label: t('status.memory'), icon: 'i-carbon-meter-alt' },
   { label: t('status.network'), icon: 'i-carbon-network-4' },
   { label: t('status.disk'), icon: 'i-carbon-data-volume' }
 ])
