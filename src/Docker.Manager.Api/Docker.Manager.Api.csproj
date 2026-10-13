@@ -24,6 +24,8 @@
     <PackageReference Include="Serilog.Settings.Configuration" />
     <!-- 滚动文件 sink：显式引用而非依赖 Serilog.AspNetCore 的传递依赖 -->
     <PackageReference Include="Serilog.Sinks.File" />
+    <!-- JWT 鉴权中间件（0.0.4） -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
   </ItemGroup>
 
 </Project>

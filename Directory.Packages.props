@@ -17,6 +17,11 @@
     <!-- .NET 10 内置，无需单独版本号；保留占位供后续追加 Microsoft.AspNetCore.* 包 -->
     <!-- 集成测试宿主（WebApplicationFactory / TestServer），版本须与本机 ASP.NET Core 运行时一致 -->
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" />
+    <!-- JWT 鉴权中间件（AddAuthentication().AddJwtBearer()）；也传递引入 Microsoft.IdentityModel.* -->
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.12" />
+    <!-- JWT 签发（Infrastructure/Security/JwtTokenService）：只造令牌，不含鉴权中间件。
+         版本对齐 Microsoft.AspNetCore.Authentication.JwtBearer 传递引入的 Microsoft.IdentityModel.*。 -->
+    <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.15.0" />
 
     <!-- ============ Microsoft.Extensions（DI / Logging / Options / Configuration） ============ -->
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
@@ -24,6 +29,7 @@
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.12" />
 
     <!-- ============ Serilog（日志） ============ -->

@@ -20,6 +20,16 @@ namespace Docker.Manager.IntegrationTests;
 /// </remarks>
 public class ApiFactory : WebApplicationFactory<Program>
 {
+    /// <summary>
+    /// 测试用 JWT 签名密钥。
+    /// </summary>
+    /// <remarks>
+    /// 必须显式提供：<c>Jwt:Secret</c> 缺失会触发 <c>JwtOptions</c> 的启动校验失败，
+    /// 于是所有集成测试连宿主都起不来。测试不依赖 <c>appsettings.Development.json</c>
+    /// 里的开发密钥——那会让测试结果随该文件的内容而变。
+    /// </remarks>
+    public const string TestJwtSecret = "integration-test-signing-key-0123456789abcdef";
+
     private readonly Dictionary<string, string?> _settings = new(StringComparer.Ordinal);
     private readonly string _logDirectory;
     private readonly string _databasePath;
@@ -81,6 +91,9 @@ public class ApiFactory : WebApplicationFactory<Program>
                 // 必须把库重定向到实例专属临时目录：否则测试会在 bin/ 下反复建库，
                 // 并行执行的多个宿主还会相互争抢同一个库文件。
                 ["Persistence:DatabasePath"] = _databasePath,
+
+                // JWT 签名密钥（缺失会导致启动校验失败）。
+                ["Jwt:Secret"] = TestJwtSecret,
             };
 
             foreach (var (key, value) in _settings)

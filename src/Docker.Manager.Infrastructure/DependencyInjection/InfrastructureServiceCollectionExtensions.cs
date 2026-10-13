@@ -5,6 +5,7 @@ using Docker.Manager.Infrastructure.Security;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using System.Text;
 
 namespace Docker.Manager.Infrastructure.DependencyInjection;
 
@@ -82,6 +83,22 @@ public static class InfrastructureServiceCollectionExtensions
 
         services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
 
+        // 令牌服务（0.0.4）：HS256 签名密钥缺失或过短在启动时即失败。
+        // ⚠️ 允许 Secret 存在默认值会使生产环境"忘了配也能启动"，因此刻意只靠校验器兵它。
+        services
+            .AddOptions<JwtOptions>()
+            .Bind(configuration.GetSection(JwtOptions.SectionName))
+            .Validate(
+                static options => IsValidJwtOptions(options),
+                $"Jwt:Secret 缺失或不足 {JwtOptions.MinSecretLengthBytes} 字节，或 AccessTokenLifetime / RefreshTokenLifetime 非正值")
+            .ValidateOnStart();
+
+        services.AddSingleton<ITokenService, JwtTokenService>();
+
+        // 登录失败计数：内存缓存（AddMemoryCache 重复调用安全，返回同一实例）。
+        services.AddMemoryCache();
+        services.AddSingleton<ILoginAttemptTracker, InMemoryLoginAttemptTracker>();
+
         // 持久化（SQLite + Dapper）：连接工厂、架构迁移、仓储。
         // 数据库的实际初始化（迁移 / WAL / 种子）由宿主在启动阶段显式调用
         // IDatabaseInitializer，不在 DI 注册期执行。
@@ -126,4 +143,16 @@ public static class InfrastructureServiceCollectionExtensions
             return false;
         }
     }
+
+    /// <summary>
+    /// 校验 JWT 配置是否合法。
+    /// </summary>
+    /// <param name="options">待校验的选项。</param>
+    /// <returns>合法返回 <see langword="true"/>。</returns>
+    private static bool IsValidJwtOptions(JwtOptions options) =>
+        !String.IsNullOrWhiteSpace(options.Secret)
+        && Encoding.UTF8.GetByteCount(options.Secret) >= JwtOptions.MinSecretLengthBytes
+        && options.AccessTokenLifetime > TimeSpan.Zero
+        && options.RefreshTokenLifetime > TimeSpan.Zero
+        && options.RefreshTokenSizeBytes > 0;
 }

@@ -179,7 +179,7 @@
 | JWT access token 有效期 | **15 分钟** |
 | JWT refresh token 有效期 | **7 天**，写入数据库可撤销表 |
 | 初始管理员引导 | 环境变量 `ADMIN__USER` + `ADMIN__PASSWORD`（启动时若 `users` 表为空则创建） |
-| JWT Secret 来源 | 仅环境变量 `JWT__SECRET`；**缺失或过弱（<32 字节）则启动失败** |
+| JWT Secret 来源 | 生产环境**仅**环境变量 `JWT__SECRET`；**缺失或过弱（<32 字节）则启动失败**。开发环境例外：`appsettings.Development.json` 提供公开的占位密钥，以免本地开发必须记得导出环境变量 |
 | 0.4.0 终端短时 token | `POST /api/v1/auth/terminal-token` 返回 5 分钟过期 token，**仅能用于 WebSocket `/ws/hosts/{hostId}/containers/exec`** |
 
 ### 速率限制
