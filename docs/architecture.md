@@ -697,8 +697,24 @@ public interface IDockerClientPool
 | `auth_kind` | `auth_config_json` 结构 |
 |-------------|------------------------|
 | `none` | `NULL` |
-| `tls` | `{ "ca": "<PEM>", "cert": "<PEM>", "key": "<PEM>" }`（三项均可省略，用于「仅校验服务端 CA」的场景） |
+| `tls` | `{ "caCertificatePath": "/certs/ca.pem", "clientCertificatePath": "/certs/cert.pem", "clientKeyPath": "/certs/key.pem", "clientKeyPassword": "…"（可选） }` |
 | `basic` | `{ "username": "...", "password": "..." }` |
+
+> **为什么 TLS 存的是**路径**而不是 PEM 内容**（0.0.8 定案，与早期草稿不同）：
+> 1. **私钥不进数据库**——明文私钥落盘要等 0.4.0 的字段级加密，而存路径当下就没这个问题；
+> 2. 与 `docker --tlscacert/--tlscert/--tlskey` 及 `~/.docker` 目录一致，运维不必转换格式；
+> 3. 管理 API 可以安全地**回显**配置（路径不是机密）。若存 PEM，编辑表单要么把私钥回显给浏览器，
+>    要么发明「留空表示不修改」这种别扭约定。
+>
+> 代价：证书必须挂进容器（compose 里 `-v ~/.docker:/certs:ro`），远程主机需各自就位。
+
+> **TLS 三项均为必填**：缺 CA 就等于接受任意服务端证书（可被中间人冒充），缺客户端证书则守护进程
+> 会拒绝连接。因此不存在「只给一部分」的降级用法；「仅校验服务端 CA、不出示客户端证书」排在
+> 0.1.0 之后（需要自定义认证提供器）。
+>
+> **端点形态**：TLS 必须写成 `https://host:2376`（默认端口 2376，与 `docker --tlsverify` 一致）。
+> 在 `tcp://` 上给 TLS 凭据会被**拒绝**（`1301`）——库只在 TLS 通道上使用客户端证书，
+> 放行等于“看起来启用了 TLS、实际是明文未认证连接”。
 
 > **实体侧不做 JSON 解析**：`DockerHost` 只把它当作两个 `internal` 投影属性（`AuthKind` / `AuthConfigJson`），
 > 对外暴露计算属性 `Credentials`（`HostCredentials` 值对象）。原因见

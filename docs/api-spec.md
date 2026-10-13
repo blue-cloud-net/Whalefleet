@@ -334,6 +334,27 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 删除主机 | `POST /api/v1/admin/hosts/{hostId}/delete` | admin | 无 Body |
 | 测试主机 | `POST /api/v1/admin/hosts/test` | admin | Body: `{ type, endpoint, tlsConfig?, basicAuth? }`——测试**未保存**的配置，故不带 `hostId` |
 
+**`tlsConfig` 字段**（`auth_kind=tls`，三项路径均必填）：
+
+```jsonc
+{
+  "caCertificatePath": "/certs/ca.pem",        // 必填：校验服务端证书（否则等于接受任意服务端证书）
+  "clientCertificatePath": "/certs/cert.pem",  // 必填：客户端证书
+  "clientKeyPath": "/certs/key.pem",           // 必填：客户端私钥
+  "clientKeyPassword": "…"                      // 可选：私钥加密口令
+}
+```
+
+**`basicAuth` 字段**（`auth_kind=basic`）：`{ "username": "...", "password": "..." }`（均必填）。
+
+> `tlsConfig` 与 `basicAuth` **互斥**，且都可省略（省略即无认证）。
+> 字段值是**容器内可见的文件路径**而非 PEM 内容——理由见
+> [architecture.md](./architecture.md#主机凭据auth_config_json)。路径非法或文件读不到时，
+> 创建/测试会返回 `1301`。
+>
+> **TLS 必须用 `https://` 端点**（默认端口 2376）：在 `tcp://` 上配置 TLS 凭据会被拒绝
+> （`1301`）——放行会导致「看起来启用了 TLS、实际是明文未认证连接」。
+
 ---
 
 ### 容器管理（0.0.9 / 0.2.0）
