@@ -14,7 +14,7 @@ namespace Docker.Manager.Infrastructure.Persistence;
 /// </summary>
 /// <remarks>
 /// <para><b>为什么需要它</b>：0.0.4 的验收标准是「登录成功」，但此时还没有任何创建用户的入口
-/// （用户管理 API 在 0.0.8，且要求 admin 身份），存在鸡生蛋问题。因此部署迭代（现 0.0.14）的引导被提前到这一版。</para>
+/// （用户管理 API 在 0.0.8，且要求 admin 身份），存在鸡生蛋问题。因此部署迭代（现 0.0.15）的引导被提前到这一版。</para>
 /// <para><b>为什么通过 <see cref="IServiceScopeFactory"/> 取仓储</b>：与 <see cref="DatabaseInitializer"/>
 /// 同理——本类是单例，仓储是 Scoped，直接注入会构成捕获依赖。</para>
 /// <para><b>日志纪律</b>：只记用户名，<b>绝不</b>记密码。</para>

@@ -55,7 +55,7 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
             ValidationErrorFormatter.Format(context.ModelState)));
 });
 
-// 健康检查占位（0.0.14 增强为 SQLite 连通性检查）
+// 健康检查占位（0.0.15 增强为 SQLite 连通性检查）
 builder.Services.AddHealthChecks();
 
 // 监听地址由 appsettings.json 的 "Urls" 提供（生产默认 http://+:8080）。
