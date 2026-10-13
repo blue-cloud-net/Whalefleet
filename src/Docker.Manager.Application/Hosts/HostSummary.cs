@@ -15,6 +15,7 @@ namespace Docker.Manager.Application.Hosts;
 /// <see langword="null"/> 表示**未探测**（创建 / 更新后返回，避免写操作被网络超时拖住）。
 /// </param>
 /// <param name="AuthKind">认证方式（用于界面展示"这台机器带不带凭据"，<b>不含任何凭据内容</b>）。</param>
+/// <param name="GroupId">所属分组主键；<see langword="null"/> 表示未分组。</param>
 /// <remarks>
 /// <para><b>为什么不直接返回实体</b>：<c>DockerHost</c> 带审计字段、凭据投影与领域方法，
 /// 直接序列化既泄漏内部结构，也会把「凭据」这类敏感字段带出去。</para>
@@ -28,4 +29,5 @@ public sealed record HostSummary(
     string Endpoint,
     bool Enabled,
     bool? Reachable,
-    DockerHostAuthKind AuthKind);
+    DockerHostAuthKind AuthKind,
+    Guid? GroupId);

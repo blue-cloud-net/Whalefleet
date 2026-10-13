@@ -1,6 +1,7 @@
 using Docker.Manager.Application.Abstractions;
 using Docker.Manager.Application.Auth;
 using Docker.Manager.Application.Containers;
+using Docker.Manager.Application.HostGroups;
 using Docker.Manager.Application.Hosts;
 using Docker.Manager.Application.Images;
 using Docker.Manager.Application.Users;
@@ -51,6 +52,9 @@ public static class ApplicationServiceCollectionExtensions
 
         // 镜像用例（0.0.10）。Scoped：依赖 Scoped 的主机访问器。
         services.AddScoped<ImageService>();
+
+        // 主机分组用例（0.0.13）。Scoped：依赖 Scoped 的仓储。
+        services.AddScoped<HostGroupService>();
 
         return services;
     }

@@ -244,7 +244,8 @@ public sealed class HostService
         host.Endpoint.Value,
         host.Enabled,
         reachable,
-        host.Credentials.Kind);
+        host.Credentials.Kind,
+        host.GroupId);
 
     private static HostCredentials ResolveCredentials(DockerHost host, UpdateHostRequest request)
     {

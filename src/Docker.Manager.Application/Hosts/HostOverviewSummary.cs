@@ -34,7 +34,8 @@ public sealed record HostOverviewSummary(
     HostConnectivityStatus Status,
     HostResourceCounts? Counts,
     DateTimeOffset? StartedAt,
-    HostVersionDetail? Version);
+    HostVersionDetail? Version,
+    Guid? GroupId);
 
 /// <summary>
 /// 主机连通状态。

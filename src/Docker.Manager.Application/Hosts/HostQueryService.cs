@@ -246,7 +246,8 @@ public sealed class HostQueryService
             Status: status,
             Counts: counts,
             StartedAt: startedAt,
-            Version: version);
+            Version: version,
+            GroupId: host.GroupId);
 
     /// <summary>
     /// 投影版本信息。

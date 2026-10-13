@@ -84,6 +84,16 @@ public static class ErrorCodes
     /// <summary>主机名已被占用（HTTP 400）。</summary>
     public const int HostNameAlreadyExists = 1303;
 
+    /// <summary>分组名已被占用（HTTP 400）。</summary>
+    /// <remarks>
+    /// 与 <see cref="HostNameAlreadyExists"/> 分开而非复用：两者都是「名字冲突」，
+    /// 但界面需要把提示精确落在对应字段上，错误码一旦合并就再也分不开了。
+    /// </remarks>
+    public const int GroupNameAlreadyExists = 1304;
+
+    /// <summary>分组不存在（HTTP 404）。</summary>
+    public const int GroupNotFound = 1305;
+
     // ==================== 1400-1499 资源操作 ====================
 
     /// <summary>Docker 资源（容器 / 镜像 / Volume / Network）不存在（HTTP 404）。</summary>

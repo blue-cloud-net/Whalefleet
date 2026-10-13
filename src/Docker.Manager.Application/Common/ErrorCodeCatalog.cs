@@ -47,6 +47,8 @@ public static class ErrorCodeCatalog
             [ErrorCodes.HostUnreachable] = (ErrorCategory.UpstreamFailure, "主机连通性失败"),
             [ErrorCodes.HostDisabled] = (ErrorCategory.Validation, "主机已停用"),
             [ErrorCodes.HostNameAlreadyExists] = (ErrorCategory.Validation, "主机名已被占用"),
+            [ErrorCodes.GroupNameAlreadyExists] = (ErrorCategory.Validation, "分组名已被占用"),
+            [ErrorCodes.GroupNotFound] = (ErrorCategory.NotFound, "分组不存在"),
 
             [ErrorCodes.DockerResourceNotFound] = (ErrorCategory.NotFound, "容器 / 镜像 / Volume / Network 不存在"),
             [ErrorCodes.DockerApiFailed] = (ErrorCategory.Internal, "Docker API 调用失败"),
