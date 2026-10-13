@@ -657,13 +657,114 @@ POST /api/v1/hosts/{hostId}/containers/list
 
 | 操作 | 路径 | 阶段 | 说明 |
 |------|------|------|------|
-| 获取列表 | `POST /api/v1/hosts/{hostId}/images/list` | 0.0.10 | Body: `{ pageIndex, pageSize }` |
-| 拉取 | `POST /api/v1/hosts/{hostId}/images/pull` | 0.0.10 | Body: `{ image, tag }`；0.0.10 一次性返回结果，0.3.0 改 SignalR 实时进度 |
-| 删除 | `POST /api/v1/hosts/{hostId}/images/remove` | 0.0.10 | Body: `{ imageId, force? }` |
+| 获取列表 | `POST /api/v1/hosts/{hostId}/images/list` | 0.0.10 | Body: `{ all?, search?, pageIndex?, pageSize? }`；分页在服务端**内存**完成（Docker 无分页参数），`pageSize` 上限 100 |
+| 拉取 | `POST /api/v1/hosts/{hostId}/images/pull` | 0.0.10 | Body: `{ image, tag?, platform? }`；0.0.10 一次性返回结果，0.3.0 改 SignalR 实时进度 |
+| 删除 | `POST /api/v1/hosts/{hostId}/images/remove` | 0.0.10 | Body: `{ imageId, force? }`；被容器占用的镜像返回 `1404`/409 |
 | **批量删除** | `POST /api/v1/hosts/{hostId}/images/batch-remove` | 0.2.0 | Body: `{ imageIds: [...] }` |
 | 获取详情 | `POST /api/v1/hosts/{hostId}/images/inspect` | 0.0.10 | Body: `{ imageId }` |
 | **构建镜像** | `POST /api/v1/hosts/{hostId}/images/build` | 0.2.0 | multipart: Dockerfile + context tar；通过 SignalR 临时频道推送进度 |
 | **Push 镜像** | `POST /api/v1/hosts/{hostId}/images/push` | 0.4.0 | Body: `{ imageId, registryId }` |
+
+#### 查询端点的请求 / 响应形态（0.0.10 已实现）
+
+```jsonc
+// POST /api/v1/hosts/local/images/list
+// Request
+{ "search": "nginx", "pageIndex": 0, "pageSize": 20 }
+// Response.data
+{
+  "items": [
+    {
+      "id": "sha256:3f2c…",
+      "repoTags": ["nginx:latest", "nginx:1.27"],   // 悬挂镜像（<none>）为空数组
+      "repoDigests": ["nginx@sha256:abc…"],
+      "created": "2026-01-02T03:04:05+00:00",
+      "size": 187654321,                              // 字节
+      "sharedSize": 0,                                // 与其他镜像共享的字节数
+      "containerCount": 2                            // 引用该镜像的容器数
+    }
+  ],
+  "total": 5, "pageIndex": 0, "pageSize": 20
+}
+```
+
+```jsonc
+// POST /api/v1/hosts/local/images/inspect
+// Request
+{ "imageId": "nginx:latest" }      // 可传镜像 ID、short ID、仓库名或仓库名:标签
+// Response.data
+{
+  "id": "sha256:3f2c…",
+  "repoTags": ["nginx:latest"],
+  "repoDigests": ["nginx@sha256:abc…"],
+  "created": "2026-01-02T03:04:05+00:00",
+  "size": 187654321,
+  "architecture": "amd64", "os": "linux", "osVersion": "",
+  "author": "", "comment": "",
+  "env": ["PATH=/usr/local/sbin:…"],
+  "cmd": ["nginx", "-g", "daemon off;"],
+  "entrypoint": ["/docker-entrypoint.sh"],
+  "exposedPorts": ["80/tcp", "443/tcp"],           // 去重后的键列表（Docker 那两个字段的值是空的）
+  "volumes": ["/var/cache/nginx"],
+  "labels": { "maintainer": "NGINX Docker Maintainers" },
+  "workingDir": "",
+  "layerCount": 7
+}
+```
+
+```jsonc
+// POST /api/v1/hosts/local/images/pull
+// Request
+{ "image": "nginx", "tag": "latest", "platform": "linux/amd64" }
+// Response.data
+{
+  "imageId": "sha256:3f2c…",
+  "reference": "nginx:latest",
+  "size": 187654321,
+  "repoTags": ["nginx:latest"]
+}
+
+// POST /api/v1/hosts/local/images/remove
+// Request
+{ "imageId": "nginx:latest", "force": false }
+// Response.data
+{ "untagged": ["nginx:1.27"], "deleted": ["sha256:3f2c…"] }   // 两者均为空数组（只解绑引用）
+```
+
+> **`image` + `tag` 的拼接规则**：`tag` 省略或为空时默认 `latest`。
+> ⚠️ 若 `image` **已经含标签**（如 `nginx:1.27`）又传了另一个 `tag`，服务端返回 `1000`/400
+> 而不是静默拼成 `nginx:1.27:alpine`——后者是 Docker 会接受但语义完全不是用户所想的写法。
+>
+> **拉取失败有两条路径，都要处理**：
+> - 「镜像 / 仓库不存在」→ Docker 返回 404，**SDK 抛异常** → `1401`/404
+> - 「仓库不让你拉」「网络中断」→ HTTP 层仍然是 200，错误**只在进度流里**带一条 `error`，
+>   SDK 毫不知情 → 服务端检查进度消息后翻译成 `1402`/500，消息里带上守护进程给的原因
+>
+> 只等 `await` 返回而不检查进度流，第二类会被报成「200 + 空结果」——比报错更难排查。
+>
+> **0.0.10 的拉取进度只进日志**：拉取层数大时可以到几十秒，一次性 HTTP 响应期间客户端只能干等
+> （前端可以先转圈）。进度同时写进 Serilog（Debug 逐层、Information 记完成）。
+> **SignalR 实时进度推到 0.3.0**——那时列表页与详情页也顺带接上。
+>
+> **拉取完成后额外做一次 inspect**：为了让「拉取成功」的响应直接带上镜像 ID 与大小
+> （验收标准要求），必须在完成后读一次镜像元数据；否则调用方还要再发一次请求才知道拉了什么。
+>
+> **`platform` 用于多架构镜像**：省略时由守护进程按主机架构选择；显式传 `linux/arm64` 可以
+> 在 amd64 主机上拉 arm64 镜像（随后创建容器时需要配 `platform`）。
+>
+> **删除会连带解绑多个标签**：同一镜像 ID 可能有多个 `repoTag`，删除时守护进程返回哪些标签被解绑、
+> 哪个 ID 被真正删除，上面的 `untagged` / `deleted` 就是这个——界面上要把被解绑的标签告诉用户，
+> 否则会出现「我删了镜像，列表里另一个标签还在」的困惑。
+>
+> **`remove` 永远不传 `noPrune`**：那会连带删掉所有未被引用的父层镜像，
+> 而本项目没有暴露任何“清理悬空层”的入口，删镜像顺手清了别的镜像是不可预期的数据损失。
+>
+> **分页语义**：与容器列表一致（Docker 无分页参数，服务端内存切片，`pageSize` 默认 20 / 上限 100，
+> 夹紧后的值回显）。列表顺序沿用守护进程的返回顺序（**创建时间降序**）——它是稳定的，
+> 额外重排只会让「翻页时看到的东西变了」更难解释。
+>
+> **`search` 按仓库名 / 标签模糊匹配**（不区分大小写）：在本地过滤，不走 Docker 的 `filters` 参数，
+> 因为那是精确匹配且需要按字段拼 JSON；镜像多了之后它只作用于已拉全量的内存切片，成本可忽略。
 
 ---
 
