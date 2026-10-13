@@ -28,6 +28,7 @@ public static class ErrorHttpStatus
         ErrorCategory.RateLimited => StatusCodes.Status429TooManyRequests,
         ErrorCategory.Timeout => StatusCodes.Status408RequestTimeout,
         ErrorCategory.Forbidden => StatusCodes.Status403Forbidden,
+        ErrorCategory.Conflict => StatusCodes.Status409Conflict,
         ErrorCategory.UpstreamFailure => StatusCodes.Status502BadGateway,
         ErrorCategory.Internal => StatusCodes.Status500InternalServerError,
         _ => StatusCodes.Status500InternalServerError,
