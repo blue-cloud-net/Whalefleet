@@ -42,6 +42,7 @@ public class ErrorHttpStatusTests
         [ErrorCodes.HostNotFound] = 404,
         [ErrorCodes.HostUnreachable] = 502,
         [ErrorCodes.HostDisabled] = 400,
+        [ErrorCodes.HostNameAlreadyExists] = 400,
 
         [ErrorCodes.DockerResourceNotFound] = 404,
         [ErrorCodes.DockerApiFailed] = 500,

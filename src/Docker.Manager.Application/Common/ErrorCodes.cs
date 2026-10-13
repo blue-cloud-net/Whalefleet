@@ -81,6 +81,9 @@ public static class ErrorCodes
     /// <summary>主机已停用（HTTP 400）。</summary>
     public const int HostDisabled = 1302;
 
+    /// <summary>主机名已被占用（HTTP 400）。</summary>
+    public const int HostNameAlreadyExists = 1303;
+
     // ==================== 1400-1499 资源操作 ====================
 
     /// <summary>Docker 资源（容器 / 镜像 / Volume / Network）不存在（HTTP 404）。</summary>

@@ -29,6 +29,15 @@ namespace Docker.Manager.Core.Users;
 public sealed class Role : FullAuditedEntity<Guid, Guid>
 {
     /// <summary>
+    /// 内置管理员角色名。
+    /// </summary>
+    /// <remarks>
+    /// 它是<b>唯一</b>的管理入口依托：<c>[Authorize(Roles = Role.AdminName)]</c> 与初始管理员引导
+    /// 都引用这里，避免同一个字符串在多处各写一遍而漂移。该角色由 <c>is_built_in</c> 标记为不可删。
+    /// </remarks>
+    public const string AdminName = "admin";
+
+    /// <summary>
     /// 角色名最小长度（去首尾空白后）。
     /// </summary>
     public const int MinNameLength = 2;

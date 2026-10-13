@@ -24,7 +24,7 @@ internal sealed class AdminBootstrapper : IAdminBootstrapper
     /// <summary>
     /// 初始管理员所用的内置角色名。
     /// </summary>
-    internal const string AdminRoleName = "admin";
+    internal const string AdminRoleName = Role.AdminName;
 
     private readonly IDbConnectionFactory _connections;
     private readonly IServiceScopeFactory _scopeFactory;

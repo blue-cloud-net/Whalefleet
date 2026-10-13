@@ -1,5 +1,6 @@
 using Docker.Manager.Application.Abstractions;
 using Docker.Manager.Application.Auth;
+using Docker.Manager.Application.Hosts;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -30,6 +31,9 @@ public static class ApplicationServiceCollectionExtensions
 
         // 认证用例（0.0.4）。Scoped：依赖 Scoped 的仓储（其取值来自当前请求）。
         services.AddScoped<AuthService>();
+
+        // 主机管理用例（0.0.8）。同样 Scoped：依赖 Scoped 的仓储与主机访问器。
+        services.AddScoped<HostService>();
 
         return services;
     }
