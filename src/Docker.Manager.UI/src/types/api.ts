@@ -180,5 +180,27 @@ export interface HostOverview extends HostInfo {
 export interface CurrentUser {
   id: string
   username: string
-  role: 'admin' | 'user'
+  /**
+   * 角色名（后端 `roles` 表，内置值为 `admin` / `operator` / `viewer` / `auditor`）。
+   *
+   * 刻意声明为 `string` 而非字面量联合：角色是**数据**不是枚举，
+   * 新增角色不应该需要改前端类型（0.0.8 起支持自定义角色）。
+   * 判断用 `=== 'admin'`（见 auth store 的 `isAdmin`），而不是穷举所有角色。
+   */
+  role: string
+}
+
+/**
+ * 登录 / 刷新的返回体（对应后端 `LoginResponse`）。
+ *
+ * 刷新返回的结构与登录**完全一致**：后端每次刷新都会轮换刷新令牌，
+ * 不存在"只返回 access token"的形态。因此调用方必须用返回值覆盖本地两个令牌，
+ * 沿用旧刷新令牌会被服务端判定为重放（详见 docs/api-spec.md 的轮换语义表）。
+ */
+export interface LoginResult {
+  accessToken: string
+  refreshToken: string
+  /** access token 剩余有效秒数，前端据此安排静默刷新 */
+  expiresIn: number
+  user: CurrentUser
 }

@@ -31,7 +31,10 @@ app.use(ElementPlus)
 // ===== 主题：启动即同步到 <html>，避免首屏闪烁 =====
 useThemeStore().applyToDocument()
 
-// ===== 登录态恢复（0.0.4 接入真实 refresh 后再补校验）=====
+// ===== 登录态恢复 =====
+// 令牌由持久化插件还原；这里**不**发起预刷新：多标签页共用 storage，
+// 各自预刷会被服务端判为重放（刷新令牌一次性）而撤销全部会话。
+// 续期按需发生——等请求真收到 401 时由 api/index.ts 静默刷新。
 useAuthStore().bootstrap()
 
 // ===== 清理主机 store 的历史持久化数据（该 store 已改为不持久化）=====

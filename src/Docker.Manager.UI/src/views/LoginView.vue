@@ -3,8 +3,10 @@ import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useTheme } from '@/composables/useTheme'
+import { ApiRequestError } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { setLocale, type AppLocale } from '@/locales'
+import { ErrorCode } from '@/types/api'
 import LangSwitcher from '@/components/common/LangSwitcher.vue'
 
 const { t, locale } = useI18n()
@@ -15,6 +17,7 @@ const { color, resolvedMode, setMode, setColor } = useTheme()
 
 const formRef = ref()
 const loading = ref(false)
+const errorMessage = ref('')
 
 const form = reactive({
   username: '',
@@ -22,27 +25,55 @@ const form = reactive({
 })
 
 const rules = {
-  username: [{ required: true, message: t('auth.login.username'), trigger: 'blur' }],
-  password: [{ required: true, message: t('auth.login.password'), trigger: 'blur' }]
+  username: [{ required: true, message: t('auth.login.usernameRequired'), trigger: 'blur' }],
+  password: [{ required: true, message: t('auth.login.passwordRequired'), trigger: 'blur' }]
 }
 
 /**
- * 0.0.5 阶段：登录按钮为静态占位，填任意内容即可进入（用于打通路由守卫验证）。
- * 0.0.4 后端 POST /api/v1/auth/login 就绪后替换为真实调用。
+ * 登录提交。
+ *
+ * 失败文案取自**错误码**而不是后端 `message`：后端文案是中文的，
+ * 直接透出会让英文界面中英夹杂（认证端点的 401 也不再会被拦截器 toast，见 api/index.ts）。
  */
 async function onSubmit() {
-  await formRef.value?.validate()
+  if (loading.value) return
+
+  errorMessage.value = ''
+
+  // Element Plus 的 validate() 在失败时 reject；这里接住，避免未处理的拒绝。
+  const valid = await formRef.value?.validate().catch(() => false)
+  if (!valid) return
+
   loading.value = true
-  // 占位：构造一个假 token 以便演示守卫
-  auth.setTokens('placeholder-access-token', 'placeholder-refresh-token')
-  auth.setUser({
-    id: 'u-0',
-    username: form.username || 'admin',
-    role: 'admin'
-  })
-  loading.value = false
-  const redirect = route.query.redirect as string | undefined
-  router.push(redirect || '/overview')
+
+  try {
+    await auth.login(form.username, form.password)
+
+    const redirect = route.query.redirect as string | undefined
+
+    // 用 replace：登录成功后再回退不应该回到登录页
+    await router.replace(redirect || '/overview')
+  } catch (error) {
+    errorMessage.value = describeLoginError(error)
+  } finally {
+    loading.value = false
+  }
+}
+
+/** 把失败码映射成用户能看懂的文案。 */
+function describeLoginError(error: unknown): string {
+  if (!(error instanceof ApiRequestError)) {
+    return t('auth.login.failed')
+  }
+
+  switch (error.code) {
+    case ErrorCode.Unauthenticated:
+      return t('auth.login.invalidCredentials')
+    case ErrorCode.LoginRateLimited:
+      return t('auth.login.rateLimited')
+    default:
+      return t('auth.login.failed')
+  }
 }
 </script>
 
@@ -101,6 +132,15 @@ async function onSubmit() {
               <template #prefix><span class="i-carbon-locked text-gray-400" /></template>
             </el-input>
           </el-form-item>
+
+          <p
+            v-if="errorMessage"
+            class="mb-3 -mt-1 text-xs text-red-500 dark:text-red-400 flex items-center gap-1"
+            role="alert"
+          >
+            <span class="i-carbon-warning-alt shrink-0" />
+            {{ errorMessage }}
+          </p>
 
           <el-button
             type="primary"

@@ -99,9 +99,10 @@ function goHostDashboard() {
   router.push({ name: 'host-dashboard', params: { hostId: String(route.params.hostId ?? '') } })
 }
 
-function logout() {
-  auth.logout()
-  router.push({ name: 'login' })
+async function logout() {
+  // 本地会话在 auth.logout() 内先被清空，随后才请求撤销服务端令牌（失败也不阻塞退出）。
+  await auth.logout()
+  await router.push({ name: 'login' })
 }
 
 function switchLocale(next: AppLocale) {

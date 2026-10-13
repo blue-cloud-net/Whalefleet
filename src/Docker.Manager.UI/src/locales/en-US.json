@@ -30,6 +30,11 @@
   "auth.login.username": "Username",
   "auth.login.password": "Password",
   "auth.login.submit": "Sign in",
+  "auth.login.usernameRequired": "Please enter your username",
+  "auth.login.passwordRequired": "Please enter your password",
+  "auth.login.invalidCredentials": "Incorrect username or password",
+  "auth.login.rateLimited": "Too many attempts. Please try again in a minute.",
+  "auth.login.failed": "Sign-in failed. Please try again later.",
   "auth.logout": "Sign out",
 
   "nav.overview": "Overview",
