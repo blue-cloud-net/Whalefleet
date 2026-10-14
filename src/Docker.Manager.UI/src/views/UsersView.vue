@@ -166,7 +166,7 @@ watch(() => auth.user?.username, load, { immediate: true })
         :row-key="(row: AdminUserSummary) => row.id"
         empty-text=""
       >
-        <el-table-column :label="t('user.col.username')" min-width="200">
+        <el-table-column :label="t('user.col.username')" min-width="240">
           <template #default="{ row }">
             <div class="flex items-center gap-2">
               <span class="font-medium text-content-strong">{{ row.username }}</span>
