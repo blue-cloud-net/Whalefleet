@@ -12,6 +12,9 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Docker.Manager.UnitTests" />
+    <!-- 0.0.15：ReverseProxy 配置解析是 internal，但它的失败模式（「静默忽略写错的代理」）
+         必须能被钉住；集成测试是唯一可测 Api 内部的测试项目（单测项目禁止引用 Api）。 -->
+    <InternalsVisibleTo Include="Docker.Manager.IntegrationTests" />
   </ItemGroup>
 
   <ItemGroup>

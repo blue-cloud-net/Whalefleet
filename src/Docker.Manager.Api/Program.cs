@@ -1,5 +1,6 @@
 using Docker.Manager.Api.DependencyInjection;
 using Docker.Manager.Api.Development;
+using Docker.Manager.Api.Configuration;
 using Docker.Manager.Api.Errors;
 using Docker.Manager.Api.Middleware;
 using Docker.Manager.Api.Serialization;
@@ -70,6 +71,12 @@ builder.Services.AddHealthChecks();
 var app = builder.Build();
 
 // ============================== 管道顺序（不可随意调整） ==============================
+// 0) 反向代理头修正：必须最先执行。
+//    它改写 Connection.RemoteIpAddress，而限流计数与请求日志都读这个值——
+//    任何在它之前读取的中间件都会把「反代的 IP」当成「客户端的 IP」。
+//    未配置 ReverseProxy 白名单时本步不注册（保持直连语义），详见 ForwardedHeadersExtensions。
+app.UseConfiguredForwardedHeaders(builder.Configuration);
+
 // 1) 全局异常处理：必须是管道中第一个中间件，否则注册在它之前的中间件抛出的异常不会被捕获。
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
