@@ -58,9 +58,27 @@ UnoCSS 默认 + 自定义：
 | 层 | 用途 | 示例 | 位置 |
 |---|---|---|---|
 | **Layout 层** | 顶级布局 | `AppLayout`（+ `AppBreadcrumb` / `AppSidebar` / `SidebarNav` / `UserMenu`） | `src/Docker.Manager.UI/src/layouts/` |
-| **通用组件** | 跨页面复用 | `EmptyState`、`PlaceholderSection`、`Skeleton`（用 `el-skeleton`）、`SectionCard`、`StatCard`、`PageHeader`、`StatusDot`；待加 `StatusBadge`、`JsonTree`、`CopyableText`、`ConfirmDialog`、`CommandPalette` | `src/Docker.Manager.UI/src/components/common/` |
-| **业务组件** | 领域专用 | `HostHero`、`ResourceTile`、`HostCard`、`HostGroupSection`、`HostSelector`；待加 `ContainerStatusBadge`、`ImageSize`、`PortMappingEditor`、`EnvVarEditor`、`VolumeMountEditor` | `src/Docker.Manager.UI/src/components/business/` |
+| **通用组件** | 跨页面复用 | `EmptyState`、`PlaceholderSection`、`SectionCard`、`StatCard`、`PageHeader`、`StatusDot`、`IconActionButton`、`LangSwitcher`、`ThemeSwitcher`、`MockBadge`（开发期）；0.0.14 新增 `StatusBadge`、`JsonTree`、`CopyableText`、`CommandPalette`、`ShortcutHelpDialog` | `src/Docker.Manager.UI/src/components/common/` |
+| **业务组件** | 领域专用 | `HostHero`、`ResourceTile`、`HostCard`、`HostGroupSection`、`HostSelector`；各 `*Dialog.vue`（创建 / 编辑 / 改密）；0.0.14 新增 `ContainerStatusBadge`、`ImageSize`、`PortMappingEditor`、`EnvVarEditor`、`VolumeMountEditor` | `src/Docker.Manager.UI/src/components/business/` |
 | **View 层** | 路由对应的页面 | 每个路由一个 .vue 文件 | `src/Docker.Manager.UI/src/views/` |
+
+> 加载态用 `el-skeleton` 直接写，不单独包一层 `Skeleton.vue`——包装组件省下的
+> 那点模板量换不来一次额外的间接层。
+
+### 行式输入编辑器（0.0.14）
+
+端口 / 挂载 / 环境变量三个字段统一由 `*Editor.vue` 承担，两条约定：
+
+1. **双模**：批量粘贴与逐行编辑共用同一份解析逻辑（`utils/container-input.ts`）。
+   分成两条解析路径必然出现「粘贴能建、手填建不了」。
+2. **出错行号必须回传父级**（`v-model:error-line`）：解析失败时编辑器给出的结构化
+   数组只含出错行**之前**的合法部分，父级若看不到行号就会提交这份残缺数据，
+   建出一个「少了一条环境变量却提示成功」的容器。因此编辑器自己显示错误
+   （带行号），父级据此禁用提交。
+
+> **不要给编辑器加后端没有的开关。** 挂载类型（bind / 具名卷）就是现成的反例：
+> 后端 `ContainerVolumeMapping` 没有 `type` 字段，类型由 Docker 按来源路径是否存在
+> 判定，界面上加下拉只会得到一个「选了也不生效」的选项。
 
 > 新增组件前先确认真会有人用。仓库里曾有一个 `HostStatusPanel.vue`——
 > 内容与 `HostStatusView.vue` 重复且全仓无引用，属于死代码，已删除。

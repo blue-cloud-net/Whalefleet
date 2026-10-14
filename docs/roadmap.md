@@ -450,8 +450,9 @@ CI：
   - `JsonTree` 按类型着色叶子标量，替代原先只能全量 `<pre>` 的 inspect 展示
 - ✅ 业务组件：`ContainerStatusBadge`、`ImageSize`、`PortMappingEditor`、`EnvVarEditor`、`VolumeMountEditor`
   - 三个编辑器都是「批量粘贴 + 逐行编辑」双模：用户手上的环境变量与端口几乎总是已经存在的，逐行填表格是纯粹的重复劳动
-  - 解析逻辑抽到 `utils/container-input.ts` 并单测：判错时不抛异常，而是**惄惄建出一个与用户意图不同的容器**
-
+  - 解析逻辑抽到 `utils/container-input.ts` 并单测：判错时不抛异常，而是**惄惄建出一个与用户意图不同的容器**  - 三个编辑器**已接进页面**（不是建完就搁置）：`ContainerStatusBadge` 用于容器列表与详情页，`ImageSize` 用于镜像列表与详情页（并区分独占层体积 / 逻辑总体积），`JsonTree` 替换镜像详情页的全量 `<pre>`
+  - ⚠️ **撤掉了挂载类型选择器**：后端 `ContainerVolumeMapping` 根本没有 `type` 字段（bind 与具名卷由 Docker 按来源路径是否存在判定），界面加下拉只会得到一个「选了也不生效」的开关
+  - 解析失败时编辑器只回传**出错行之前**的合法部分，因此 `errorLine` 必须经 `v-model:error-line` 回传父级禁用提交——否则会建出「少了一条环境变量却提示成功」的容器
 仓库：
 - ✅ `README.md` 完善：CI 徽章、功能截图占位、文档链接矩阵、`docker run` 命令、**Docker Socket 挂载安全风险说明 + 推荐 socket-proxy 模式**
   - 修正了若干**不实描述**：原 README 让用户 `docker compose up` 与拉取镜像，但 `Dockerfile` / `docker-compose.yml` 要到 0.0.15 才交付；且 `SECURITY.md` / `CONTRIBUTING.md` 从未存在。现在明确区分「当前可用」与「目标形态」
