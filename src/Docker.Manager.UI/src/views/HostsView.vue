@@ -5,7 +5,6 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/common/PageHeader.vue'
 import SectionCard from '@/components/common/SectionCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-import IconActionButton from '@/components/common/IconActionButton.vue'
 import HostFormDialog from '@/components/business/HostFormDialog.vue'
 import GroupFormDialog from '@/components/business/GroupFormDialog.vue'
 import { deleteHost, listAdminHosts, updateHost } from '@/api/host'
@@ -334,18 +333,18 @@ watch(() => t, load, { immediate: true })
           </template>
         </el-table-column>
 
-        <el-table-column :label="t('container.col.actions')" width="100" align="right">
+        <el-table-column :label="t('container.col.actions')" width="150" align="right">
           <template #default="{ row }">
-            <div class="flex items-center justify-end gap-0.5">
-              <IconActionButton icon="i-carbon-edit" :label="t('common.edit')" @click="openEdit(row)" />
-              <IconActionButton
-                icon="i-carbon-trash-can"
-                :label="t('common.delete')"
-                tone="danger"
-                :loading="busyNames.has(row.name)"
-                @click="onDelete(row)"
-              />
-            </div>
+            <el-button size="small" text @click="openEdit(row)">{{ t('common.edit') }}</el-button>
+            <el-button
+              size="small"
+              text
+              type="danger"
+              :loading="busyNames.has(row.name)"
+              @click="onDelete(row)"
+            >
+              {{ t('common.delete') }}
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -388,19 +387,12 @@ watch(() => t, load, { immediate: true })
               </td>
               <td class="text-right text-sm tabular-nums">{{ group.hostCount }}</td>
               <td class="text-right pr-4">
-                <div class="flex items-center justify-end gap-0.5">
-                  <IconActionButton
-                    icon="i-carbon-edit"
-                    :label="t('common.edit')"
-                    @click="openEditGroup(group)"
-                  />
-                  <IconActionButton
-                    icon="i-carbon-trash-can"
-                    :label="t('common.delete')"
-                    tone="danger"
-                    @click="onDeleteGroup(group)"
-                  />
-                </div>
+                <el-button size="small" text @click="openEditGroup(group)">
+                  {{ t('common.edit') }}
+                </el-button>
+                <el-button size="small" text type="danger" @click="onDeleteGroup(group)">
+                  {{ t('common.delete') }}
+                </el-button>
               </td>
             </tr>
           </tbody>
