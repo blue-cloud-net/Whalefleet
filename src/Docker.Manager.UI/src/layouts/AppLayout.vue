@@ -28,9 +28,6 @@ const { sidebarCollapsed, toggleSidebar } = useTheme()
 /** 移动端抽屉开关（顶栏的菜单按钮打开，由侧边栏组件消费） */
 const drawerOpen = ref(false)
 
-/** 当前作用域：由路由 meta 决定 */
-const isHostScope = computed(() => route.meta.scope === 'host')
-
 /**
  * mock 是否开启。
  *
@@ -38,8 +35,18 @@ const isHostScope = computed(() => route.meta.scope === 'host')
  */
 const mockEnabled = import.meta.env.DEV && shouldUseMock()
 
-/** 内容区容器：窄屏不额外加宽，避免长行难读 */
-const contentWidth = computed(() => (isHostScope.value ? 'max-w-6xl' : ''))
+/**
+ * 内容区宽度。
+ *
+ * 默认全宽（`app-page` 自带的 `max-w-[1600px]`）——表格类页面列多，
+ * 收窄到 6xl 会让「名称 / 镜像 / 端口」同时挤到换行，反而更窄。
+ *
+ * 只有 `meta.narrow` 的页才收窄到 `max-w-6xl`：它们是详情 / 日志页，
+ * 正文是一行行长文本（环境变量、连接串、日志），1600px 的行宽眼睛要横跨整个屏幕才对得上行尾。
+ * 做成**默认宽、按需窄**而非反过来，是为了新增列表页时不必记得挂标记——
+ * 忘了的后果是多出一段空行，而反过来则是表格被挤到换行。
+ */
+const contentWidth = computed(() => (route.meta.narrow === true ? 'max-w-6xl' : ''))
 
 // 路由切换时关闭移动端抽屉
 watch(

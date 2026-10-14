@@ -17,6 +17,8 @@ import { useHostStore } from '@/stores/host'
  *   - showInSidebar (默认 true)：侧边栏是否展示
  *   - scope (默认 'global')：侧边栏按作用域切换菜单
  *   - icon / title：侧边栏展示用
+ *   - narrow (默认 false)：内容区收窄到 `max-w-6xl`。只给正文为长文本的详情 / 日志页开
+ *     （容器详情 / 容器日志 / 镜像详情）；表格页一律走默认的 1600px 全宽。
  */
 const routes: RouteRecordRaw[] = [
   {
@@ -105,16 +107,18 @@ const routes: RouteRecordRaw[] = [
       {
         // 容器详情。两级而非一级：列表页要先能进，详情才有意图可循。
         // 与 logs 同理不进侧边栏——它们是从列表跳进去的下级页，不是菜单项。
+        // narrow：正文是环境变量 / 挂载 / 连接串这类长文本，1600px 的行宽没法读。
         path: 'hosts/:hostId/containers/:id/inspect',
         name: 'host-container-inspect',
         component: () => import('@/views/ContainerInspectView.vue'),
-        meta: { scope: 'host', showInSidebar: false, title: 'container.detail.title' }
+        meta: { scope: 'host', showInSidebar: false, title: 'container.detail.title', narrow: true }
       },
       {
+        // 容器日志：同样按长文本页收窄，理由同 inspect。
         path: 'hosts/:hostId/containers/:id/logs',
         name: 'host-container-logs',
         component: () => import('@/views/ContainerLogsView.vue'),
-        meta: { scope: 'host', showInSidebar: false, title: 'container.logs.title' }
+        meta: { scope: 'host', showInSidebar: false, title: 'container.logs.title', narrow: true }
       },
       {
         path: 'hosts/:hostId/images',
@@ -125,10 +129,11 @@ const routes: RouteRecordRaw[] = [
       {
         // 镜像详情：与容器详情的安排一致——从列表跳进去的下级页，不进侧边栏。
         // `:id` 传**原始**镜像 ID（含 `sha256:`），由路由负责段内编码；调用方不要自己编码两遍。
+        // narrow：镜像配置（Env / Cmd / Volumes）是长文本，理由同容器详情。
         path: 'hosts/:hostId/images/:id/inspect',
         name: 'host-image-inspect',
         component: () => import('@/views/ImageInspectView.vue'),
-        meta: { scope: 'host', showInSidebar: false, title: 'image.detail.title' }
+        meta: { scope: 'host', showInSidebar: false, title: 'image.detail.title', narrow: true }
       },
       {
         path: 'hosts/:hostId/volumes',
