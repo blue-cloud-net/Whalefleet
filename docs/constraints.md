@@ -261,7 +261,7 @@ services:
 socket-proxy 默认仅授予 `GET`（只读 + 列出），如需写操作（创建容器、启动/停止等）按需开启对应子集。
 
 详细的安全声明与部署模式见仓库根 [README.zh-CN.md](../README.zh-CN.md#️-安全声明docker-socket-挂载)（[English](../README.md#️-security-notice-docker-socket-mounting)）。
-（独立的 `SECURITY.md` 随 0.0.15 的发布文档一起交付。）
+（独立的 `SECURITY.md` 已于 0.0.15 交付，其中「如何部署」比「代码如何安全」更重要。）
 
 ### 日志输出基线（0.0.2 起）
 

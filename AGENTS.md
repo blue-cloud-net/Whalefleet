@@ -167,6 +167,15 @@ DDD 战术模式（聚合根 / 领域事件 / 领域服务）**已整体移除**
 | 13 | **MSW 路径正则结尾别多写 `/`** | `/([^/]+)/update$/` 永远匹配不上（要求路径结束后还有斜杠），表现为端点 404 |
 | 14 | **模板里用到但从 script 删掉的 import**，Vue 只在渲染时报 `is not a function` | **整块内容空白且 v-loading 卡住**，看不出是编译问题。改完 import 必须真跑一次页面 |
 
+| 15 | **`.NET 8+ 的 aspnet 基础镜像自带 `app` 用户，UID 是 1654** | `groupadd --gid 10001 app` 会以 `group 'app' already exists` 失败，把镜像构建卡死。改用 `groupmod --gid` / `usermod --uid` |
+| 16 | **aspnet 运行时镜像不含 `curl` 与 `sqlite3`** | 健康检查会退化成「进程还在」（挡不住「进程活着但 SQLite 打不开」）；README 让人在容器内跑备份脚本也会失败。两者都要在 runtime 阶段显式装 |
+| 17 | **`MapFallbackToFile` 会吞掉打错的 `/api` 路径** | 症状是「接口返回 200 + HTML、日志里全是成功」，前端表现为 JSON 解析失败，几乎不可能靠读日志定位。SPA 回退必须显式排除 `/api` 与 `/healthz` |
+| 18 | **SPA 回退必须挂在 `UseCurrentHost` 之前** | 前端 `/hosts/{hostId}/...` 与接口 `/api/v1/hosts/{hostId}/...` 同前缀，而 `UseCurrentHost` 会把任何请求的 `hostId` 路由值当主机查库。放在它之后，每次刷新深链都先抛「主机不存在」 |
+| 19 | **`AddHealthChecks().AddCheck<T>(name)` 里的 `name` 不能省** | 直接注册 `IHealthCheck` 会以**实现类全名**作为注册项名字，而 `HealthCheckService` 按名字索引结果——结果是 `/healthz` 永远查不到该项，只能回退成 unhealthy |
+| 20 | **`apiFactory.WithSetting` 是就地修改（返回 `this`）** | 打在类共享的 `IClassFixture` 上会把配置留给本类**其他**用例，表现为「随机顺序下某条用例莫名失败」。需要坏配置时必须 `new ApiFactory()` |
+| 21 | **compose 的两种部署模式必须用 `profiles` 隔离，不能靠注释** | 两个 service 若共用 `container_name`，同时启动会直接冲突；而注释掉一个会让「另一种模式」在文件里彻底消失 |
+| 22 | **`sqlite3 .backup` 而非 `cp`** | 直接拷数据库文件拷到的是某一瞬时状态，正在写事务时可能拷出撕裂的文件，恢复时才报 `database disk image is malformed` |
+
 > **Dapper 物化能力（已核实，勿再沿用旧判断）**：Dapper **可以**物化「非公开构造 + 非公开 setter」
 > 的充血实体，用 `skipVisibility` 动态方法。**不需要** Row DTO，**不需要** `InternalsVisibleTo`。
 > 实体给一个非公开无参构造即可。IVT 仅在 Infrastructure 需以强类型代码直接调非公开成员时才要。

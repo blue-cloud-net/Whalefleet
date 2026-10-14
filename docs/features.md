@@ -188,6 +188,20 @@
 
 ---
 
+## 部署与发布
+
+| 功能 | 说明 | 阶段 |
+|------|------|------|
+| ✅ 容器镜像 | Dockerfile 三阶段构建（Node → .NET SDK → runtime）；非 root（uid 10001）运行，只读根文件系统可跑；镜像内含 `curl`（健康检查）与 `sqlite3`（备份） | **0.0.15** |
+| ✅ 一键启动 | `docker-compose.yml` 提供 socket-proxy（推荐，默认）与直挂 socket 两种模式，用 profile 隔离以免 `container_name` 冲突；缺 `JWT__SECRET` / `ADMIN__PASSWORD` 时**拒绝启动** | **0.0.15** |
+| ✅ 前端同源托管 | API 进程托管 `wwwroot` 下的前端产物（`Spa` 配置节，生产启用）；深链回退到 index.html，但**排除 `/api` 与 `/healthz`**——否则打错的接口路径会变成 200 + HTML | **0.0.15** |
+| ✅ 健康检查 | `/healthz` 探测 SQLite 连通性（`SELECT 1`），失败返回 503 + 异常信息；**不查 Docker daemon**（主机停机时界面仍需可用） | **0.0.15** |
+| ✅ 反代白名单 | `ReverseProxy` 配置节 + 可信代理 / 网段；默认关闭，开启但无白名单则启动失败 | **0.0.15** |
+| ✅ 在线备份 | `scripts/backup.sh` 基于 `sqlite3 .backup`（不锁库），每次校验 `integrity_check`，按文件名轮转 | **0.0.15** |
+| ✅ 镜像发布 | `release.yml` 仅在 `v*.*.*` tag 触发，推 GHCR 前先冒烟；**`v0.0.*` 不推送** | **0.0.15** |
+| ✅ 变更记录自动化 | Release Please 读 Conventional Commits 生成 `CHANGELOG.md` 与发布 PR；中文版仍人工维护 | **0.0.15** |
+| ⬜ 反向代理示例配置 | 随附 nginx / Traefik 配置样例（含 TLS 与 `X-Forwarded-*`） | 0.1.0 |
+
 ## v1.0 不包含（明确非目标）
 
 > 这些功能在 v1.0（0.x + 1.0.0）**范围内不做**：
