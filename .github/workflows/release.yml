@@ -1,0 +1,135 @@
+name: release
+
+# 构建镜像并推送 GHCR —— **仅**在 Release Please 打上 tag 后触发。
+#
+# ## 为什么 tag 触发而不是 workflow_dispatch
+# tag 是「版本已定」的不可变事实，而 Release Please 打 tag 前会先跑完
+# 更新 CHANGELOG 的 PR 与完整 CI。让 tag 成为唯一触发点，可保证
+# 推上去的镜像对应的提交一定是已经过测试的那一个。
+#
+# ## 0.0.x 不推 GHCR
+# 本项目处于开发迭代期，0.0.* 不对外发布：
+# 未正式发布、API 可能破坏性变更、不值得占用户的镜像仓库空间。
+# 这个判断放在 job 内部（而非取消触发条件），
+# 是因为「不推」本身也要留下一条可查的记录——
+# 否则排查「为什么 0.0.14 的 tag 没有镜像」时什么都看不到。
+name: release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    name: 构建并推送镜像
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 解析版本号
+        id: version
+        run: |
+          tag="${GITHUB_REF_NAME}"            # 形如 v0.1.0
+          version="${tag#v}"                 # 0.1.0
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+          if [[ "${version}" == 0.0.* ]]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::${tag} 属于 0.0.x 内部迭代期，不推送 GHCR。这是有意为之：未正式发布、API 可能破坏性变更。首个对外版本是 v0.1.0。"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: checkout
+        if: steps.version.outputs.publish == 'true'
+        uses: actions/checkout@v4
+
+      - name: 登录 GHCR
+        if: steps.version.outputs.publish == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 设置 Buildx
+        if: steps.version.outputs.publish == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      # 构建并推送。只推版本 tag 与 latest，不推 sha ——
+      # 0.1.0 之后每次发版都是 semver，latest 已足够定位当前版本。
+      # 另推 ghcr.io/<owner>/docker-manager:<version>（无 v 前缀）
+      # 以便 docker run 时不必带 v。
+      - name: 构建并推送
+        if: steps.version.outputs.publish == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: 冒烟测试
+        if: steps.version.outputs.publish == 'true'
+        run: |
+          # 在推 GHCR **之前**验证镜像可启动。
+          # 推上去才发现起不来，等于把一个坏版本发布给了所有人——
+          # 而 GHCR 的 tag 一旦推送就已被引用，撤回只会制造混乱。
+          docker run --detach --name smoke \
+            -e ADMIN__USER=admin \
+            -e ADMIN__PASSWORD='SmokeTestP@ssw0rd!' \
+            -e JWT__SECRET='smoke-test-secret-key-0123456789abcdefghij' \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}"
+
+          echo "等待启动（首次运行要建库与引导管理员）…"
+          for i in $(seq 1 30); do
+            if curl --fail --silent --output /dev/null http://localhost:8080/healthz; then
+              echo "✓ 健康检查通过"
+              break
+            fi
+            if [[ $i -eq 30 ]]; then
+              echo "::error::容器 150 秒内未通过健康检查"
+              docker logs smoke
+              exit 1
+            fi
+            sleep 5
+          done
+
+          # 前端必须真的能打开：没有这一步，一个只带后端的镜像也能通过上面的检查。
+          curl --fail --silent http://localhost:8080/ | grep --quiet '<div id="app">'
+          echo "✓ 前端首页可访问"
+
+          # 非 root：直挂 socket 的部署形态下，容器内进程拿到 root 等于宿主机沦陷。
+          uid=$(docker exec smoke id -u)
+          if [[ "${uid}" == "0" ]]; then
+            echo "::error::容器以 root 运行"
+            exit 1
+          fi
+          echo "✓ 以非 root 运行（uid=${uid}）"
+
+          docker rm --force smoke
+
+      - name: 生成 GitHub Release
+        if: steps.version.outputs.publish == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            CHANGELOG.md

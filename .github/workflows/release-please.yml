@@ -1,0 +1,59 @@
+name: release-please
+
+# 从 Conventional Commits 推导版本号并自动开「发布 PR」。
+#
+# ## 触发时机
+# 每次推送到 dev / main 时运行。Release Please 自己会比对上次发布的提交，
+# 没有新变更时不会做任何事（不空开 PR）。
+#
+# ## 与 release.yml 的分工
+#   本工作流：维护 CHANGELOG + 开更新 CHANGELOG 的 PR（不产镜像）
+#   release.yml：真正的构建与推送，只在 tag 出现时触发
+#
+# 刻意**不**在本工作流里构建镜像：PR 会频繁开关，每次都构建既慢又费配额，
+# 而镜像是否可构建由 ci.yml 的 build 阶段保证。
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+on:
+  push:
+    branches: [main, dev]
+
+jobs:
+  release-please:
+    name: 更新 CHANGELOG 并开发布 PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          # Release Please 需要完整历史来推导「上次发布到本次之间的变更」，
+          # shallow clone 会让它误判成「没有变更」而静默不开 PR。
+          fetch-depth: 0
+
+      - name: 运行 Release Please
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: .github/release-please-config.json
+          manifest-file: .github/release-please-manifest.json
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ---- 守卫：0.0.x 不推 GHCR ----
+      # 本项目处于 0.0.x 开发迭代期，对外只发布 0.1.0 及以后的稳定版。
+      # 这里把「发布 PR 已开但 manifest 仍是 0.0.x」显式报出来，
+      # 避免"自动化一切正常"却根本没有可发布产物的情况被忽略。
+      - name: 检查版本号是否仍处于 0.0.x
+        if: always()
+        run: |
+          version=$(jq -r '.packages["."]' .github/release-please-manifest.json)
+          echo "manifest 版本：${version}"
+          if [[ "${version}" == 0.0.* ]]; then
+            echo "::notice::当前处于 0.0.x（${version}），属于内部开发迭代期。0.0.* tag 不会推送 GHCR，也不会生成 GitHub Release。CHANGELOG 仍会照常累积。"
+          fi
