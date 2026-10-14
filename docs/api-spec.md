@@ -64,7 +64,7 @@
 
 ### 错误码 → HTTP 状态码
 
-`success = false` 时，HTTP 状态码由业务错误码**逐码显式映射**（实现见 `Docker.Manager.Api.Errors.ErrorHttpStatus`，完整对照见下文「当前已分配的错误码」表格的 HTTP 列）。
+`success = false` 时，HTTP 状态码由业务错误码**逐码显式映射**（实现见 `Whalefleet.Api.Errors.ErrorHttpStatus`，完整对照见下文「当前已分配的错误码」表格的 HTTP 列）。
 
 > ⚠️ **不能按错误码数值分段推断状态码**：同一分段内语义并不统一——`1002`（段 1000-1099）是 500、`1103`（段 1100-1199）是 429、`1301`（段 1300-1399）是 502。分类与映射分两层：错误码 → 语义分类在应用层（`ErrorCodeCatalog`），语义分类 → HTTP 状态码在接口层（`ErrorHttpStatus`）。
 
@@ -112,8 +112,8 @@
 
 ### 当前已分配的错误码
 
-> **本表是错误码的唯一事实源**。后端常量（`Docker.Manager.Application.Common.ErrorCodes`）、
-> 后端语义分类（`ErrorCodeCatalog`）与前端引用（`src/Docker.Manager.UI/src/types/api.ts` 的 `ErrorCode`）
+> **本表是错误码的唯一事实源**。后端常量（`Whalefleet.Application.Common.ErrorCodes`）、
+> 后端语义分类（`ErrorCodeCatalog`）与前端引用（`src/Whalefleet.UI/src/types/api.ts` 的 `ErrorCode`）
 > 三处必须与本表**逐码一致**（含常量名）。新增一个错误码需要同步改四处：本表 → `ErrorCodes` →
 > `ErrorCodeCatalog` → 前端 `ErrorCode`，并补上错误码守卫测试，否则会落入「未登记」兜底分类。
 
@@ -151,7 +151,7 @@
 
 ### Mock 与契约同步
 
-前端有一层 MSW mock（`src/Docker.Manager.UI/src/mocks/`）用于**隔离开后端开发**，
+前端有一层 MSW mock（`src/Whalefleet.UI/src/mocks/`）用于**隔离开后端开发**，
 它让本表变成**五处**同步而非四处：
 
 1. 本表（唯一事实源）

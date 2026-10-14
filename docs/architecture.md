@@ -63,7 +63,7 @@
 
 ```
                               ┌──────────────────────────────┐
-                              │  Docker.Manager.Core         │
+                              │  Whalefleet.Core         │
                               │  ──────────────────────────  │
                               │  Entity / ValueObject        │
                               │  枚举与业务常量               │
@@ -86,7 +86,7 @@
                   │     │                                          │
                   ▼     ▼                                          ▼
        ┌──────────────────────────────────────────────────────────────────┐
-       │                       Docker.Manager.Api                          │
+       │                       Whalefleet.Api                          │
        │  ─────────────────────────────────────────────────────────────  │
        │  ASP.NET Core 10 宿主进程                                          │
        │  Controllers / SignalR Hubs / 静态前端托管                        │
@@ -108,10 +108,10 @@
 
 ```bash
 # 1) Core 项目应无任何 NuGet 依赖
-dotnet list src/Docker.Manager.Core/Docker.Manager.Core.csproj package --include-transitive
+dotnet list src/Whalefleet.Core/Whalefleet.Core.csproj package --include-transitive
 
 # 2) Application 应仅依赖 Core（一个 ProjectReference）
-dotnet list src/Docker.Manager.Application/Docker.Manager.Application.csproj package
+dotnet list src/Whalefleet.Application/Whalefleet.Application.csproj package
 ```
 
 ### 分层与充血模型约定
@@ -244,7 +244,7 @@ dotnet list src/Docker.Manager.Application/Docker.Manager.Application.csproj pac
 它还刻意**不承担授权语义**——「某人能碰哪些主机」由 0.3.0 的资源权限表回答，
 分组只影响总览页的呈现。两者混在一起会让「把主机挪进某个分组」变成一次隐式提权。
 
-**完整实现**见 `src/Docker.Manager.Core/{Users,Hosts,Auth,Permissions}/`；
+**完整实现**见 `src/Whalefleet.Core/{Users,Hosts,Auth,Permissions}/`；
 仓储契约 `IUserRepository` / `IHostRepository` / `IRoleRepository` / `IRefreshTokenRepository` 定义在 `Core`，
 实现在 `Infrastructure/Persistence/`。仓储的「未找到」以 `Task<bool>` 返回，
 **不抛**业务异常——是否把 `false` 转成 `1201` / `1300` 由应用服务决定，仓储不承担错误码语义。
@@ -292,7 +292,7 @@ protected abstract Task<bool> ExecuteUpdateAsync(DbConnection connection, TEntit
 ### 表结构（0.0.3 已落地）
 
 三张表的权威定义是内嵌迁移脚本
-`src/Docker.Manager.Infrastructure/Persistence/Schema/Migrations/000N_*.sql`；
+`src/Whalefleet.Infrastructure/Persistence/Schema/Migrations/000N_*.sql`；
 本节只记录**设计要点**，不复制 DDL（避免两处漂移）。
 
 | 表 | 迁移脚本 | 要点 |
@@ -363,11 +363,11 @@ Hub 鉴权：JWT 通过 `?access_token=...` 查询参数传递（WebSocket 不�
 
 ### 数据访问层
 
-- **持久化接口**（`IUserRepository`、`IHostRepository`、`IRefreshTokenRepository` 等）定义在 `Docker.Manager.Core/`
-- **仓储实现**位于 `Docker.Manager.Infrastructure/Persistence/`：使用 `Dapper` 执行手写 SQL，
+- **持久化接口**（`IUserRepository`、`IHostRepository`、`IRefreshTokenRepository` 等）定义在 `Whalefleet.Core/`
+- **仓储实现**位于 `Whalefleet.Infrastructure/Persistence/`：使用 `Dapper` 执行手写 SQL，
   共同继承 `RepositoryBase`（连接工厂 + 审计填充 + 软删除约定）
 - 数据库：SQLite + `Microsoft.Data.Sqlite`；连接串、外键约束与忙等待由 `SqliteConnectionFactory` 统一施加
-- 文件存储：配置项 `Persistence:DatabasePath`（生产 `/app/data/docker-manager.db`、开发 `data/docker-manager.db`）
+- 文件存储：配置项 `Persistence:DatabasePath`（生产 `/app/data/whalefleet.db`、开发 `data/whalefleet.db`）
 - **WAL 模式**启用（`PRAGMA journal_mode=WAL`；文件级属性，设置一次持久生效）
 - 应用启动时（开始监听**之前**）自动执行**版本化迁移**（`PRAGMA user_version` + 内嵌 `000N_*.sql`）
 - 单次操作一个连接（用完还池），不提供跨仓储事务——0.0.3 的业务写入均为单语句
@@ -377,7 +377,7 @@ Hub 鉴权：JWT 通过 `?access_token=...` 查询参数传递（WebSocket 不�
 
 ## 实体审计与软删除
 
-> 位于 `src/Docker.Manager.Core/Common/Auditing/`。设计参照 ABP 的分层审计：把"创建 / 修改 / 删除"
+> 位于 `src/Whalefleet.Core/Common/Auditing/`。设计参照 ABP 的分层审计：把"创建 / 修改 / 删除"
 > 拆成**可独立混入的细粒度接口**，再提供三级常用基类作为便利入口。
 
 ### 分层接口
@@ -879,12 +879,12 @@ const connection = new HubConnectionBuilder()
 
 ```
 ┌────────────────────────────────────────────┐
-│ 接口层 (Docker.Manager.Api)                │
+│ 接口层 (Whalefleet.Api)                │
 │   - Controllers 只引用 Application 的接口  │
 └──────────────────┬─────────────────────────┘
                    │
 ┌──────────────────▼─────────────────────────┐
-│ 应用层 (Docker.Manager.Application)        │
+│ 应用层 (Whalefleet.Application)        │
 │   - IDockerClientFactory (接口)            │
 │   - IDockerHostAccessor  (接口)            │
 │   - DTO (HostDto, ContainerDto, ...)       │
@@ -892,7 +892,7 @@ const connection = new HubConnectionBuilder()
 └──────────────────┬─────────────────────────┘
                    │
 ┌──────────────────▼─────────────────────────┐
-│ 基础设施层 (Docker.Manager.Infrastructure) │
+│ 基础设施层 (Whalefleet.Infrastructure) │
 │   - DockerClientFactory (实现)             │
 │   - DockerHostAccessor  (实现)             │
 │   - XxxRepository (Dapper + SQLite)        │
@@ -912,10 +912,10 @@ const connection = new HubConnectionBuilder()
 ```dockerfile
 # Stage 1: 前端构建
 FROM node:20-alpine AS frontend
-WORKDIR /src/Docker.Manager.UI
-COPY src/Docker.Manager.UI/package*.json ./
+WORKDIR /src/Whalefleet.UI
+COPY src/Whalefleet.UI/package*.json ./
 RUN npm ci
-COPY src/Docker.Manager.UI/ ./
+COPY src/Whalefleet.UI/ ./
 RUN npm run build  # 产物 → dist/
 
 # Stage 2: 后端构建
@@ -923,20 +923,20 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS backend
 WORKDIR /src
 COPY . .
 RUN dotnet restore
-RUN dotnet publish src/Docker.Manager.Api -c Release -o /app/publish
+RUN dotnet publish src/Whalefleet.Api -c Release -o /app/publish
 
 # Stage 3: 运行时镜像
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 RUN useradd -u 10001 -m app
 WORKDIR /app
 COPY --from=backend --chown=app:app /app/publish ./
-COPY --from=frontend --chown=app:app /src/Docker.Manager.UI/dist ./wwwroot
+COPY --from=frontend --chown=app:app /src/Whalefleet.UI/dist ./wwwroot
 COPY scripts/backup.sh /app/scripts/
 USER app
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s \
   CMD wget -qO- http://localhost:8080/healthz || exit 1
-ENTRYPOINT ["dotnet", "Docker.Manager.Api.dll"]
+ENTRYPOINT ["dotnet", "Whalefleet.Api.dll"]
 ```
 
 ---
@@ -946,7 +946,7 @@ ENTRYPOINT ["dotnet", "Docker.Manager.Api.dll"]
 ### 目录结构
 
 ```
-src/Docker.Manager.UI/src/
+src/Whalefleet.UI/src/
 ├── api/                   # API 封装（RPC 风格方法）
 ├── assets/                # 静态资源
 ├── components/
@@ -1068,8 +1068,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     restart: unless-stopped
 
-  docker-manager:
-    image: ghcr.io/blue-cloud-net/docker-manager:latest
+  whalefleet:
+    image: ghcr.io/blue-cloud-net/whalefleet:latest
     depends_on: [socket-proxy]
     ports:
       - "8080:8080"
@@ -1089,7 +1089,7 @@ services:
 ### 独立进程部署
 
 ```
-dotnet Docker.Manager.Api.dll --urls http://0.0.0.0:8080
+dotnet Whalefleet.Api.dll --urls http://0.0.0.0:8080
 ```
 
 要求宿主机当前用户对 `/var/run/docker.sock` 有读写权限（通常需要加入 `docker` 用户组）。

@@ -314,7 +314,7 @@
   会清掉直接赋值的响应头。
 - **密码强度校验工具类** `PasswordPolicy`（≥10 字符、含字母 + 数字或符号），
   登录与初始管理员引导共用。
-- **前端工作区** `src/Docker.Manager.UI/`：Vite + Vue 3 + TypeScript + Element Plus 骨架；
+- **前端工作区** `src/Whalefleet.UI/`：Vite + Vue 3 + TypeScript + Element Plus 骨架；
   `vite.config.ts` 配置 `/api` 与 `/hubs` 代理到 `http://localhost:8080`。
 - **Pinia `useAuthStore`**（user、accessToken、refreshToken 持久化到 localStorage）。
 - **Axios 实例 + 拦截器**：注入 Authorization；`401` 时静默刷新一次并重发原请求
@@ -372,7 +372,7 @@
 
 ### 新增
 
-- **SQLite 初始化**（`/app/data/docker-manager.db`，目录不存在自动创建），开外键与 `busy_timeout`；
+- **SQLite 初始化**（`/app/data/whalefleet.db`，目录不存在自动创建），开外键与 `busy_timeout`；
   Dapper 接入，仓储层抽象 `IUserRepository`（另含 `IHostRepository` / `IRoleRepository` /
   `IRefreshTokenRepository`）。
 - **架构迁移 `0001`–`0004`**：启动时按 `PRAGMA user_version` 执行内嵌脚本，版本须从 1 连续，
@@ -407,7 +407,7 @@
 
 - 设计细节见 [docs/architecture.md](docs/architecture.md) 的「实体审计与软删除」
   与「持久化实体物化约定（Dapper）」。
-- 依赖方向守卫：`Docker.Manager.Core` 仍**无任何 NuGet 依赖**。
+- 依赖方向守卫：`Whalefleet.Core` 仍**无任何 NuGet 依赖**。
 
 ---
 
@@ -438,7 +438,7 @@
   请求日志在「发生异常」的请求上降级为 `Debug`。
 - **配置**：硬编码的 `UseUrls("http://+:8080")` 改为 `appsettings.json` 的 `Urls` 键，使 `TestServer`
   能接管监听。注意 `Urls` 优先级**高于** `ASPNETCORE_URLS`，改端口用 `--urls` 或 `URLS`。
-- **集成测试载体**：`tests/Docker.Manager.IntegrationTests/`（含 `WebApplicationFactory`）提前落地，
+- **集成测试载体**：`tests/Whalefleet.IntegrationTests/`（含 `WebApplicationFactory`）提前落地，
   用于验证 HTTP 管道级契约。
 - **环境变量命名规范**：`__` 分隔层级、数字下标表达数组；键比较大小写不敏感，
   新增配置项统一用全大写下划线风格。
@@ -468,15 +468,15 @@
 
 ### 新增
 
-- **4 个分层项目**（`Docker.Manager.slnx`）：
-  - `src/Docker.Manager.Core/`——业务实体、值对象、枚举。**仅依赖 BCL，不引用任何 NuGet 包**。
-  - `src/Docker.Manager.Application/`——用例编排、DTO、外部资源接口抽象（如 `IDockerClientFactory`）。
+- **4 个分层项目**（`Whalefleet.slnx`）：
+  - `src/Whalefleet.Core/`——业务实体、值对象、枚举。**仅依赖 BCL，不引用任何 NuGet 包**。
+  - `src/Whalefleet.Application/`——用例编排、DTO、外部资源接口抽象（如 `IDockerClientFactory`）。
     依赖 Core。
-  - `src/Docker.Manager.Infrastructure/`——第三方 SDK 适配（`Docker.DotNet.Enhanced`）、仓储实现、
+  - `src/Whalefleet.Infrastructure/`——第三方 SDK 适配（`Docker.DotNet.Enhanced`）、仓储实现、
     外部服务集成。依赖 Core + Application。
-  - `src/Docker.Manager.Api/`——ASP.NET Core 10 宿主进程，托管 Controllers / SignalR Hubs /
+  - `src/Whalefleet.Api/`——ASP.NET Core 10 宿主进程，托管 Controllers / SignalR Hubs /
     静态前端。依赖 Application + Infrastructure。
-  - `tests/Docker.Manager.UnitTests/` 与 `tests/Docker.Manager.IntegrationTests/`。
+  - `tests/Whalefleet.UnitTests/` 与 `tests/Whalefleet.IntegrationTests/`。
 - **`Directory.Packages.props` 启用 Central Package Management**，所有 NuGet 版本号集中此文件。
 - **外部资源接口放在应用层**（非领域层），例如 `IDockerClientFactory` 定义在
   `Application/Abstractions`。
@@ -499,4 +499,4 @@
   全部删除，保留分层依赖方向与充血模型。详见 [docs/architecture.md](docs/architecture.md)。
 - 注意 `0.0.6` 是**空号**，见本文件顶部说明。
 
-[Unreleased]: https://github.com/blue-cloud-net/docker-manager/compare/v0.0.14...HEAD
+[Unreleased]: https://github.com/blue-cloud-net/whalefleet/compare/v0.0.14...HEAD

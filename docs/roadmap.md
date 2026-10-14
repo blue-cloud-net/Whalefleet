@@ -73,18 +73,18 @@
 
 后端：
 - ✅ **4 个分层项目解决方案**：
-  - ✅ `src/Docker.Manager.Core/`——核心层。业务实体、值对象、枚举。**仅依赖 BCL，不引用任何 NuGet 包**
-  - ✅ `src/Docker.Manager.Application/`——应用层。用例编排、DTO、外部资源接口抽象（如 `IDockerClientFactory`）。依赖 Core
-  - ✅ `src/Docker.Manager.Infrastructure/`——基础设施层。第三方 SDK 适配（`Docker.DotNet.Enhanced`）、仓储实现、外部服务集成。依赖 Core + Application
-  - ✅ `src/Docker.Manager.Api/`——接口层。ASP.NET Core 10 宿主进程，托管 Controllers / SignalR Hubs / 静态前端。依赖 Application + Infrastructure
+  - ✅ `src/Whalefleet.Core/`——核心层。业务实体、值对象、枚举。**仅依赖 BCL，不引用任何 NuGet 包**
+  - ✅ `src/Whalefleet.Application/`——应用层。用例编排、DTO、外部资源接口抽象（如 `IDockerClientFactory`）。依赖 Core
+  - ✅ `src/Whalefleet.Infrastructure/`——基础设施层。第三方 SDK 适配（`Docker.DotNet.Enhanced`）、仓储实现、外部服务集成。依赖 Core + Application
+  - ✅ `src/Whalefleet.Api/`——接口层。ASP.NET Core 10 宿主进程，托管 Controllers / SignalR Hubs / 静态前端。依赖 Application + Infrastructure
 - ✅ `Directory.Packages.props` 启用 **Central Package Management**（`<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>`），所有 NuGet 包版本号集中此文件
 - ✅ `Infrastructure` 项目引入 `Docker.DotNet.Enhanced` 包（采用最新稳定版），**在 `Application/Abstractions` 中定义 `IDockerClientFactory` 接口抽象**（外部资源接口放在应用层，非领域层）
-- ✅ `Docker.Manager.Api` 启动监听 `:8080`，返回 `GET /healthz` → 200 OK（Controller 风格，区别于后续 RPC 风格的 `POST /api/v1/...` 端点）
+- ✅ `Whalefleet.Api` 启动监听 `:8080`，返回 `GET /healthz` → 200 OK（Controller 风格，区别于后续 RPC 风格的 `POST /api/v1/...` 端点）
 - ✅ `Directory.Build.props`：TargetFramework=net10.0、LangVersion=latest、可空引用类型开启、警告即错误
 - ✅ Serilog 控制台输出（JSON 配置 + `ReadFrom.Configuration`）
 
 测试：
-- ✅ `tests/Docker.Manager.UnitTests/` 引入 xUnit + FluentAssertions + coverlet 骨架（占位烟雾用例验证测试链路）。详细覆盖节奏：0.0.3 Argon2id 哈希、0.0.4 登录、0.0.8 起集成测试使用宿主 Docker socket（`DockerFactAttribute`）
+- ✅ `tests/Whalefleet.UnitTests/` 引入 xUnit + FluentAssertions + coverlet 骨架（占位烟雾用例验证测试链路）。详细覆盖节奏：0.0.3 Argon2id 哈希、0.0.4 登录、0.0.8 起集成测试使用宿主 Docker socket（`DockerFactAttribute`）
 
 CI：
 - ✅ `.github/workflows/ci.yml`：push / pull_request 到 `main` / `dev` 触发。步骤：`dotnet restore` → `dotnet build -c Release`（warn-as-error）→ `dotnet test -c Release`。NuGet 包缓存（`~/.nuget/packages`，key 基于 `*.csproj` + `Directory.Packages.props`）
@@ -106,7 +106,7 @@ CI：
 **目标**：所有后续接口的统一基线。
 
 > **0.0.2 实施决策**：
-> 1. **集成测试载体提前**：原计划 0.0.8 才引入的 `tests/Docker.Manager.IntegrationTests/` **在本迭代落地**（骨架 + `WebApplicationFactory`），用于验证 HTTP 管道级契约；0.0.8 只需追加集成测试辅助设施（`DockerFactAttribute`，探测宿主 `/var/run/docker.sock`）。
+> 1. **集成测试载体提前**：原计划 0.0.8 才引入的 `tests/Whalefleet.IntegrationTests/` **在本迭代落地**（骨架 + `WebApplicationFactory`），用于验证 HTTP 管道级契约；0.0.8 只需追加集成测试辅助设施（`DockerFactAttribute`，探测宿主 `/var/run/docker.sock`）。
 > 2. **错误码分层**：错误码常量、语义分类与默认文案放 `Application/Common`（`ErrorCodes` / `ErrorCategory` / `ErrorCodeCatalog`）；「语义分类 → HTTP 状态码」放 `Api/Errors`（`ErrorHttpStatus`）。既避免应用层依赖 Web 概念，又让两侧都能被单测。
 > 3. **CORS 策略延迟注册**：白名单策略通过 `IConfigureOptions<CorsOptions>` 在**选项解析期**注册，而非 DI 注册期直接读配置——后者会读到尚未定型的值（集成测试注入的内存配置即属此列），导致静默地不注册任何策略。
 > 4. **`UseUrls` 改为配置**：硬编码的 `UseUrls("http://+:8080")` 改为 `appsettings.json` 的 `"Urls"` 键，使 `TestServer` 能接管监听。注意 `Urls` 优先级**高于** `ASPNETCORE_URLS`，改端口需用 `--urls` 或 `URLS`（详见 [constraints.md](./constraints.md#配置系统)）。
@@ -131,7 +131,7 @@ CI：
 - ✅ **开发专用故障注入端点** `POST /api/v1/dev/throw?kind=internal|business|validation|notfound|timeout`，仅 `IsDevelopment()` 时注册（生产不存在该路由）
 
 测试：
-- ✅ `tests/Docker.Manager.IntegrationTests/` 新建（xUnit + FluentAssertions + `Microsoft.AspNetCore.Mvc.Testing`），覆盖异常映射、状态码包装、CORS 与配置系统
+- ✅ `tests/Whalefleet.IntegrationTests/` 新建（xUnit + FluentAssertions + `Microsoft.AspNetCore.Mvc.Testing`），覆盖异常映射、状态码包装、CORS 与配置系统
 - ✅ `UnitTests` 补充错误码表一致性、语义分类、`ApiResult` 工厂与序列化契约
 
 **验收**：
@@ -154,7 +154,7 @@ CI：
 > 设计细节见 [architecture.md](./architecture.md) 的「实体审计与软删除」「持久化实体物化约定」。
 
 后端：
-- ✅ SQLite 初始化（`/app/data/docker-manager.db`，目录不存在自动创建）
+- ✅ SQLite 初始化（`/app/data/whalefleet.db`，目录不存在自动创建）
 - ✅ Dapper 接入，仓储层抽象 `IUserRepository`（另含 `IHostRepository` / `IRoleRepository` / `IRefreshTokenRepository`）
 - ✅ 启动时建 `users` 表（id、username、password_hash、role_id、审计列）
   - ✅ 列名遵循「属性名 ↔ 列名同名、仅大小写风格不同」的审计列约定（`docs/architecture.md` 实体审计与软删除）
@@ -176,7 +176,7 @@ CI：
 
 **验收**：
 - ✅ `dotnet test -c Release` 全绿（本迭代新增 69 个用例，全量 469 个）
-- ✅ 依赖方向守卫：`Docker.Manager.Core` 仍**无任何 NuGet 依赖**
+- ✅ 依赖方向守卫：`Whalefleet.Core` 仍**无任何 NuGet 依赖**
 
 ---
 
@@ -233,7 +233,7 @@ CI：
 - ✅ 密码强度校验工具类（≥10 字符、含字母+数字或符号）——落地为 `PasswordPolicy`，登录与初始管理员引导共用
 
 前端：
-- ✅ `src/Docker.Manager.UI/` 工作区，Vite + Vue 3 + TypeScript + Element Plus 骨架
+- ✅ `src/Whalefleet.UI/` 工作区，Vite + Vue 3 + TypeScript + Element Plus 骨架
 - ✅ `vite.config.ts` 配置 `/api` 与 `/hubs` 代理到 `http://localhost:8080`
 - ✅ Pinia `useAuthStore`（user、accessToken、refreshToken 持久化到 localStorage）
 - ✅ Axios 实例 + 拦截器：注入 Authorization、`401` 时静默刷新一次并重发原请求
@@ -338,7 +338,7 @@ CI：
 - ✅ `IResourcePermissionService` 接口定义（**实现**排 0.1.0，仅做 host 可见性）
 
 测试（从本迭代起为强制要求）：
-- ✅ `tests/Docker.Manager.IntegrationTests/`（**项目骨架已于 0.0.2 落地**）新增集成测试辅助设施：`DockerFactAttribute` 探测宿主 `/var/run/docker.sock`，不可达时跳过用例（**不引入 Testcontainers**，见 [constraints.md](./constraints.md#集成测试门槛)）
+- ✅ `tests/Whalefleet.IntegrationTests/`（**项目骨架已于 0.0.2 落地**）新增集成测试辅助设施：`DockerFactAttribute` 探测宿主 `/var/run/docker.sock`，不可达时跳过用例（**不引入 Testcontainers**，见 [constraints.md](./constraints.md#集成测试门槛)）
 - ✅ 容器/镜像/Volume/Network 等新 API 必须配集成测试，CI 卡（本迭代起生效：主机 / 用户 API 均已配）
 - ✅ 不设行覆盖率门槛
 
@@ -390,9 +390,9 @@ CI：
 **目标**：可视化容器管理。
 
 前端：
-- ✅ API 封装层 `src/Docker.Manager.UI/src/api/container.ts`：RPC 风格方法封装（八个端点全覆盖）
+- ✅ API 封装层 `src/Whalefleet.UI/src/api/container.ts`：RPC 风格方法封装（八个端点全覆盖）
 - ✅ 容器状态语义映射 `src/utils/container-status.ts`：状态→色调（含独立的**过渡态**一档）、端口展示、字节格式化
-- ✅ `src/Docker.Manager.UI/src/stores/host.ts`：Pinia 当前主机选择（**由 0.0.7 / 0.0.8 提前落地**）
+- ✅ `src/Whalefleet.UI/src/stores/host.ts`：Pinia 当前主机选择（**由 0.0.7 / 0.0.8 提前落地**）
 - ✅ **顶栏 `HostSelector` 下拉组件**（`components/business/HostSelector.vue`）：主机作用域显示当前主机名 + 状态点，全局作用域显示「选择主机」占位；列出可访问主机，**切换后停留在当前资源页**；写入 Pinia `useHostStore` → 路由跳转到 `/hosts/{新hostId}/{当前资源页}`；admin 可见「管理主机」入口（**由 0.0.7 提前落地**）
 - ✅ `ContainerListView`（实现为 `views/ContainersView.vue`）：表格（名称、镜像、状态、端口、创建时间）+ 操作按钮（启动/停止/重启/删除）+ 状态自动刷新（轮询 **5 秒**，页面隐藏时暂停，失败不打断轮询）
 - ✅ **`CreateContainerDialog.vue`**：可视化创建表单（镜像 + 名称 + 端口映射 + 环境变量 + Volume 挂载 + 重启策略 + 折叠的高级选项）；行式文本输入配**提交前校验与行号定位**；创建成功后可直接「立即启动」

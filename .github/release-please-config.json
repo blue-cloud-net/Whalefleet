@@ -3,7 +3,7 @@
   "packages": {
     ".": {
       "release-type": "simple",
-      "package-name": "docker-manager",
+      "package-name": "whalefleet",
       "changelog-path": "CHANGELOG.md",
       "changelog-sections": [
         { "type": "feat", "section": "Features" },
@@ -17,7 +17,7 @@
         { "type": "test", "section": "Tests" },
         { "type": "chore", "section": "Miscellaneous" }
       ],
-      "extra-files": ["src/Docker.Manager.UI/package.json"],
+      "extra-files": ["src/Whalefleet.UI/package.json"],
       "include-component-in-tag": false,
       "include-v-in-tag": true,
       "bump-minor-pre-major": true,

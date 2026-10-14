@@ -57,10 +57,10 @@ UnoCSS 默认 + 自定义：
 
 | 层 | 用途 | 示例 | 位置 |
 |---|---|---|---|
-| **Layout 层** | 顶级布局 | `AppLayout`（+ `AppBreadcrumb` / `AppSidebar` / `SidebarNav` / `UserMenu`） | `src/Docker.Manager.UI/src/layouts/` |
-| **通用组件** | 跨页面复用 | `EmptyState`、`PlaceholderSection`、`SectionCard`、`StatCard`、`PageHeader`、`StatusDot`、`IconActionButton`、`LangSwitcher`、`ThemeSwitcher`、`MockBadge`（开发期）；0.0.14 新增 `StatusBadge`、`JsonTree`、`CopyableText`、`CommandPalette`、`ShortcutHelpDialog` | `src/Docker.Manager.UI/src/components/common/` |
-| **业务组件** | 领域专用 | `HostHero`、`ResourceTile`、`HostCard`、`HostGroupSection`、`HostSelector`；各 `*Dialog.vue`（创建 / 编辑 / 改密）；0.0.14 新增 `ContainerStatusBadge`、`ImageSize`、`PortMappingEditor`、`EnvVarEditor`、`VolumeMountEditor` | `src/Docker.Manager.UI/src/components/business/` |
-| **View 层** | 路由对应的页面 | 每个路由一个 .vue 文件 | `src/Docker.Manager.UI/src/views/` |
+| **Layout 层** | 顶级布局 | `AppLayout`（+ `AppBreadcrumb` / `AppSidebar` / `SidebarNav` / `UserMenu`） | `src/Whalefleet.UI/src/layouts/` |
+| **通用组件** | 跨页面复用 | `EmptyState`、`PlaceholderSection`、`SectionCard`、`StatCard`、`PageHeader`、`StatusDot`、`IconActionButton`、`LangSwitcher`、`ThemeSwitcher`、`MockBadge`（开发期）；0.0.14 新增 `StatusBadge`、`JsonTree`、`CopyableText`、`CommandPalette`、`ShortcutHelpDialog` | `src/Whalefleet.UI/src/components/common/` |
+| **业务组件** | 领域专用 | `HostHero`、`ResourceTile`、`HostCard`、`HostGroupSection`、`HostSelector`；各 `*Dialog.vue`（创建 / 编辑 / 改密）；0.0.14 新增 `ContainerStatusBadge`、`ImageSize`、`PortMappingEditor`、`EnvVarEditor`、`VolumeMountEditor` | `src/Whalefleet.UI/src/components/business/` |
+| **View 层** | 路由对应的页面 | 每个路由一个 .vue 文件 | `src/Whalefleet.UI/src/views/` |
 
 > 加载态用 `el-skeleton` 直接写，不单独包一层 `Skeleton.vue`——包装组件省下的
 > 那点模板量换不来一次额外的间接层。
@@ -281,7 +281,7 @@ HOST_TONE_RAIL[tone]                // 卡片左侧色条
 ### 主题切换
 
 - 「主题模式」（亮 / 暗 / 跟随系统）与「主题色」（蓝 / 绿 / 紫）在设置页调整，顶栏留图标入口
-- 状态存 localStorage，**由 Pinia 持久化插件托管**（key: `docker-manager:theme`），
+- 状态存 localStorage，**由 Pinia 持久化插件托管**（key: `whalefleet:theme`），
   勿在组件里手写 `localStorage.setItem('theme_mode', …)`——那个键名并不存在
 - 切换时通过 `<html>` 上的 class 控制（`dark` / `theme-blue` / `theme-green` / `theme-purple`）
 
@@ -434,7 +434,7 @@ interface RouteMeta {
 
 | 关注点 | 约定 |
 |--------|------|
-| 存储 | 令牌对 + 用户摘要存 `localStorage` 的 `docker-manager:auth`（Pinia 持久化插件） |
+| 存储 | 令牌对 + 用户摘要存 `localStorage` 的 `whalefleet:auth`（Pinia 持久化插件） |
 | 注入 | 请求拦截器按 `auth.accessToken` 注入 `Authorization`；**不再**注入 `X-Host-Id` |
 | 401 | 拦截器**静默刷新一次**并重放原请求；刷新不可用才清会话并整页跳 `/login?redirect=...` |
 | 启动 | **不做预刷新**——只在请求真的收到 401 时才续期 |
@@ -458,7 +458,7 @@ interface RouteMeta {
 ## 文件组织约定
 
 ```
-src/Docker.Manager.UI/src/
+src/Whalefleet.UI/src/
 ├── api/                   # API 封装（RPC 风格方法）
 ├── assets/                # 静态资源
 ├── components/

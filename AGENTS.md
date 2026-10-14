@@ -11,13 +11,13 @@ README 里的链接暂时指向不存在的文件属正常。
 
 | 项目 | 位置 | 职责 |
 |------|------|------|
-| `Docker.Manager.Core` | `src/` | 业务实体、值对象、枚举、仓储接口。**仅 BCL，无任何 NuGet** |
-| `Docker.Manager.Application` | `src/` | 用例编排、DTO、外部资源接口抽象 |
-| `Docker.Manager.Infrastructure` | `src/` | Docker SDK 适配、SQLite 仓储实现、安全组件 |
-| `Docker.Manager.Api` | `src/` | ASP.NET Core 10 宿主：Controllers、中间件、Serilog、DI |
-| `Docker.Manager.UI` | `src/` | Vue 3 + TS + UnoCSS + Element Plus 单工程 |
-| `Docker.Manager.UnitTests` | `tests/` | xUnit 单测。**不得引用 Api / Infrastructure** |
-| `Docker.Manager.IntegrationTests` | `tests/` | `WebApplicationFactory` + 真实 Docker socket。唯一允许 `Mvc.Testing` |
+| `Whalefleet.Core` | `src/` | 业务实体、值对象、枚举、仓储接口。**仅 BCL，无任何 NuGet** |
+| `Whalefleet.Application` | `src/` | 用例编排、DTO、外部资源接口抽象 |
+| `Whalefleet.Infrastructure` | `src/` | Docker SDK 适配、SQLite 仓储实现、安全组件 |
+| `Whalefleet.Api` | `src/` | ASP.NET Core 10 宿主：Controllers、中间件、Serilog、DI |
+| `Whalefleet.UI` | `src/` | Vue 3 + TS + UnoCSS + Element Plus 单工程 |
+| `Whalefleet.UnitTests` | `tests/` | xUnit 单测。**不得引用 Api / Infrastructure** |
+| `Whalefleet.IntegrationTests` | `tests/` | `WebApplicationFactory` + 真实 Docker socket。唯一允许 `Mvc.Testing` |
 
 ---
 
@@ -31,7 +31,7 @@ dotnet build -c Release -nologo -t:Rebuild # 查全量警告（见下方铁律�
 dotnet test  -c Release                    # 一次跑完单测 + 集成测试
 ````
 
-前端（`src/Docker.Manager.UI/`，用 pnpm）：
+前端（`src/Whalefleet.UI/`，用 pnpm）：
 
 ````bash
 pnpm install
@@ -64,7 +64,7 @@ pnpm build        # typecheck + 生产构建
 
 ````bash
 # Core 应无任何 NuGet 依赖（输出为空）
-dotnet list src/Docker.Manager.Core/Docker.Manager.Core.csproj package --include-transitive
+dotnet list src/Whalefleet.Core/Whalefleet.Core.csproj package --include-transitive
 ````
 
 ### 充血模型（非 DDD）
@@ -238,7 +238,7 @@ DDD 战术模式（聚合根 / 领域事件 / 领域服务）**已整体移除**
 | [docs/features.md](docs/features.md) | 按模块分组的完整功能列表（按版本标注） |
 | [docs/roadmap.md](docs/roadmap.md) | 版本迭代与进度（**版本编号即执行顺序**；`0.0.6` 是空号） |
 | [docs/ui-guidelines.md](docs/ui-guidelines.md) | UI 布局、断点、组件分层、快捷键、主题、路由 |
-| [src/Docker.Manager.UI/README.md](src/Docker.Manager.UI/README.md) | 前端快速开始、**Mock 模式**（`?mock=on`，顶栏有 MOCK 角标） |
+| [src/Whalefleet.UI/README.md](src/Whalefleet.UI/README.md) | 前端快速开始、**Mock 模式**（`?mock=on`，顶栏有 MOCK 角标） |
 | [CHANGELOG.md](CHANGELOG.md) | 已交付内容（0.0.1 – 0.0.14） |
 
 其他规范来源（**不要抄进代码注释或 PR**）：

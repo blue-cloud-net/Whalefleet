@@ -79,7 +79,7 @@ jobs:
           context: .
           push: false
           load: true
-          tags: docker-manager:ci
+          tags: whalefleet:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -92,7 +92,7 @@ jobs:
             -e ADMIN__USER=admin \
             -e ADMIN__PASSWORD='CiSmokeP@ssw0rd!' \
             -e JWT__SECRET='ci-smoke-secret-key-0123456789abcdefgh' \
-            docker-manager:ci
+            whalefleet:ci
 
           echo "等待启动（首次运行要建库与引导管理员）…"
           ok=0

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Whalefleet.Core
+===============================================================================
+    核心层。有身份的业务实体、值对象与枚举的归宿。
+
+    采用充血模型：实体的行为与不变量写在实体自身的方法内，Core 不持有 I/O。
+
+    依赖约束：
+    - 仅依赖 BCL（System.*），不允许引用任何 NuGet 包
+    - 不允许引用 Application / Infrastructure / Api 任何上游项目
+    - 不引用任何外部 SDK（Docker SDK 等都在 Infrastructure 层）
+
+    强制约束：警告即错误（CPM 继承 Directory.Build.props）。
+  -->
+
+</Project>

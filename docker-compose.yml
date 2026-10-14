@@ -1,5 +1,5 @@
 # ============================================================================
-# Docker.Manager — 部署示例
+# Whalefleet — 部署示例
 # ============================================================================
 # **两种模式都在下面，默认启用第 2 种（socket-proxy，推荐）。**
 # 切换方式：注释掉一个 service 块。
@@ -20,7 +20,7 @@
 #   docker compose logs -f
 # ============================================================================
 
-name: docker-manager
+name: whalefleet
 
 services:
   # ------------------------------------------------------------------
@@ -32,8 +32,8 @@ services:
   #    所以必须靠 profile 隔离，不能靠注释掉其中一个。
   direct:
     profiles: ["direct"]
-    image: ${DOCKER_MANAGER_IMAGE:-docker-manager:local}
-    container_name: docker-manager
+    image: ${WHALEFLEET_IMAGE:-whalefleet:local}
+    container_name: whalefleet
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -45,7 +45,7 @@ services:
       # ⚠️ 冒号后的 :ro **不能**限制 Docker API 的能力：
       #    socket 的权限由守护进程的 API 决定，与文件挂载的只读标志无关。
       #    它只能防止误写 socket 文件本身。
-      - docker-manager-data:/app/data
+      - whalefleet-data:/app/data
     environment:
       # 初始管理员：仅在 users 表为空时创建，之后改环境变量无效。
       # ⚠️ 必须用强密码——校验不通过会直接启动失败（这是有意的）。
@@ -62,13 +62,13 @@ services:
   # ⚠️ 默认启用的模式。启用另一模式需加 --profile direct 并停掉本模式，
   #    两者共用 container_name，无法共存。
   proxy:
-    image: ${DOCKER_MANAGER_IMAGE:-docker-manager:local}
-    container_name: docker-manager
+    image: ${WHALEFLEET_IMAGE:-whalefleet:local}
+    container_name: whalefleet
     restart: unless-stopped
     ports:
       - "8080:8080"
     volumes:
-      - docker-manager-data:/app/data
+      - whalefleet-data:/app/data
     environment:
       ADMIN__USER: admin
       ADMIN__PASSWORD: ${ADMIN__PASSWORD:?请在 .env 中设置 ADMIN__PASSWORD}
@@ -81,7 +81,7 @@ services:
 
   socket-proxy:
     image: tecnativa/docker-socket-proxy:latest
-    container_name: docker-manager-socket-proxy
+    container_name: whalefleet-socket-proxy
     restart: unless-stopped
     environment:
       # 只授予本项目实际用到的子集。删掉任意一项前请先确认没有功能依赖它：
@@ -108,4 +108,4 @@ services:
       - default
 
 volumes:
-  docker-manager-data:
+  whalefleet-data:

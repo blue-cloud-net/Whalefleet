@@ -1,0 +1,24 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".dockerignore" />
+    <File Path=".editorconfig" />
+    <File Path=".gitattributes" />
+    <File Path=".gitignore" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Build.targets" />
+    <File Path="Directory.Packages.props" />
+    <File Path=".github/workflows/ci.yml" />
+  </Folder>
+
+  <Folder Name="/src/">
+    <Project Path="src/Whalefleet.Core/Whalefleet.Core.csproj" />
+    <Project Path="src/Whalefleet.Application/Whalefleet.Application.csproj" />
+    <Project Path="src/Whalefleet.Infrastructure/Whalefleet.Infrastructure.csproj" />
+    <Project Path="src/Whalefleet.Api/Whalefleet.Api.csproj" />
+  </Folder>
+
+  <Folder Name="/tests/">
+    <Project Path="tests/Whalefleet.UnitTests/Whalefleet.UnitTests.csproj" />
+    <Project Path="tests/Whalefleet.IntegrationTests/Whalefleet.IntegrationTests.csproj" />
+  </Folder>
+</Solution>

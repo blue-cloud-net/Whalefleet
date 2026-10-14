@@ -1,4 +1,4 @@
-# Docker.Manager
+# Whalefleet
 
 > **Language / 语言**: [English](README.md) | **简体中文** ([README.zh-CN.md](README.zh-CN.md))
 
@@ -10,7 +10,7 @@
 [![.NET 10 LTS](https://img.shields.io/badge/.NET-10_LTS-512BD4)](https://dotnet.microsoft.com)
 [![Vue 3.5+](https://img.shields.io/badge/Vue-3.5+-42b883)](https://vuejs.org)
 [![Docker Engine API v29.4.1](https://img.shields.io/badge/Docker_Engine_API-v29.4.1-2496ED)](https://github.com/testcontainers/Docker.DotNet)
-[![GHCR](https://img.shields.io/badge/GHCR-blue--cloud--net%2Fdocker--manager-2496ED)](https://ghcr.io/blue-cloud-net/docker-manager)
+[![GHCR](https://img.shields.io/badge/GHCR-blue--cloud--net%2Fdocker--manager-2496ED)](https://ghcr.io/blue-cloud-net/whalefleet)
 
 > Current stage: **0.0.x development iterations** (not officially released; `0.0.*` tags are not pushed to GHCR). See [docs/roadmap.md](docs/roadmap.md) for the roadmap to the first semver-stable release, `v0.1.0`.
 
@@ -49,8 +49,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
-  docker-manager:
-    image: docker-manager:local
+  whalefleet:
+    image: whalefleet:local
     depends_on: [socket-proxy]
     ports:
       - "8080:8080"
@@ -68,7 +68,7 @@ services:
     restart: unless-stopped
 ```
 
-If you **must mount the socket directly**, make sure the Docker.Manager instance is only exposed to trusted networks. See [SECURITY.md](SECURITY.md) for the full security policy.
+If you **must mount the socket directly**, make sure the Whalefleet instance is only exposed to trusted networks. See [SECURITY.md](SECURITY.md) for the full security policy.
 
 ---
 
@@ -81,11 +81,11 @@ If you **must mount the socket directly**, make sure the Docker.Manager instance
 
 ```bash
 # 1. Clone and enter the repository
-git clone https://github.com/blue-cloud-net/docker-manager.git
-cd docker-manager
+git clone https://github.com/blue-cloud-net/whalefleet.git
+cd whalefleet
 
 # 2. Build the image (Node + .NET SDK + runtime, three stages)
-docker build -t docker-manager:local .
+docker build -t whalefleet:local .
 
 # 3. Provide the required secrets
 cp .env.example .env
@@ -105,18 +105,18 @@ docker compose up -d
 
 ```bash
 docker compose ps                              # expect STATUS "healthy"
-docker compose exec docker-manager bash /app/scripts/backup.sh   # produces a verified backup
+docker compose exec whalefleet bash /app/scripts/backup.sh   # produces a verified backup
 
 # Scheduled backup (03:17 daily — off the hour to avoid IO contention):
-#   17 3 * * * docker exec docker-manager bash /app/scripts/backup.sh \
-#     >> /var/log/docker-manager-backup.log 2>&1
+#   17 3 * * * docker exec whalefleet bash /app/scripts/backup.sh \
+#     >> /var/log/whalefleet-backup.log 2>&1
 ```
 
 ### Option 2: Direct Socket Mount (trusted environments only)
 
 ```bash
 docker run -d \
-  --name docker-manager \
+  --name whalefleet \
   -p 8080:8080 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v $(pwd)/data:/app/data \
@@ -124,13 +124,13 @@ docker run -d \
   -e ADMIN__USER=admin \
   -e ADMIN__PASSWORD='StrongP@ss123' \
   --restart unless-stopped \
-  docker-manager:local
+  whalefleet:local
 ```
 
 ### Option 3: Standalone Process
 
 ```bash
-dotnet Docker.Manager.Api.dll --urls http://0.0.0.0:8080
+dotnet Whalefleet.Api.dll --urls http://0.0.0.0:8080
 ```
 
 The current host user needs read/write access to `/var/run/docker.sock` (usually by joining the `docker` group).
@@ -181,7 +181,7 @@ See [docs/constraints.md](docs/constraints.md) for the complete version constrai
 
 Contributions, bug reports, and feature suggestions are welcome.
 
-- Report issues: [GitHub Issues](https://github.com/blue-cloud-net/docker-manager/issues)
+- Report issues: [GitHub Issues](https://github.com/blue-cloud-net/whalefleet/issues)
 - Open a PR: read [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, Conventional Commits rules, and PR process
 - Report security vulnerabilities: **do not** disclose them in public issues — contact the maintainers privately following [SECURITY.md](SECURITY.md)
 
@@ -199,7 +199,7 @@ Development environment: .NET 10 SDK + Node.js 20+ + pnpm.
 | `0.2.0` / `0.3.0` / `0.4.0` | Feature milestone releases | ✅ Official release |
 | `1.0.0` | **Production-ready release** | ✅ Official release |
 
-- Image registry: `ghcr.io/blue-cloud-net/docker-manager`
+- Image registry: `ghcr.io/blue-cloud-net/whalefleet`
 - Tag strategy: semver only (`v0.1.0` / `0.1.0` / `0.1` / `latest`)
 - Changelog: the English `CHANGELOG.md` is generated automatically by [Release Please](https://github.com/googleapis/release-please) starting from 0.0.15
 - Full strategy: [docs/overview.md](docs/overview.md#发布模型与版本号策略) — note that the anchor inside `docs/` is in Chinese

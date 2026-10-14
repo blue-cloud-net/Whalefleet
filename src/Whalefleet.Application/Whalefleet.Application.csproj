@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Whalefleet.Application
+===============================================================================
+    应用层。用例编排、DTO 映射、对外接口抽象、跨实体协调。
+    接口放置原则（详见 docs/architecture.md）：
+    - 有身份的业务实体 / 值对象 / 枚举 → Core
+    - 外部资源接口（DockerClientFactory、TimeProvider、SmtpSender 等）→ Application/Abstractions
+    - 第三方 SDK 适配 → Infrastructure
+
+    依赖：仅 Core 项目（不允许引用 Infrastructure / Api）。
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\Whalefleet.Core\Whalefleet.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 暴露 DockerClient 返回类型所需 -->
+    <PackageReference Include="Docker.DotNet.Enhanced" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+  </ItemGroup>
+
+</Project>

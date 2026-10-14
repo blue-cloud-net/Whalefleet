@@ -1,9 +1,9 @@
 # ============================================================================
-# Docker.Manager — 多阶段构建
+# Whalefleet — 多阶段构建
 # ============================================================================
 # 三个阶段，各自只带必要的东西：
 #
-#   ui      : Node + pnpm  →  src/Docker.Manager.UI/dist
+#   ui      : Node + pnpm  →  src/Whalefleet.UI/dist
 #   publish : .NET SDK     →  只含运行期所需的 Api 程序集
 #   runtime : .NET runtime →  最终镜像（无 SDK、无 Node、无源码）
 #
@@ -18,7 +18,7 @@
 # 最终镜像就得同时携带两个 SDK 的残留。分成两阶段才能真正「只留产物」。
 #
 # ## 构建
-#   docker build -t docker-manager:local .
+#   docker build -t whalefleet:local .
 #
 # ## 注意：前端产物由 publish 阶段复制进 wwwroot
 # Api 进程同源托管前端（见 SpaOptions），因此 dist 必须出现在**发布目录内**，
@@ -36,12 +36,12 @@ WORKDIR /ui
 
 # pnpm 的版本来自 packageManager 字段，用 corepack 激活可避免「本机装的
 # pnpm 版本」与「锁文件期望的版本」不一致导致的解析漂移。
-COPY src/Docker.Manager.UI/package.json src/Docker.Manager.UI/pnpm-lock.yaml src/Docker.Manager.UI/pnpm-workspace.yaml ./
+COPY src/Whalefleet.UI/package.json src/Whalefleet.UI/pnpm-lock.yaml src/Whalefleet.UI/pnpm-workspace.yaml ./
 RUN corepack enable && pnpm install --frozen-lockfile
 
 # 先拷贝其余源码再构建：package.json 很少变，这样绝大多数构建都能命中
 # 「依赖安装」层的缓存——否则每次改一个 .vue 都要重装几百 MB 的依赖。
-COPY src/Docker.Manager.UI/ ./
+COPY src/Whalefleet.UI/ ./
 
 # ⚠️ 这一步失败必须让构建失败（不要 `|| true`）：
 # 产物体积检查只能挡住「dist 不存在」，挡不住「dist 存在但不完整」。
@@ -56,16 +56,16 @@ WORKDIR /src
 # 先只拷贝还原所需的文件，让 NuGet 还原单独成层——
 # 改一个 .cs 不会触发重新还原。
 COPY Directory.Build.props Directory.Build.targets Directory.Packages.props ./
-COPY src/Docker.Manager.Core/Docker.Manager.Core.csproj src/Docker.Manager.Core/
-COPY src/Docker.Manager.Application/Docker.Manager.Application.csproj src/Docker.Manager.Application/
-COPY src/Docker.Manager.Infrastructure/Docker.Manager.Infrastructure.csproj src/Docker.Manager.Infrastructure/
-COPY src/Docker.Manager.Api/Docker.Manager.Api.csproj src/Docker.Manager.Api/
-COPY tests/Docker.Manager.UnitTests/Docker.Manager.UnitTests.csproj tests/Docker.Manager.UnitTests/
-COPY tests/Docker.Manager.IntegrationTests/Docker.Manager.IntegrationTests.csproj tests/Docker.Manager.IntegrationTests/
-RUN dotnet restore src/Docker.Manager.Api/Docker.Manager.Api.csproj
+COPY src/Whalefleet.Core/Whalefleet.Core.csproj src/Whalefleet.Core/
+COPY src/Whalefleet.Application/Whalefleet.Application.csproj src/Whalefleet.Application/
+COPY src/Whalefleet.Infrastructure/Whalefleet.Infrastructure.csproj src/Whalefleet.Infrastructure/
+COPY src/Whalefleet.Api/Whalefleet.Api.csproj src/Whalefleet.Api/
+COPY tests/Whalefleet.UnitTests/Whalefleet.UnitTests.csproj tests/Whalefleet.UnitTests/
+COPY tests/Whalefleet.IntegrationTests/Whalefleet.IntegrationTests.csproj tests/Whalefleet.IntegrationTests/
+RUN dotnet restore src/Whalefleet.Api/Whalefleet.Api.csproj
 
 COPY . .
-RUN dotnet publish src/Docker.Manager.Api/Docker.Manager.Api.csproj \
+RUN dotnet publish src/Whalefleet.Api/Whalefleet.Api.csproj \
     -c Release \
     -o /app/publish \
     --no-restore \
@@ -132,4 +132,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
 
 # 用 exec 形式：shell 形式会让 dockerd 把 PID 1 变成 sh，
 # 于是 SIGTERM 到不了 .NET 进程，容器停止要等满 10 秒超时才被 SIGKILL。
-ENTRYPOINT ["dotnet", "Docker.Manager.Api.dll"]
+ENTRYPOINT ["dotnet", "Whalefleet.Api.dll"]

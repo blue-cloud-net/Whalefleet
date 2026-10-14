@@ -376,7 +376,7 @@ Milestone goal: a complete authentication loop and a frontend that can talk to t
   exception-handling middleware's `Response.Clear()` wipes directly assigned headers.
 - **Password policy** utility (≥10 characters, containing letters plus digits or symbols), shared by
   login and the initial-administrator bootstrap.
-- **Frontend workspace** `src/Docker.Manager.UI/`: a Vite + Vue 3 + TypeScript + Element Plus skeleton,
+- **Frontend workspace** `src/Whalefleet.UI/`: a Vite + Vue 3 + TypeScript + Element Plus skeleton,
   with `/api` and `/hubs` proxied to `http://localhost:8080` in `vite.config.ts`.
 - **Pinia `useAuthStore`** (user, accessToken, refreshToken persisted to localStorage).
 - **Axios instance with interceptors**: injects `Authorization`, and on `401` silently refreshes once
@@ -448,7 +448,7 @@ Milestone goal: the user table can be created and passwords can be hashed and ve
 
 ### Added
 
-- **SQLite initialisation** (`/app/data/docker-manager.db`, directory created when missing) with
+- **SQLite initialisation** (`/app/data/whalefleet.db`, directory created when missing) with
   foreign keys and `busy_timeout` enabled, and Dapper wired in with repository abstractions
   (`IUserRepository`, plus `IHostRepository` / `IRoleRepository` / `IRefreshTokenRepository`).
 - **Schema migrations `0001`–`0004`** applied at startup, driven by `PRAGMA user_version` with embedded
@@ -491,7 +491,7 @@ Milestone goal: the user table can be created and passwords can be hashed and ve
 
 - Design details are documented in [docs/architecture.md](docs/architecture.md) under "Entity Auditing
   and Soft Delete" and "Persistence Entity Materialization (Dapper)".
-- `Docker.Manager.Core` still has **no NuGet dependencies at all** (dependency-direction guard).
+- `Whalefleet.Core` still has **no NuGet dependencies at all** (dependency-direction guard).
 
 ---
 
@@ -531,7 +531,7 @@ Milestone goal: the shared baseline for every endpoint that follows.
 - **Configuration**: the hardcoded `UseUrls("http://+:8080")` became the `Urls` key in
   `appsettings.json` so `TestServer` can take over listening. Note that `Urls` takes **precedence over**
   `ASPNETCORE_URLS`; change the port with `--urls` or `URLS`.
-- **Integration test carrier**: `tests/Docker.Manager.IntegrationTests/` with `WebApplicationFactory`
+- **Integration test carrier**: `tests/Whalefleet.IntegrationTests/` with `WebApplicationFactory`
   landed early (originally scheduled for 0.0.8) to verify HTTP-pipeline-level contracts.
 - **Environment variable naming**: `__` separates configuration levels and numeric indices address
   arrays; key comparison is case-insensitive, and new keys are written in ALL_CAPS style.
@@ -563,16 +563,16 @@ Milestone goal: a minimal backend that builds, runs, and has a first-cut CI pipe
 
 ### Added
 
-- **Four layered projects** (`Docker.Manager.slnx`):
-  - `src/Docker.Manager.Core/` — business entities, value objects, and enums. **BCL only, no NuGet
+- **Four layered projects** (`Whalefleet.slnx`):
+  - `src/Whalefleet.Core/` — business entities, value objects, and enums. **BCL only, no NuGet
     packages at all**.
-  - `src/Docker.Manager.Application/` — use-case orchestration, DTOs, and abstractions over external
+  - `src/Whalefleet.Application/` — use-case orchestration, DTOs, and abstractions over external
     resources (e.g. `IDockerClientFactory`). Depends on Core.
-  - `src/Docker.Manager.Infrastructure/` — third-party SDK adapters (`Docker.DotNet.Enhanced`), repository
+  - `src/Whalefleet.Infrastructure/` — third-party SDK adapters (`Docker.DotNet.Enhanced`), repository
     implementations, and external service integrations. Depends on Core + Application.
-  - `src/Docker.Manager.Api/` — the ASP.NET Core 10 host, hosting Controllers / SignalR hubs / the static
+  - `src/Whalefleet.Api/` — the ASP.NET Core 10 host, hosting Controllers / SignalR hubs / the static
     frontend. Depends on Application + Infrastructure.
-  - `tests/Docker.Manager.UnitTests/` and `tests/Docker.Manager.IntegrationTests/`.
+  - `tests/Whalefleet.UnitTests/` and `tests/Whalefleet.IntegrationTests/`.
 - **Central Package Management** enabled in `Directory.Packages.props`, so every NuGet version number
   lives in one file.
 - **External-resource interfaces live in the application layer**, not the domain layer — for example
@@ -600,4 +600,4 @@ Milestone goal: a minimal backend that builds, runs, and has a first-cut CI pipe
   model were kept. See [docs/architecture.md](docs/architecture.md).
 - Note that `0.0.6` is an **unused number** — see the note at the top of this file.
 
-[Unreleased]: https://github.com/blue-cloud-net/docker-manager/compare/v0.0.14...HEAD
+[Unreleased]: https://github.com/blue-cloud-net/whalefleet/compare/v0.0.14...HEAD

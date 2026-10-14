@@ -28,7 +28,7 @@
 
 > **SDK 选型说明**：选用 `Docker.DotNet.Enhanced` 是因为上游 `Docker.DotNet` 3.x 已停摆多年，而 fork 持续维护、同步 Docker Engine API。应用层通过 `IDockerClientFactory` / `IDockerHostAccessor` 抽象隔离 SDK，未来可平滑回退到上游 3.x。详见 [architecture.md](./architecture.md)。
 >
-> **4.x 迁移注记（0.0.2）**：`Docker.DotNet.Enhanced` 4.x 移除了 `DockerClientConfiguration` 与 `IDockerClient`，客户端构建统一改为 `DockerClientBuilder.WithEndpoint(...).Build()`。请勿再引用旧类型；该回归由 `tests/Docker.Manager.IntegrationTests/Infrastructure/DockerClientFactoryTests.cs` 守住（构建客户端本身不建立连接，因此测试无需真实 Docker）。
+> **4.x 迁移注记（0.0.2）**：`Docker.DotNet.Enhanced` 4.x 移除了 `DockerClientConfiguration` 与 `IDockerClient`，客户端构建统一改为 `DockerClientBuilder.WithEndpoint(...).Build()`。请勿再引用旧类型；该回归由 `tests/Whalefleet.IntegrationTests/Infrastructure/DockerClientFactoryTests.cs` 守住（构建客户端本身不建立连接，因此测试无需真实 Docker）。
 
 ### 前端
 
@@ -59,8 +59,8 @@
 
 | 项 | 约定 |
 |----|------|
-| 实体命名 | 名词单数，继承 `Docker.Manager.Core.Common.Entity<TId>` |
-| 值对象命名 | 名词，继承 `Docker.Manager.Core.Common.ValueObject`，**必须不可变**（init-only 或 readonly） |
+| 实体命名 | 名词单数，继承 `Whalefleet.Core.Common.Entity<TId>` |
+| 值对象命名 | 名词，继承 `Whalefleet.Core.Common.ValueObject`，**必须不可变**（init-only 或 readonly） |
 | 枚举命名 | 名词（如 `DockerHostType`、`HostPermissions`），与对应实体同命名空间。**仅用于封闭集合**；可运行时扩展的概念（如角色）必须建模为表 + 实体，**不得**用枚举 |
 | 持久化接口 | `IXxxRepository`，定义在 `Core`，实现在 `Infrastructure/Persistence/`。**不允许反向依赖**（`Core` 不得引用 Dapper / SQLite 等）。CRUD 共同部分继承 `Core/Common/IRepository<TEntity, TId>`，具体接口只写自己特有的查询 |
 | 外部资源接口 | `IXxxFactory` / `IXxxAccessor` 等，定义在 `Application/Abstractions/`，实现在 `Infrastructure/`。典型：`IDockerClientFactory`、`IDockerHostAccessor` |
@@ -137,7 +137,7 @@
 |--------|---------|--------|---------|
 | `Docker:Pool:IdleTimeout` | `DOCKER__POOL__IDLETIMEOUT` | `00:30:00` | 0.0.8 |
 | `Docker:Pool:ReapInterval` | `DOCKER__POOL__REAPINTERVAL` | `00:05:00` | 0.0.8 |
-| `Persistence:DatabasePath` | `PERSISTENCE__DATABASEPATH` | 生产 `/app/data/docker-manager.db`、开发 `data/docker-manager.db` | 0.0.3 |
+| `Persistence:DatabasePath` | `PERSISTENCE__DATABASEPATH` | 生产 `/app/data/whalefleet.db`、开发 `data/whalefleet.db` | 0.0.3 |
 | `Persistence:CommandTimeoutSeconds` | `PERSISTENCE__COMMANDTIMEOUTSECONDS` | `30` | 0.0.3 |
 | `Persistence:Pooling` | `PERSISTENCE__POOLING` | `true` | 0.0.5 |
 | `Cors:AllowedOrigins:0` | `CORS__ALLOWEDORIGINS__0` | （空，拒绝全部跨域） | 0.0.2 |
@@ -148,7 +148,7 @@
 | `Security:Argon2:SaltSizeBytes` | `SECURITY__ARGON2__SALTSIZEBYTES` | `16` | 0.0.3 |
 | `Security:Argon2:HashSizeBytes` | `SECURITY__ARGON2__HASHSIZEBYTES` | `32` | 0.0.3 |
 | `Jwt:Secret` | `JWT__SECRET` | （无；**缺失或 < 32 字节则启动失败**） | 0.0.4 |
-| `Jwt:Issuer` / `Jwt:Audience` | `JWT__ISSUER` / `JWT__AUDIENCE` | `docker-manager` | 0.0.4 |
+| `Jwt:Issuer` / `Jwt:Audience` | `JWT__ISSUER` / `JWT__AUDIENCE` | `whalefleet` | 0.0.4 |
 | `Jwt:AccessTokenLifetime` | `JWT__ACCESSTOKENLIFETIME` | `00:15:00` | 0.0.4 |
 | `Jwt:RefreshTokenLifetime` | `JWT__REFRESHTOKENLIFETIME` | `7.00:00:00` | 0.0.4 |
 | `Admin:User` | `ADMIN__USER` | （无；**仅 `users` 表为空时**用于引导） | 0.0.4 |
@@ -161,7 +161,7 @@
 > ⚠️ **`Urls` 与 `ASPNETCORE_URLS` 的关系**（0.0.2 实测确认）：`appsettings.json` 中的 `Urls` 优先级**高于** `ASPNETCORE_URLS` 环境变量与 `launchSettings.json` 的 `applicationUrl`——因为 `WebApplicationBuilder` 把应用配置层叠加在含 `ASPNETCORE_` 前缀环境变量的宿主配置之上。
 >
 > 要更换监听端口，请使用（优先级自高至低）：
-> 1. 命令行参数：`dotnet Docker.Manager.Api.dll --urls http://0.0.0.0:9090`
+> 1. 命令行参数：`dotnet Whalefleet.Api.dll --urls http://0.0.0.0:9090`
 > 2. 无前缀环境变量：`URLS=http://0.0.0.0:9090`
 
 > **配置校验**：不合法的配置在**启动时**即失败（`ValidateOnStart`），不会拖到第一次请求。例如 `Cors:AllowedOrigins` 含尾斜杠会直接导致启动失败。
@@ -229,7 +229,7 @@
 
 ### Docker Socket 挂载（⚠️ 高危）
 
-> **Docker.Manager 容器挂载 `/var/run/docker.sock` 等于具备宿主机 Docker 的 root 权限**，单容器漏洞 = 宿主机沦陷。
+> **Whalefleet 容器挂载 `/var/run/docker.sock` 等于具备宿主机 Docker 的 root 权限**，单容器漏洞 = 宿主机沦陷。
 
 **推荐部署模式（socket-proxy）**：
 
@@ -247,13 +247,13 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
-  docker-manager:
-    image: ghcr.io/blue-cloud-net/docker-manager:latest
+  whalefleet:
+    image: ghcr.io/blue-cloud-net/whalefleet:latest
     depends_on: [socket-proxy]
     environment:
       # 主机不再是配置项（0.0.8 起为 hosts 表）：默认只有 local（/var/run/docker.sock），
       # 指向 socket-proxy 等其他主机请在启动后通过管理界面添加。
-      - PERSISTENCE__DATABASEPATH=/app/data/docker-manager.db
+      - PERSISTENCE__DATABASEPATH=/app/data/whalefleet.db
     volumes:
       - ./data:/app/data
 ```
@@ -316,7 +316,7 @@ socket-proxy 默认仅授予 `GET`（只读 + 列出），如需写操作（创�
 
 | 项 | 策略 |
 |----|------|
-| 镜像仓库 | `ghcr.io/blue-cloud-net/docker-manager` |
+| 镜像仓库 | `ghcr.io/blue-cloud-net/whalefleet` |
 | 标签策略 | **仅 semver**：`v0.1.0` / `0.1.0` / `0.1` / `latest` |
 | 触发规则 | `v0.0.*` tag 仅构建做 sanity test，**不推 GHCR**；`v0.1.0-rc.*` / `v0.x.0` / `v1.0.0` tag 推 GHCR + 创建 Release |
 
@@ -351,7 +351,7 @@ socket-proxy 默认仅授予 `GET`（只读 + 列出），如需写操作（创�
 ### 独立进程部署
 
 ```
-dotnet Docker.Manager.Api.dll --urls http://0.0.0.0:8080
+dotnet Whalefleet.Api.dll --urls http://0.0.0.0:8080
 ```
 
 要求宿主机当前用户对 `/var/run/docker.sock` 有读写权限（通常需要加入 `docker` 用户组）。
@@ -376,7 +376,7 @@ dotnet Docker.Manager.Api.dll --urls http://0.0.0.0:8080
 
 | 项 | 策略 |
 |----|------|
-| 文件路径 | `/app/data/docker-manager.db` |
+| 文件路径 | `/app/data/whalefleet.db` |
 | Journal 模式 | **WAL**（PRAGMA journal_mode=WAL）提高并发读性能 |
 | 备份脚本 | `/app/scripts/backup.sh`（基于 `sqlite3 .backup`） |
 | 备份策略 | README 文档化 cron 示例（每日 03:00 → `./data/backups/`，保留 7 天） |

@@ -4,14 +4,14 @@
 
 容器化技术已成为现代应用部署的主流方式，但 Docker 原生 CLI 对于日常运维人员和开发团队来说门槛较高。Portainer 是目前最流行的 Docker Web 管理界面，但其功能复杂、商业版受限，且二次开发难度较大。
 
-Docker.Manager 旨在提供一个**轻量、可自托管、易于二次开发**的 Docker 管理平台，以满足中小团队的容器日常运维需求。
+Whalefleet 旨在提供一个**轻量、可自托管、易于二次开发**的 Docker 管理平台，以满足中小团队的容器日常运维需求。
 
 ## 项目定位
 
 ```
-Docker.Manager vs Portainer
+Whalefleet vs Portainer
 ─────────────────────────────────────────────────────────────
-特性                  Docker.Manager          Portainer
+特性                  Whalefleet          Portainer
 ─────────────────────────────────────────────────────────────
 开源协议              MIT（完全开放）          CE 版 zlib，EE 商业
 技术栈               .NET 10 + Vue 3          Go + React
@@ -60,8 +60,8 @@ Docker.Manager vs Portainer
 
 | 项 | 值 |
 |---|---|
-| GitHub repo | `blue-cloud-net/docker-manager` |
-| GitHub Container Registry | `ghcr.io/blue-cloud-net/docker-manager` |
+| GitHub repo | `blue-cloud-net/whalefleet` |
+| GitHub Container Registry | `ghcr.io/blue-cloud-net/whalefleet` |
 | 主分支 | `main`（仅稳定发布）+ `dev`（集成分支） |
 | 许可证 | MIT |
 
@@ -71,14 +71,14 @@ Docker.Manager vs Portainer
 
 ## 镜像分发策略
 
-- **开发期**：前后端分离运行。前端通过 Vite dev server（`src/Docker.Manager.UI/`），后端通过 `dotnet run`，通过 Vite 代理 `/api` 与 `/hubs` 到 `http://localhost:8080`。
+- **开发期**：前后端分离运行。前端通过 Vite dev server（`src/Whalefleet.UI/`），后端通过 `dotnet run`，通过 Vite 代理 `/api` 与 `/hubs` 到 `http://localhost:8080`。
 - **生产期**：**一体化镜像**——单个 GHCR 镜像同时托管前端构建产物（`dist/`）与后端运行时（.NET runtime + ASP.NET Core）。多阶段 Dockerfile 构建，非 root 用户 `app`（UID 10001）运行，根文件系统只读，可写路径仅 `/app/data` 卷。
 
 ---
 
 ## ⚠️ 安全声明：Docker Socket 挂载
 
-> **Docker.Manager 容器挂载 `/var/run/docker.sock` 等于具备宿主机 Docker 的 root 权限**。单容器漏洞 = 宿主机沦陷。
+> **Whalefleet 容器挂载 `/var/run/docker.sock` 等于具备宿主机 Docker 的 root 权限**。单容器漏洞 = 宿主机沦陷。
 
 **强烈推荐使用 socket-proxy 模式**（详见 [constraints.md](./constraints.md#docker-socket-挂载-⚠️-高危)）：
 
@@ -94,16 +94,16 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
-  docker-manager:
-    image: ghcr.io/blue-cloud-net/docker-manager:latest
+  whalefleet:
+    image: ghcr.io/blue-cloud-net/whalefleet:latest
     depends_on: [socket-proxy]
     environment:
       # 主机不再是配置项（0.0.8 起为 hosts 表）：默认只有 local（/var/run/docker.sock），
       # 指向 socket-proxy 等其他主机请在启动后通过管理界面添加。
-      - PERSISTENCE__DATABASEPATH=/app/data/docker-manager.db
+      - PERSISTENCE__DATABASEPATH=/app/data/whalefleet.db
 ```
 
-socket-proxy 作为只读代理，将 Docker API 权限限定到最小子集。如必须直挂 socket，请确保 Docker.Manager 实例仅暴露给可信网络。
+socket-proxy 作为只读代理，将 Docker API 权限限定到最小子集。如必须直挂 socket，请确保 Whalefleet 实例仅暴露给可信网络。
 
 完整安全声明见 [README.zh-CN.md](../README.zh-CN.md#️-安全声明docker-socket-挂载)（[English](../README.md#️-security-notice-docker-socket-mounting)）与
 [constraints.md](constraints.md#docker-socket-挂载-️-高危)。

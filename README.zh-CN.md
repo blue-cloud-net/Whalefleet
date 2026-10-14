@@ -1,4 +1,4 @@
-# Docker.Manager
+# Whalefleet
 
 > **语言 / Language**：**简体中文** | [English](README.md)
 
@@ -10,7 +10,7 @@
 [![.NET 10 LTS](https://img.shields.io/badge/.NET-10_LTS-512BD4)](https://dotnet.microsoft.com)
 [![Vue 3.5+](https://img.shields.io/badge/Vue-3.5+-42b883)](https://vuejs.org)
 [![Docker Engine API v29.4.1](https://img.shields.io/badge/Docker_Engine_API-v29.4.1-2496ED)](https://github.com/testcontainers/Docker.DotNet)
-[![GHCR](https://img.shields.io/badge/GHCR-blue--cloud--net%2Fdocker--manager-2496ED)](https://ghcr.io/blue-cloud-net/docker-manager)
+[![GHCR](https://img.shields.io/badge/GHCR-blue--cloud--net%2Fdocker--manager-2496ED)](https://ghcr.io/blue-cloud-net/whalefleet)
 
 > 当前阶段：**0.0.x 开发迭代期**（未正式发布，0.0.* tag 不推 GHCR）。首个 semver 稳定版 `v0.1.0` 路线图见 [docs/roadmap.md](docs/roadmap.md)。
 
@@ -49,8 +49,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
-  docker-manager:
-    image: docker-manager:local
+  whalefleet:
+    image: whalefleet:local
     depends_on: [socket-proxy]
     ports:
       - "8080:8080"
@@ -67,7 +67,7 @@ services:
     restart: unless-stopped
 ```
 
-如必须**直挂 socket**，请确保 Docker.Manager 实例仅暴露给可信网络。详细安全策略见 [SECURITY.md](SECURITY.md)。
+如必须**直挂 socket**，请确保 Whalefleet 实例仅暴露给可信网络。详细安全策略见 [SECURITY.md](SECURITY.md)。
 
 ---
 
@@ -80,11 +80,11 @@ services:
 
 ```bash
 # 1. 克隆并进入仓库
-git clone https://github.com/blue-cloud-net/docker-manager.git
-cd docker-manager
+git clone https://github.com/blue-cloud-net/whalefleet.git
+cd whalefleet
 
 # 2. 构建镜像（Node + .NET SDK + runtime 三阶段）
-docker build -t docker-manager:local .
+docker build -t whalefleet:local .
 
 # 3. 准备必需的密钥
 cp .env.example .env
@@ -104,18 +104,18 @@ docker compose up -d
 
 ```bash
 docker compose ps                              # 期望 STATUS 为 "healthy"
-docker compose exec docker-manager bash /app/scripts/backup.sh   # 产出经过校验的备份
+docker compose exec whalefleet bash /app/scripts/backup.sh   # 产出经过校验的备份
 
 # 定时备份（每天 03:17——避开整点以减少与其他任务争抢 IO）：
-#   17 3 * * * docker exec docker-manager bash /app/scripts/backup.sh \
-#     >> /var/log/docker-manager-backup.log 2>&1
+#   17 3 * * * docker exec whalefleet bash /app/scripts/backup.sh \
+#     >> /var/log/whalefleet-backup.log 2>&1
 ```
 
 ### 方式二：直挂 Socket（仅可信环境）
 
 ```bash
 docker run -d \
-  --name docker-manager \
+  --name whalefleet \
   -p 8080:8080 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v $(pwd)/data:/app/data \
@@ -123,13 +123,13 @@ docker run -d \
   -e ADMIN__USER=admin \
   -e ADMIN__PASSWORD='StrongP@ss123' \
   --restart unless-stopped \
-  docker-manager:local
+  whalefleet:local
 ```
 
 ### 方式三：独立进程部署
 
 ```bash
-dotnet Docker.Manager.Api.dll --urls http://0.0.0.0:8080
+dotnet Whalefleet.Api.dll --urls http://0.0.0.0:8080
 ```
 
 要求宿主机当前用户对 `/var/run/docker.sock` 有读写权限（通常需要加入 `docker` 用户组）。
@@ -178,7 +178,7 @@ dotnet Docker.Manager.Api.dll --urls http://0.0.0.0:8080
 
 欢迎贡献代码、报告 Bug、提出功能建议。
 
-- 提 Issue：[GitHub Issues](https://github.com/blue-cloud-net/docker-manager/issues)
+- 提 Issue：[GitHub Issues](https://github.com/blue-cloud-net/whalefleet/issues)
 - 提 PR：阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 了解开发流程、Conventional Commits 规范、PR 流程
 - 报告安全漏洞：请**不要**在公开 Issue 中披露，按 [SECURITY.md](SECURITY.md) 流程私信报告
 
@@ -196,7 +196,7 @@ dotnet Docker.Manager.Api.dll --urls http://0.0.0.0:8080
 | `0.2.0` / `0.3.0` / `0.4.0` | 功能里程碑版本 | ✅ 正式发布 |
 | `1.0.0` | **生产就绪版** | ✅ 正式发布 |
 
-- 镜像仓库：`ghcr.io/blue-cloud-net/docker-manager`
+- 镜像仓库：`ghcr.io/blue-cloud-net/whalefleet`
 - 标签策略：仅 semver（`v0.1.0` / `0.1.0` / `0.1` / `latest`）
 - CHANGELOG：0.0.15 起英文版由 [Release Please](https://github.com/googleapis/release-please) 自动生成
 - 完整策略见 [docs/overview.md#发布模型与版本号策略](docs/overview.md#发布模型与版本号策略)

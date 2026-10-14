@@ -29,7 +29,10 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  # ⚠️ 不能写成 ${{ github.repository }}：仓库名是 `Whalefleet`（含大写），
+  #    而 Docker 镜像引用必须全小写，GHCR 会以
+  #    "invalid reference format: repository name must be lowercase" 拒绝推送。
+  IMAGE_NAME: ${{ github.repository_owner }}/whalefleet
 
 jobs:
   build-and-push:
@@ -70,7 +73,7 @@ jobs:
 
       # 构建并推送。只推版本 tag 与 latest，不推 sha ——
       # 0.1.0 之后每次发版都是 semver，latest 已足够定位当前版本。
-      # 另推 ghcr.io/<owner>/docker-manager:<version>（无 v 前缀）
+      # 另推 ghcr.io/<owner>/whalefleet:<version>（无 v 前缀）
       # 以便 docker run 时不必带 v。
       - name: 构建并推送
         if: steps.version.outputs.publish == 'true'

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# Docker.Manager — SQLite 备份脚本
+# Whalefleet — SQLite 备份脚本
 # ============================================================================
 # 用 `sqlite3 .backup` 做**在线**备份：不锁库、不中断服务。
 #
 # ## 为什么不能直接 cp 数据库文件
 # SQLite 默认是 rollback journal 模式（本项目虽已启用 WAL，但两者都适用）：
-# 直接 `cp docker-manager.db` 拷到的是**某一瞬时**的文件状态，
+# 直接 `cp whalefleet.db` 拷到的是**某一瞬时**的文件状态，
 # 若此刻正在写事务，拷出来的可能是撕裂的——恢复时报
 # "database disk image is malformed"，而这时往往已经需要它了。
 #
@@ -24,17 +24,17 @@
 #
 # ## 用法
 #   # 容器内执行（推荐：镜像已含 sqlite3）
-#   docker compose exec docker-manager bash /app/scripts/backup.sh
+#   docker compose exec whalefleet bash /app/scripts/backup.sh
 #   # 取出备份
-#   docker compose cp docker-manager:/app/data/backups ./backups
+#   docker compose cp whalefleet:/app/data/backups ./backups
 #
 #   # 宿主机执行
-#   DOCKER_MANAGER_DB=/srv/docker-manager/data/docker-manager.db \
+#   WHALEFLEET_DB=/srv/whalefleet/data/whalefleet.db \
 #     bash scripts/backup.sh
 #
 # ## cron 示例（容器内，每天 03:17）
-#   17 3 * * * docker exec docker-manager bash /app/scripts/backup.sh \
-#     >> /var/log/docker-manager-backup.log 2>&1
+#   17 3 * * * docker exec whalefleet bash /app/scripts/backup.sh \
+#     >> /var/log/whalefleet-backup.log 2>&1
 #
 # 之所以给 17 而不是 0：整点是所有定时任务的默认目标，错峰能避开
 # 宿主机上其他任务在同一秒争抢 IO 的情况。
@@ -45,13 +45,13 @@ set -Eeuo pipefail
 # ---------------------------------------------------------------------------
 # 配置
 # ---------------------------------------------------------------------------
-DB_PATH="${DOCKER_MANAGER_DB:-/app/data/docker-manager.db}"
-BACKUP_DIR="${DOCKER_MANAGER_BACKUP_DIR:-/app/data/backups}"
+DB_PATH="${WHALEFLEET_DB:-/app/data/whalefleet.db}"
+BACKUP_DIR="${WHALEFLEET_BACKUP_DIR:-/app/data/backups}"
 # 保留最近多少份。备份的意义在于「出事后手边有东西」，
 # 留 14 份 ≈ 两周的每日备份；再多通常只是占满磁盘。
-KEEP="${DOCKER_MANAGER_BACKUP_KEEP:-14}"
+KEEP="${WHALEFLEET_BACKUP_KEEP:-14}"
 # 单个备份超过该大小（字节）时删除。0 = 不限制。
-MAX_BYTES="${DOCKER_MANAGER_BACKUP_MAX_BYTES:-0}"
+MAX_BYTES="${WHALEFLEET_BACKUP_MAX_BYTES:-0}"
 
 log() { printf '[backup] %s\n' "$*"; }
 fail() { printf '[backup] 错误：%s\n' "$*" >&2; exit 1; }
@@ -65,12 +65,12 @@ command -v sqlite3 >/dev/null 2>&1 \
 [[ -f "${DB_PATH}" ]] || fail "数据库文件不存在：${DB_PATH}"
 
 # ---------------------------------------------------------------------------
-# 生成文件名：docker-manager-20261014-031700.db
+# 生成文件名：whalefleet-20261014-031700.db
 # 时间戳到秒：同一分钟内跑两次也不会互相覆盖（虽然那种情况
 # 本身就说明 cron 配错了，但覆盖掉上一份备份更糟）。
 # ---------------------------------------------------------------------------
 TIMESTAMP="$(date -u +%Y%m%d-%H%M%S)"
-BACKUP_FILE="${BACKUP_DIR}/docker-manager-${TIMESTAMP}.db"
+BACKUP_FILE="${BACKUP_DIR}/whalefleet-${TIMESTAMP}.db"
 
 mkdir -p "${BACKUP_DIR}"
 
@@ -109,7 +109,7 @@ log "完整性检查通过"
 # ---------------------------------------------------------------------------
 # 用「按文件名排序」而非 mtime：文件名含时间戳，排序结果与时间一致，
 # 且不会因为 cp -p 保留 mtime 而排错序。
-mapfile -t OLD < <(find "${BACKUP_DIR}" -maxdepth 1 -type f -name 'docker-manager-*.db' | sort -r)
+mapfile -t OLD < <(find "${BACKUP_DIR}" -maxdepth 1 -type f -name 'whalefleet-*.db' | sort -r)
 REMOVED=0
 for (( i=KEEP; i<${#OLD[@]}; i++ )); do
   rm -f "${OLD[i]}"

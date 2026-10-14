@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Whalefleet.IntegrationTests
+===============================================================================
+    集成测试项目。通过 WebApplicationFactory 在进程内启动真实宿主（TestServer），
+    验证 HTTP 管道、统一响应格式、异常映射、CORS 与配置系统。
+
+    依赖方向：本项目是测试项目中最外层，允许引用 Api；而 UnitTests 项目严格
+    不允许引用 Api / Infrastructure（见 docs/architecture.md 的依赖方向规则）。
+
+    注意：本项目骨架在 0.0.2 提前落地（roadmap 原计划 0.0.8）。0.0.8 起在此项目内
+    追加 Testcontainers 依赖，用于针对真实 Docker 守护进程的集成测试。
+  -->
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="coverlet.collector">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Whalefleet.Api\Whalefleet.Api.csproj" />
+  </ItemGroup>
+
+</Project>

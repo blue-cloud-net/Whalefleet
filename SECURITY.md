@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Docker.Manager is in **0.0.x development iterations** — it is not released to GHCR and the
+Whalefleet is in **0.0.x development iterations** — it is not released to GHCR and the
 API may change in breaking ways between iterations. Security fixes land on `dev`, which is
 the integration branch.
 
@@ -44,7 +44,7 @@ otherwise.
 
 ## Deployment: the one thing you must get right
 
-Docker.Manager's security posture is decided almost entirely by **how you deploy it**, not by
+Whalefleet's security posture is decided almost entirely by **how you deploy it**, not by
 the code. Read this section before exposing the service to any network.
 
 ### 1. Mounting the Docker socket is equivalent to giving away root
@@ -70,7 +70,7 @@ dependency — means **the host is compromised**.
 only `CONTAINERS`, `IMAGES`, `NETWORKS` and `VOLUMES`:
 
 ```bash
-docker compose up -d socket-proxy docker-manager
+docker compose up -d socket-proxy whalefleet
 ```
 
 This does **not** make the proxy safe to compromise — it still holds the full socket. What it

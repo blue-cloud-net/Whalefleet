@@ -1,4 +1,4 @@
-# Contributing to Docker.Manager
+# Contributing to Whalefleet
 
 Thanks for your interest. This document is the short version; the authoritative rules live in
 [`docs/constraints.md`](docs/constraints.md).
@@ -15,15 +15,15 @@ Thanks for your interest. This document is the short version; the authoritative 
 Requires **.NET 10 SDK**, **Node.js 20+** and **pnpm**.
 
 ```bash
-git clone https://github.com/blue-cloud-net/docker-manager
-cd docker-manager
+git clone https://github.com/blue-cloud-net/whalefleet
+cd whalefleet
 
 # Backend
 dotnet restore
 dotnet build -c Release
 
 # Frontend (separate terminal)
-cd src/Docker.Manager.UI
+cd src/Whalefleet.UI
 pnpm install
 pnpm dev:mock        # fake data, no backend or Docker needed
 # or
@@ -43,7 +43,7 @@ dotnet build -c Release --nologo
 dotnet test  -c Release
 
 # Frontend
-cd src/Docker.Manager.UI
+cd src/Whalefleet.UI
 pnpm typecheck    # vue-tsc --noEmit
 pnpm lint         # eslint . --max-warnings 0
 pnpm test         # vitest run
@@ -127,9 +127,9 @@ Core ← Infrastructure
 Core / Application ← both test projects
 ```
 
-- `Docker.Manager.Core` is **BCL only, zero NuGet**. Adding a package reference there breaks
+- `Whalefleet.Core` is **BCL only, zero NuGet**. Adding a package reference there breaks
   the build by design.
-- **`Docker.Manager.UnitTests` must not reference Api or Infrastructure.** If you need to test
+- **`Whalefleet.UnitTests` must not reference Api or Infrastructure.** If you need to test
   Api-internal code, put the test in `IntegrationTests`.
 - **Entities are never returned directly as HTTP responses.** Map to DTOs in the application
   service.

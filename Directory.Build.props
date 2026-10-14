@@ -27,11 +27,11 @@
 
     <!-- 通用元数据（各 csproj 可覆盖） -->
     <Company>blue-cloud-net</Company>
-    <Product>Docker.Manager</Product>
+    <Product>Whalefleet</Product>
     <Copyright>Copyright (c) 2026 blue-cloud-net</Copyright>
     <NeutralLanguage>zh-CN</NeutralLanguage>
 
-    <!-- 默认不打 NuGet 包（仅 Api/Docker.Manager.Api 显式 IsPackable=true 时才打包） -->
+    <!-- 默认不打 NuGet 包（仅 Api/Whalefleet.Api 显式 IsPackable=true 时才打包） -->
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
