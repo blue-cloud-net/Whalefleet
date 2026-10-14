@@ -5,9 +5,10 @@ import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '@/components/common/PageHeader.vue'
 import SectionCard from '@/components/common/SectionCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import ContainerStatusBadge from '@/components/business/ContainerStatusBadge.vue'
 import { inspectContainer } from '@/api/container'
 import { ApiRequestError } from '@/api'
-import { CONTAINER_TONE_CHIP, CONTAINER_TONE_LABEL_KEY, containerTone, formatBytes } from '@/utils/container-status'
+import { formatBytes } from '@/utils/container-status'
 import { formatDateTime } from '@/utils/datetime'
 import type { ByteUnits } from '@/utils/container-status'
 import type { ContainerDetail } from '@/types/api'
@@ -131,12 +132,7 @@ watch(containerId, load, { immediate: true })
       </template>
 
       <template v-if="detail" #badge>
-        <span
-          class="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs ring-1 ring-inset align-middle"
-          :class="CONTAINER_TONE_CHIP[containerTone(detail.state.status)]"
-        >
-          {{ t(CONTAINER_TONE_LABEL_KEY[containerTone(detail.state.status)]) }}
-        </span>
+        <ContainerStatusBadge :status="detail.state.status" class="ml-2 align-middle" />
       </template>
     </PageHeader>
 

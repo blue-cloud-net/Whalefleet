@@ -8,6 +8,7 @@ import SectionCard from '@/components/common/SectionCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import IconActionButton from '@/components/common/IconActionButton.vue'
 import CreateContainerDialog from '@/components/business/CreateContainerDialog.vue'
+import ContainerStatusBadge from '@/components/business/ContainerStatusBadge.vue'
 import { onActionRequest } from '@/composables/useActionBus'
 import {
   listContainers,
@@ -17,12 +18,7 @@ import {
   stopContainer
 } from '@/api/container'
 import { ApiRequestError } from '@/api'
-import {
-  CONTAINER_TONE_CHIP,
-  CONTAINER_TONE_LABEL_KEY,
-  containerTone,
-  formatPort
-} from '@/utils/container-status'
+import { containerTone, formatPort } from '@/utils/container-status'
 import { formatDateTime } from '@/utils/datetime'
 import type { ContainerSummary } from '@/types/api'
 
@@ -406,12 +402,7 @@ onBeforeUnmount(stopPolling)
 
           <el-table-column :label="t('container.col.state')" width="160">
             <template #default="{ row }">
-              <span
-                class="inline-flex items-center rounded-full px-2 py-0.5 text-xs ring-1 ring-inset"
-                :class="CONTAINER_TONE_CHIP[containerTone(row.state)]"
-              >
-                {{ t(CONTAINER_TONE_LABEL_KEY[containerTone(row.state)]) }}
-              </span>
+              <ContainerStatusBadge :status="row.state" />
               <div v-if="row.status" class="app-truncate mt-0.5 text-xs text-content-faint">
                 {{ row.status }}
               </div>

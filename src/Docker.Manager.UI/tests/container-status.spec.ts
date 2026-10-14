@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  CONTAINER_TONE_CHIP,
   CONTAINER_TONE_LABEL_KEY,
   containerTone,
   formatBytes,
@@ -40,10 +39,9 @@ describe('containerTone', () => {
     expect(containerTone('')).toBe('idle')
   })
 
-  it('每一档都有文案 key 与配色（漏一个就会渲染出空白药丸）', () => {
+  it('每一档都有文案 key（漏一个就会渲染出空白药丸）', () => {
     for (const tone of ['ok', 'down', 'warn', 'idle'] as const) {
       expect(CONTAINER_TONE_LABEL_KEY[tone]).toBeTruthy()
-      expect(CONTAINER_TONE_CHIP[tone]).toBeTruthy()
     }
   })
 })

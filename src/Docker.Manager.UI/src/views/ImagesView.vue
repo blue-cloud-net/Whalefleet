@@ -8,10 +8,10 @@ import SectionCard from '@/components/common/SectionCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import IconActionButton from '@/components/common/IconActionButton.vue'
 import PullImageDialog from '@/components/business/PullImageDialog.vue'
+import ImageSize from '@/components/business/ImageSize.vue'
 import { onActionRequest } from '@/composables/useActionBus'
 import { listImages, removeImage } from '@/api/image'
 import { ApiRequestError } from '@/api'
-import { formatBytes } from '@/utils/container-status'
 import {
   DANGLING_IMAGE_LABEL,
   isDangling,
@@ -58,13 +58,6 @@ const hostId = computed(() => String(route.params.hostId ?? ''))
 
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const isEmpty = computed(() => !loading.value && error.value === null && images.value.length === 0)
-
-const byteUnits = computed(() => ({
-  b: t('unit.byte'),
-  kib: t('unit.kib'),
-  mib: t('unit.mib'),
-  gib: t('unit.gib')
-}))
 
 async function load(): Promise<void> {
   if (!hostId.value) return
@@ -283,9 +276,10 @@ watch(
           </template>
         </el-table-column>
 
-        <el-table-column :label="t('image.col.size')" width="110">
+        <el-table-column :label="t('image.col.size')" width="150">
           <template #default="{ row }">
-            <span class="text-sm tabular-nums">{{ formatBytes(row.size, byteUnits) }}</span>
+            <!-- 独占层体积 / 逻辑总体积：两者不等时组件会自动加提示，避免高估可释放空间。 -->
+            <ImageSize :size="row.size - row.sharedSize" :virtual-size="row.size" />
           </template>
         </el-table-column>
 

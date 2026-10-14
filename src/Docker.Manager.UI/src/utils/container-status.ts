@@ -54,14 +54,6 @@ export const CONTAINER_TONE_LABEL_KEY: Record<ContainerTone, string> = {
   idle: 'container.state.unknown'
 }
 
-/** 状态药丸配色：柔和底色 + 同色系文字 + 同色系描边（与主机状态药丸同一套做法）。 */
-export const CONTAINER_TONE_CHIP: Record<ContainerTone, string> = {
-  ok: 'bg-status-ok-soft/60 text-status-ok ring-status-ok/25',
-  down: 'bg-status-down-soft/60 text-status-down ring-status-down/25',
-  warn: 'bg-status-warn-soft/60 text-status-warn ring-status-warn/25',
-  idle: 'bg-status-idle-soft/60 text-status-idle ring-status-idle/30'
-}
-
 /**
  * 端口的展示文本。
  *
