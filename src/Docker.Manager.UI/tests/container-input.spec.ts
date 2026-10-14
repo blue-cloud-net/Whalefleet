@@ -11,7 +11,9 @@ import {
   parsePortLine,
   parsePortText,
   parseVolumeLine,
-  parseVolumeText
+  parseVolumeText,
+  toPortPayload,
+  toVolumePayload
 } from '../src/utils/container-input'
 
 /**
@@ -113,7 +115,6 @@ describe('parsePortLine', () => {
 describe('parseVolumeLine', () => {
   it('POSIX 路径', () => {
     expect(parseVolumeLine('/host/data:/data')).toEqual({
-      type: 'auto',
       source: '/host/data',
       destination: '/data',
       readOnly: false
@@ -142,10 +143,10 @@ describe('parseVolumeLine', () => {
     expect(parseVolumeLine('justonepath')).toBeNull()
   })
 
-  it('粘贴解析出的类型一律 auto（与 docker run 行为一致）', () => {
-    // 强制判定 bind/volume 会让某些写法因类型不符而失败；
-    // 交给守护进程按来源自行判定才是与 `docker run` 一致的兼容做法
-    expect(parseVolumeLine('/host/data:/data')?.type).toBe('auto')
+  it('解析结果不携带挂载类型（由守护进程按来源自行判定）', () => {
+    // 强制判定 bind/volume 会让某些写法因类型不符而失败；前端也不该伪造一个
+    // 后端 `ContainerVolumeMapping` 并不存在的字段
+    expect(Object.keys(parseVolumeLine('/host/data:/data') ?? {})).not.toContain('type')
   })
 })
 
@@ -156,7 +157,7 @@ describe('格式化往返', () => {
   })
 
   it('挂载格式化后可被自己重新解析', () => {
-    const mount = { type: 'auto' as const, source: '/a', destination: '/b', readOnly: true }
+    const mount = { source: '/a', destination: '/b', readOnly: true }
     expect(parseVolumeLine(formatVolumeMount(mount))).toEqual(mount)
   })
 
@@ -201,5 +202,50 @@ describe('parsePortText / parseVolumeText 的行号语义', () => {
   it('全部合法时 errorLine 为 null', () => {
     expect(parsePortText('80\n443:8443').errorLine).toBeNull()
     expect(parseEnvText('A=1\nB=2').errorLine).toBeNull()
+  })
+})
+
+describe('请求体转换', () => {
+  it('只暴露不绑定时不发 hostPort', () => {
+    // 关键：`null` 是「宿主端口随机」这一明确意图的编码，传给后端却与
+    // 「字段未提供」难以区分；后端文档写的是「省略表示只暴露不绑定」
+    const payload = toPortPayload(parsePortLine('80')!)
+    expect(payload).toEqual({ containerPort: 80 })
+    expect('hostPort' in payload).toBe(false)
+  })
+
+  it('不绑网卡时不发 hostIp', () => {
+    expect(toPortPayload(parsePortLine('8080:80')!)).toEqual({ containerPort: 80, hostPort: 8080 })
+  })
+
+  it('绑定网卡时带上 hostIp', () => {
+    expect(toPortPayload(parsePortLine('127.0.0.1:8080:80')!)).toEqual({
+      containerPort: 80,
+      hostPort: 8080,
+      hostIp: '127.0.0.1'
+    })
+  })
+
+  it('udp 映射 protocol 落到请求体的 type 字段', () => {
+    // 命名不同（解析用 protocol / 请求体用 type）是唯一一处改名，只在这里转换
+    expect(toPortPayload(parsePortLine('53:53/udp')!).type).toBe('udp')
+  })
+
+  it('tcp 不写 type（后端省略即 tcp）', () => {
+    expect(toPortPayload(parsePortLine('80')!)).not.toHaveProperty('type')
+  })
+
+  it('挂载映射三个字段，且不伪造 type', () => {
+    const mount = parseVolumeLine('/host/data:/data:ro')!
+    expect(toVolumePayload(mount)).toEqual({ source: '/host/data', destination: '/data', readOnly: true })
+  })
+
+  it('文本 → 解析 → 请求体的端到端往返', () => {
+    const { values } = parsePortText('127.0.0.1:8080:80/udp\n443')
+
+    expect(values.map(toPortPayload)).toEqual([
+      { containerPort: 80, hostPort: 8080, hostIp: '127.0.0.1', type: 'udp' },
+      { containerPort: 443 }
+    ])
   })
 })

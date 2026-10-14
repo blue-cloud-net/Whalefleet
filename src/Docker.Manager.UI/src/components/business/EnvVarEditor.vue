@@ -24,6 +24,16 @@ import {
  */
 const model = defineModel<EnvEntry[]>({ required: true })
 
+/**
+ * 出错的行号（`null` = 全部合法），**双向**导出。
+ *
+ * 必须给父级：解析失败时 model 里只有出错行**之前**的合法部分，
+ * 父级若看不到 errorLine 就会拿着这份残缺的列表提交，
+ * 建出一个「少了一条环境变量但提示成功」的容器。本组件负责显示错误，
+ * 「要不要拦下提交」是父级的决定，因此把判据交出去而不是就地禁用按钮。
+ */
+const errorLine = defineModel<number | null>('errorLine', { required: true })
+
 const { t } = useI18n()
 
 /**
@@ -41,6 +51,15 @@ const { t } = useI18n()
 const draft = ref(model.value.map((entry) => `${entry.key}=${entry.value}`).join('\n'))
 
 const parsed = computed(() => parseEnvText(draft.value))
+
+/** 同步给父级；`immediate` 保证「打开即有错」（粘贴残留）也能立刻反映到提交按钮上。 */
+watch(
+  parsed,
+  (value) => {
+    errorLine.value = value.errorLine
+  },
+  { immediate: true }
+)
 
 /** 把草稿同步给 model（每次输入都调）：只写入已解析出的合法部分。 */
 watch(draft, (value) => {
@@ -60,9 +79,6 @@ watch(
   },
   { deep: true }
 )
-
-/** 哪一行不合法；由 `parseEnvText` 的 errorLine 直接给出。 */
-const errorLine = computed(() => parsed.value.errorLine)
 
 /** 同一批里重复的键：后写的会覆盖先写的，这是 Docker 的行为，界面必须点出来。 */
 const duplicateKeys = computed(() => {

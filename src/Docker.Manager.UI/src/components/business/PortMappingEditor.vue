@@ -22,6 +22,9 @@ import {
  */
 const model = defineModel<PortMapping[]>({ required: true })
 
+/** 出错的行号；导出给父级用于拦截提交（理由见 `EnvVarEditor` 的同名注释）。 */
+const errorLine = defineModel<number | null>('errorLine', { required: true })
+
 const { t } = useI18n()
 
 /** 草稿：文本框的权威来源（理由见 `EnvVarEditor` 的同名变量注释）。 */
@@ -45,7 +48,13 @@ watch(
   { deep: true }
 )
 
-const errorLine = computed(() => parsed.value.errorLine)
+watch(
+  parsed,
+  (value) => {
+    errorLine.value = value.errorLine
+  },
+  { immediate: true }
+)
 
 /** 被重复映射的容器端口（同一个容器端口只能对外映射到一个宿主端口）。 */
 const duplicateContainerPorts = computed(() => {

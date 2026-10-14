@@ -17,11 +17,16 @@ import {
  * 实际可能挂到了 `/root/data`，且**没有任何报错**。
  * 因此逐行编辑时对相对路径实时标红，并在提示里说清原因。
  *
- * ## 为什么 `type` 默认是「自动判定」
- * 文本粘贴进来的挂载一律标 `auto`（与 `docker run` 行为一致）；
- * 只有用户在逐行模式下显式选了 bind / volume 才写死类型。
+ * ## 为什么没有「挂载类型」选择器
+ * 后端 `ContainerVolumeMapping` 同样没有 `type` 字段——bind 与具名卷的区别由 Docker
+ * 根据来源路径是否存在来判定。界面若提供一个选了也不生效的类型下拉，
+ * 就是 `CreateContainerDialog` 注释里明令禁止的「前端支持但后端忽略的开关」：
+ * 用户会以为 `volume` 选项能强制按具名卷处理。因此一律交给 Docker 判定。
  */
 const model = defineModel<VolumeMount[]>({ required: true })
+
+/** 出错的行号；导出给父级用于拦截提交（理由见 `EnvVarEditor` 的同名注释）。 */
+const errorLine = defineModel<number | null>('errorLine', { required: true })
 
 const { t } = useI18n()
 
@@ -46,13 +51,16 @@ watch(
   { deep: true }
 )
 
-const errorLine = computed(() => parsed.value.errorLine)
+watch(
+  parsed,
+  (value) => {
+    errorLine.value = value.errorLine
+  },
+  { immediate: true }
+)
 
 function addRow(): void {
-  model.value = [
-    ...model.value,
-    { type: 'auto', source: '', destination: '/data', readOnly: false }
-  ]
+  model.value = [...model.value, { source: '', destination: '/data', readOnly: false }]
 }
 
 function removeRow(index: number): void {
@@ -78,16 +86,6 @@ function removeRow(index: number): void {
       <el-collapse-item :title="t('container.editor.editRows')" name="rows">
         <div class="flex flex-col gap-2">
           <div v-for="(row, index) in model" :key="index" class="flex items-start gap-2">
-            <el-select
-              :model-value="row.type"
-              class="w-28"
-              @update:model-value="(v: VolumeMount['type']) => (row.type = v)"
-            >
-              <el-option :value="'auto'" :label="t('container.editor.mountAuto')" />
-              <el-option value="bind" :label="t('container.editor.mountBind')" />
-              <el-option value="volume" :label="t('container.editor.mountVolume')" />
-            </el-select>
-
             <el-input
               v-model="row.source"
               :placeholder="t('container.editor.mountSource')"

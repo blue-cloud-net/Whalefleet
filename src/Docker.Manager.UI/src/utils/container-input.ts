@@ -15,6 +15,14 @@
  * 后端的校验则是最后一道防线（也覆盖非浏览器调用方）。
  */
 
+import type { CreateContainerPayload } from '@/api/container'
+
+/** 创建请求体里的端口映射项（与后端 `ContainerPortMapping` 逐字对应）。 */
+type CreatePortPayload = NonNullable<CreateContainerPayload['ports']>[number]
+
+/** 创建请求体里的挂载项（与后端 `ContainerVolumeMapping` 逐字对应）。 */
+type CreateVolumePayload = NonNullable<CreateContainerPayload['volumes']>[number]
+
 /** 一条环境变量。`value` 允许为空串——`FOO=` 是合法的「显式置空」。 */
 export interface EnvEntry {
   key: string
@@ -32,16 +40,14 @@ export interface PortMapping {
   protocol: 'tcp' | 'udp'
 }
 
-/** 一条挂载。`type` 表达用户的**意图**，后端按 source 自行判定实际类型。 */
+/**
+ * 一条挂载。
+ *
+ * ⚠️ **刻意没有 `type` 字段**（bind / volume）：后端 `ContainerVolumeMapping` 也没有——
+ * 两者由 Docker 根据来源路径是否存在来判定。在前端重复这条规则只会得到一个
+ * 「选了也不生效」的下拉框，而那正是 `CreateContainerDialog` 明令禁止的开关。
+ */
 export interface VolumeMount {
-  /**
-   * `auto` = 不指定（交给 Docker 判定，行为与 `docker run` 完全一致），
-   * `bind` / `volume` = 用户显式指定。
-   *
-   * 保留 `auto` 作为默认是因为它是唯一能同时覆盖两种来源的写法；
-   * 界面上的「自动判定」选项对应它。
-   */
-  type: 'auto' | 'bind' | 'volume'
   source: string
   destination: string
   readOnly: boolean
@@ -270,7 +276,7 @@ function splitVolumeSpec(body: string): { source: string; destination: string } 
  * 解析一行挂载：`来源:容器内路径[:ro]`。
  *
  * 来源既可以是宿主路径也可以是具名卷——Docker 自己根据它判定类型，
- * 因此文本解析出的结果一律标 `auto`，与 `docker run` 的行为完全一致。
+ * 因此解析结果不携带类型信息，与 `docker run` 的行为完全一致。
  *
  * @returns `null` 表示该行不合法
  */
@@ -282,7 +288,7 @@ export function parseVolumeLine(value: string): VolumeMount | null {
   if (split === null) return null
   if (!isValidContainerPath(split.destination)) return null
 
-  return { type: 'auto', ...split, readOnly }
+  return { ...split, readOnly }
 }
 
 /** 解析多行挂载文本。 */
@@ -319,4 +325,32 @@ export function formatPortMapping(mapping: PortMapping): string {
 /** 挂载 → `来源:容器内路径[:ro]` 文本。 */
 export function formatVolumeMount(mount: VolumeMount): string {
   return `${mount.source}:${mount.destination}${mount.readOnly ? ':ro' : ''}`
+}
+
+/**
+ * 端口映射 → 创建请求体项。
+ *
+ * ## 两条省略规则，都是为了不把 `null` 发给后端
+ * 1. `hostPort` / `hostIp` 为 `null` 时**省略**。后端字段是可空的 `int?` / `string?`，
+ *    传 `null` 与「不传」在 JSON 里长得很像，但校验分支与含义不同：
+ *    `null` 的 `hostPort` 读起来像「用户填了但没填好」，而这里表达的是
+ *    「只暴露不绑定」这一明确意图，省略才是它的正确编码。
+ * 2. `protocol` 为 `tcp` 时省略。后端默认即 tcp，写死只是多两个字符，
+ *    却让请求体与文档里的「省略为 tcp」说法对不上。
+ *
+ * `protocol` 映射到请求体的 `type` 字段——这是本文件唯一一处命名与结构体不同的地方，
+ * 容易在别处再写一遍，所以只在这里做一次转换。
+ */
+export function toPortPayload(mapping: PortMapping): CreatePortPayload {
+  return {
+    containerPort: mapping.containerPort,
+    ...(mapping.hostPort === null ? {} : { hostPort: mapping.hostPort }),
+    ...(mapping.hostIp === null ? {} : { hostIp: mapping.hostIp }),
+    ...(mapping.protocol === 'tcp' ? {} : { type: mapping.protocol })
+  }
+}
+
+/** 挂载 → 创建请求体项。`readOnly` 始终写明（false 与省略等价，但写明更便于排查）。 */
+export function toVolumePayload(mount: VolumeMount): CreateVolumePayload {
+  return { source: mount.source, destination: mount.destination, readOnly: mount.readOnly }
 }

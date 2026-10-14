@@ -7,17 +7,32 @@ import {
   startContainer,
   type CreateContainerPayload
 } from '@/api/container'
+import EnvVarEditor from '@/components/business/EnvVarEditor.vue'
+import PortMappingEditor from '@/components/business/PortMappingEditor.vue'
+import VolumeMountEditor from '@/components/business/VolumeMountEditor.vue'
+import {
+  formatEnvEntry,
+  toPortPayload,
+  toVolumePayload,
+  type EnvEntry,
+  type PortMapping,
+  type VolumeMount
+} from '@/utils/container-input'
 
 /**
- * 新建容器对话框（0.0.11）。
+ * 新建容器对话框（0.0.11，0.0.14 重构输入区）。
  *
- * ## 为什么端口 / 挂载 / 环境变量用「每行一条」的文本框而不是三个联动输入框
+ * ## 端口 / 挂载 / 环境变量为什么用行式输入
  * 真实的 `docker run` 命令就是这种行式输入，而嵌套表单控件（端口要两行、协议要下拉、
  * 还要能加第二个端口）在一行里塞不下、读起来还比命令行难懂。**降低输入成本**在这里
  * 比「结构化表单好看」更重要：用户绝大多数情况是把一条现成的命令行粘进来。
  *
- * 代价是要自己解析并在**提交前**校验（不能靠后端的 400，那只会得到一句
- * "invalid parameter"）。因此解析结果与错误行号都直接显示在输入框下方。
+ * 0.0.14 把这三个字段从「对话框内部的一组文本框」换成三个**双模编辑器**
+ * （`EnvVarEditor` / `PortMappingEditor` / `VolumeMountEditor`）：
+ * 批量粘贴为主、逐行编辑为辅，并且解析逻辑下沉到 `utils/container-input.ts`，
+ * 两条路径共用同一份校验——否则「粘贴能建、手填建不了」的不一致迟早出现。
+ *
+ * 因此本文件不再自带任何行解析函数，只负责把结构化结果映射成请求体。
  *
  * ## 关于「高级选项」折叠
  * 后端 `create` 只暴露精选字段（见 `CreateContainerPayload`），本表单与它**一一对应**，
@@ -51,9 +66,23 @@ const image = ref('')
 const name = ref('')
 const cmd = ref('')
 const entrypoint = ref('')
-const envText = ref('')
-const portText = ref('')
-const volumeText = ref('')
+
+/** 三个编辑器的结构化值；它们的文本草稿与行号校验都封装在组件内部。 */
+const envEntries = ref<EnvEntry[]>([])
+const portEntries = ref<PortMapping[]>([])
+const volumeEntries = ref<VolumeMount[]>([])
+
+/**
+ * 三个编辑器回传的出错行号（`null` = 全部合法）。
+ *
+ * 必须据此**拦下提交**：解析失败时编辑器给出的结构化数组只含出错行**之前**的合法部分，
+ * 若照样提交，就会建出一个「少了环境变量 / 少了一条端口」却提示成功的容器。
+ * 错误文案由各编辑器自己显示（带行号），这里只做拦截。
+ */
+const envError = ref<number | null>(null)
+const portError = ref<number | null>(null)
+const volumeError = ref<number | null>(null)
+
 const restartPolicy = ref('no')
 const autoRemove = ref(false)
 const network = ref('')
@@ -62,19 +91,29 @@ const workingDir = ref('')
 const tty = ref(false)
 const stdinOpen = ref(false)
 
-/** 解析出来的字段级错误：key 是字段名，value 是错误 key（交由 t() 取文案）。 */
+/** 本对话框自己校验的字段级错误：key 是字段名，value 是错误 key（交由 t() 取文案）。 */
 const fieldErrors = ref<Record<string, string>>({})
 
-const canSubmit = computed(() => image.value.trim().length > 0 && !submitting.value)
+/** 输入区有未解析完的行时直接禁用提交，而不是提交后再弹错误。 */
+const hasInputError = computed(
+  () => envError.value !== null || portError.value !== null || volumeError.value !== null
+)
+
+const canSubmit = computed(
+  () => image.value.trim().length > 0 && !submitting.value && !hasInputError.value
+)
 
 function reset(): void {
   image.value = ''
   name.value = ''
   cmd.value = ''
   entrypoint.value = ''
-  envText.value = ''
-  portText.value = ''
-  volumeText.value = ''
+  envEntries.value = []
+  portEntries.value = []
+  volumeEntries.value = []
+  envError.value = null
+  portError.value = null
+  volumeError.value = null
   restartPolicy.value = 'no'
   autoRemove.value = false
   network.value = ''
@@ -92,122 +131,6 @@ watch(visible, (open) => {
   if (open) reset()
 })
 
-/**
- * 解析「每行一条」的文本为非空行数组。
- *
- * 刻意**不丢空行语义**：空行只是被忽略（用户粘贴多行命令时难免带上空行），
- * 但每一项的**行号**要保留在解析结果里，错误提示才能指到具体那一行。
- */
-function parseLines(text: string): Array<{ line: number; value: string }> {
-  return text
-    .split('\n')
-    .map((raw, index) => ({ line: index + 1, value: raw.trim() }))
-    .filter((entry) => entry.value.length > 0)
-}
-
-/**
- * 解析环境变量：每行必须是 `KEY=VALUE`。
- *
- * 后端也会校验这条（返回 1000），但它只会说「环境变量xxx不是 KEY=VALUE」，
- * 没有行号。这里提前拦下并指出第几行，用户不用自己数。
- */
-function parseEnv(): { values: string[]; errorLine: number | null } {
-  const values: string[] = []
-
-  for (const { line, value } of parseLines(envText.value)) {
-    const separator = value.indexOf('=')
-
-    if (separator <= 0) {
-      return { values: [], errorLine: line }
-    }
-
-    values.push(value)
-  }
-
-  return { values, errorLine: null }
-}
-
-/**
- * 解析端口映射：`容器端口[:宿主端口][/协议]`。
- *
- * 三种写法都要支持，因为它们在实际使用中出现频率接近：
- * - `80` —— 只暴露不绑定
- * - `80:8080` —— 指定宿主端口
- * - `53:53/udp` —— 指定协议
- *
- * 端口号范围在这里校验（1–65535）：后端也会校验，但它的消息是中文且不带行号，
- * 而这里能精确指出「第 2 行」并顺带告诉用户合法范围。
- */
-function parsePorts(): {
-  ports: NonNullable<CreateContainerPayload['ports']>
-  errorLine: number | null
-} {
-  const ports: NonNullable<CreateContainerPayload['ports']> = []
-
-  for (const { line, value } of parseLines(portText.value)) {
-    const [addressPart, protocolPart] = value.split('/')
-    const protocol = protocolPart?.trim().toLowerCase()
-
-    if (protocol !== undefined && protocol !== 'tcp' && protocol !== 'udp') {
-      return { ports: [], errorLine: line }
-    }
-
-    const [privatePart, publicPart] = addressPart.split(':')
-
-    const privatePort = Number(privatePart)
-    if (!Number.isInteger(privatePort) || privatePort < 1 || privatePort > 65535) {
-      return { ports: [], errorLine: line }
-    }
-
-    // 宿主端口可省略（省略即「只暴露不绑定」），给了就必须合法。
-    const hostPort = publicPart === undefined ? undefined : Number(publicPart)
-    if (hostPort !== undefined && (!Number.isInteger(hostPort) || hostPort < 1 || hostPort > 65535)) {
-      return { ports: [], errorLine: line }
-    }
-
-    ports.push({ containerPort: privatePort, hostPort, ...(protocol ? { type: protocol } : {}) })
-  }
-
-  return { ports, errorLine: null }
-}
-
-/**
- * 解析挂载：`来源:容器内路径[:ro]`。
- *
- * 来源既可以是宿主路径也可以是具名卷——Docker 自己根据它判定类型，
- * 因此表单里**不**要求用户额外选「bind 还是 volume」。
- *
- * ⚠️ Windows 路径含冒号（`C:\data:/data`）。这里的处理是**只按第一个和最后一个冒号切**，
- * 因此 `C:\data` 会被当成完整来源而不是被切成 `C` 与 `\data`。
- */
-function parseVolumes(): {
-  volumes: NonNullable<CreateContainerPayload['volumes']>
-  errorLine: number | null
-} {
-  const volumes: NonNullable<CreateContainerPayload['volumes']> = []
-
-  for (const { line, value } of parseLines(volumeText.value)) {
-    const readOnly = value.endsWith(':ro')
-    const body = readOnly ? value.slice(0, -3) : value
-
-    const firstColon = body.indexOf(':')
-    const lastColon = body.lastIndexOf(':')
-
-    // 少于两个冒号说明缺「容器内路径」；多于两个说明格式里有额外冒号（除了 Windows 盘符那种情况）。
-    if (firstColon <= 0 || lastColon === firstColon) {
-      return { volumes: [], errorLine: line }
-    }
-
-    volumes.push({
-      source: body.slice(0, firstColon),
-      destination: body.slice(firstColon + 1, lastColon === firstColon ? undefined : lastColon),
-      readOnly
-    })
-  }
-
-  return { volumes, errorLine: null }
-}
-
 /** 容器名的合法性规则与后端一致（见其 `RequireContainerName`）。 */
 function validateName(value: string): boolean {
   if (value.trim().length === 0) return true
@@ -218,27 +141,23 @@ function validateName(value: string): boolean {
 }
 
 async function submit(): Promise<void> {
-  const env = parseEnv()
-  const ports = parsePorts()
-  const volumes = parseVolumes()
   const errors: Record<string, string> = {}
 
   if (!validateName(name.value)) errors.name = t('container.create.nameInvalid')
-  if (env.errorLine !== null) errors.env = t('container.create.envInvalid', { line: env.errorLine })
-  if (ports.errorLine !== null) errors.ports = t('container.create.portInvalid', { line: ports.errorLine })
-  if (volumes.errorLine !== null) errors.volumes = t('container.create.volumeInvalid', { line: volumes.errorLine })
 
   fieldErrors.value = errors
-  if (Object.keys(errors).length > 0) return
+
+  // 提交按钮已随 hasInputError 禁用；这里再兜一道，防止键盘直接触发提交。
+  if (Object.keys(errors).length > 0 || hasInputError.value) return
 
   const payload: CreateContainerPayload = {
     image: image.value.trim(),
     ...(name.value.trim() ? { name: name.value.trim() } : {}),
     ...(cmd.value.trim() ? { cmd: splitArgs(cmd.value) } : {}),
     ...(entrypoint.value.trim() ? { entrypoint: splitArgs(entrypoint.value) } : {}),
-    ...(env.values.length > 0 ? { env: env.values } : {}),
-    ...(ports.ports.length > 0 ? { ports: ports.ports } : {}),
-    ...(volumes.volumes.length > 0 ? { volumes: volumes.volumes } : {}),
+    ...(envEntries.value.length > 0 ? { env: envEntries.value.map(formatEnvEntry) } : {}),
+    ...(portEntries.value.length > 0 ? { ports: portEntries.value.map(toPortPayload) } : {}),
+    ...(volumeEntries.value.length > 0 ? { volumes: volumeEntries.value.map(toVolumePayload) } : {}),
     restartPolicy: restartPolicy.value,
     autoRemove: autoRemove.value,
     ...(network.value.trim() ? { network: network.value.trim() } : {}),
@@ -348,16 +267,17 @@ function splitArgs(text: string): string[] {
         <el-input v-model="entrypoint" :placeholder="t('container.create.entrypointHint')" />
       </el-form-item>
 
-      <el-form-item :label="t('container.create.env')" :error="fieldErrors.env">
-        <el-input v-model="envText" type="textarea" :rows="3" :placeholder="t('container.create.envHint')" />
+      <!-- 三个编辑器自带行号校验与重复项提示；这里只把 errorLine 接上来用于禁用提交。 -->
+      <el-form-item :label="t('container.create.env')">
+        <EnvVarEditor v-model="envEntries" v-model:error-line="envError" />
       </el-form-item>
 
-      <el-form-item :label="t('container.create.ports')" :error="fieldErrors.ports">
-        <el-input v-model="portText" type="textarea" :rows="2" :placeholder="t('container.create.portHint')" />
+      <el-form-item :label="t('container.create.ports')">
+        <PortMappingEditor v-model="portEntries" v-model:error-line="portError" />
       </el-form-item>
 
-      <el-form-item :label="t('container.create.volumes')" :error="fieldErrors.volumes">
-        <el-input v-model="volumeText" type="textarea" :rows="2" :placeholder="t('container.create.volumeHint')" />
+      <el-form-item :label="t('container.create.volumes')">
+        <VolumeMountEditor v-model="volumeEntries" v-model:error-line="volumeError" />
       </el-form-item>
 
       <el-collapse>
