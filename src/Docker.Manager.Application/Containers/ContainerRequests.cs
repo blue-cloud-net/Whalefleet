@@ -16,6 +16,44 @@ public sealed record ListContainersRequest
 
     /// <summary>每页条数；省略时用默认值，超出上限会被夹紧。</summary>
     public int? PageSize { get; init; }
+
+    /// <summary>
+    /// 排序字段；省略时保持守护进程返回的顺序（创建时间降序）。
+    /// </summary>
+    /// <remarks>
+    /// 取值见 <see cref="ContainerSortField"/> 的常量。**未知值一律按创建时间处理**，
+    /// 而不是报错——排序字段来自客户端，版本错配时不该让整个列表 400。
+    /// </remarks>
+    public string? SortBy { get; init; }
+
+    /// <summary>排序方向；<c>asc</c> 为升序，其余（含省略）按降序。</summary>
+    /// <remarks>不校验：无法识别的值按降序处理，与「省略」行为一致。</remarks>
+    public string? SortDir { get; init; }
+}
+
+/// <summary>
+/// 容器列表的排序字段取值。
+/// </summary>
+/// <remarks>
+/// 与 <c>ImageSortField</c> 同构：常量而非枚举，因为请求字段是字符串，
+/// 「未知值回落」这条策略需要在 <c>switch</c> 的默认分支里显式可见。
+/// </remarks>
+public static class ContainerSortField
+{
+    /// <summary>容器名。</summary>
+    public const string Name = "name";
+
+    /// <summary>镜像名。</summary>
+    public const string Image = "image";
+
+    /// <summary>状态（运行中 / 已停止 / …）。</summary>
+    public const string State = "state";
+
+    /// <summary>创建时间。</summary>
+    public const string Created = "created";
+
+    /// <summary>默认字段：等价于守护进程自己给的创建时间降序。</summary>
+    public const string Default = Created;
 }
 
 /// <summary>

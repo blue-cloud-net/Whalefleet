@@ -535,7 +535,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 操作 | 路径 | 阶段 | 说明 |
 |------|------|------|------|
 | **创建容器** | `POST /api/v1/hosts/{hostId}/containers/create` | 0.0.9 | Body: `{ image, name?, cmd?, entrypoint?, env?, labels?, ports?, volumes?, restartPolicy?, autoRemove?, network?, hostname?, workingDir?, tty?, stdinOpen? }`（**精选子集**，非全部 `CreateContainerParameters` 字段，理由见下文） |
-| 获取列表 | `POST /api/v1/hosts/{hostId}/containers/list` | 0.0.9 | Body: `{ all?, pageIndex?, pageSize? }`；分页在服务端**内存**完成（Docker 无分页参数），`pageSize` 上限 100 |
+| 获取列表 | `POST /api/v1/hosts/{hostId}/containers/list` | 0.0.9 | Body: `{ all?, pageIndex?, pageSize?, sortBy?, sortDir? }`；分页在服务端**内存**完成（Docker 无分页参数），`pageSize` 上限 100 |
 | 启动 | `POST /api/v1/hosts/{hostId}/containers/start` | 0.0.9 | Body: `{ containerId }` |
 | 停止 | `POST /api/v1/hosts/{hostId}/containers/stop` | 0.0.9 | Body: `{ containerId, waitSeconds? }`；`waitSeconds` 取值 0–300（默认 10，与 Docker 一致） |
 | 重启 | `POST /api/v1/hosts/{hostId}/containers/restart` | 0.0.9 | Body: `{ containerId }` |
@@ -573,6 +573,23 @@ POST /api/v1/hosts/{hostId}/containers/list
   "pageIndex": 0,    // 服务端实际使用的页码
   "pageSize": 20      // 服务端实际使用的每页条数（夹紧后）
 }
+```
+
+> **`sortBy` / `sortDir`（排序）**
+>
+> | `sortBy` | 排序依据 |
+> |---|---|
+> | `name` | 容器名（与响应里的 `name` 取值一致，已去前导斜杠） |
+> | `image` | 镜像名；缺失时回退到 `imageId` |
+> | `state` | Docker 原始状态文本 |
+> | `created` | 创建时间 |
+>
+> `sortDir` 取 `asc` 为升序，其余（含省略）按降序。两者**都省略时保持守护进程返回的顺序**
+> （创建时间降序），不额外重排。
+>
+> 未知取值不报错（`sortBy` 退回 `created`、`sortDir` 退回降序）；排序在分页之前执行，
+> `total` 是排序后的总条数；同值项以容器 ID 作次级键，保证翻页顺序稳定——
+> `docker compose up` 拉起的一批容器创建时间戳常常完全相同，没有次级键它们会在翻页间跳位。
 ```
 
 ```jsonc
@@ -702,7 +719,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 
 | 操作 | 路径 | 阶段 | 说明 |
 |------|------|------|------|
-| 获取列表 | `POST /api/v1/hosts/{hostId}/images/list` | 0.0.10 | Body: `{ all?, search?, pageIndex?, pageSize? }`；分页在服务端**内存**完成（Docker 无分页参数），`pageSize` 上限 100 |
+| 获取列表 | `POST /api/v1/hosts/{hostId}/images/list` | 0.0.10 | Body: `{ all?, search?, pageIndex?, pageSize?, sortBy?, sortDir? }`；分页在服务端**内存**完成（Docker 无分页参数），`pageSize` 上限 100 |
 | 拉取 | `POST /api/v1/hosts/{hostId}/images/pull` | 0.0.10 | Body: `{ image, tag?, platform? }`；0.0.10 一次性返回结果，0.3.0 改 SignalR 实时进度 |
 | 删除 | `POST /api/v1/hosts/{hostId}/images/remove` | 0.0.10 | Body: `{ imageId, force? }`；被容器占用的镜像返回 `1404`/409 |
 | **批量删除** | `POST /api/v1/hosts/{hostId}/images/batch-remove` | 0.2.0 | Body: `{ imageIds: [...] }` |
@@ -732,6 +749,24 @@ POST /api/v1/hosts/{hostId}/containers/list
   "total": 5, "pageIndex": 0, "pageSize": 20
 }
 ```
+
+> **`sortBy` / `sortDir`（排序）**
+>
+> | `sortBy` | 排序依据 |
+> |---|---|
+> | `repository` | 首个 `repoTags`（悬挂镜像按空串参与比较） |
+> | `size` | 字节大小 |
+> | `created` | 创建时间 |
+> | `usedBy` | `containerCount` |
+>
+> `sortDir` 取 `asc` 为升序，其余（含省略）按降序。两者**都省略时保持守护进程返回的顺序**
+> （创建时间降序），不额外重排。
+>
+> **未知取值不报错**：无法识别的 `sortBy` 按 `created` 处理，无法识别的 `sortDir` 按降序处理。
+> 排序字段由客户端决定，版本错配时旧客户端 / 新服务端组合应该退回默认排序，而不是整个列表 400。
+>
+> **排序在分页之前**：`total` 是排序后的总条数，翻页不会漏项也不会重项。
+> 同值项以镜像 ID 作次级键，保证顺序稳定——否则同一批时间戳相同的镜像在两次翻页间会跳位。
 
 ```jsonc
 // POST /api/v1/hosts/local/images/inspect

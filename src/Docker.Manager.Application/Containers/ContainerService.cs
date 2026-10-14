@@ -93,23 +93,107 @@ public sealed class ContainerService
             "容器列表",
             cancellationToken).ConfigureAwait(false);
 
+        // 客户端**显式**指定排序字段时才重排：那时顺序是用户要的；没指定就保持守护进程
+        // 返回的顺序（创建时间降序），它本来就是稳定的，额外重排只会让「翻页时看到的东西变了」
+        // 更难解释。排序必须在分页之前，否则 total 不变而每页内容错位。
+        var ordered = Sort(containers, request.SortBy, request.SortDir);
+
         var pageIndex = Math.Max(request.PageIndex ?? 0, 0);
         var pageSize = Math.Clamp(request.PageSize ?? DefaultPageSize, 1, MaxPageSize);
 
         _logger.LogDebug(
-            "主机 {HostId} 容器列表：共 {Total} 个（含已停止={All}），返回第 {PageIndex} 页（每页 {PageSize}）",
+            "主机 {HostId} 容器列表：共 {Total} 个（含已停止={All}，排序={SortBy}/{SortDir}），返回第 {PageIndex} 页（每页 {PageSize}）",
             hostId,
-            containers.Count,
+            ordered.Count,
             all,
+            request.SortBy ?? "默认",
+            request.SortDir ?? "desc",
             pageIndex,
             pageSize);
 
         return new ContainerListResult(
-            [.. containers.Skip(pageIndex * pageSize).Take(pageSize).Select(MapSummary)],
-            containers.Count,
+            [.. ordered.Skip(pageIndex * pageSize).Take(pageSize).Select(MapSummary)],
+            ordered.Count,
             pageIndex,
             pageSize);
     }
+
+    /// <summary>
+    /// 按请求指定的字段排序。
+    /// </summary>
+    /// <param name="containers">守护进程返回的容器。</param>
+    /// <param name="sortBy">排序字段（见 <see cref="ContainerSortField"/>）；为空表示不排序。</param>
+    /// <param name="sortDir">排序方向；<c>asc</c> 为升序，其余按降序。</param>
+    /// <returns>排序后的容器；未指定字段时原样返回。</returns>
+    /// <remarks>
+    /// <b>同值项用容器 ID 兜底排序</b>：<see cref="List{T}.Sort(Comparison{T})"/> 是不稳定排序，
+    /// 而 <c>docker compose up</c> 一次拉起的一批容器创建时间戳常常完全相同。
+    /// 没有次级键时，同两个容器在两次翻页之间可能换位，用户会以为有容器凭空消失了。
+    /// <br/>
+    /// <b>字符串用序数比较</b>：受当前区域设置影响的大小写排序会随系统语言变化，
+    /// 同一个列表在不同机器上顺序不同，无法复现。
+    /// </remarks>
+    private static IReadOnlyList<ContainerListResponse> Sort(
+        IList<ContainerListResponse> containers,
+        string? sortBy,
+        string? sortDir)
+    {
+        if (string.IsNullOrWhiteSpace(sortBy))
+        {
+            return [.. containers];
+        }
+
+        var field = sortBy.Trim();
+        var descending = !string.Equals(sortDir?.Trim(), "asc", StringComparison.OrdinalIgnoreCase);
+
+        Comparison<ContainerListResponse> comparison = field switch
+        {
+            ContainerSortField.Name => (x, y) =>
+                string.CompareOrdinal(NameKey(x), NameKey(y)),
+            ContainerSortField.Image => (x, y) =>
+                string.CompareOrdinal(ImageKey(x), ImageKey(y)),
+            ContainerSortField.State => (x, y) =>
+                string.CompareOrdinal(x.State ?? string.Empty, y.State ?? string.Empty),
+            // 默认分支（含未知的未来字段）：退回创建时间，而不是拒绝请求
+            _ => (x, y) => x.Created.CompareTo(y.Created),
+        };
+
+        var sorted = containers
+            .Select((container, index) => (Container: container, Index: index))
+            .ToList();
+
+        sorted.Sort((x, y) =>
+        {
+            var result = descending ? comparison(y.Container, x.Container) : comparison(x.Container, y.Container);
+
+            // 同值时用 ID 兜底，保证顺序稳定；ID 也相同（理论上不会）时回退到原下标
+            if (result != 0)
+            {
+                var byId = string.CompareOrdinal(x.Container.ID ?? string.Empty, y.Container.ID ?? string.Empty);
+
+                return byId != 0 ? byId : x.Index.CompareTo(y.Index);
+            }
+
+            return x.Index.CompareTo(y.Index);
+        });
+
+        return [.. sorted.Select(item => item.Container)];
+    }
+
+    /// <summary>
+    /// 容器名排序键。
+    /// </summary>
+    /// <remarks>
+    /// 复用 <see cref="MapName"/>：它已经把「去前导斜杠 / 无名退化为短 ID」处理好了。
+    /// 排序键必须与表格里显示的字符串一致——否则会出现「按名称升序，但看起来没排」
+    /// （因为用户看到的名字是去掉斜杠后的，键却带着斜杠），而这很难自查。
+    /// </remarks>
+    private static string NameKey(ContainerListResponse container) =>
+        MapName(container.Names, container.ID ?? string.Empty);
+
+    /// <summary>镜像名排序键：缺失时依次回退到镜像 ID、容器 ID。</summary>
+    private static string ImageKey(ContainerListResponse container) =>
+        container.Image ?? container.ImageID ?? container.ID ?? string.Empty;
 
     /// <summary>
     /// 查询容器详情。

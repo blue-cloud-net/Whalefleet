@@ -84,18 +84,21 @@ public sealed class ImageService
             cancellationToken).ConfigureAwait(false);
 
         // 顺序沿用守护进程的返回顺序（创建时间降序）：它是稳定的，额外重排只会让「翻页时看到的
-        // 东西变了」更难解释。因此这里只做过滤，不重排。
-        var filtered = Filter(images, request.Search);
+        // 东西变了」更难解释。客户端**显式**指定排序字段时才重排——那时顺序是用户要的，
+        // 反而要说明白是客户端排的；没指定时保持原样。
+        var filtered = Sort(Filter(images, request.Search), request.SortBy, request.SortDir);
 
         var pageIndex = Math.Max(request.PageIndex ?? 0, 0);
         var pageSize = Math.Clamp(request.PageSize ?? DefaultPageSize, 1, MaxPageSize);
 
         _logger.LogDebug(
-            "主机 {HostId} 镜像列表：共 {Total} 个（含中间层={All}，搜索={Search}），返回第 {PageIndex} 页（每页 {PageSize}）",
+            "主机 {HostId} 镜像列表：共 {Total} 个（含中间层={All}，搜索={Search}，排序={SortBy}/{SortDir}），返回第 {PageIndex} 页（每页 {PageSize}）",
             hostId,
             filtered.Count,
             all,
             string.IsNullOrWhiteSpace(request.Search) ? "无" : request.Search.Trim(),
+            request.SortBy ?? "默认",
+            request.SortDir ?? "desc",
             pageIndex,
             pageSize);
 
@@ -300,6 +303,84 @@ public sealed class ImageService
                 || image.RepoDigests?.Any(digest => Contains(digest, keyword)) == true),
         ];
     }
+
+    /// <summary>
+    /// 按请求指定的字段排序。
+    /// </summary>
+    /// <param name="images">过滤后的镜像。</param>
+    /// <param name="sortBy">排序字段（见 <see cref="ImageSortField"/>）；为空表示不排序。</param>
+    /// <param name="sortDir">排序方向；<c>asc</c> 为升序，其余按降序。</param>
+    /// <returns>排序后的镜像；未指定字段时原样返回。</returns>
+    /// <remarks>
+    /// <b>同值项用镜像 ID 兜底排序</b>：只看创建时间时，一批 <c>docker import</c> 进来的镜像
+    /// 时间戳常常完全相同，而 <see cref="List{T}"/> 是不稳定排序——同样两个镜像，
+    /// 翻到第二页可能出现在不同位置，用户会以为有镜像凭空消失了。
+    /// ID 唯一，拿它当次级键能让顺序可复现。
+    /// <br/>
+    /// <b>仓库名取首个标签</b>：悬挂镜像（无标签）的 <c>RepoTags</c> 为空，
+    /// 直接取 <c>[0]</c> 会抛 <see cref="ArgumentOutOfRangeException"/>。
+    /// 空列表按空串参与比较，排在有名字的镜像后面（升序）/ 前面（降序）——任一都是可预期的，
+    /// 抛异常则不是。
+    /// </remarks>
+    private static IReadOnlyList<ImagesListResponse> Sort(
+        IReadOnlyList<ImagesListResponse> images,
+        string? sortBy,
+        string? sortDir)
+    {
+        if (string.IsNullOrWhiteSpace(sortBy))
+        {
+            return images;
+        }
+
+        var field = sortBy.Trim();
+        var descending = !string.Equals(sortDir?.Trim(), "asc", StringComparison.OrdinalIgnoreCase);
+
+        // 排序键 + 次级键（ID）一起比，比"先 OrderBy 再 ThenBy"少一趟枚举
+        Comparison<ImagesListResponse> comparison = field switch
+        {
+            ImageSortField.Repository => (x, y) =>
+                Compare(RepositoryKey(x), RepositoryKey(y)),
+            ImageSortField.Size => (x, y) => x.Size.CompareTo(y.Size),
+            ImageSortField.UsedBy => (x, y) => CountUsedBy(x).CompareTo(CountUsedBy(y)),
+            // 默认分支（含未知的未来字段）：退回创建时间，而不是拒绝请求
+            _ => (x, y) => CreatedKey(x).CompareTo(CreatedKey(y)),
+        };
+
+        var sorted = images
+            .Select((image, index) => (Image: image, Index: index))
+            .ToList();
+
+        sorted.Sort((x, y) =>
+        {
+            var result = descending ? comparison(y.Image, x.Image) : comparison(x.Image, y.Image);
+
+            // 同值时用 ID 兜底，保证顺序稳定；ID 也相同（理论上不会）时回退到原下标
+            if (result != 0)
+            {
+                var byId = string.CompareOrdinal(x.Image.ID ?? string.Empty, y.Image.ID ?? string.Empty);
+
+                return byId != 0 ? byId : x.Index.CompareTo(y.Index);
+            }
+
+            return x.Index.CompareTo(y.Index);
+        });
+
+        return [.. sorted.Select(item => item.Image)];
+    }
+
+    /// <summary>仓库名排序键：取首个标签，悬挂镜像（无标签）用空串。</summary>
+    private static string RepositoryKey(ImagesListResponse image) =>
+        image.RepoTags?.FirstOrDefault() ?? string.Empty;
+
+    /// <summary>创建时间排序键。SDK 的 <c>Created</c> 是非空值类型，直接取用。</summary>
+    private static DateTime CreatedKey(ImagesListResponse image) => image.Created;
+
+    /// <summary>被引用容器数：取容器计数，未提供时按 0。</summary>
+    private static long CountUsedBy(ImagesListResponse image) => image.Containers;
+
+    /// <summary>字符串比较：按序数比较，避免受当前区域设置影响（大小写排序会随系统语言变化）。</summary>
+    private static int Compare(string? x, string? y) =>
+        string.CompareOrdinal(x ?? string.Empty, y ?? string.Empty);
 
     /// <summary>
     /// 镜像标识必填校验。

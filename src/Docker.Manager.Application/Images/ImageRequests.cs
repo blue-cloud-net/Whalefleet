@@ -19,6 +19,45 @@ public sealed record ListImagesRequest
 
     /// <summary>每页条数；省略时用默认值，超出上限会被夹紧。</summary>
     public int? PageSize { get; init; }
+
+    /// <summary>
+    /// 排序字段；省略时保持守护进程返回的顺序（创建时间降序）。
+    /// </summary>
+    /// <remarks>
+    /// 取值见 <see cref="ImageSortField"/> 的常量。**未知值一律按创建时间处理**，
+    /// 而不是报错——排序字段来自客户端，版本错配时旧客户端传新字段不该让整个列表 400。
+    /// </remarks>
+    public string? SortBy { get; init; }
+
+    /// <summary>排序方向；<c>desc</c>（或省略）为降序，<c>asc</c> 为升序。</summary>
+    /// <remarks>同样不校验：无法识别的值按降序处理，与「省略」行为一致。</remarks>
+    public string? SortDir { get; init; }
+}
+
+/// <summary>
+/// 镜像列表的排序字段取值。
+/// </summary>
+/// <remarks>
+/// 做成常量而不是枚举：请求字段是 <see cref="string"/>（客户端可传任意值），
+/// 用 <c>switch</c> 映射成委托表比 <c>Enum.TryParse</c> 更直白，也让「未知值回落」
+/// 这条策略在代码里看得见。
+/// </remarks>
+public static class ImageSortField
+{
+    /// <summary>仓库名（按 <c>docker images</c> 的默认展示列）。</summary>
+    public const string Repository = "repository";
+
+    /// <summary>镜像大小（字节）。</summary>
+    public const string Size = "size";
+
+    /// <summary>创建时间。</summary>
+    public const string Created = "created";
+
+    /// <summary>被容器引用的数量。</summary>
+    public const string UsedBy = "usedBy";
+
+    /// <summary>默认字段：等价于守护进程自己给的创建时间降序。</summary>
+    public const string Default = Created;
 }
 
 /// <summary>
