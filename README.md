@@ -50,7 +50,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
   docker-manager:
-    image: ghcr.io/blue-cloud-net/docker-manager:latest
+    image: docker-manager:local
     depends_on: [socket-proxy]
     ports:
       - "8080:8080"
@@ -76,20 +76,40 @@ If you **must mount the socket directly**, make sure the Docker.Manager instance
 
 ### Option 1: Socket-Proxy Mode (recommended)
 
+> **0.0.x is not published to GHCR.** The project is in development iterations, so the only
+> image source right now is a local build. The first published image ships with `v0.1.0`.
+
 ```bash
 # 1. Clone and enter the repository
 git clone https://github.com/blue-cloud-net/docker-manager.git
 cd docker-manager
 
-# 2. Create the data directory
-mkdir -p data
+# 2. Build the image (Node + .NET SDK + runtime, three stages)
+docker build -t docker-manager:local .
 
-# 3. Copy docker-compose.yml and start
-#    (docker-compose.yml ships both direct-socket and socket-proxy modes)
+# 3. Provide the required secrets
+cp .env.example .env
+#    then edit .env — ADMIN__PASSWORD and JWT__SECRET are mandatory.
+#    Generate a key with: openssl rand -base64 48
+
+# 4. Start. The default is socket-proxy mode (recommended).
 docker compose up -d
 
-# 4. Open http://localhost:8080 in your browser
-#    Log in with the ADMIN__USER / ADMIN__PASSWORD configured in docker-compose.yml
+#    To use the direct-socket mode instead, stop first, then:
+#    docker compose --profile direct up -d
+
+# 5. Open http://localhost:8080 and log in with the credentials from .env
+```
+
+### Verifying the deployment
+
+```bash
+docker compose ps                              # expect STATUS "healthy"
+docker compose exec docker-manager bash /app/scripts/backup.sh   # produces a verified backup
+
+# Scheduled backup (03:17 daily — off the hour to avoid IO contention):
+#   17 3 * * * docker exec docker-manager bash /app/scripts/backup.sh \
+#     >> /var/log/docker-manager-backup.log 2>&1
 ```
 
 ### Option 2: Direct Socket Mount (trusted environments only)
@@ -104,7 +124,7 @@ docker run -d \
   -e ADMIN__USER=admin \
   -e ADMIN__PASSWORD='StrongP@ss123' \
   --restart unless-stopped \
-  ghcr.io/blue-cloud-net/docker-manager:latest
+  docker-manager:local
 ```
 
 ### Option 3: Standalone Process

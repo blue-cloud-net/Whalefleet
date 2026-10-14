@@ -51,3 +51,124 @@ jobs:
 
       - name: test (Release)
         run: dotnet test --no-build --configuration Release --verbosity normal
+  # ------------------------------------------------------------------
+  # 镜像构建（0.0.15）
+  # ------------------------------------------------------------------
+  # 只验证「能构建」，不推送——推送由 release.yml 在 tag 时做。
+  # 存在的理由：Dockerfile 里的前端构建步骤（pnpm build）在
+  # build-and-test job 里完全不会被触发，而它恰恰是最容易坏的一环
+  # （node 版本、lockfile、产物目录约定）。曾出现过「后端测试全绿，
+  # 但镜像根本构建不出来」而 CI 完全无感。
+  build-image:
+    name: 构建镜像（不推送）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: build-and-test
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      # ⚠️ 必须设 GHA cache，否则每次 CI 都要重装几百 MB 的依赖。
+      - name: setup Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 构建镜像
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: docker-manager:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # 光「构建成功」说明不了「起得来」。这里实测一次启动与健康检查——
+      # 本项目最容易出的镜像级故障是「产物没进 wwwroot」，
+      # 那会得到一个只有接口、打开是 404 的容器，而它构建阶段完全正常。
+      - name: 冒烟测试
+        run: |
+          docker run --detach --name ci-smoke \
+            -e ADMIN__USER=admin \
+            -e ADMIN__PASSWORD='CiSmokeP@ssw0rd!' \
+            -e JWT__SECRET='ci-smoke-secret-key-0123456789abcdefgh' \
+            docker-manager:ci
+
+          echo "等待启动（首次运行要建库与引导管理员）…"
+          ok=0
+          for i in $(seq 1 30); do
+            if curl --fail --silent --output /dev/null http://localhost:8080/healthz; then
+              ok=1; break
+            fi
+            sleep 5
+          done
+
+          if [[ "${ok}" != "1" ]]; then
+            echo "::error::容器 150 秒内未通过健康检查"
+            docker logs ci-smoke
+            exit 1
+          fi
+
+          # 前端必须真的在镜像里：没有 dist 时这个镜像仍能通过 /healthz。
+          curl --fail --silent http://localhost:8080/ | grep --quiet '<div id="app">'
+
+          # 非 root 是硬性要求：直挂 socket 的部署下，
+          # 容器内 root 等于宿主机 root。
+          uid=$(docker exec ci-smoke id -u)
+          [[ "${uid}" != "0" ]] || { echo "::error::容器以 root 运行"; exit 1; }
+
+          echo "✓ 启动 / 前端 / 非 root 三项均通过"
+          docker rm --force ci-smoke
+
+  # ------------------------------------------------------------------
+  # 代码格式（0.0.15，**暂不阻断**）
+  # ------------------------------------------------------------------
+  # roadmap 把 format 检查列为 0.0.2 的遗留项，本版接入。
+  #
+  # ## 为什么先不阻断
+  # 仓库现有 **328 处** dotnet format 违规，且不是本版引入的：
+  # .editorconfig 从 0.0.1 起就写了 `dotnet_style_qualification_for_method = true:error`，
+  # 而代码里 160 处没加 `this.`。一次性修正要动 40+ 个文件，
+  # 其中 IDE0049（未使用字段）**会删代码**，在 Dapper 依赖约定映射的前提下
+  # 不适合由格式化工具静默完成。
+  #
+  # 因此这里只**报告**：continue-on-error 让 job 变黄但不拦合并，
+  # 违规数量会作为基线被持续记录下来。等这批基线收敛（0.1.0 前），
+  # 再把 continue-on-error 去掉即可转为硬门槛。
+  format-check:
+    name: 代码格式（暂不阻断）
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    needs: build-and-test
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: restore
+        run: dotnet restore
+
+      - name: dotnet format --verify-no-changes
+        run: |
+          set +e
+          dotnet format --verify-no-changes --no-restore > format.log 2>&1
+          rc=$?
+
+          count=$(grep -c 'error IDE' format.log || true)
+          echo "### dotnet format 违规数：${count}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          grep -oE 'error IDE[0-9]+' format.log | sort | uniq -c | sort -rn >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ ${rc} -ne 0 ]]; then
+            echo "::warning::存在 ${count} 处格式违规（当前不阻断）。修正方式：dotnet format；也可按条豁免：dotnet_diagnostic.IDExxxx.severity = none"
+            head -40 format.log
+          else
+            echo "✓ 格式检查通过"
+          fi

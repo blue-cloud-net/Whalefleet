@@ -1,25 +1,77 @@
-**/.classpath
-**/.dockerignore
-**/.env
+# ============================================================================
+# Docker 构建上下文排除清单
+# ============================================================================
+# 原则：只排除「进镜像也没用」或「体积大到值得单独缓存」的东西。
+# 别为了"看起来干净"排除构建真正需要的东西——那样失败会以
+# 「文件莫名不存在」的形式出现在构建中后段，排查成本极高。
+
+# ---------- 构建产物（应由镜像内的构建步骤生成） ----------
+**/bin
+**/obj
+**/node_modules
+**/dist
+**/.vite
+**/TestResults
+**/coverage
+**/logs
+**/data
+
+# ---------- 版本控制与 CI ----------
+# ⚠️ 排除 .github：构建不需要 CI 配置，但 release 阶段要用到源码——
+#    那些流程在仓库外用 checkout 拿，不需要进上下文。
 **/.git
+**/.github
 **/.gitignore
-**/.project
+**/.gitattributes
+**/.vscode
+**/.idea
+**/.vs
 **/.settings
 **/.toolstarget
-**/.vs
-**/.vscode
-**/*.*proj.user
+**/*.user
+
+# ---------- 密钥与本地配置 ----------
+# ⚠️ 这里**必须**排除 .env*：compose 模板里用到的 ADMIN__PASSWORD /
+#    JWT__SECRET 通常就放在 .env，而它是部署方的密钥，不该进构建上下文
+#    （即便当前没这个文件，也不能等到某天有了才发现镜像历史里留着它）。
+**/.env
+**/.env.*
+**/secrets*.json
+**/secrets*.yaml
+**/*.pfx
+**/*.pem
+**/*.key
+
+# ---------- 本地数据（绝对不能进镜像） ----------
+# *.db / *.db-shm / *.db-wal 是运行时数据；即便本地跑过应用，
+# 把它们打进镜像等于把本地账号与审计记录发布出去。
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/*.sqlite
+**/*.sqlite3
+
+# ---------- 开发工具与 IDE ----------
+**/.classpath
+**/.project
 **/*.dbmdl
 **/*.jfm
 **/azds.yaml
-**/bin
-**/charts
+**/npm-debug.log*
+**/.DS_Store
+
+# ---------- 部署文件本身 ----------
+# 这些是给**用户**在宿主机上用的，不参与镜像构建。
+# Dockerfile 与 .dockerignore 由 BuildKit 直接读取，不走构建上下文。
 **/docker-compose*
 **/Dockerfile*
-**/node_modules
-**/npm-debug.log
-**/obj
-**/secrets.dev.yaml
-**/values.dev.yaml
-LICENSE
-README.md
+**/.dockerignore
+
+# ---------- 文档 ----------
+# 镜像里不需要 Markdown；README 的内容已进入镜像标签与 OCI 元数据。
+**/*.md
+docs
+
+# ---------- 备份 ----------
+# 宿主机上跑 backup.sh 的产物，若目录被挂进工作区就会被卷进来。
+**/backups

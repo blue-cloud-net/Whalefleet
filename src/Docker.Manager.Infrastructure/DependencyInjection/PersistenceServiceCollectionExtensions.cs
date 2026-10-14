@@ -10,6 +10,7 @@ using Docker.Manager.Infrastructure.Persistence.Users;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace Docker.Manager.Infrastructure.DependencyInjection;
 
@@ -55,6 +56,18 @@ public static class PersistenceServiceCollectionExtensions
         services.AddSingleton<IDbConnectionFactory, SqliteConnectionFactory>();
         services.AddSingleton<SqliteSchemaMigrator>();
         services.AddSingleton<IDatabaseInitializer, DatabaseInitializer>();
+
+        // 健康检查：探针只验证「能开连接、能执行语句」，不触碰业务表，
+        // 因此不会与迁移争锁，也能在表尚未建好时给出可诊断的结论。
+        //
+        // 必须走 `AddCheck(name)` 而不能直接注册 `IHealthCheck`：后者会以
+        // **实现类的全名**作为注册项名字（而非我们声明的 CheckName），
+        // 而 `HealthCheckService` 按名字索引检查结果——
+        // 结果是 /healthz 永远查不到那一项，只能回退成 unhealthy。
+        services.AddHealthChecks().AddCheck<SqliteHealthCheck>(
+            SqliteHealthCheck.CheckName,
+            failureStatus: HealthStatus.Unhealthy,
+            tags: ["ready"]);
 
         // 0.0.3 尚无认证：审计人一律落到默认值哨兵（Guid.Empty = 系统操作）。
         services.TryAddSingleton<ICurrentUser, SystemCurrentUser>();

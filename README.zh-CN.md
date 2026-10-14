@@ -50,7 +50,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
   docker-manager:
-    image: ghcr.io/blue-cloud-net/docker-manager:latest
+    image: docker-manager:local
     depends_on: [socket-proxy]
     ports:
       - "8080:8080"
@@ -75,20 +75,40 @@ services:
 
 ### 方式一：Socket-Proxy 模式（推荐）
 
+> **0.0.x 不发布到 GHCR。** 项目处于开发迭代期，当前唯一的镜像来源是本地构建；
+> 首个对外镜像随 `v0.1.0` 发布。
+
 ```bash
 # 1. 克隆并进入仓库
 git clone https://github.com/blue-cloud-net/docker-manager.git
 cd docker-manager
 
-# 2. 创建数据目录
-mkdir -p data
+# 2. 构建镜像（Node + .NET SDK + runtime 三阶段）
+docker build -t docker-manager:local .
 
-# 3. 复制 docker-compose.yml 并启动
-#    （docker-compose.yml 同时提供直挂 socket 与 socket-proxy 两种模式）
+# 3. 准备必需的密钥
+cp .env.example .env
+#    编辑 .env——ADMIN__PASSWORD 与 JWT__SECRET 必填。
+#    生成密钥：openssl rand -base64 48
+
+# 4. 启动。默认使用 socket-proxy 模式（推荐）
 docker compose up -d
 
-# 4. 浏览器访问 http://localhost:8080
-#    使用 docker-compose.yml 中配置的 ADMIN__USER / ADMIN__PASSWORD 登录
+#    改用直挂 socket 模式：先停掉，再
+#    docker compose --profile direct up -d
+
+# 5. 浏览器访问 http://localhost:8080，用 .env 中的凭据登录
+```
+
+### 验证部署
+
+```bash
+docker compose ps                              # 期望 STATUS 为 "healthy"
+docker compose exec docker-manager bash /app/scripts/backup.sh   # 产出经过校验的备份
+
+# 定时备份（每天 03:17——避开整点以减少与其他任务争抢 IO）：
+#   17 3 * * * docker exec docker-manager bash /app/scripts/backup.sh \
+#     >> /var/log/docker-manager-backup.log 2>&1
 ```
 
 ### 方式二：直挂 Socket（仅可信环境）
@@ -103,7 +123,7 @@ docker run -d \
   -e ADMIN__USER=admin \
   -e ADMIN__PASSWORD='StrongP@ss123' \
   --restart unless-stopped \
-  ghcr.io/blue-cloud-net/docker-manager:latest
+  docker-manager:local
 ```
 
 ### 方式三：独立进程部署

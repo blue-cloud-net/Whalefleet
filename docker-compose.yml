@@ -1,0 +1,111 @@
+# ============================================================================
+# Docker.Manager — 部署示例
+# ============================================================================
+# **两种模式都在下面，默认启用第 2 种（socket-proxy，推荐）。**
+# 切换方式：注释掉一个 service 块。
+#
+#   1. direct  —— 直挂 Docker socket。功能完整，但等价于把宿主机 root 权限
+#                 交给容器内任何进程（含本项目自身与将来任何拉进来的依赖）。
+#                 只适合「完全信任这台机器上的一切」的场景。
+#   2. proxy   —— 经 tecnativa/docker-socket-proxy 中介，只授予
+#                 CONTAINERS / IMAGES / NETWORKS / VOLUMES 四个子集。
+#                 本项目用不到 host 级 API，因此代理能挡住大部分 Docker API 滥用。
+#
+# ⚠️ 即便走 proxy 模式，代理容器本身仍持有完整 socket。
+#    真正的收益是「应用容器的代码 / 一个被攻破的依赖」无法直接触碰 socket，
+#    攻击面从「所有容器」缩小到「代理容器」这一个极小的、无业务代码的容器。
+#
+# 启动：
+#   docker compose up -d
+#   docker compose logs -f
+# ============================================================================
+
+name: docker-manager
+
+services:
+  # ------------------------------------------------------------------
+  # 模式 1：直挂 socket（不推荐）
+  # ------------------------------------------------------------------
+  # ⚠️ 本 service 带 `direct` profile，**默认不启动**。
+  #    启用方式：docker compose --profile direct up -d
+  #    两个模式共用 container_name，若同时启动会直接冲突——
+  #    所以必须靠 profile 隔离，不能靠注释掉其中一个。
+  direct:
+    profiles: ["direct"]
+    image: ${DOCKER_MANAGER_IMAGE:-docker-manager:local}
+    container_name: docker-manager
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      # ⚠️ 这是本文件里最需要认真对待的一行。
+      #    容器内任何进程（含本项目的未来依赖）都能通过它创建特权容器、
+      #    挂载宿主机根目录，等价于宿主机 root。
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # ⚠️ 冒号后的 :ro **不能**限制 Docker API 的能力：
+      #    socket 的权限由守护进程的 API 决定，与文件挂载的只读标志无关。
+      #    它只能防止误写 socket 文件本身。
+      - docker-manager-data:/app/data
+    environment:
+      # 初始管理员：仅在 users 表为空时创建，之后改环境变量无效。
+      # ⚠️ 必须用强密码——校验不通过会直接启动失败（这是有意的）。
+      ADMIN__USER: admin
+      ADMIN__PASSWORD: ${ADMIN__PASSWORD:?请在 .env 中设置 ADMIN__PASSWORD}
+      # JWT 签名密钥。缺失或过短会导致启动失败。
+      # 用下面这行生成：openssl rand -base64 48
+      JWT__SECRET: ${JWT__SECRET:?请在 .env 中设置 JWT__SECRET}
+      TZ: ${TZ:-UTC}
+
+  # ------------------------------------------------------------------
+  # 模式 2：socket-proxy（推荐）
+  # ------------------------------------------------------------------
+  # ⚠️ 默认启用的模式。启用另一模式需加 --profile direct 并停掉本模式，
+  #    两者共用 container_name，无法共存。
+  proxy:
+    image: ${DOCKER_MANAGER_IMAGE:-docker-manager:local}
+    container_name: docker-manager
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - docker-manager-data:/app/data
+    environment:
+      ADMIN__USER: admin
+      ADMIN__PASSWORD: ${ADMIN__PASSWORD:?请在 .env 中设置 ADMIN__PASSWORD}
+      JWT__SECRET: ${JWT__SECRET:?请在 .env 中设置 JWT__SECRET}
+      TZ: ${TZ:-UTC}
+      # 指向代理容器的服务名与端口，而不是 socket 路径。
+      # 主机侧的连接信息是**数据**（存 hosts 表），不在这里配置——
+      # 启动后在管理界面「主机管理」里新增一条即可。
+      Docker__Host__Default: tcp://socket-proxy:2375
+
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: docker-manager-socket-proxy
+    restart: unless-stopped
+    environment:
+      # 只授予本项目实际用到的子集。删掉任意一项前请先确认没有功能依赖它：
+      #   CONTAINERS : 容器列表 / 启停 / 删 / 建
+      #   IMAGES     : 镜像列表 / 拉取 / 删 / 打标签
+      #   NETWORKS   : 0.2.0 的网络管理会用；当前版本尚未调用，保留以便后续启用
+      #   VOLUMES    : 0.2.0 的数据卷管理会用；当前版本尚未调用，保留以便后续启用
+      CONTAINERS: 1
+      IMAGES: 1
+      NETWORKS: 1
+      VOLUMES: 1
+      # ⚠️ 刻意**不**开 SWARM：它能创建 / 更新 swarm，本身就是宿主机级提权。
+      SWARM: 0
+      # ⚠️ 刻意**不**开 INFO / POST / PING 的全量：INFO 会泄露宿主机详情，
+      #    而 POST 是「写」的总开关——单开子集时它必须为 0，否则子集形同虚设。
+      INFO: 1
+      PING: 1
+      VERSION: 1
+      # 网段放开仅限 docker 网络内部；不需要对宿主机之外暴露。
+      # 代理默认不监听 8080 以外端口，因此不需要对外 publish。
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - default
+
+volumes:
+  docker-manager-data:

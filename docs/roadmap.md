@@ -51,7 +51,7 @@
 | `0.0.12` | 前端：镜像 UI | ✅ | 列表（服务端搜索）/ 拉取 / 详情全部落地；删除区分「只解绑标签」与「真的删掉」；悬挂镜像占位 |
 | `0.0.13` | 前端：管理 UI | ✅ | 用户 / 主机 / 分组管理界面与改密入口；后端随本版补 `host_groups` 表与三个分组端点 |
 | `0.0.14` | 前端：MVP 打磨 | ✅ | 命令面板 / 快捷键 / 通用与业务组件 / README 与文档定稿 / 端点日志脱敏 + 列表性能基线 |
-| `0.0.15` | 部署底座与发布流水线 | ⬜ | **原 `0.0.6`**，改排到 0.0.x 末位；初始管理员引导已随 0.0.4 落地，本版只剩 Dockerfile / compose / CI 增强 / 社区文档 |
+| `0.0.15` | 部署底座与发布流水线 | ✅ | Dockerfile 三阶段构建 / compose 两模式 / SPA 同源托管 / SQLite 健康检查 / 反代白名单 / Release Please + 镜像发布 / 社区文档 |
 | `0.1.0-rc.1` | MVP 候选发布 | ⬜ | |
 | `0.1.0` | MVP 首个 semver 稳定版 | ⬜ | |
 | `0.2.0` | Volume / Network / 镜像构建 | ⬜ | |
@@ -211,7 +211,7 @@ CI：
 - ✅ 手工：`ADMIN__USER=admin ADMIN__PASSWORD=StrongP@ss123 dotnet run` → 用 admin 登录成功
 
 > ⚠️ **已知缺口（留给 0.0.15）**：反代后 `Connection.RemoteIpAddress` 是代理 IP，
-> 而本项目尚未启用 `ForwardedHeaders`（需配合可信代理白名单）——
+> 已在 0.0.15 落地 `ForwardedHeaders` + 可信代理白名单（`ReverseProxy` 配置节，默认关闭）——
 > 不加会将所有用户的登录失败算进同一个限流桶。
 
 ---
@@ -467,7 +467,7 @@ CI：
 
 ---
 
-### 0.0.15 ⬜ — 部署底座与发布流水线
+### 0.0.15 ✅ — 部署底座与发布流水线
 
 **目标**：`docker run` 一行启动可登录、可发布。
 
@@ -479,31 +479,52 @@ CI：
 > 4. **初始管理员引导不等它**——那件事有鸡生蛋问题（要先能登录才能建用户），已于 0.0.4 落地，本版只剩部署与发布。
 
 后端：
-- （**已随 0.0.4 落地**，此处保留记录）启动时检测 `users` 表是否为空：若空，按环境变量 `ADMIN__USER` + `ADMIN__PASSWORD` 创建 admin（密码强度校验）
+- ✅（**已随 0.0.4 落地**，此处保留记录）启动时检测 `users` 表是否为空：若空，按环境变量 `ADMIN__USER` + `ADMIN__PASSWORD` 创建 admin（密码强度校验）
   - 判空用**物理行数**（裸 `SELECT COUNT(1)`）而非仓储计数——软删除会让业务计数为 0，从而导致重复引导并撞用户名唯一索引
   - 密码强度不满足 → **启动失败**；凭据未配置 → 只记 Warning 并正常启动
-- 健康检查端点 `GET /healthz` 增强：返回 SQLite 连通性
-- Dockerfile 多阶段构建（builder 阶段：Node + .NET SDK；runtime 阶段：仅 .NET runtime + dist）
-- 非 root 用户 `app`（UID 10001）运行，根文件系统只读，data 卷可写
-- `/healthz` 健康检查命令
-- **SQLite 启用 WAL 模式**（PRAGMA journal_mode=WAL），提高并发读性能
-- 反代场景的 `ForwardedHeaders` + 可信代理白名单（**0.0.4 遗留**：否则所有用户的登录失败会被算进同一个限流桶）
+- ✅ **健康检查增强为 SQLite 连通性**：`SqliteHealthCheck` 只做 `SELECT 1`，失败返回 503 并附异常信息
+  - 此前 `/healthz` 无条件返回 200——挂进容器后等于一个永远绿的探针：data 卷没挂上、磁盘满、文件权限错，探针照样说健康，而每个业务端点其实都在 500
+  - **刻意不查 Docker daemon**：主机停机维护时管理界面仍需可用，把它算进健康检查会导致容器被 orchestrator 反复重启，而重启并不能让 Docker 恢复
+  - ⚠️ 注册必须走 `AddCheck(name)`：直接注册 `IHealthCheck` 会以**实现类全名**作为注册项名字，而 `HealthCheckService` 按名字索引结果，结果是 `/healthz` 永远查不到该项
+- ✅ **API 同源托管前端产物**（`Spa` 配置节，开发环境默认关闭）
+  - 不补这一层，Dockerfile 里的 dist 就只能靠用户自己想办法放进去
+  - 启用但找不到产物目录或入口文件时**启动即失败**——交付一个只有接口、打开是 404 的容器，比启动失败糟得多
+  - ⚠️ **刻意不用 `MapFallbackToFile`**：它把所有未匹配路由都导向 index.html，包括打错的 `/api` 路径。症状是「接口返回 200 + HTML，日志里全是成功」，前端表现为 JSON 解析失败，几乎不可能靠读日志定位
+  - ⚠️ 整套挂在 `UseCurrentHost` **之前**：前端的 `/hosts/{hostId}/...` 与接口的 `/api/v1/hosts/{hostId}/...` 同前缀，而 `UseCurrentHost` 会把任何请求的 `hostId` 路由值当主机查库。放在它之后，每次刷新深链都先抛「主机不存在」
+- ✅ Dockerfile 多阶段构建（Node → .NET SDK → 仅 .NET runtime + dist）
+  - 不分阶段镜像会超过 1 GB，且带着永远用不到的 SDK 与**源码**——而直挂 socket 的部署形态下，容器内多一份源码就多一份攻击面
+  - ⚠️ `.NET 8+ 的 aspnet 基础镜像自带 app 用户但 UID 是 1654`，`groupadd --gid 10001 app` 会直接失败。改为 `groupmod` / `usermod` 改写；坚持 10001 是因为挂载宿主目录时生效的是**数字** uid
+  - ⚠️ 运行时镜像不含 `curl`（健康检查无法真正探测，只能退化成「进程还在」）与 `sqlite3`（README 让人在容器内跑备份脚本）
+- ✅ 非 root 用户 `app`（UID 10001）运行；`/app/data` 是唯一可写路径；**只读根文件系统实测可运行**
+- ✅ `/healthz` 作为 Docker `HEALTHCHECK` 命令（`start-period=40s`：首次启动要跑迁移与管理员引导）
+- ✅ **SQLite 启用 WAL 模式**（`PRAGMA journal_mode=WAL`）——**已于 0.0.3 随 `DatabaseInitializer` 落地**
+- ✅ **反代场景的 `ForwardedHeaders` + 可信代理白名单**（0.0.4 遗留）
+  - 不配的后果：所有用户的登录失败落进同一个限流桶，5 次失败后全体用户在一分钟内都无法登录
+  - 三条安全约束：默认不启用（`X-Forwarded-For` 由客户端可控）；开了开关却没有白名单直接启动失败；地址写错抛异常而非静默忽略
+  - 网段解析用 `System.Net.IPNetwork` 而非已标记过时的 `HttpOverrides.IPNetwork`（ASPDEPR005）
 
 仓库：
-- **`docker-compose.yml` 两种部署模式**：
-  - 直挂 socket：`/var/run/docker.sock:/var/run/docker.sock`
-  - **socket-proxy 模式**（推荐）：`tecnativa/docker-socket-proxy` 作为中介，仅授予 `CONTAINERS` / `IMAGES` / `NETWORK` / `VOLUME` 子集权限
-- `scripts/backup.sh`：基于 `sqlite3 .backup` 的 SQLite 备份脚本；README 文档化 cron 示例
-- `.github/release-please-config.json`：启用 Release Please（读 Conventional Commits 自动 PR + 自动 tag）
-- `CHANGELOG.md` / `CONTRIBUTING.md` / `SECURITY.md` / `CODE_OF_CONDUCT.md` 出初始版本
-- `.dockerignore` 扩充
-- `dotnet format` 纳入 CI 门槛（**0.0.2 遗留**：当时只统一了行尾与空行，格式检查留到有部署流水线的这一步）
+- ✅ **`docker-compose.yml` 两种部署模式**：
+  - 直挂 socket：`/var/run/docker.sock:/var/run/docker.sock:ro`
+  - **socket-proxy 模式（推荐）**：`tecnativa/docker-socket-proxy`，仅授予 `CONTAINERS` / `IMAGES` / `NETWORKS` / `VOLUMES`
+  - ⚠️ **socket 挂载加 `:ro` 不会降低风险**：权限由守护进程的 API 决定，`:ro` 只能防止误写 socket 文件本身
+- ✅ `scripts/backup.sh`：基于 `sqlite3 .backup` 的**在线**备份（直接 `cp` 拷到的是某一瞬时的文件状态，正在写事务时可能拷出撕裂的文件）；每次备份后跑 `integrity_check`；按文件名排序轮转
+- ✅ `.github/release-please-config.json`：启用 Release Please（读 Conventional Commits 自动 PR + 自动 tag）
+  - 版本策略 `bump-patch-for-minor-pre-major`：`0.0.14` 的 feat 提交应得 `0.0.15`，默认策略会直接跳到 `0.1.0`（那是 RC 的位置）
+- ✅ `CHANGELOG.md` / `CHANGELOG.zh-CN.md`（0.0.1–0.0.14 人工维护）/ `CONTRIBUTING.md` / `SECURITY.md` / `CODE_OF_CONDUCT.md` 出初始版本
+  - README 早在 0.0.14 就链接了 `SECURITY.md` / `CONTRIBUTING.md`，本版补上文件，链接不再是死链
+- ✅ `.dockerignore` 扩充（**必须**排除 `.env*`：compose 用的 `ADMIN__PASSWORD` / `JWT__SECRET` 通常就在那里）
+- ⚠️ **`dotnet format` 接入 CI 但暂不阻断**：仓库现有 **328 处**违规且非本版引入（`.editorconfig` 从 0.0.1 起就要求方法加 `this.`，代码里 160 处没加）。一次性修正要动 40+ 个文件，其中 `IDE0049`（未使用字段）**会删代码**，在 Dapper 依赖约定映射的前提下不适合由格式化工具静默完成。违规数与分类写进 job summary 作为持续记录的基线，收敛后去掉 `continue-on-error` 即转硬门槛
 
 CI：
-- `.github/workflows/ci.yml` 增强：build 镜像 + sanity test
-- `.github/workflows/release.yml`：仅 `v*.*.*` tag 触发构建 + 推 GHCR
+- ✅ `.github/workflows/ci.yml` 增强：**构建镜像 + 冒烟**（`/healthz`、前端首页含 `#app`、非 root 三项）
+  - 存在的理由：Dockerfile 里的前端构建在 `build-and-test` 里完全不会被触发，而它恰是最容易坏的一环
+  - 只构建不推送——推送是 `release.yml` 在 tag 时的事
+- ✅ `.github/workflows/release.yml`：仅 `v*.*.*` tag 触发构建 + 推 GHCR；**推送前先冒烟**（tag 一旦推送就已被他人引用，此时才发现起不来，撤回只会制造混乱）
+- ✅ `.github/workflows/release-please.yml`：更新 CHANGELOG 并开发布 PR，**不碰镜像**（PR 频繁开关，每次都构建既慢又费配额）
+- ✅ **0.0.x 不推 GHCR**：守卫放在 job 内部而非取消触发条件——「不推」本身也要留下记录，否则排查「为什么没有镜像」时什么都看不到
 
-**验收**：`docker run -e ADMIN__USER=admin -e ADMIN__PASSWORD=StrongP@ss123 ...` → 看到登录页 → 用 admin 登录成功 → 控制台/日志无密码明文；`bash /app/scripts/backup.sh` 产生备份文件；镜像进入 GHCR 且 `v0.0.*` tag **不**推送。
+**验收**：`docker run -e ADMIN__USER=admin -e ADMIN__PASSWORD=...` → 看到登录页 → 用 admin 登录成功 → 日志无密码明文；`bash /app/scripts/backup.sh` 产生备份文件；镜像进入 GHCR 且 `v0.0.*` tag **不**推送。✅ **实测通过**（镜像构建 → 启动 → healthy → 登录成功 → 只读根文件系统下运行 → 容器内备份脚本产出文件；UI 深链回退与 API 404 形状均正确）
 
 ---
 
