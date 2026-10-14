@@ -275,7 +275,7 @@ export default defineConfig({
     'i-carbon-settings-adjust', 'i-carbon-document',
     // 表格行内 IconActionButton 的图标。icon 是**动态字符串**，静态提取器未必扫得到；
     // collectSourceIcons 已能自动兜住，这里保留手写项只为一眼可查（重复项会被去重）
-    'i-carbon-play-filled', 'i-carbon-stop-filled', 'i-carbon-document-view',
+    'i-carbon-play', 'i-carbon-stop', 'i-carbon-restart', 'i-carbon-document-view',
     'i-carbon-password',
     'i-carbon-side-panel-open', 'i-carbon-side-panel-close',
     'i-carbon-locked', 'i-carbon-chart-line', 'i-carbon-calendar'
