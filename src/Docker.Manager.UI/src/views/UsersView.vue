@@ -192,9 +192,9 @@ watch(() => auth.user?.username, load, { immediate: true })
           </template>
         </el-table-column>
 
-        <el-table-column :label="t('container.col.actions')" width="100" align="right">
+        <el-table-column :label="t('container.col.actions')" width="64">
           <template #default="{ row }">
-            <div class="flex items-center justify-end gap-0.5">
+            <div class="flex items-center gap-0.5">
               <IconActionButton
                 icon="i-carbon-password"
                 :label="t('user.action.resetPassword')"

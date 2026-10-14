@@ -493,9 +493,9 @@ watch(
 
           <!-- 与容器列表共用 IconActionButton：图标按钮 + tooltip 文字标签。
              `gap-0` + 64px 定宽：两个 24px 按钮 = 48px，gap-0.5 时是 50px。 -->
-          <el-table-column :label="t('container.col.actions')" width="64" align="right">
+          <el-table-column :label="t('container.col.actions')" width="64">
             <template #default="{ row }">
-              <div class="flex items-center justify-end">
+              <div class="flex items-center">
                 <IconActionButton
                   icon="i-carbon-document-view"
                   :label="t('container.action.detail')"

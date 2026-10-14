@@ -679,10 +679,11 @@ onBeforeUnmount(stopPolling)
             右半边，圆角处实际可点区更小——看着紧凑，点起来却会点不中。
             ⚠️ 也用不了 `el-button-group`：它的相邻规则是直接子选择器
             `>.el-button+.el-button`，而 IconActionButton 为 tooltip 包了一层 span，匹配不上。
+            省略 `align` 即左对齐：表头「操作」必须与图标同侧，右对齐看着是错位的。
           -->
-          <el-table-column :label="t('container.col.actions')" width="136" align="right">
+          <el-table-column :label="t('container.col.actions')" width="136">
             <template #default="{ row }">
-              <div class="flex items-center justify-end">
+              <div class="flex items-center">
                 <IconActionButton
                   v-for="action in rowActions(row)"
                   :key="action.key"
