@@ -108,10 +108,44 @@ export function imageHandlers(scenario: () => MockScenario) {
           ? all
           : all.filter((image) => image.repoTags.some((tag) => tag.toLowerCase().includes(search)))
 
+      // ⚠️ 排序必须在**分页之前**，否则 total 不变而每页内容错位——
+      // 这正是后端 Sort() 的位置，前端排序之所以正确全靠这一点。
+      // 规则与后端 ImageService.Sort 逐条对齐（同值用 id 兜底、未知字段回落 created）。
+      const sortBy = String(body.sortBy ?? '').trim()
+      const sortDir = String(body.sortDir ?? '').trim()
+      const descending = sortDir.toLowerCase() !== 'asc'
+
+      let ordered = filtered
+      if (sortBy.length > 0) {
+        const pick = (image: (typeof filtered)[number]): string | number => {
+          switch (sortBy) {
+            case 'repository':
+              return image.repoTags[0] ?? ''
+            case 'size':
+              return image.size
+            case 'usedBy':
+              return image.containerCount
+            default:
+              return image.created
+          }
+        }
+
+        ordered = [...filtered].sort((a, b) => {
+          const ka = pick(a)
+          const kb = pick(b)
+          const result =
+            typeof ka === 'number' && typeof kb === 'number'
+              ? ka - kb
+              : String(ka).localeCompare(String(kb))
+          if (result !== 0) return descending ? -result : result
+          return a.id.localeCompare(b.id)
+        })
+      }
+
       return HttpResponse.json(
         ok({
-          items: filtered.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize),
-          total: filtered.length,
+          items: ordered.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize),
+          total: ordered.length,
           pageIndex,
           // 回显**夹紧后**的值：前端必须用它而不是请求里的值。
           pageSize

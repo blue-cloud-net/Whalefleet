@@ -37,7 +37,17 @@ export interface ListContainersParams {
   pageIndex?: number
   /** 每页条数；后端上限 100，超出会被**夹紧并回显实际值** */
   pageSize?: number
+  /** 排序字段；省略时保持后端返回顺序（创建时间降序）。未知值后端按 `created` 处理 */
+  sortBy?: ContainerSortField
+  /** 排序方向；`asc` 为升序，其余（含省略）按降序 */
+  sortDir?: SortDirection
 }
+
+/** 容器列表可排序的字段，与后端 `ContainerSortField` 常量一一对应。 */
+export type ContainerSortField = 'name' | 'image' | 'state' | 'created'
+
+/** 排序方向。 */
+export type SortDirection = 'asc' | 'desc'
 
 /**
  * 列出容器。

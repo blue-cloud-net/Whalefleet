@@ -21,7 +21,16 @@ import type {
 /** 镜像列表（`search` 在服务端内存过滤，不分大小写）。 */
 export function listImages(
   hostId: string,
-  params: { all?: boolean; search?: string; pageIndex?: number; pageSize?: number } = {}
+  params: {
+    all?: boolean
+    search?: string
+    pageIndex?: number
+    pageSize?: number
+    /** 排序字段；省略时保持后端返回顺序（创建时间降序）。未知值后端按 `created` 处理 */
+    sortBy?: ImageSortField
+    /** 排序方向；`asc` 为升序，其余（含省略）按降序 */
+    sortDir?: SortDirection
+  } = {}
 ): Promise<ImageListResult> {
   return request<ImageListResult>({
     url: `/api/v1/hosts/${encodeURIComponent(hostId)}/images/list`,
@@ -29,6 +38,12 @@ export function listImages(
     data: params
   })
 }
+
+/** 镜像列表可排序的字段，与后端 `ImageSortField` 常量一一对应。 */
+export type ImageSortField = 'repository' | 'size' | 'created' | 'usedBy'
+
+/** 排序方向，与容器的同名类型取值相同。 */
+export type SortDirection = 'asc' | 'desc'
 
 /**
  * 镜像详情（`imageId` 可传完整 ID、short ID、仓库名或 `仓库:标签`）。

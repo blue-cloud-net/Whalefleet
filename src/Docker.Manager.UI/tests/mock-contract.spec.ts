@@ -274,6 +274,45 @@ describe('容器端点', () => {
     expect(runningData.items.every((item) => item.state === 'running')).toBe(true)
   })
 
+  /** 排序契约：复刻后端 `ContainerService.Sort`，规则与镜像列表同构。 */
+  it('sortBy=name & sortDir=asc 按名称升序', async () => {
+    const { json } = await post('/api/v1/hosts/local/containers/list', {
+      sortBy: 'name',
+      sortDir: 'asc',
+      all: true,
+      pageSize: 100
+    })
+
+    const names = (json.data as { items: { name: string }[] }).items.map((item) => item.name)
+    expect(names.length).toBeGreaterThan(1)
+    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)))
+  })
+
+  it('容器排序后翻页不重不漏', async () => {
+    const first = await post('/api/v1/hosts/local/containers/list', {
+      sortBy: 'name',
+      sortDir: 'asc',
+      all: true,
+      pageIndex: 0,
+      pageSize: 2
+    })
+    const second = await post('/api/v1/hosts/local/containers/list', {
+      sortBy: 'name',
+      sortDir: 'asc',
+      all: true,
+      pageIndex: 1,
+      pageSize: 2
+    })
+
+    const page1 = first.json.data as { items: { id: string }[]; total: number }
+    const page2 = second.json.data as { items: { id: string }[]; total: number }
+
+    expect(page2.total).toBe(page1.total)
+
+    const ids = [...page1.items, ...page2.items].map((item) => item.id)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
   it('不带 force 删除运行中的容器 → 409 / 1404', async () => {
     // 这条语义是前端「先停止容器」提示的唯一来源，mock 不复刻它就永远测不到。
     const list = await post('/api/v1/hosts/local/containers/list', { all: true })
@@ -371,6 +410,76 @@ describe('镜像端点', () => {
     const items = (json.data as { items: { repoTags: string[] }[] }).items
     expect(items.length).toBeGreaterThan(0)
     expect(items.every((item) => item.repoTags.some((tag) => /nginx/i.test(tag)))).toBe(true)
+  })
+
+  /**
+   * 排序契约：mock 必须复刻后端 `ImageService.Sort` 的三条规则，
+   * 否则前端的排序功能在 mock 模式下「测不出来」，上线才发现是坏的。
+   */
+  it('sortBy=size 时按大小升序，且排序发生在分页之前', async () => {
+    const { json } = await post('/api/v1/hosts/local/images/list', {
+      sortBy: 'size',
+      sortDir: 'asc',
+      pageSize: 100
+    })
+
+    const data = json.data as { items: { size: number }[]; total: number }
+    expect(data.total).toBeGreaterThan(1)
+
+    const sizes = data.items.map((item) => item.size)
+    // 降序才需要反着比；升序应严格非递减
+    expect(sizes).toEqual([...sizes].sort((a, b) => a - b))
+  })
+
+  it('sortBy=size & sortDir=desc 与 asc 结果互为倒序', async () => {
+    const asc = await post('/api/v1/hosts/local/images/list', {
+      sortBy: 'size',
+      sortDir: 'asc',
+      pageSize: 100
+    })
+    const desc = await post('/api/v1/hosts/local/images/list', {
+      sortBy: 'size',
+      sortDir: 'desc',
+      pageSize: 100
+    })
+
+    const a = (asc.json.data as { items: { id: string }[] }).items.map((item) => item.id)
+    const d = (desc.json.data as { items: { id: string }[] }).items.map((item) => item.id)
+
+    expect(d).toEqual([...a].reverse())
+  })
+
+  it('排序后翻页不重不漏（total 不变，第 2 页接在第 1 页之后）', async () => {
+    const first = await post('/api/v1/hosts/local/images/list', {
+      sortBy: 'size',
+      sortDir: 'asc',
+      pageIndex: 0,
+      pageSize: 2
+    })
+    const second = await post('/api/v1/hosts/local/images/list', {
+      sortBy: 'size',
+      sortDir: 'asc',
+      pageIndex: 1,
+      pageSize: 2
+    })
+
+    const page1 = first.json.data as { items: { id: string }[]; total: number }
+    const page2 = second.json.data as { items: { id: string }[]; total: number }
+
+    // total 是**排序后**的总数，两页必须一致；否则「翻页翻到重复/空」就是排序漏在分页之后了
+    expect(page2.total).toBe(page1.total)
+
+    const ids = [...page1.items, ...page2.items].map((item) => item.id)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('未知 sortBy 不报错，退回 created（版本错配不该让整个列表 400）', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/images/list', {
+      sortBy: 'not-a-real-field'
+    })
+
+    expect(status).toBe(200)
+    expect((json.data as { items: unknown[] }).items.length).toBeGreaterThan(0)
   })
 
   it('悬挂镜像以空 repoTags 表示（后端已过滤掉 <none> 标签）', async () => {

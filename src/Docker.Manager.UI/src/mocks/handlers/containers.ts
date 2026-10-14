@@ -97,10 +97,38 @@ export function containerHandlers(scenario: () => MockScenario) {
       // `all: false` 等价 `docker ps`：只列运行中的。
       const visible = containersFor(scenario()).filter((item) => all || item.state === 'running')
 
+      // ⚠️ 排序必须在**分页之前**，否则 total 不变而每页内容错位——
+      // 这正是后端 Sort() 的位置，前端排序之所以正确全靠这一点。
+      // 规则与后端 ContainerService.Sort 逐条对齐（同值用 id 兜底、未知字段回落 created）。
+      const sortBy = String(body.sortBy ?? '').trim()
+      const descending = String(body.sortDir ?? '').trim().toLowerCase() !== 'asc'
+
+      let ordered = visible
+      if (sortBy.length > 0) {
+        const pick = (item: ContainerSummary): string => {
+          switch (sortBy) {
+            case 'name':
+              return item.name
+            case 'image':
+              return item.image
+            case 'state':
+              return item.state
+            default:
+              return item.created
+          }
+        }
+
+        ordered = [...visible].sort((a, b) => {
+          const result = pick(a).localeCompare(pick(b))
+          if (result !== 0) return descending ? -result : result
+          return a.id.localeCompare(b.id)
+        })
+      }
+
       return HttpResponse.json(
         ok({
-          items: visible.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize),
-          total: visible.length,
+          items: ordered.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize),
+          total: ordered.length,
           pageIndex,
           // 回显**夹紧后**的值：前端必须用它而不是请求里的值。
           pageSize
