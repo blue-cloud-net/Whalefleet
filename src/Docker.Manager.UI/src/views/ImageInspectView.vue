@@ -5,12 +5,12 @@ import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '@/components/common/PageHeader.vue'
 import SectionCard from '@/components/common/SectionCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import JsonTree from '@/components/common/JsonTree.vue'
+import ImageSize from '@/components/business/ImageSize.vue'
 import { inspectImage } from '@/api/image'
 import { ApiRequestError } from '@/api'
-import { formatBytes } from '@/utils/container-status'
 import { isDangling, primaryImageName, shortDigest } from '@/utils/image-display'
 import { formatDateTime } from '@/utils/datetime'
-import type { ByteUnits } from '@/utils/container-status'
 import type { ImageDetail } from '@/types/api'
 
 /**
@@ -40,13 +40,6 @@ const detail = ref<ImageDetail | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
 
-const byteUnits = computed<ByteUnits>(() => ({
-  b: t('unit.byte'),
-  kib: t('unit.kib'),
-  mib: t('unit.mib'),
-  gib: t('unit.gib')
-}))
-
 /** 「字段为空」与「值为空串」要区分：前者显示占位符，后者可能是刻意的空值。 */
 function orDash(value: string | null | undefined): string {
   return value && value.length > 0 ? value : '—'
@@ -70,8 +63,6 @@ async function load(): Promise<void> {
 function backToList(): void {
   void router.push({ name: 'host-images', params: { hostId: hostId.value } })
 }
-
-const rawJson = computed(() => (detail.value ? JSON.stringify(detail.value, null, 2) : ''))
 
 watch(imageId, load, { immediate: true })
 </script>
@@ -120,7 +111,7 @@ watch(imageId, load, { immediate: true })
             <dd class="font-mono text-xs">{{ shortDigest(detail.repoDigests[0]) }}</dd>
           </div>
           <div><dt>{{ t('image.col.created') }}</dt><dd>{{ formatDateTime(detail.created) }}</dd></div>
-          <div><dt>{{ t('image.col.size') }}</dt><dd>{{ formatBytes(detail.size, byteUnits) }}</dd></div>
+          <div><dt>{{ t('image.col.size') }}</dt><dd><ImageSize :size="detail.size" /></dd></div>
           <div>
             <dt>{{ t('image.detail.platform') }}</dt>
             <dd>{{ orDash(detail.os) }} / {{ orDash(detail.architecture) }}</dd>
@@ -203,7 +194,12 @@ watch(imageId, load, { immediate: true })
       <SectionCard :title="t('image.detail.raw')" density="flush">
         <el-collapse>
           <el-collapse-item :title="t('image.detail.rawToggle')" name="raw">
-            <pre class="app-log max-h-80 overflow-auto text-xs">{{ rawJson }}</pre>
+            <!--
+              用 JSON 树而不是 <pre>：结构化投影已经是精选字段，这里再铺开全量 JSON
+              主要是为了排查契约问题，而排查的人恰恰知道要找哪个字段——
+              树能折叠到具体子树，<pre> 只能靠滚动与搜索。
+            -->
+            <JsonTree :data="detail" :max-depth="1" class="max-h-80 overflow-auto" />
           </el-collapse-item>
         </el-collapse>
       </SectionCard>

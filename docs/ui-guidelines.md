@@ -58,9 +58,27 @@ UnoCSS 默认 + 自定义：
 | 层 | 用途 | 示例 | 位置 |
 |---|---|---|---|
 | **Layout 层** | 顶级布局 | `AppLayout`（+ `AppBreadcrumb` / `AppSidebar` / `SidebarNav` / `UserMenu`） | `src/Docker.Manager.UI/src/layouts/` |
-| **通用组件** | 跨页面复用 | `EmptyState`、`PlaceholderSection`、`Skeleton`（用 `el-skeleton`）、`SectionCard`、`StatCard`、`PageHeader`、`StatusDot`；待加 `StatusBadge`、`JsonTree`、`CopyableText`、`ConfirmDialog`、`CommandPalette` | `src/Docker.Manager.UI/src/components/common/` |
-| **业务组件** | 领域专用 | `HostHero`、`ResourceTile`、`HostCard`、`HostGroupSection`、`HostSelector`；待加 `ContainerStatusBadge`、`ImageSize`、`PortMappingEditor`、`EnvVarEditor`、`VolumeMountEditor` | `src/Docker.Manager.UI/src/components/business/` |
+| **通用组件** | 跨页面复用 | `EmptyState`、`PlaceholderSection`、`SectionCard`、`StatCard`、`PageHeader`、`StatusDot`、`IconActionButton`、`LangSwitcher`、`ThemeSwitcher`、`MockBadge`（开发期）；0.0.14 新增 `StatusBadge`、`JsonTree`、`CopyableText`、`CommandPalette`、`ShortcutHelpDialog` | `src/Docker.Manager.UI/src/components/common/` |
+| **业务组件** | 领域专用 | `HostHero`、`ResourceTile`、`HostCard`、`HostGroupSection`、`HostSelector`；各 `*Dialog.vue`（创建 / 编辑 / 改密）；0.0.14 新增 `ContainerStatusBadge`、`ImageSize`、`PortMappingEditor`、`EnvVarEditor`、`VolumeMountEditor` | `src/Docker.Manager.UI/src/components/business/` |
 | **View 层** | 路由对应的页面 | 每个路由一个 .vue 文件 | `src/Docker.Manager.UI/src/views/` |
+
+> 加载态用 `el-skeleton` 直接写，不单独包一层 `Skeleton.vue`——包装组件省下的
+> 那点模板量换不来一次额外的间接层。
+
+### 行式输入编辑器（0.0.14）
+
+端口 / 挂载 / 环境变量三个字段统一由 `*Editor.vue` 承担，两条约定：
+
+1. **双模**：批量粘贴与逐行编辑共用同一份解析逻辑（`utils/container-input.ts`）。
+   分成两条解析路径必然出现「粘贴能建、手填建不了」。
+2. **出错行号必须回传父级**（`v-model:error-line`）：解析失败时编辑器给出的结构化
+   数组只含出错行**之前**的合法部分，父级若看不到行号就会提交这份残缺数据，
+   建出一个「少了一条环境变量却提示成功」的容器。因此编辑器自己显示错误
+   （带行号），父级据此禁用提交。
+
+> **不要给编辑器加后端没有的开关。** 挂载类型（bind / 具名卷）就是现成的反例：
+> 后端 `ContainerVolumeMapping` 没有 `type` 字段，类型由 Docker 按来源路径是否存在
+> 判定，界面上加下拉只会得到一个「选了也不生效」的选项。
 
 > 新增组件前先确认真会有人用。仓库里曾有一个 `HostStatusPanel.vue`——
 > 内容与 `HostStatusView.vue` 重复且全仓无引用，属于死代码，已删除。
@@ -173,15 +191,32 @@ UnoCSS 默认 + 自定义：
 
 ## 全局快捷键（0.0.14 起）
 
-| 快捷键 | 动作 |
-|--------|------|
-| `Ctrl+K` / `Cmd+K` | 打开命令面板（命令搜索 + 页面跳转） |
-| `g` + `c` | 跳 Containers 页（先按 g 再按 c） |
-| `g` + `i` | 跳 Images 页 |
-| `g` + `v` | 跳 Volumes 页（0.2.0+） |
-| `g` + `n` | 跳 Networks 页（0.2.0+） |
-| `g` + `d` | 跳 Dashboard 页 |
-| `?` | 弹出快捷键速查弹窗 |
+单键裸用（`c` / `i` / `v`）会与输入法候选、切窗口、系统快捷键打架，因此一律走
+**`g` 前缀的 chord**：按下 `g` 后 1.5 秒内按第二个键，超时作废（VS Code 的同款约定）。
+
+| 快捷键 | 动作 | 生效范围 |
+|--------|------|----------|
+| `Ctrl+K` / `Cmd+K` | 打开命令面板（命令搜索 + 页面跳转） | 全局 |
+| `?` | 弹出快捷键速查弹窗 | 全局 |
+| `g` + `b` | 折叠 / 展开侧边栏 | 主机作用域 |
+| `g` + `c` | 跳 Containers 页 | 主机作用域 |
+| `g` + `i` | 跳 Images 页 | 主机作用域 |
+| `g` + `v` | 跳 Volumes 页 | 主机作用域 |
+| `g` + `n` | 跳 Networks 页 | 主机作用域 |
+| `g` + `d` | 跳 Dashboard 页 | 主机作用域 |
+| `g` + `s` | 跳主机 Status 页 | 主机作用域 |
+
+**三条约束**（缺一条就会毁掉快捷键本身）：
+
+1. **输入框内一律不劫持**。焦点在 `input` / `textarea` / `contenteditable` 时全部放行——
+   用户在搜索框里打 `g` 是要打字母。
+2. **不抢占带修饰键的组合**。除 `Ctrl/Cmd+K` 外一律交还浏览器与系统（复制 / 粘贴 /
+   撤销…）。抢了会让用户「复制粘贴失灵」，比没有快捷键糟糕得多。
+3. **chord 可撤销**。`g` 之后的第二个键无论是什么都先清空待定状态——用户按了 `g`
+   又改主意继续打字，那个字母不能被当成跳转。误跳转比不跳转更糟。
+
+> 主机关联键在**全局作用域不注册**，快捷键速查弹窗里也不会列出它们：主机作用域路由
+> 都带 `:hostId`，缺参数会让 vue-router 抛 "Missing required param"（白屏级别）。
 
 > **不做**：容器行内快捷键（如选中后按 r 重启）——避免误操作，所有写操作走显式按钮 + 二次确认。
 

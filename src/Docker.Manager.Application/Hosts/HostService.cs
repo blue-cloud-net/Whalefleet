@@ -106,7 +106,9 @@ public sealed class HostService
             "已新建主机 {HostName}（类型={Type}，端点={Endpoint}，认证={AuthKind}）",
             host.Name,
             host.Type,
-            host.Endpoint.Value,
+            // 走脱敏而非 Value：端点是凭据载体（tcp://user:secret@host），
+            // 而这条日志在连接校验之前就已经落盘了（见 HostEndpoint.Redact）
+            HostEndpoint.Redact(host.Endpoint.Value),
             host.Credentials.Kind);
 
         // 不在创建时探活：写操作不该被网络超时拖住，连通性交给 test 接口或列表状态。
@@ -179,7 +181,7 @@ public sealed class HostService
         _logger.LogInformation(
             "已更新主机 {HostName}（端点={Endpoint}，认证={AuthKind}，启用={Enabled}）",
             host.Name,
-            host.Endpoint.Value,
+            HostEndpoint.Redact(host.Endpoint.Value),
             host.Credentials.Kind,
             host.Enabled);
 

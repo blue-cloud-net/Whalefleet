@@ -131,6 +131,9 @@ public sealed class DockerHostAccessor : IDockerHostAccessor
         _logger.LogInformation(
             "已让主机客户端失效（HostId={HostId}，Connection={Connection}）",
             connection.HostId,
-            connection.Endpoint);
+            // 连接描述里的端点是裸字符串（不是 HostEndpoint），因此不会自动脱敏。
+            // 这里显式过一遍 Redact——主机更新/删除都会走到这行，
+            // 端点若带 userinfo 就等于又写了一遍明文密码。
+            HostEndpoint.Redact(connection.Endpoint));
     }
 }

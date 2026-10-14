@@ -5,6 +5,7 @@
 > **后端** .NET 10 LTS + Dapper + SQLite + SignalR ｜ **前端** Vue 3.5+ + TypeScript 5.7+ + UnoCSS + Element Plus 2.14+ ｜ **Docker SDK** [Docker.DotNet.Enhanced](https://github.com/testcontainers/Docker.DotNet) 4.3.3（Docker Engine API v29.4.1）
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/blue-cloud-net/docker-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/blue-cloud-net/docker-manager/actions/workflows/ci.yml)
 [![.NET 10 LTS](https://img.shields.io/badge/.NET-10_LTS-512BD4)](https://dotnet.microsoft.com)
 [![Vue 3.5+](https://img.shields.io/badge/Vue-3.5+-42b883)](https://vuejs.org)
 [![Docker Engine API v29.4.1](https://img.shields.io/badge/Docker_Engine_API-v29.4.1-2496ED)](https://github.com/testcontainers/Docker.DotNet)
@@ -25,7 +26,7 @@
 - 🔔 **实时推送**（0.3.0）：SignalR 实时日志流 / CPU 内存网络监控 / 容器异常通知
 - 💻 **Web 终端**（0.4.0）：xterm.js + 独立短时 terminal token
 - 📦 **Docker Compose / Stack 管理**（0.4.0）
-- 🎨 **现代 UI**：UnoCSS + Element Plus + 命令面板（Ctrl/K）+ 全局快捷键 + 亮/暗主题 + 三色主题色
+- 🎨 **现代 UI**：UnoCSS + Element Plus + 命令面板（`Ctrl/Cmd+K`）+ `g` 前缀全局快捷键 + 亮/暗主题 + 三色主题色
 
 ---
 
@@ -65,31 +66,50 @@ services:
     restart: unless-stopped
 ```
 
-如必须**直挂 socket**，请确保 Docker.Manager 实例仅暴露给可信网络。详细安全策略见 [SECURITY.md](SECURITY.md)。
+如必须**直挂 socket**，请确保 Docker.Manager 实例仅暴露给可信网络，并优先前置 HTTPS 反代（镜像内仅监听 HTTP）。完整的部署约束与安全边界见 [docs/constraints.md](docs/constraints.md)。
 
 ---
 
-## 🚀 一键启动
+## 🚀 本地启动
 
-### 方式一：Socket-Proxy 模式（推荐）
+> **本项目当前处于 0.0.x 开发迭代期，尚未发布容器镜像。**
+> 下面的 socket-proxy 示例描述的是**目标形态**（`Dockerfile` 与 `docker-compose.yml`
+> 随 [0.0.15](docs/roadmap.md#015--部署底座与发布流水线) 一起交付）。
+> 在那之前，请用「方式一：从源码运行」。
+
+### 方式一：从源码运行（当前唯一可用方式）
 
 ```bash
 # 1. 克隆并进入仓库
 git clone https://github.com/blue-cloud-net/docker-manager.git
 cd docker-manager
 
-# 2. 创建数据目录
-mkdir -p data
+# 2. 后端（需要 .NET 10 SDK）
+dotnet run --project src/Docker.Manager.Api --urls http://localhost:8080
 
-# 3. 复制 docker-compose.yml 并启动
-#    （docker-compose.yml 同时提供直挂 socket 与 socket-proxy 两种模式）
-docker compose up -d
-
-# 4. 浏览器访问 http://localhost:8080
-#    使用 docker-compose.yml 中配置的 ADMIN__USER / ADMIN__PASSWORD 登录
+# 3. 前端（另开一个终端，需要 Node.js 20+ 与 pnpm）
+cd src/Docker.Manager.UI
+pnpm install
+pnpm dev:mock   # 用内置假数据体验界面，无需后端与 Docker
+#   或 pnpm dev   # 连真实后端（Vite 会把 /api 代理到 :8080）
 ```
 
-### 方式二：直挂 Socket（仅可信环境）
+首次启动时若 `users` 表为空**且未配置管理员**，则不会创建账号（只打一条 Warning）。
+要登录必须显式设置 `ADMIN__USER` / `ADMIN__PASSWORD` 后重启；密码不满足强度要求会
+直接让启动失败——这是「系统里还没有任何账号」的唯一时机，放行弱密码等于把门开着不管。
+
+### 环境变量
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `ASPNETCORE_ENVIRONMENT` | `Production` | 设为 `Development` 会输出详细错误 |
+| `JWT__SECRET` | 开发环境有内置值 | **生产必须显式设置**，至少 32 字节；缺失或过短会导致启动失败 |
+| `ADMIN__USER` | （无默认） | 首次启动创建的管理员用户名；未配置则不创建账号 |
+| `ADMIN__PASSWORD` | （无默认） | 同上，且必须满足密码强度要求 |
+
+### 方式二：容器化启动（0.0.15 起可用）
+
+届时一条命令即可启动，镜像推送到 `ghcr.io/blue-cloud-net/docker-manager`：
 
 ```bash
 docker run -d \
@@ -104,13 +124,11 @@ docker run -d \
   ghcr.io/blue-cloud-net/docker-manager:latest
 ```
 
-### 方式三：独立进程部署
+**强烈建议改为 socket-proxy**（见上方安全声明）——直挂 socket 等于把宿主机的
+Docker root 权限交给容器内的任何进程。
 
-```bash
-dotnet Docker.Manager.Api.dll --urls http://0.0.0.0:8080
-```
-
-要求宿主机当前用户对 `/var/run/docker.sock` 有读写权限（通常需要加入 `docker` 用户组）。
+> 主机**不再是配置项**：0.0.8 起主机存在 `hosts` 表里，远程 Docker 主机在启动后
+> 通过管理界面添加。
 
 ---
 
@@ -155,8 +173,8 @@ dotnet Docker.Manager.Api.dll --urls http://0.0.0.0:8080
 欢迎贡献代码、报告 Bug、提出功能建议。
 
 - 提 Issue：[GitHub Issues](https://github.com/blue-cloud-net/docker-manager/issues)
-- 提 PR：阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 了解开发流程、Conventional Commits 规范、PR 流程
-- 报告安全漏洞：请**不要**在公开 Issue 中披露，按 [SECURITY.md](SECURITY.md) 流程私信报告
+- 提 PR：请先开 Issue 讨论变更方向
+- 报告安全漏洞：请**不要**在公开 Issue 中披露（这等于告知攻击者具体漏洞细节）
 
 开发环境：.NET 10 SDK + Node.js 20+ + pnpm。
 

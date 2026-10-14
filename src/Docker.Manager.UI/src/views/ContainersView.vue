@@ -11,6 +11,8 @@ import IconActionButton from '@/components/common/IconActionButton.vue'
 import ListPagination from '@/components/common/ListPagination.vue'
 import BatchActionBar from '@/components/common/BatchActionBar.vue'
 import CreateContainerDialog from '@/components/business/CreateContainerDialog.vue'
+import ContainerStatusBadge from '@/components/business/ContainerStatusBadge.vue'
+import { onActionRequest } from '@/composables/useActionBus'
 import {
   listContainers,
   removeContainer,
@@ -20,12 +22,7 @@ import {
   type ContainerSortField
 } from '@/api/container'
 import { ApiRequestError } from '@/api'
-import {
-  CONTAINER_TONE_CHIP,
-  CONTAINER_TONE_LABEL_KEY,
-  containerTone,
-  formatPort
-} from '@/utils/container-status'
+import { containerTone, formatPort } from '@/utils/container-status'
 import { formatDateTime } from '@/utils/datetime'
 import { PAGE_SIZE_ALL, resolvePageSize, usePreferencesStore } from '@/stores/preferences'
 import type { ContainerSummary } from '@/types/api'
@@ -85,6 +82,11 @@ const batchBusy = ref(false)
  * 模板 ref 是唯一拿得到它的方式（`BatchActionBar` 本身不该知道 el-table 的存在）。
  */
 const tableRef = ref<TableInstance | null>(null)
+
+// 命令面板 / 快捷键的「创建容器」经动作总线转到这里（对话框开关仍归本页所有）
+onActionRequest('createContainer', () => {
+  createDialogVisible.value = true
+})
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -648,12 +650,7 @@ onBeforeUnmount(stopPolling)
 
           <el-table-column prop="state" :label="t('container.col.state')" width="160" sortable="custom">
             <template #default="{ row }">
-              <span
-                class="inline-flex items-center rounded-full px-2 py-0.5 text-xs ring-1 ring-inset"
-                :class="CONTAINER_TONE_CHIP[containerTone(row.state)]"
-              >
-                {{ t(CONTAINER_TONE_LABEL_KEY[containerTone(row.state)]) }}
-              </span>
+              <ContainerStatusBadge :status="row.state" />
               <div v-if="row.status" class="app-truncate mt-0.5 text-xs text-content-faint">
                 {{ row.status }}
               </div>

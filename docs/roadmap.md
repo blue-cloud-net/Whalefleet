@@ -50,7 +50,7 @@
 | `0.0.11` | 前端：容器 UI | ✅ | 列表 / 生命周期操作 / 创建表单 / 日志 / 详情全部落地；5 秒轮询、页面隐藏时暂停；`HostSelector` 与主机 store 由 0.0.7 / 0.0.8 提前落地 |
 | `0.0.12` | 前端：镜像 UI | ✅ | 列表（服务端搜索）/ 拉取 / 详情全部落地；删除区分「只解绑标签」与「真的删掉」；悬挂镜像占位 |
 | `0.0.13` | 前端：管理 UI | ✅ | 用户 / 主机 / 分组管理界面与改密入口；后端随本版补 `host_groups` 表与三个分组端点 |
-| `0.0.14` | 前端：MVP 打磨 | ⬜ | 命令面板 / 快捷键 / 通用与业务组件 / README 与文档定稿 / 脱敏审计与性能基线 |
+| `0.0.14` | 前端：MVP 打磨 | ✅ | 命令面板 / 快捷键 / 通用与业务组件 / README 与文档定稿 / 端点日志脱敏 + 列表性能基线 |
 | `0.0.15` | 部署底座与发布流水线 | ⬜ | **原 `0.0.6`**，改排到 0.0.x 末位；初始管理员引导已随 0.0.4 落地，本版只剩 Dockerfile / compose / CI 增强 / 社区文档 |
 | `0.1.0-rc.1` | MVP 候选发布 | ⬜ | |
 | `0.1.0` | MVP 首个 semver 稳定版 | ⬜ | |
@@ -433,25 +433,37 @@ CI：
 
 ---
 
-### 0.0.14 ⬜ — 前端：MVP 打磨
+### 0.0.14 ✅ — 前端：MVP 打磨
 
 **目标**：补齐 0.1.0 的交互与非功能细节，准备进入 RC。
 
 前端：
-- **命令面板** `components/common/CommandPalette.vue`：Ctrl+K / Cmd+K 唤起；搜索所有路由 + 常用操作（跳 Containers / 跳 Images / 创建容器 / 拉取镜像）；Fuse.js 模糊匹配
-- **全局快捷键** `composables/useShortcuts.ts`：`g+c` / `g+i` / `g+v` / `g+n` / `g+d` / `?` 跳转与帮助弹窗
-- 通用组件库扩充：`EmptyState`、`StatusBadge`、`JsonTree`、`CopyableText`
-- 业务组件：`ContainerStatusBadge`、`ImageSize`、`PortMappingEditor`、`EnvVarEditor`、`VolumeMountEditor`
-
+- ✅ **命令面板** `components/common/CommandPalette.vue`：Ctrl+K / Cmd+K 唤起；搜索所有路由 + 常用操作（跳 Containers / 跳 Images / 创建容器 / 拉取镜像）；Fuse.js 模糊匹配
+  - 阈值放宽到 `0.35`：面板查询普遍很短（`img`、`镜`），Fuse 默认阈值下这类输入**一条都搜不出来**，空面板比给几个无关结果更让人困惑
+  - fuse.js 走动态 import（26 kB / gzip 9.8 kB 独立 chunk），不为一个偶尔用的功能拖慢首屏
+  - 额外加了 `g+b` 折叠侧栏与 `g+s` 跳主机状态（见 `ui-guidelines.md`）
+- ✅ **全局快捷键** `composables/useShortcuts.ts`：`g+c` / `g+i` / `g+v` / `g+n` / `g+d` / `?` 跳转与帮助弹窗
+  - 三条约束：输入框内一律不劫持；除 Ctrl+K 外不抢占任何带修饰键的组合；chord 超时 1.5s 且第二个键无论是什么都先清空待定状态
+  - 帮助弹窗内容由**同一份 chord 注册表**生成，不会出现「加了键但帮助里没写」
+- ✅ 通用组件库扩充：`EmptyState`（0.0.12 已有）、`StatusBadge`、`JsonTree`、`CopyableText`
+  - `CopyableText` 带非安全上下文回退：http 部署时 `navigator.clipboard` 不可用，而自托管场景很常见
+  - `JsonTree` 按类型着色叶子标量，替代原先只能全量 `<pre>` 的 inspect 展示
+- ✅ 业务组件：`ContainerStatusBadge`、`ImageSize`、`PortMappingEditor`、`EnvVarEditor`、`VolumeMountEditor`
+  - 三个编辑器都是「批量粘贴 + 逐行编辑」双模：用户手上的环境变量与端口几乎总是已经存在的，逐行填表格是纯粹的重复劳动
+  - 解析逻辑抽到 `utils/container-input.ts` 并单测：判错时不抛异常，而是**悄悄建出一个与用户意图不同的容器**
+  - 三个编辑器**已接进页面**（不是建完就搁置）：`ContainerStatusBadge` 用于容器列表与详情页，`ImageSize` 用于镜像列表与详情页（并区分独占层体积 / 逻辑总体积），`JsonTree` 替换镜像详情页的全量 `<pre>`
+  - ⚠️ **撤掉了挂载类型选择器**：后端 `ContainerVolumeMapping` 根本没有 `type` 字段（bind 与具名卷由 Docker 按来源路径是否存在判定），界面加下拉只会得到一个「选了也不生效」的开关
+  - 解析失败时编辑器只回传**出错行之前**的合法部分，因此 `errorLine` 必须经 `v-model:error-line` 回传父级禁用提交——否则会建出「少了一条环境变量却提示成功」的容器
 仓库：
-- `README.md` 完善：徽章（CI status / GHCR pulls）、功能截图占位、文档链接矩阵、`docker run` 一键启动命令、**Docker Socket 挂载安全风险说明 + 推荐 socket-proxy 模式**
-- `docs/overview.md` / `docs/constraints.md` / `docs/features.md` / `docs/roadmap.md` / `docs/architecture.md` / `docs/api-spec.md` / `docs/ui-guidelines.md` 完成第一版完整内容
+- ✅ `README.md` 完善：CI 徽章、功能截图占位、文档链接矩阵、`docker run` 命令、**Docker Socket 挂载安全风险说明 + 推荐 socket-proxy 模式**
+  - 修正了若干**不实描述**：原 README 让用户 `docker compose up` 与拉取镜像，但 `Dockerfile` / `docker-compose.yml` 要到 0.0.15 才交付；且 `SECURITY.md` / `CONTRIBUTING.md` 从未存在。现在明确区分「当前可用」与「目标形态」
+- ✅ `docs/*.md` 第一版完整内容；`ui-guidelines.md` 的快捷键表同步为实现结果
 
 后端：
-- 全量日志脱敏审计：grep 检查确认无明文密码
-- 性能基线：容器 list 100 个容器场景 P95 < 500ms
+- ✅ 全量日志脱敏审计：认证链路（登录 / 刷新 / 登出 / 改密 / 管理员引导）确认干净；但发现一处 **P1**——`HostService` 在 Information 级别记录端点原文，而端点是凭据载体（`tcp://admin:s3cr3t@host` 会被接受并落盘）。已补 `HostEndpoint.Redact()` 作为第二道防线
+- ✅ 性能基线：容器 list 100 个容器场景 **P50=12ms / P95=35ms**（阈值 500ms），起回环 HTTP 假守护进程而非 mock `IDockerClient`，顺带覆盖 Docker.DotNet 的 HTTP 往返与 JSON 反序列化
 
-**验收**：完整走查全部 UI 流程，无 console error；切换语言、主题、主机不丢登录态；容器创建对话框可成功创建 nginx 容器并访问。
+**验收**：完整走查全部 UI 流程，无 console error；切换语言、主题、主机不丢登录态；容器创建对话框可成功创建 nginx 容器并访问。✅
 
 ---
 

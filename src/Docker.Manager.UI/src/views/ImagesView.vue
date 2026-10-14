@@ -11,9 +11,10 @@ import IconActionButton from '@/components/common/IconActionButton.vue'
 import ListPagination from '@/components/common/ListPagination.vue'
 import BatchActionBar from '@/components/common/BatchActionBar.vue'
 import PullImageDialog from '@/components/business/PullImageDialog.vue'
+import ImageSize from '@/components/business/ImageSize.vue'
+import { onActionRequest } from '@/composables/useActionBus'
 import { listImages, removeImage, type ImageSortField } from '@/api/image'
 import { ApiRequestError } from '@/api'
-import { formatBytes } from '@/utils/container-status'
 import {
   DANGLING_IMAGE_LABEL,
   isDangling,
@@ -68,6 +69,11 @@ const batchBusy = ref(false)
 /** 表格实例：只有 `clearSelection()` 用得到 */
 const tableRef = ref<TableInstance | null>(null)
 
+// 命令面板 / 快捷键的「拉取镜像」经动作总线转到这里（对话框开关仍归本页所有）
+onActionRequest('pullImage', () => {
+  pullDialogVisible.value = true
+})
+
 /** URL 上的 hostId。**以它为准**而不是 store.currentId：深链进入时 store 可能还没被守卫写入。 */
 const hostId = computed(() => String(route.params.hostId ?? ''))
 
@@ -83,13 +89,6 @@ const pageCount = computed(() =>
   Math.max(1, Math.ceil(total.value / resolvePageSize(pageSize.value, total.value)))
 )
 const isEmpty = computed(() => !loading.value && error.value === null && images.value.length === 0)
-
-const byteUnits = computed(() => ({
-  b: t('unit.byte'),
-  kib: t('unit.kib'),
-  mib: t('unit.mib'),
-  gib: t('unit.gib')
-}))
 
 /** 查询参数（`load` 与搜索共用）：排序字段省略时后端不重排。 */
 function listParams() {
@@ -467,9 +466,10 @@ watch(
           </template>
         </el-table-column>
 
-          <el-table-column prop="size" :label="t('image.col.size')" width="110" sortable="custom">
+          <el-table-column prop="size" :label="t('image.col.size')" width="150" sortable="custom">
             <template #default="{ row }">
-              <span class="text-sm tabular-nums">{{ formatBytes(row.size, byteUnits) }}</span>
+              <!-- 独占层体积 / 逻辑总体积：两者不等时组件会自动加提示，避免高估可释放空间。 -->
+              <ImageSize :size="row.size - row.sharedSize" :virtual-size="row.size" />
             </template>
           </el-table-column>
 
