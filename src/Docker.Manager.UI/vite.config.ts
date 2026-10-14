@@ -14,7 +14,7 @@ export default defineConfig({
   },
   server: {
     host: '0.0.0.0',
-    port: 5173,
+    port: 30123,
     strictPort: false,
     proxy: {
       // 开发期走 Vite 代理，保持浏览器同源，避免触发后端 CORS 白名单限制

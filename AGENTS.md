@@ -205,9 +205,11 @@ DDD 战术模式（聚合根 / 领域事件 / 领域服务）**已整体移除**
 
 ## 开发环境备注
 
-- **前端 dev server 已在 5173 端口运行**（用户自己在别的终端跑着 `pnpm dev`）。
-  走查浏览器直接用 `http://localhost:5173`，**不要重复启动**——Vite 会退到 5174 造成两个实例、
-  抢 CPU 且易掉线。仅当确认 5173 确实没在跑时才允许启动。
+- **前端 dev server 已在 30123 端口运行**（用户自己在别的终端跑着 `pnpm dev`，端口来自
+  `vite.config.ts` 的 `server.port`）。走查浏览器直接用 `http://localhost:30123`，
+  **不要重复启动**——Vite 会退到 30124 造成两个实例、抢 CPU 且易掉线。
+  仅当确认 30123 确实没在跑时才允许启动。
+  ⚠️ **5173 是本机另一个项目的 dev server**（food-log），打开它会看到完全无关的页面。
 - **本机 Docker socket 可用**，`DockerFactAttribute` / `DockerImageFactAttribute` /
   `DockerRegistryFactAttribute` 的用例会**真的跑**，不是永远 Skip。
 - 本机配了 registry 镜像加速器，`DockerRegistryFactAttribute` 必须**先探

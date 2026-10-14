@@ -61,7 +61,7 @@ pnpm dev:real   # 连真实后端（默认代理到 http://localhost:8080）
 | `unauthorized` | 凭据错误（验证 `1100` → `1101` → `1102` 认证链路） |
 | `disabled` | 含一台已停用主机（验证 `1302` 分支） |
 
-访问 `http://localhost:5173/?mock=counts` 即可。
+访问 `http://localhost:30123/?mock=counts` 即可（端口见 `vite.config.ts` 的 `server.port`）。
 
 ### 账号
 
