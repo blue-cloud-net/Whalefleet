@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import { useThemeStore, type ThemeColor, type ThemeMode } from '@/stores/theme'
-import { usePreferencesStore, PAGE_SIZE_OPTIONS } from '@/stores/preferences'
+import { usePreferencesStore, PAGE_SIZE_ALL, PAGE_SIZE_OPTIONS } from '@/stores/preferences'
 import { setLocale, type AppLocale } from '@/locales'
 import PageHeader from '@/components/common/PageHeader.vue'
 import SectionCard from '@/components/common/SectionCard.vue'
@@ -98,6 +98,8 @@ function onLocaleChange(next: AppLocale) {
             <el-radio-button v-for="n in PAGE_SIZE_OPTIONS" :key="n" :value="n">
               {{ n }}
             </el-radio-button>
+            <!-- 与列表页的每页条数下拉是同一个值（同一个 store），故这里也提供「全部」 -->
+            <el-radio-button :value="PAGE_SIZE_ALL">{{ t('common.pageSizeAll') }}</el-radio-button>
           </el-radio-group>
         </div>
         <p class="mt-3 text-xs text-content-faint">
