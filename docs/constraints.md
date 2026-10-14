@@ -306,7 +306,11 @@ socket-proxy 默认仅授予 `GET`（只读 + 列出），如需写操作（创�
 - 读 Conventional Commits 自动生成 release notes
 - 自动开 PR 修改 `CHANGELOG.md`
 - 自动打 tag
-- 状态文件：`.github/.release-please-manifest.json`
+- 配置：`.github/release-please-config.json`；状态文件：`.github/release-please-manifest.json`
+  （两者路径在 `release-please.yml` 里显式传给 action，不依赖 Release Please 的默认值——
+  改路径时不必同时改代码）
+- 版本策略 `bump-patch-for-minor-pre-major: true`：`0.0.14` 的 feat 提交应得 `0.0.15`。
+  默认策略会直接跳到 `0.1.0`，而那是 RC 的位置，不是某个 0.0.x 迭代的
 
 ### 镜像发布（0.0.15 起）
 
