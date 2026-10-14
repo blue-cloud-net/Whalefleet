@@ -105,7 +105,7 @@ services:
 
 socket-proxy 作为只读代理，将 Docker API 权限限定到最小子集。如必须直挂 socket，请确保 Docker.Manager 实例仅暴露给可信网络。
 
-完整安全声明见 [README.md](../README.md#️-安全声明docker-socket-挂载) 与
+完整安全声明见 [README.zh-CN.md](../README.zh-CN.md#️-安全声明docker-socket-挂载)（[English](../README.md#️-security-notice-docker-socket-mounting)）与
 [constraints.md](constraints.md#docker-socket-挂载-️-高危)。
 
 ---
@@ -121,7 +121,10 @@ socket-proxy 作为只读代理，将 Docker API 权限限定到最小子集。�
 | [architecture.md](./architecture.md) | 系统分层、多主机 DockerClient 工厂、通信机制 |
 | [api-spec.md](./api-spec.md) | RPC 风格 API 约定 + SignalR Hub + WebSocket 规范 |
 | [ui-guidelines.md](./ui-guidelines.md) | UI 布局规范（整体布局、断点、组件分层、交互约定） |
-| [README.md](../README.md) | 项目入口（徽章、`docker run` 一键启动、文档链接） |
+| [README.md](../README.md) | 项目入口（英文，徽章、`docker run` 一键启动、文档链接） |
+| [README.zh-CN.md](../README.zh-CN.md) | 项目入口（中文，与上表内容一一对应） |
+| [CHANGELOG.md](../CHANGELOG.md) / [CHANGELOG.zh-CN.md](../CHANGELOG.zh-CN.md) | 变更记录（0.0.1 ~ 0.0.14 的双语版本） |
+| [AGENTS.md](../AGENTS.md) | AI 代理协作指南（构建命令、架构铁律、踩坑清单） |
 
 ---
 
