@@ -26,8 +26,13 @@ services:
   # ------------------------------------------------------------------
   # 模式 1：直挂 socket（不推荐）
   # ------------------------------------------------------------------
+  # ⚠️ 本 service 带 `direct` profile，**默认不启动**。
+  #    启用方式：docker compose --profile direct up -d
+  #    两个模式共用 container_name，若同时启动会直接冲突——
+  #    所以必须靠 profile 隔离，不能靠注释掉其中一个。
   direct:
-    image: ghcr.io/blue-cloud-net/docker-manager:0.0.15
+    profiles: ["direct"]
+    image: ${DOCKER_MANAGER_IMAGE:-docker-manager:local}
     container_name: docker-manager
     restart: unless-stopped
     ports:
@@ -54,8 +59,10 @@ services:
   # ------------------------------------------------------------------
   # 模式 2：socket-proxy（推荐）
   # ------------------------------------------------------------------
+  # ⚠️ 默认启用的模式。启用另一模式需加 --profile direct 并停掉本模式，
+  #    两者共用 container_name，无法共存。
   proxy:
-    image: ghcr.io/blue-cloud-net/docker-manager:0.0.15
+    image: ${DOCKER_MANAGER_IMAGE:-docker-manager:local}
     container_name: docker-manager
     restart: unless-stopped
     ports:
