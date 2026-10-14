@@ -4,6 +4,8 @@ using Docker.Manager.Api.Configuration;
 using Docker.Manager.Api.Errors;
 using Docker.Manager.Api.Middleware;
 using Docker.Manager.Api.Serialization;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.FileProviders;
 using Docker.Manager.Application.Abstractions.Persistence;
 using Docker.Manager.Application.Common;
 using Docker.Manager.Application.DependencyInjection;
@@ -70,6 +72,20 @@ builder.Services.AddHealthChecks();
 //   2) 无前缀环境变量：URLS=http://0.0.0.0:9090
 var app = builder.Build();
 
+// SPA 配置要在管道搭建前读出来（根目录不存在时要在挂中间件**之前**就知道，
+// 否则会为一个空目录注册静态文件中间件，日志里看不出任何异常）。
+var spaOptions = ConfigurationReader.ReadSpa(builder.Configuration);
+var spaEnabled = spaOptions.Enabled;
+var spaRoot = spaEnabled ? SpaRootResolver.Resolve(spaOptions, app.Environment.ContentRootPath) : null;
+if (spaEnabled && spaRoot is null)
+{
+    // 生产镜像里产物缺失 = 交付了一个只有接口、没有界面的容器。
+    // 这必须在启动时就炸，而不是让人打开浏览器看到 404。
+    throw new InvalidOperationException(
+        $"Spa:Enabled 为 true，但找不到前端产物目录 '{spaOptions.RootPath}'。"
+        + "请确认镜像构建时已执行 pnpm build 并把 dist 复制到发布目录的 wwwroot 下。");
+}
+
 // ============================== 管道顺序（不可随意调整） ==============================
 // 0) 反向代理头修正：必须最先执行。
 //    它改写 Connection.RemoteIpAddress，而限流计数与请求日志都读这个值——
@@ -106,9 +122,41 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
-// 7) 当前主机：从路由值 hostId 解析并写入 Scoped ICurrentHost；主机不存在则 1300/404。
+// 7) 前端产物（0.0.15）：生产镜像内由本进程同源托管，部署因此只有一个容器、一个端口。
+//    未启用（Spa:Enabled=false，即开发环境默认）时整段跳过，
+//    前端仍由 Vite 在 5173 提供，API 只负责接口。
+//
+//    ⚠️ 位置在 UseCurrentHost **之前**（不是「MapControllers 之前」就够）：
+//    前端的 /hosts/{hostId}/... 与接口的 /api/v1/hosts/{hostId}/... 同前缀，
+//    而 UseCurrentHost 会把任何请求的 hostId 路由值当主机去查库。
+//    放在它之后，每次刷新 SPA 深链都会先抛「主机不存在」——页面根本打不开。
+if (spaRoot is not null)
+{
+    var spaFileProvider = new PhysicalFileProvider(spaRoot);
+
+    // UseDefaultFiles 让 / 命中 index.html；显式指定文件提供器是为了让
+    // UseStaticFiles 能把目录请求转成文件请求（否则 / 会 404）。
+    app.UseDefaultFiles(new DefaultFilesOptions
+    {
+        FileProvider = spaFileProvider,
+        DefaultFileNames = [spaOptions.IndexFile],
+    });
+
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = spaFileProvider,
+        ServeUnknownFileTypes = false,
+    });
+
+    // 深链回退：前端用 createWebHistory，/hosts/local/containers 这类路径
+    // 在服务端没有对应端点，必须回退到 index.html 交给前端路由。
+    // 刻意不用 MapFallbackToFile——它会把打错的 /api 路径也变成 200 + HTML。
+    app.UseSpaFallback(spaRoot, spaOptions.IndexFile);
+}
+
+// 8) 当前主机：从路由值 hostId 解析并写入 Scoped ICurrentHost；主机不存在则 1300/404。
 //    放在鉴权之后：0.3.0 的资源可见性校验要读 HttpContext.User。
-//    放在 MapControllers 之前：控制器与后续的主机作用域端点要能读到它。
+//    放在 SPA 回退之后：前端的同前缀深链不是主机请求，不能让它进主机解析。
 app.UseCurrentHost();
 
 app.MapControllers();
