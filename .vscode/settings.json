@@ -16,5 +16,6 @@
     "package.json": "package-lock.json, pnpm*, .yarnrc*, yarn*, .eslint*, eslint*, .oxlint*, oxlint*, .prettier*, prettier*, .editorconfig",
     "Whalefleet.Api.csproj": "appsettings*.json, *.http, launchSettings.json"
   },
-  "dotnet.defaultLaunchTarget": "Whalefleet.Api"
+  "dotnet.defaultLaunchTarget": "Whalefleet.Api",
+  "dotnet.defaultSolution": "Whalefleet.slnx"
 }
