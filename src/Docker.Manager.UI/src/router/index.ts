@@ -99,6 +99,18 @@ const routes: RouteRecordRaw[] = [
         meta: { scope: 'host', icon: 'i-carbon-activity', title: 'nav.status' }
       },
       {
+        // 「编排」= Docker Compose / Stack。后端 /api/v1/stack/* 排 0.4.0，当前先占位建好菜单。
+        //
+        // 位置放在**容器 / 镜像 / 数据卷 / 网络之前**，不是按依赖排的，而是按用户的实际动线：
+        // Compose 项目的日常操作是「看编排 → 看它拉起的容器 / 挂载的卷 / 接入的网络」，
+        // 从编排往下点最顺手；反过来从容器找编排得先记得这个容器属于哪个项目。
+        // 依赖顺序只体现在**实现节奏**上（后端 0.4.0 才排上），不占用菜单的排列。
+        path: 'hosts/:hostId/stacks',
+        name: 'host-stacks',
+        component: () => import('@/views/StacksView.vue'),
+        meta: { scope: 'host', icon: 'i-carbon-layers', title: 'nav.stacks' }
+      },
+      {
         path: 'hosts/:hostId/containers',
         name: 'host-containers',
         component: () => import('@/views/ContainersView.vue'),
@@ -146,16 +158,6 @@ const routes: RouteRecordRaw[] = [
         name: 'host-networks',
         component: () => import('@/views/NetworksView.vue'),
         meta: { scope: 'host', icon: 'i-carbon-network-3', title: 'nav.networks' }
-      },
-      {
-        // 「编排」= Docker Compose / Stack。后端 /api/v1/stack/* 排 0.4.0，
-        // 当前先占位建好菜单，后续迭代直接填充实现。
-        // 放在网络之后：它依赖的容器/镜像能力排在 0.0.11 / 0.0.12，
-        // 与交付节奏对齐，菜单里不会先摆一个点不动的入口。
-        path: 'hosts/:hostId/stacks',
-        name: 'host-stacks',
-        component: () => import('@/views/StacksView.vue'),
-        meta: { scope: 'host', icon: 'i-carbon-layers', title: 'nav.stacks' }
       },
       {
         // 「事件」= 操作审计日志（谁在何时做了什么），**不是** Docker Events 流。
