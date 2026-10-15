@@ -3,16 +3,27 @@ name: release
 # 构建镜像并推送 GHCR —— **仅**在 Release Please 打上 tag 后触发。
 #
 # ## 为什么 tag 触发而不是 workflow_dispatch
-# tag 是「版本已定」的不可变事实，而 Release Please 打 tag 前会先跑完
-# 更新 CHANGELOG 的 PR 与完整 CI。让 tag 成为唯一触发点，可保证
-# 推上去的镜像对应的提交一定是已经过测试的那一个。
+# tag 是「版本已定」的不可变事实。让 tag 成为唯一触发点，可保证推上去的镜像
+# 对应的提交一定是已经过测试的那一个——该提交先经 dev→main 的 PR 过完 CI，
+# 再由 Release Please 打 tag。
 #
-# ## 0.0.x 不推 GHCR
-# 本项目处于开发迭代期，0.0.* 不对外发布：
+# ⚠️ 推 tag 本身**不重跑** CI：同一时刻的 push 与 tag 是两个事件，
+#    而 tag 事件的上下文里 CI 未必已出结论。真正的门是前一次 PR。
+#
+# ## 只有 1.x 对外发布
+# 0.x 是内部迭代期（含已完成的 0.0.1–0.0.15 与开发中的 0.1.0–0.8.0）：
 # 未正式发布、API 可能破坏性变更、不值得占用户的镜像仓库空间。
 # 这个判断放在 job 内部（而非取消触发条件），
 # 是因为「不推」本身也要留下一条可查的记录——
-# 否则排查「为什么 0.0.14 的 tag 没有镜像」时什么都看不到。
+# 否则排查「为什么某个 tag 没有镜像」时什么都看不到。
+# （0.x 实际不打 tag，这条分支是防御性的：万一有人手工打了 tag，别静默推出去。）
+#
+# ## 候选版（1.0.0-rc.N）推 GHCR，但不打 latest
+# RC 是对外灰度，需要能被 `docker pull ...:1.0.0-rc.1` 拉到；
+# 但绝不能覆盖 latest——那会让按 latest 部署的人提前吃到未验证版本。
+#
+# ## GitHub Release 不在本文件创建
+# 由 Release Please 独占（见 release-please.yml）。
 
 on:
   push:
@@ -40,19 +51,47 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: 解析版本号
+      # 版本判定与镜像标签在这里一次算完。刻意不写成几个并列的 `if`：
+      # 「哪些标签能推」是发布策略的唯一事实源，分散到多个 step 必然漂移。
+      - name: 解析版本号并计算镜像标签
         id: version
+        env:
+          REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
         run: |
-          tag="${GITHUB_REF_NAME}"            # 形如 v0.1.0
-          version="${tag#v}"                 # 0.1.0
+          tag="${GITHUB_REF_NAME}"                 # v1.0.0 / v1.0.0-rc.1
+          version="${tag#v}"                      # 1.0.0 / 1.0.0-rc.1
+          image="${REGISTRY}/${IMAGE_NAME}"
+
+          if [[ "${version}" == 0.*.* ]]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::${tag} 属于 0.x 内部迭代期，不推送 GHCR。这是有意为之：未正式发布、API 可能破坏性变更。首个对外版本是 v1.0.0。"
+            exit 0
+          fi
+
+          echo "publish=true" >> "$GITHUB_OUTPUT"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
-          if [[ "${version}" == 0.0.* ]]; then
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::${tag} 属于 0.0.x 内部迭代期，不推送 GHCR。这是有意为之：未正式发布、API 可能破坏性变更。首个对外版本是 v0.1.0。"
-          else
-            echo "publish=true" >> "$GITHUB_OUTPUT"
+          if [[ "${version}" == *-rc.* ]]; then
+            # 候选版：只给两个精确版本号。不推 `1.0`（会被误当成稳定版），
+            # 也不推 `latest`（按 latest 部署的人不该吃到未验证版本）。
+            echo "image_tags<<EOF" >> "$GITHUB_OUTPUT"
+            echo "${image}:${version}" >> "$GITHUB_OUTPUT"
+            echo "${image}:${tag}" >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+            echo "::notice::${tag} 是发布候选版：推 GHCR 但不打 latest。"
+            exit 0
           fi
+
+          # 正式版：v 前缀 + 裸版本 + 主次版本 + latest
+          base="${version%%-*}"
+          minor="${base#*.}"; minor="${minor%%.*}"
+          echo "image_tags<<EOF" >> "$GITHUB_OUTPUT"
+          echo "${image}:${version}" >> "$GITHUB_OUTPUT"
+          echo "${image}:${tag}" >> "$GITHUB_OUTPUT"
+          echo "${image}:${base%%.*}.${minor}" >> "$GITHUB_OUTPUT"
+          echo "${image}:latest" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
 
       - name: checkout
         if: steps.version.outputs.publish == 'true'
@@ -70,10 +109,8 @@ jobs:
         if: steps.version.outputs.publish == 'true'
         uses: docker/setup-buildx-action@v4
 
-      # 构建并推送。只推版本 tag 与 latest，不推 sha ——
-      # 0.1.0 之后每次发版都是 semver，latest 已足够定位当前版本。
-      # 另推 ghcr.io/<owner>/whalefleet:<version>（无 v 前缀）
-      # 以便 docker run 时不必带 v。
+      # 构建并推送。不推 sha —— 每次发版都是 semver，latest 已足够定位当前版本。
+      # 标签集合由上一步算出：正式版四个，候选版两个。
       - name: 构建并推送
         if: steps.version.outputs.publish == 'true'
         uses: docker/build-push-action@v7
@@ -81,10 +118,7 @@ jobs:
           context: .
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          tags: ${{ steps.version.outputs.image_tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -128,10 +162,9 @@ jobs:
 
           docker rm --force smoke
 
-      - name: 生成 GitHub Release
-        if: steps.version.outputs.publish == 'true'
-        uses: softprops/action-gh-release@v3
-        with:
-          generate_release_notes: true
-          files: |
-            CHANGELOG.md
+      # ---- 刻意不在此创建 GitHub Release ----
+      # GitHub Release 由 Release Please 独占：它在打 tag 的同时创建 Release，
+      # 正文来自我们手写的 CHANGELOG 小节。本文件若也调 action-gh-release，
+      # 后跑的会用 generate_release_notes 的自动 notes 覆盖掉那份正文，
+      # 而自动 notes 装的是提交标题原文（中文），与 CHANGELOG 无关。
+      # 需要把 CHANGELOG 小节同步进 Release 正文时，手工粘贴即可。

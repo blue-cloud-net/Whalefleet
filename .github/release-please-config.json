@@ -1,27 +1,15 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "902f94378e0ed79477af1ed59e98ea074009a25b",
   "packages": {
     ".": {
       "release-type": "simple",
       "package-name": "whalefleet",
-      "changelog-path": "CHANGELOG.md",
-      "changelog-sections": [
-        { "type": "feat", "section": "Features" },
-        { "type": "fix", "section": "Bug Fixes" },
-        { "type": "perf", "section": "Performance" },
-        { "type": "refactor", "section": "Refactoring" },
-        { "type": "build", "section": "Build & Deployment" },
-        { "type": "ci", "section": "CI" },
-        { "type": "docs", "section": "Documentation" },
-        { "type": "style", "section": "Style" },
-        { "type": "test", "section": "Tests" },
-        { "type": "chore", "section": "Miscellaneous" }
-      ],
       "extra-files": ["src/Whalefleet.UI/package.json"],
       "include-component-in-tag": false,
       "include-v-in-tag": true,
       "bump-minor-pre-major": true,
-      "bump-patch-for-minor-pre-major": true,
+      "skip-changelog": true,
       "draft": false
     }
   }

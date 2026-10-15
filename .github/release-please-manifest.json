@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/manifest.json",
   "packages": {
-    ".": "release-please-config.json"
+    ".": "0.0.15"
   }
 }
