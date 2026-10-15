@@ -84,8 +84,6 @@ RUN chmod +x /app/publish/scripts/backup.sh
 # ---------- 阶段 3：运行时 ----------
 FROM mcr.microsoft.com/dotnet/aspnet:${DOTNET_RUNTIME_VERSION} AS runtime
 
-# 非 root 运行（0.0.15 的硬性要求）。
-#
 # ⚠️ .NET 8+ 的 aspnet 基础镜像**自带** app 用户，但 UID 是 1654。
 # 这里改写而不是 groupadd 新建：groupadd --gid 10001 app 会直接失败
 # （group 'app' already exists），把镜像构建卡死。
