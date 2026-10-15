@@ -10,23 +10,25 @@
 [![.NET 10 LTS](https://img.shields.io/badge/.NET-10_LTS-512BD4)](https://dotnet.microsoft.com)
 [![Vue 3.5+](https://img.shields.io/badge/Vue-3.5+-42b883)](https://vuejs.org)
 [![Docker Engine API v29.4.1](https://img.shields.io/badge/Docker_Engine_API-v29.4.1-2496ED)](https://github.com/testcontainers/Docker.DotNet)
-[![GHCR](https://img.shields.io/badge/GHCR-blue--cloud--net%2Fdocker--manager-2496ED)](https://ghcr.io/blue-cloud-net/whalefleet)
+[![GHCR](https://img.shields.io/badge/GHCR-blue--cloud--net%2Fwhalefleet-2496ED)](https://ghcr.io/blue-cloud-net/whalefleet)
 
-> 当前阶段：**0.0.x 开发迭代期**（未正式发布，0.0.* tag 不推 GHCR）。首个 semver 稳定版 `v0.1.0` 路线图见 [docs/roadmap.md](docs/roadmap.md)。
+> 当前阶段：**0.x 功能迭代期**（未正式发布，不打 `0.x` tag，也不推 GHCR）。
+> **唯一目标版本是 `1.0.0`**，此前先出 `1.0.0-rc.N`；公开 API 在 `1.0.0` 之前**不冻结**。
+> 版本规划见 [docs/roadmap.md](docs/roadmap.md)。
 
 ---
 
 ## ✨ 核心特性
 
-- 🐳 **容器全生命周期管理**：创建 / 启动 / 停止 / 重启 / 删除 / 批量删除 / 日志查看 / 详情（0.0.9 + 0.2.0）
-- 🖼 **镜像管理**：拉取（含进度）/ 删除 / 批量删除 / 详情；0.2.0 起支持 Dockerfile 构建；0.4.0 起支持 push 到私有 Registry
+- 🐳 **容器全生命周期管理**：创建 / 启动 / 停止 / 重启 / 删除 / 日志查看 / 详情（0.0.9）；0.1.0 起支持批量删除
+- 🖼 **镜像管理**：拉取 / 删除 / 详情（0.0.10）；0.1.0 起支持批量删除；0.3.0 起支持 Dockerfile 构建与私有 Registry
 - 💾 **Volume / Network 完整 CRUD**（0.2.0）
 - 🖥 **多主机管理**：本地 socket + 远程 TCP（可选 TLS / Basic 认证），顶栏切换（0.0.8 起）
 - 🔐 **首日鉴权**：JWT + refresh token + Argon2id 密码哈希 + 登录速率限制（0.0.4 起）
-- 👥 **admin / user 二角色 + 主机粒度可见性**（0.1.0）；**资源粒度 RBAC**（0.3.0）
-- 🔔 **实时推送**（0.3.0）：SignalR 实时日志流 / CPU 内存网络监控 / 容器异常通知
-- 💻 **Web 终端**（0.4.0）：xterm.js + 独立短时 terminal token
-- 📦 **Docker Compose / Stack 管理**（0.4.0）
+- 👥 **四个内置角色**（admin / operator / viewer / auditor）+ 主机粒度可见性（0.0.8，分配能力 0.1.0）；**容器级 RBAC**（0.5.0）
+- 🔔 **实时推送**（0.4.0）：SignalR 实时日志流 / CPU 内存网络监控 / 容器异常通知
+- 💻 **Web 终端**（0.6.0）：xterm.js + 独立短时 terminal token
+- 📦 **Docker Compose / Stack 管理**（0.7.0）
 - 🎨 **现代 UI**：UnoCSS + Element Plus + 命令面板（Ctrl/K）+ 全局快捷键 + 亮/暗主题 + 三色主题色
 
 ---
@@ -74,7 +76,7 @@ services:
     restart: unless-stopped
 ```
 
-如必须**直挂 socket**，请确保 Whalefleet 实例仅暴露给可信网络。详细安全策略见 [SECURITY.md](SECURITY.md)。
+如必须**直挂 socket**，请确保 Whalefleet 实例仅暴露给可信网络。完整的风险分析见 [docs/constraints.md](docs/constraints.md#docker-socket-挂载-️-高危)。
 
 ---
 
@@ -82,8 +84,8 @@ services:
 
 ### 方式一：Socket-Proxy 模式（推荐）
 
-> **0.0.x 不发布到 GHCR。** 项目处于开发迭代期，当前唯一的镜像来源是本地构建；
-> 首个对外镜像随 `v0.1.0` 发布。
+> **尚未发布任何镜像。** 项目处于 `0.x` 功能迭代期，不对外发布镜像，
+> 因此当前唯一的镜像来源是本地构建；首个对外镜像随 `v1.0.0-rc.1` 发布。
 
 ```bash
 # 1. 克隆并进入仓库
@@ -157,7 +159,7 @@ dotnet Whalefleet.Api.dll --urls http://0.0.0.0:8080
 
 ## 📸 功能截图
 
-> _占位：0.1.0-rc.1 阶段补充截图_
+> _占位：1.0.0-rc.N 阶段补充截图_
 
 | Dashboard | Container List | Container Logs |
 |-----------|---------------|----------------|
@@ -172,7 +174,7 @@ dotnet Whalefleet.Api.dll --urls http://0.0.0.0:8080
 | [docs/overview.md](docs/overview.md) | 项目背景、定位、目标、非目标、发布模型、仓库标识 |
 | [docs/constraints.md](docs/constraints.md) | 技术栈版本基线、安全 / CI/CD 约束、部署约束、边界条件 |
 | [docs/features.md](docs/features.md) | 按模块分组的完整功能列表（按版本标注） |
-| [docs/roadmap.md](docs/roadmap.md) | 17 个版本迭代（0.0.1 ~ 1.0.0）的完整路线图 |
+| [docs/roadmap.md](docs/roadmap.md) | 以 `1.0.0` 为目标的版本规划（0.1.0 – 0.8.0 功能迭代 + RC 与正式发布） |
 | [docs/architecture.md](docs/architecture.md) | 系统分层、多主机 DockerClient 工厂、SDK 隔离、通信机制 |
 | [docs/api-spec.md](docs/api-spec.md) | RPC 风格 API 约定 + 错误码分段 + SignalR Hub + WebSocket 终端 |
 | [docs/ui-guidelines.md](docs/ui-guidelines.md) | UI 布局规范（布局图 / 断点 / 组件分层 / 快捷键 / 主题 / 路由） |
@@ -198,8 +200,11 @@ dotnet Whalefleet.Api.dll --urls http://0.0.0.0:8080
 欢迎贡献代码、报告 Bug、提出功能建议。
 
 - 提 Issue：[GitHub Issues](https://github.com/blue-cloud-net/whalefleet/issues)
-- 提 PR：阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 了解开发流程、Conventional Commits 规范、PR 流程
-- 报告安全漏洞：请**不要**在公开 Issue 中披露，按 [SECURITY.md](SECURITY.md) 流程私信报告
+- 提 PR：遵循 [AGENTS.md](AGENTS.md#提交规范) 的 Conventional Commits 规范
+- 报告安全漏洞：请**不要**在公开 Issue 中披露，请私信维护者
+
+> 仓库**有意不提供** `CONTRIBUTING.md` / `SECURITY.md` / `CODE_OF_CONDUCT.md`；
+> 适用于贡献者的规则写在 [AGENTS.md](AGENTS.md) 里。
 
 开发环境：.NET 10 SDK + Node.js 20+ + pnpm。
 
@@ -207,27 +212,31 @@ dotnet Whalefleet.Api.dll --urls http://0.0.0.0:8080
 
 ## 📋 版本与发布
 
-| 版本段 | 含义 | 公开发布？ |
-|--------|------|-----------|
-| `0.0.x` | 未正式发布的开发迭代 | ❌ 不发布到 GHCR |
-| `0.1.0-rc.N` | MVP 候选发布 | ⚠️ Pre-release |
-| `0.1.0` | **MVP 首个 semver 稳定版** | ✅ 正式发布 |
-| `0.2.0` / `0.3.0` / `0.4.0` | 功能里程碑版本 | ✅ 正式发布 |
-| `1.0.0` | **生产就绪版** | ✅ 正式发布 |
+| 版本段 | 含义 | 打 tag | 推 GHCR？ |
+|--------|------|:---:|---------|
+| `0.0.x` | 已完成的开发迭代 | ❌ | ❌ |
+| `0.x.0` | 功能迭代 | ❌ 只作迭代编号 | ❌ |
+| `1.0.0-rc.N` | 首个对外灰度（只修 bug） | ✅ | ✅ Pre-release，**不打 `latest`** |
+| `1.0.0` | **首个正式版**——公开 API 冻结自此生效 | ✅ | ✅ 含 `latest` |
+| `1.x.y` | 修复版本（自这一级起，小版本用于发补丁） | ✅ | ✅ |
 
 - 镜像仓库：`ghcr.io/blue-cloud-net/whalefleet`
-- 标签策略：仅 semver（`v0.1.0` / `0.1.0` / `0.1` / `latest`）
-- CHANGELOG：0.0.15 起英文版由 [Release Please](https://github.com/googleapis/release-please) 自动生成
+- 标签策略：正式版推四个（`v1.2.3` / `1.2.3` / `1.2` / `latest`）；候选版只推两个精确版本
+  （`v1.0.0-rc.1` / `1.0.0-rc.1`）
+- CHANGELOG：**中英双语全部人工维护**。[Release Please](https://github.com/googleapis/release-please)
+  配了 `skip-changelog`，它的版本号 PR 只改版本号；小节必须在**该 PR 内、合并之前**写好——
+  合并它就是产生 tag 的动作，两者之间没有时间窗口
 - 完整策略见 [docs/overview.md#发布模型与版本号策略](docs/overview.md#发布模型与版本号策略)
 
 ---
 
 ## ⚠️ 重要局限
 
-- **当前处于 0.0.x 开发迭代期**，未正式发布；API 可能破坏性变更
+- **当前处于 0.x 功能迭代期**，未正式发布；公开 API 在 `1.0.0` 之前可能破坏性变更
 - **单实例部署**：SQLite 不支持多实例水平扩展（详见 [docs/constraints.md](docs/constraints.md#sqlite-部署细节)）
 - **HTTPS**：镜像内仅监听 HTTP；**生产部署必须前置 HTTPS 反代**（Caddy / Traefik / nginx）
-- **资源授权粒度**：0.1.0 仅按主机粒度；容器级资源粒度 RBAC 见 [0.3.0](docs/roadmap.md#030--实时推送与资源粒度-rbac)
+- **资源授权粒度**：主机可见性按主机粒度；容器级 RBAC 见 [0.5.0](docs/roadmap.md#050--资源粒度-rbac)
+- **无原生包**：只提供容器化与独立进程两种部署形态；systemd 原生包记录在 [docs/backlog.md](docs/backlog.md)
 
 ---
 

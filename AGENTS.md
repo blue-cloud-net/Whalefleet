@@ -5,9 +5,10 @@
 
 ## 项目定位
 
-类 Portainer 的轻量 Docker 管理平台。**当前处于 0.0.x 开发迭代期**：未正式发布、API 可能破坏性变更、
-不向 GHCR 发布 `0.0.*` tag。仓库**没有** `CONTRIBUTING.md` / `SECURITY.md`（0.0.15 才交付），
-README 里的链接暂时指向不存在的文件属正常。
+类 Portainer 的轻量 Docker 管理平台。**当前处于 0.x 功能迭代期**：未正式发布、API 可能破坏性变更，
+**唯一目标版本是 `1.0.0`**（先出 `1.0.0-rc.N`）。0.x 全程**不打 tag、不推 GHCR**。
+仓库**没有** `CONTRIBUTING.md` / `SECURITY.md` / `CODE_OF_CONDUCT.md`，
+且这是**有意为之**——任何文档都不得链接它们（README 里曾有的链接已删）。
 
 | 项目 | 位置 | 职责 |
 |------|------|------|
@@ -185,6 +186,110 @@ DDD 战术模式（聚合根 / 领域事件 / 领域服务）**已整体移除**
 
 ---
 
+## 发布流程
+
+> **一句话**：合并进 `main` 不是发布；**合并 Release Please 开出的「版本号 PR」才是发布**。
+
+### 分支
+
+| 分支 | 作用 |
+|------|------|
+| `dev` | 集成分支，**自由提交**（不必经 feature 分支 PR）。平时在这里开发 |
+| `main` | 发布分支，**只经 PR 接收** `dev`。0.x 期间可以长期不更新 |
+
+不引入 `release/*` 与 `hotfix/*`：那套 Git Flow 需要双向 cherry-pick 纪律，
+且在只有一条发布线时零收益。
+
+### 三个阶段
+
+```mermaid
+flowchart TD
+  A["dev 上提交并推送"] --> B["攒一段后开 dev→main 的 PR"]
+  B --> C["ci.yml 全量验证：build + test + 镜像冒烟"]
+  C --> D["合并（这不是发布）"]
+  D --> E["release-please.yml 在 main 上算出新版本号"]
+  E --> F["开出版本号 PR（只改 manifest + UI package.json）"]
+  F --> G["人在此 PR 内手写 CHANGELOG 小节<br/>（中英双语）"]
+  G --> H["合并 → Release Please 打 tag + 建 GitHub Release"]
+  H --> I["release.yml 在 tag 上构建、冒烟、推 GHCR"]
+  I --> J["人工把 CHANGELOG 小节粘进 Release 正文"]
+```
+
+### 铁律
+
+| # | 规则 | 理由 |
+|---|------|------|
+| 1 | **打 tag 前，`CHANGELOG.md` 必须已包含该版本小节** | 合并版本号 PR 的那一瞬间 tag 就产生了，**没有「先合并、后补写」的窗口** |
+| 2 | 两份 CHANGELOG **同步写**，版本号序列与条目数一致 | 中文版不会被自动生成 |
+| 3 | **`CHANGELOG.md` 不交给自动化** | Release Please 配了 `skip-changelog`；提交信息是中文，自动生成会把英文版变成中文 |
+| 4 | 合并到 `main` **不是发布** | 发布由 Release Please 判定，它比对上次发布后的提交 |
+| 5 | 0.x 期间**不合并**它开出的版本号 PR | 0.x 不打 tag、不推 GHCR；合并它会在无产出的情况下推一个 tag |
+| 6 | `1.x.y` 是**修复版本**；要发 RC 时写 `Release-As: 1.0.0-rc.1` | Release Please 取**最高级别** bump，因此 `1.x.y` 只在「上次发布后只有 fix」时才会出现 |
+| 7 | `dev → main` 的 PR 必须全绿才合 | 这是唯一的 CI 门：RP 开的 PR 用 `GITHUB_TOKEN` 创建，**不会触发 CI** |
+
+### 版本号
+
+由 Release Please 推导，不手工指定：`feat` → 小版本 +1、`fix` → 修订号 +1、
+`feat!` 在 1.0.0 之前只算小版本、`docs`/`chore`/`ci` 等不触发发版。
+`1.0.0` 与 `1.0.0-rc.N` 在提交信息里用 `Release-As:` 指定。
+
+完整策略见 [docs/constraints.md](docs/constraints.md#release-please00) 与
+[docs/roadmap.md](docs/roadmap.md#版本段与发布模型)。
+
+---
+
+## 发布流程
+
+> **一句话**：合并进 `main` 不是发布；**合并 Release Please 开出的「版本号 PR」才是发布**。
+
+### 分支
+
+| 分支 | 作用 |
+|------|------|
+| `dev` | 集成分支，**自由提交**（不必经 feature 分支 PR）。平时在这里开发 |
+| `main` | 发布分支，**只经 PR 接收** `dev`。0.x 期间可以长期不更新 |
+
+不引入 `release/*` 与 `hotfix/*`：那套 Git Flow 需要双向 cherry-pick 纪律，
+且在只有一条发布线时零收益。
+
+### 三个阶段
+
+```mermaid
+flowchart TD
+  A["dev 上提交并推送"] --> B["攒一段后开 dev→main 的 PR"]
+  B --> C["ci.yml 全量验证：build + test + 镜像冒烟"]
+  C --> D["合并（这不是发布）"]
+  D --> E["release-please.yml 在 main 上算出新版本号"]
+  E --> F["开出版本号 PR（只改 manifest + UI package.json）"]
+  F --> G["人在此 PR 内手写 CHANGELOG 小节<br/>（中英双语）"]
+  G --> H["合并 → Release Please 打 tag + 建 GitHub Release"]
+  H --> I["release.yml 在 tag 上构建、冒烟、推 GHCR"]
+  I --> J["人工把 CHANGELOG 小节粘进 Release 正文"]
+```
+
+### 铁律
+
+| # | 规则 | 理由 |
+|---|------|------|
+| 1 | **打 tag 前，`CHANGELOG.md` 必须已包含该版本小节** | 合并版本号 PR 的那一瞬间 tag 就产生了，**没有「先合并、后补写」的窗口** |
+| 2 | 两份 CHANGELOG **同步写**，版本号序列与条目数一致 | 中文版不会被自动生成 |
+| 3 | **`CHANGELOG.md` 不交给自动化** | Release Please 配了 `skip-changelog`；提交信息是中文，自动生成会把英文版变成中文 |
+| 4 | 合并到 `main` **不是发布** | 发布由 Release Please 判定，它比对上次发布后的提交 |
+| 5 | 0.x 期间**不合并**它开出的版本号 PR | 0.x 不打 tag、不推 GHCR；合并它会在无产出的情况下推一个 tag |
+| 6 | `1.x.y` 是**修复版本**；要发 RC 时写 `Release-As: 1.0.0-rc.1` | Release Please 取**最高级别** bump，因此 `1.x.y` 只在「上次发布后只有 fix」时才会出现 |
+| 7 | `dev → main` 的 PR 必须全绿才合 | 这是唯一的 CI 门：RP 开的 PR 用 `GITHUB_TOKEN` 创建，**不会触发 CI** |
+
+### 版本号
+
+由 Release Please 推导，不手工指定：`feat` → 小版本 +1、`fix` → 修订号 +1、
+`feat!` 在 1.0.0 之前只算小版本、`docs`/`chore`/`ci` 等不触发发版。
+`1.0.0` 与 `1.0.0-rc.N` 在提交信息里用 `Release-As:` 指定。
+
+完整策略见 [docs/constraints.md](docs/constraints.md#release-please00) 与
+[docs/roadmap.md](docs/roadmap.md#版本段与发布模型)。
+
+---
+
 ## 提交规范
 
 **格式**：`type(scope): 中文描述`。Type 白名单（10 个，**勿自造**）：
@@ -241,8 +346,8 @@ DDD 战术模式（聚合根 / 领域事件 / 领域服务）**已整体移除**
 |------|------|
 | `README.md` | **英文**（GitHub 默认展示） |
 | `README.zh-CN.md` | 中文，与上表**逐节对应** |
-| `CHANGELOG.md` | **英文**；0.0.15 起由 Release Please 自动生成 |
-| `CHANGELOG.zh-CN.md` | 中文镜像，**人工维护** |
+| `CHANGELOG.md` | **英文**；**全人工维护**，发布时由人在版本号 PR 内手写 |
+| `CHANGELOG.zh-CN.md` | 中文镜像，**同样人工维护**；两版版本号序列与条目数必须一致 |
 | `docs/*.md`、`AGENTS.md` | 仅中文 |
 | `.env.example` | **中文**（部署指南性质，面向使用者） |
 | `scripts/*.sh` 注释 | 中文 |

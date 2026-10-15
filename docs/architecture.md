@@ -186,7 +186,7 @@ dotnet list src/Whalefleet.Application/Whalefleet.Application.csproj package
 | `UserHostPermission` | `Core/Permissions/` | `FullAuditedEntity<Guid, Guid>` | `(user_id, host_id)` 部分唯一索引 | 权限位不得含未定义位；`Has` 对组合位要求**全部**具备 |
 | `UserContainerPermission` | `Core/Permissions/` | `FullAuditedEntity<Guid, Guid>` | `(user_id, host_id, container_id)` | 容器标识必须与主机成对出现（容器 ID 只在单台守护进程内唯一） |
 
-> 权限实体的**表与仓储实现排到 0.3.0**：本迭代只落地实体与仓储接口，不建表、不注册 DI。
+> 权限实体的**表与仓储实现排到 0.1.0（容器级排 0.5.0）**：本迭代只落地实体与仓储接口，不建表、不注册 DI。
 
 **值对象**：`HostEndpoint`（端点原文，不可变、按值相等）、`HostCredentials`（认证方式 + 不透明 JSON 载荷，
 `ToString()` 只输出认证方式、**不泄漏载荷**）。
@@ -216,9 +216,9 @@ dotnet list src/Whalefleet.Application/Whalefleet.Application.csproj package
 | `admin` | 管理员 | 可管理用户、主机与全部资源；`[Authorize(Roles = "admin")]` 依赖此角色 | |
 | `operator` | 运维 | 对已授权主机上的容器、镜像、数据卷与网络有操作权限 | |
 | `viewer` | 只读 | 对已授权资源仅可查看，不可修改 | |
-| `auditor` | 审计 | 只读，并可查看操作审计（审计能力于 0.3.0 落地） | ✅ |
+| `auditor` | 审计 | 只读，并可查看操作审计（审计能力排在 1.0.0 之后） | ✅ |
 
-**角色不编码资源范围**：角色只是身份标签，“某用户能碰哪些主机 / 容器”由 0.3.0 的资源权限表承担。
+**角色不编码资源范围**：角色只是身份标签，“某用户能碰哪些主机 / 容器”由 0.1.0 的可见性表与 0.5.0 的容器级权限表承担。
 因此不会出现“新建一个角色就等于新增一套权限”这种隐性授权。
 若日后需要“按角色批量授权”，应在 `user_host_permissions` 上增加角色维度，而非往角色上挂权限。
 
@@ -241,7 +241,7 @@ dotnet list src/Whalefleet.Application/Whalefleet.Application.csproj package
 
 **主机分组为什么建表而不是枚举 / 配置**（0.0.13）：分组是**运行时可变的数据**（管理员随时增删改），
 枚举会把「有哪些分组」焊死在编译期，与 0.0.3 把角色从枚举改成表是同一个理由。
-它还刻意**不承担授权语义**——「某人能碰哪些主机」由 0.3.0 的资源权限表回答，
+它还刻意**不承担授权语义**——「某人能碰哪些主机」由 0.1.0 落地的可见性表与 0.5.0 的容器级权限表回答，
 分组只影响总览页的呈现。两者混在一起会让「把主机挪进某个分组」变成一次隐式提权。
 
 **完整实现**见 `src/Whalefleet.Core/{Users,Hosts,Auth,Permissions}/`；
@@ -337,7 +337,7 @@ protected abstract Task<bool> ExecuteUpdateAsync(DbConnection connection, TEntit
 - JWT 鉴权 + `[Authorize(Roles = "admin")]` 角色检查
 - 不包含业务逻辑
 
-### SignalR Hub 层（0.3.0 起）
+### SignalR Hub 层（0.4.0 起）
 
 | Hub | 职责 |
 |-----|------|
@@ -371,7 +371,7 @@ Hub 鉴权：JWT 通过 `?access_token=...` 查询参数传递（WebSocket 不�
 - **WAL 模式**启用（`PRAGMA journal_mode=WAL`；文件级属性，设置一次持久生效）
 - 应用启动时（开始监听**之前**）自动执行**版本化迁移**（`PRAGMA user_version` + 内嵌 `000N_*.sql`）
 - 单次操作一个连接（用完还池），不提供跨仓储事务——0.0.3 的业务写入均为单语句
-- 存储内容：用户信息、资源授权关系、Docker 主机配置、刷新令牌哈希、Registry 凭据（加密，0.2.0 起）
+- 存储内容：用户信息、资源授权关系、Docker 主机配置、刷新令牌哈希、Registry 凭据（加密，0.3.0 起）
 
 ---
 
@@ -601,7 +601,7 @@ public interface IDockerHostAccessor
 >
 > **0.0.8 起**由 Api 中间件从**路由值** `hostId` 解析「当前主机」（写入 Scoped `ICurrentHost`）；
 > **0.0.9 起**在此之上加资源可见性校验（`IResourcePermissionService`，当前策略见 `CurrentHostMiddleware` 的可见性行）；
-> 0.3.0 落地逐资源授权表后改为查表。旧 `X-Host-Id` 请求头方案已废弃。
+> 0.1.0 落地可见性表后改为查表。旧 `X-Host-Id` 请求头方案已废弃。
 
 ### `IDockerClientFactory` 与 `IDockerClientPool`
 
@@ -710,7 +710,7 @@ public interface IDockerClientPool
 | `basic` | `{ "username": "...", "password": "..." }` |
 
 > **为什么 TLS 存的是**路径**而不是 PEM 内容**（0.0.8 定案，与早期草稿不同）：
-> 1. **私钥不进数据库**——明文私钥落盘要等 0.4.0 的字段级加密，而存路径当下就没这个问题；
+> 1. **私钥不进数据库**——明文私钥落盘要等 0.3.0 的字段级加密，而存路径当下就没这个问题；
 > 2. 与 `docker --tlscacert/--tlscert/--tlskey` 及 `~/.docker` 目录一致，运维不必转换格式；
 > 3. 管理 API 可以安全地**回显**配置（路径不是机密）。若存 PEM，编辑表单要么把私钥回显给浏览器，
 >    要么发明「留空表示不修改」这种别扭约定。
@@ -719,7 +719,7 @@ public interface IDockerClientPool
 
 > **TLS 三项均为必填**：缺 CA 就等于接受任意服务端证书（可被中间人冒充），缺客户端证书则守护进程
 > 会拒绝连接。因此不存在「只给一部分」的降级用法；「仅校验服务端 CA、不出示客户端证书」排在
-> 0.1.0 之后（需要自定义认证提供器）。
+> 1.0.0 之后（需要自定义认证提供器）。
 >
 > **端点形态**：TLS 必须写成 `https://host:2376`（默认端口 2376，与 `docker --tlsverify` 一致）。
 > 在 `tcp://` 上给 TLS 凭据会被**拒绝**（`1301`）——库只在 TLS 通道上使用客户端证书，
@@ -845,7 +845,7 @@ JWT 中间件默认在验证失败时**直接写 401 且不带响应体**。若�
 > **为什么提前到 0.0.4**：0.0.4 的验收标准是「curl 登录成功」，但此时还没有任何创建用户的入口
 > （用户管理 API 在 0.0.8 且是 admin 专用），存在鸡生蛋问题。
 
-### SignalR Hub 鉴权（0.3.0）
+### SignalR Hub 鉴权（0.4.0）
 
 WebSocket 不支持自定义 Header，JWT 通过 `?access_token=...` 查询参数传递：
 
@@ -855,7 +855,7 @@ const connection = new HubConnectionBuilder()
   .build()
 ```
 
-### WebSocket Terminal 鉴权（0.4.0）
+### WebSocket Terminal 鉴权（0.6.0）
 
 为最小化 access token 泄漏风险，**独立短时 terminal token**：
 
@@ -978,10 +978,10 @@ src/Whalefleet.UI/src/
 | 场景 | 方式 |
 |------|------|
 | 普通数据请求 | HTTP POST（axios），RPC 风格路径 |
-| 实时日志（0.3.0） | SignalR WebSocket，`ContainerLogHub` |
-| 实时监控（0.3.0） | SignalR WebSocket，`ContainerStatsHub` |
-| 页面内通知（0.3.0） | SignalR WebSocket，`NotificationHub` |
-| 容器终端（0.4.0） | 原生 WebSocket `/ws/hosts/{hostId}/containers/exec` + terminal token |
+| 实时日志（0.4.0） | SignalR WebSocket，`ContainerLogHub` |
+| 实时监控（0.4.0） | SignalR WebSocket，`ContainerStatsHub` |
+| 页面内通知（0.4.0） | SignalR WebSocket，`NotificationHub` |
+| 容器终端（0.6.0） | 原生 WebSocket `/ws/hosts/{hostId}/containers/exec` + terminal token |
 
 ---
 

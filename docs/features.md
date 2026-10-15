@@ -1,15 +1,20 @@
 # 功能清单
 
-> 版本标注说明（按 SemVer）：
+> 版本标注说明（按 SemVer）。**唯一目标版本是 `1.0.0`**，0.x 全程不对外发布：
 >
 > | 标注 | 含义 |
 > |------|------|
-> | **0.0.x** | 开发迭代期（未正式发布，仅自测） |
-> | **0.1.0** | MVP 首个 semver 稳定版 |
-> | **0.2.0** | Volume + Network + 镜像构建 + 批量删除 |
-> | **0.3.0** | 实时推送（SignalR）+ 资源粒度 RBAC |
-> | **0.4.0** | exec 终端 + Compose + 私有 Registry |
-> | **1.0.0** | 生产就绪版（安全审计 + 压测） |
+> | **0.0.x** | 已完成的开发迭代（0.0.1 – 0.0.15） |
+> | **0.1.0** | 授权基座与 MVP 收口 + 批量删除 |
+> | **0.2.0** | Volume + Network |
+> | **0.3.0** | 镜像构建 + 私有 Registry |
+> | **0.4.0** | 实时推送（SignalR） |
+> | **0.5.0** | 资源粒度 RBAC |
+> | **0.6.0** | exec 终端 |
+> | **0.7.0** | Docker Compose / Stack |
+> | **0.8.0** | API 契约与可观测性（OpenAPI / Scalar / 版本可见性） |
+> | **1.0.0-rc.N** | 首个对外灰度（只修 bug） |
+> | **1.0.0** | 首个正式版（API 冻结承诺自此生效） |
 >
 > **状态图标**：✅ 已完成　🚧 进行中　⬜ 未开始　❌ 明确不做
 >
@@ -46,13 +51,13 @@
 | ✅ 停止容器 | 优雅停止正在运行的容器，支持 `waitSeconds`（幂等；**前后端均已完成**） | 0.0.9 |
 | ✅ 重启容器 | 重启容器（幂等；**前后端均已完成**） | 0.0.9 |
 | ✅ 删除容器 | 删除容器，选项：force（不带 force 删运行中容器返回 `1404`/409，界面据此提示「先停止容器」；**前后端均已完成**） | 0.0.9 |
-| ⬜ **批量删除** | 列表页多选 + 一次性删除多个容器 | **0.2.0** |
-| ✅ 日志查看 | 查看容器标准输出日志，支持 tail 行数 + 时间过滤（**前后端均已完成**；自动滚动不在本版范围——后端不支持 `follow`，实时流归 0.3.0） | 0.0.9 |
-| ⬜ 日志实时流 | SignalR `/hubs/hosts/{hostId}/container-log` 推送逐行日志 | 0.3.0 |
+| ⬜ **批量删除** | 列表页多选 + 一次性删除多个容器。**前端已就绪**（`BatchActionBar` 逐项循环），缺的是后端 `batch-remove` 端点 | **0.1.0** |
+| ✅ 日志查看 | 查看容器标准输出日志，支持 tail 行数 + 时间过滤（**前后端均已完成**；自动滚动不在本版范围——后端不支持 `follow`，实时流归 0.4.0） | 0.0.9 |
+| ⬜ 日志实时流 | SignalR `/hubs/hosts/{hostId}/container-log` 推送逐行日志 | 0.4.0 |
 | ✅ 容器详情 | Inspect 完整配置信息（后端返回**精选投影**而非 SDK 对象原样透传；界面用**分组卡片**展示而非 JSON 树，**前后端均已完成**） | 0.0.9 |
-| ⬜ 容器统计 | 实时 CPU / 内存 / 网络 I/O，SignalR `/hubs/hosts/{hostId}/container-stats` 推送 | 0.3.0 |
-| ⬜ 交互式终端 | WebSocket `/ws/hosts/{hostId}/containers/exec` + xterm.js；**鉴权专用 5 分钟短时 terminal token** | 0.4.0 |
-| ⬜ 容器异常通知 | 容器非正常退出时 SignalR `/hubs/notification` 推送 toast | 0.3.0 |
+| ⬜ 容器统计 | 实时 CPU / 内存 / 网络 I/O，SignalR `/hubs/hosts/{hostId}/container-stats` 推送 | 0.4.0 |
+| ⬜ 交互式终端 | WebSocket `/ws/hosts/{hostId}/containers/exec` + xterm.js；**鉴权专用 5 分钟短时 terminal token** | 0.6.0 |
+| ⬜ 容器异常通知 | 容器非正常退出时 SignalR `/hubs/notification` 推送 toast | 0.4.0 |
 
 ---
 
@@ -61,13 +66,13 @@
 | 功能 | 说明 | 阶段 |
 |------|------|------|
 | ✅ 镜像列表 | 展示本地所有镜像，含仓库、标签、ID、创建时间、大小，分页（支持关键字搜索；**后端 API 已随 0.0.10 落地**，界面排 0.0.12） | 0.0.10 |
-| ✅ 拉取镜像 | 从 Docker Hub 拉取镜像，支持指定 Tag（0.0.10 一次性返回结果，0.3.0 改 SignalR 实时进度。**后端 API 已随 0.0.10 落地**） | 0.0.10 |
+| ✅ 拉取镜像 | 从 Docker Hub 拉取镜像，支持指定 Tag（0.0.10 一次性返回结果，0.4.0 改 SignalR 实时进度。**后端 API 已随 0.0.10 落地**） | 0.0.10 |
 | ✅ 删除镜像 | 删除本地镜像，选项：force（**后端 API 已随 0.0.10 落地**；删除时回带被解绑的标签与被删除的镜像 ID） | 0.0.10 |
-| ⬜ **批量删除** | 列表页多选 + 一次性删除多个镜像 | **0.2.0** |
+| ⬜ **批量删除** | 列表页多选 + 一次性删除多个镜像。**前端已就绪**，缺的是后端 `batch-remove` 端点 | **0.1.0** |
 | ✅ 镜像详情 | Inspect 完整元数据（后端返回**精选投影**而非 SDK 对象原样透传，**已随 0.0.10 落地**） | 0.0.10 |
-| ⬜ 镜像构建 | 上传 Dockerfile + context tar 构建；SignalR 临时频道推送进度 | 0.2.0 |
-| ⬜ 镜像 push | push 到已配置的 Registry | 0.4.0 |
-| ⬜ 私有 Registry | 配置 Registry 地址 + 认证；0.2.0 仅存储凭据，0.4.0 暴露 login API | 0.2.0 / 0.4.0 |
+| ⬜ 镜像构建 | 上传 Dockerfile + context tar 构建。**本版一次性返回结果**（与 pull 同形态），进度改 SignalR 推送随 0.4.0 | 0.3.0 |
+| ⬜ 镜像 push | push 到已配置的 Registry | 0.3.0 |
+| ⬜ 私有 Registry | 配置 Registry 地址 + 认证；凭据加密存储、login 与验证同在本版 | 0.3.0 |
 
 ---
 
@@ -96,17 +101,17 @@
 
 ## Docker Compose / Stack 管理
 
-> 主菜单中的「编排」入口（`/hosts/:hostId/stacks`）**已提前创建占位页**，功能仍按 0.4.0 排期。
+> 主菜单中的「编排」入口（`/hosts/:hostId/stacks`）**已提前创建占位页**，功能仍按 0.7.0 排期。
 
 | 功能 | 说明 | 阶段 |
 |------|------|------|
-| ✅ **编排菜单入口** | 主机侧边栏「编排」菜单项 + 占位页（提前创建，待 0.4.0 填充） | 0.0.7 |
-| ⬜ Stack 列表 | 展示通过 Compose 部署的 Stack（label `com.docker.compose.project` 过滤） | 0.4.0 |
-| ⬜ 部署 Stack | 上传 `docker-compose.yml` 部署 Stack | 0.4.0 |
-| ⬜ 更新 Stack | 重新上传 YAML 更新 Stack | 0.4.0 |
-| ⬜ 停止 Stack | 停止 Stack 内所有服务 | 0.4.0 |
-| ⬜ 删除 Stack | 彻底删除 Stack | 0.4.0 |
-| ⬜ 服务列表 | 查看 Stack 内服务状态 | 0.4.0 |
+| ✅ **编排菜单入口** | 主机侧边栏「编排」菜单项 + 占位页（提前创建，待 0.7.0 填充） | 0.0.7 |
+| ⬜ Stack 列表 | 展示通过 Compose 部署的 Stack（label `com.docker.compose.project` 过滤） | 0.7.0 |
+| ⬜ 部署 Stack | 上传 `docker-compose.yml` 部署 Stack | 0.7.0 |
+| ⬜ 更新 Stack | 重新上传 YAML 更新 Stack | 0.7.0 |
+| ⬜ 停止 Stack | 停止 Stack 内所有服务 | 0.7.0 |
+| ⬜ 删除 Stack | 彻底删除 Stack | 0.7.0 |
+| ⬜ 服务列表 | 查看 Stack 内服务状态 | 0.7.0 |
 
 ---
 
@@ -152,10 +157,11 @@
 
 | 功能 | 说明 | 阶段 |
 |------|------|------|
-| ✅ 主机粒度可见性 | admin 看全部主机，普通用户仅看被分配的主机；授权表落地前是 fail-closed（非 admin 拿到空列表） | 0.0.9 |
-| ⬜ **资源粒度 RBAC** | 0.3.0 落地按 host/container 粒度的 read/write/admin 权限分配 | **0.3.0** |
-| ⬜ 授权管理 API | admin 通过 `POST /api/v1/admin/hosts/{hostId}/permissions/{grant,revoke,list}` 分配 / 撤销权限 | 0.3.0 |
-| ⬜ 授权管理 UI | 用户管理页增加「分配主机权限」操作 | 0.3.0 |
+| ✅ 主机粒度可见性 | admin 看全部主机；普通用户当前是 fail-closed（拿不到任何主机）——**授权表与分配 UI 在 0.1.0 落地** | 0.0.9 |
+| ⬜ **主机可见性授权** | `user_host_permissions` 建表；`ResourcePermissionService` 从「只认管理员」改为查表；非管理员能看到被分配的主机 | **0.1.0** |
+| ⬜ **资源粒度 RBAC** | 0.5.0 落地按 host/container 粒度的 read/write/admin 权限分配 | **0.5.0** |
+| ⬜ 授权管理 API | admin 通过 `POST /api/v1/admin/hosts/{hostId}/permissions/{grant,revoke,list}` 分配 / 撤销权限 | 0.1.0 |
+| ⬜ 授权管理 UI | 用户管理页增加「可见主机」分配（容器粒度细化到 0.5.0） | 0.1.0 |
 
 ---
 
@@ -163,8 +169,8 @@
 
 | 功能 | 说明 | 阶段 |
 |------|------|------|
-| ⬜ 容器异常退出通知 | 通过 SignalR `/hubs/notification` 推送页面内 toast | 0.3.0 |
-| ⬜ 全局通知条 | 顶栏通知按钮（铃铛）+ 未读小红点 | 0.3.0 |
+| ⬜ 容器异常退出通知 | 通过 SignalR `/hubs/notification` 推送页面内 toast | 0.4.0 |
+| ⬜ 全局通知条 | 顶栏通知按钮（铃铛）+ 未读小红点 | 0.4.0 |
 
 ---
 
@@ -184,7 +190,7 @@
 | ✅ 全局快捷键 | `g+c` / `g+i` / `g+v` / `g+n` / `g+d` / `g+b` / `g+s` / `?` 跳转与帮助；输入框内不劫持，`?` 打开速查弹窗 | 0.0.14 |
 | ✅ 可复制文本 | 长 ID / 连接串旁的复制按钮，带 http 非安全上下文的 `execCommand` 回退 | 0.0.14 |
 | ✅ JSON 树 | inspect 结果按类型着色 + 逐层折叠，替代原先只能全量 `<pre>` 的展示 | 0.0.14 |
-| ⬜ 镜像标签 | 推送镜像时选择目标 Registry | 0.4.0 |
+| ⬜ 镜像标签 | 推送镜像时选择目标 Registry | 0.3.0 |
 
 ---
 
@@ -193,14 +199,22 @@
 | 功能 | 说明 | 阶段 |
 |------|------|------|
 | ✅ 容器镜像 | Dockerfile 三阶段构建（Node → .NET SDK → runtime）；非 root（uid 10001）运行，只读根文件系统可跑；镜像内含 `curl`（健康检查）与 `sqlite3`（备份） | **0.0.15** |
-| ✅ 一键启动 | `docker-compose.yml` 提供 socket-proxy（推荐，默认）与直挂 socket 两种模式，用 profile 隔离以免 `container_name` 冲突；缺 `JWT__SECRET` / `ADMIN__PASSWORD` 时**拒绝启动** | **0.0.15** |
+| ✅ 一键启动 | `docker-compose.yml` 提供 socket-proxy（推荐，默认）与直挂 socket 两种模式，用 profile 隔离以免 `container_name` 冲突；**零配置**——缺 `JWT__SECRET` / `ADMIN__PASSWORD` 时自动生成并落盘到数据卷 | **0.0.15** |
 | ✅ 前端同源托管 | API 进程托管 `wwwroot` 下的前端产物（`Spa` 配置节，生产启用）；深链回退到 index.html，但**排除 `/api` 与 `/healthz`**——否则打错的接口路径会变成 200 + HTML | **0.0.15** |
 | ✅ 健康检查 | `/healthz` 探测 SQLite 连通性（`SELECT 1`），失败返回 503 + 异常信息；**不查 Docker daemon**（主机停机时界面仍需可用） | **0.0.15** |
 | ✅ 反代白名单 | `ReverseProxy` 配置节 + 可信代理 / 网段；默认关闭，开启但无白名单则启动失败 | **0.0.15** |
 | ✅ 在线备份 | `scripts/backup.sh` 基于 `sqlite3 .backup`（不锁库），每次校验 `integrity_check`，按文件名轮转 | **0.0.15** |
-| ✅ 镜像发布 | `release.yml` 仅在 `v*.*.*` tag 触发，推 GHCR 前先冒烟；**`v0.0.*` 不推送** | **0.0.15** |
-| ✅ 变更记录自动化 | Release Please 读 Conventional Commits 生成 `CHANGELOG.md` 与发布 PR；中文版仍人工维护 | **0.0.15** |
+| ✅ 镜像发布 | `release.yml` 仅在 `v*.*.*` tag 触发，推 GHCR 前先冒烟；**`v0.*.*` 一律不推送**，`1.0.0-rc.*` 推但不打 `latest` | **0.0.15** |
+| ✅ 版本号推导 | Release Please 读 Conventional Commits 算出版本号并开「版本号 PR」，合并即打 tag；`Release-As:` 可指定具体版本 | **0.0.15** |
 | ⬜ 反向代理示例配置 | 随附 nginx / Traefik 配置样例（含 TLS 与 `X-Forwarded-*`） | 0.1.0 |
+| ⬜ OpenAPI / Scalar | `Microsoft.AspNetCore.OpenApi` 自动生成 + Scalar UI（`/scalar/v1`） | 0.8.0 |
+| ⬜ **API 冻结快照测试** | 路由清单与响应 DTO 形状的快照测试——冻结承诺若没有它只是一句口号 | 0.8.0 |
+| ⬜ 版本可见性 | 端点与界面暴露应用版本，用户报障时能确认跑的是哪个版本 | 0.8.0 |
+
+> **CHANGELOG 改为全人工维护**：Release Please 配了 `skip-changelog`，
+> 它的发布 PR 只含版本号变更。CHANGELOG 小节在**发布 PR 内手写**（中英双语），
+> 因为合并该 PR 的那一瞬间 tag 就产生了——两者之间没有时间窗口。
+> 详见 [AGENTS.md](../AGENTS.md#发布流程)。
 
 ## v1.0 不包含（明确非目标）
 
@@ -214,5 +228,5 @@
 - ❌ **一次性 stats API**（单次 `docker stats --no-stream`） → 显式不做
 - ❌ **Prune / 清理**（system / container / image / network / volume prune）→ 不在 v1.0 范围
 - ❌ **公开 demo 实例** → 1.0.0 之后再考虑
-- ❌ **OpenAPI / Scalar 文档生成** → 1.0.0 才上线
+- ❌ **OpenAPI / Scalar 文档生成** → 0.8.0 落地（已从 1.0.0 前移）
 - ❌ **VitePress / Docusaurus 独立文档站点** → 0.x 与 1.0.0 不启动

@@ -1,5 +1,18 @@
 # API 规范
 
+## API 稳定性
+
+> ⚠️ **1.0.0 之前没有兼容性承诺。** `0.x` 全程不对外发布，路径与请求 / 响应结构
+> **可能在下一次迭代里就改变**（见 [roadmap.md](./roadmap.md#版本段与发布模型)）。
+>
+> **自 `1.0.0` 起，公开 API 冻结**：路径与请求 / 响应结构保持向后兼容，直到 `2.0.0`。
+> 这条承诺的可执行手段是 **0.8.0 落地的路由清单与响应 DTO 快照测试**——
+> 改动任一响应 DTO 都会让测试失败。冻结承诺若没有测试支撑，只是文档里的一句话。
+>
+> 两个仍可变更的例外（不计入冻结范围）：
+> - **`/api/v1/dev/throw`**：仅开发环境注册，生产不存在。
+> - **`/scalar/v1`** 与 OpenAPI 描述：文档端点，不参与业务契约。
+
 ## 请求风格约定
 
 本项目 API 采用 **RPC 风格**（非 RESTful），并叠加**主机作用域路径**：
@@ -128,7 +141,7 @@
 | `1101` | 401 | Token 已过期 | 0.0.5 |
 | `1102` | 401 | Refresh token 已撤销或无效 | 0.0.5 |
 | `1103` | 429 | 登录速率限制（5 次/分钟） | 0.0.4 |
-| `1104` | 401 | Terminal token 无效或已过期 | 0.4.0 |
+| `1104` | 401 | Terminal token 无效或已过期 | 0.6.0 |
 | `1200` | 400 | 用户名已存在 | 0.0.8 |
 | `1201` | 404 | 用户不存在 | 0.0.8 |
 | `1202` | 400 | 密码强度不满足要求 | 0.0.5 |
@@ -144,10 +157,10 @@
 | `1404` | 409 | 资源当前状态不允许该操作（如不带 `force` 删除运行中的容器） | 0.0.9 |
 | `1500` | 403 | 无权限访问此资源 | 0.0.8 |
 | `1501` | 403 | 无权限访问此主机 | 0.0.8 |
-| `1502` | 403 | 无权限执行此操作（write 权限缺失） | 0.3.0 |
+| `1502` | 403 | 无权限执行此操作（write 权限缺失） | 0.5.0 |
 | `9999` | 500 | 服务器内部错误 | 0.0.2 |
 
-> 各代码段保留充足空间，0.3.0 / 0.4.0 起按需分配更细的错误码。
+> 各代码段保留充足空间，0.4.0 / 0.5.0 起按需分配更细的错误码。
 
 ### Mock 与契约同步
 
@@ -234,7 +247,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 不存在 / 已停用 | `1300`（404）/ `1302`（400） |
 | 缺省值 | **无**。全局作用域端点不含该段；主机作用域端点必须显式给出 |
 
-> **Hub 与 WebSocket 路径**（0.3.0 / 0.4.0）同样遵循「主机进路径」；`NotificationHub` 是**唯一**的全局 Hub，不含 `hostId`。
+> **Hub 与 WebSocket 路径**（0.4.0 / 0.6.0）同样遵循「主机进路径」；`NotificationHub` 是**唯一**的全局 Hub，不含 `hostId`。
 
 ---
 
@@ -248,7 +261,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 当前用户 | `POST /api/v1/auth/me` | 0.0.4 | 需认证；返回当前登录用户摘要。前端刷新页面时用它校验持久化的 token 是否**仍然有效**（签名、过期、角色以服务端为准），比前端自行解码 JWT 更可靠 |
 | 刷新 Token | `POST /api/v1/auth/refresh` | 0.0.5 | 用 refreshToken 换新 accessToken |
 | 登出 | `POST /api/v1/auth/logout` | 0.0.5 | 撤销当前 refreshToken |
-| 终端短时 Token | `POST /api/v1/auth/terminal-token` | 0.4.0 | 返回 5 分钟过期的 terminalToken，仅用于 WebSocket `/ws/hosts/{hostId}/containers/exec` |
+| 终端短时 Token | `POST /api/v1/auth/terminal-token` | 0.6.0 | 返回 5 分钟过期的 terminalToken，仅用于 WebSocket `/ws/hosts/{hostId}/containers/exec` |
 
 **请求/响应示例**：
 
@@ -416,7 +429,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 > **主机离线不是错误**：概览对离线 / 已停用主机返回 `200` + `status: "offline"` + 空字段，
 > 而不是 `502`——界面要把离线显示成一个状态，不是一个错误页。只有「主机本身不存在」才是 `1300`/404。
 >
-> **非管理员当前拿到空列表**：0.3.0 的逐资源授权表落地前是 fail-closed。列表用**空数组**表达
+> **非管理员当前拿到空列表**：0.1.0 的主机可见性表落地前是 fail-closed。列表用**空数组**表达
 > 「没有可见主机」，而不是 403——后者会让前端的主机选择器整块报错，而它本该显示「暂无可用主机」。
 > 单台概览则仍走 403/`1501`（那是明确的一次越权访问）。
 
@@ -509,7 +522,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 ]
 ```
 
-> **分组是展示信息，不是权限边界**：「谁能操作哪台主机」由 0.3.0 的资源权限表回答。
+> **分组是展示信息，不是权限边界**：「谁能操作哪台主机」由 0.1.0 落地的可见性表与 0.5.0 的容器级权限表回答。
 > 若让分组承担授权，「把主机挪进生产分组」就会变成一次隐式提权。理由同
 > [architecture.md](./architecture.md) 的实体清单说明。
 >
@@ -540,7 +553,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 停止 | `POST /api/v1/hosts/{hostId}/containers/stop` | 0.0.9 | Body: `{ containerId, waitSeconds? }`；`waitSeconds` 取值 0–300（默认 10，与 Docker 一致） |
 | 重启 | `POST /api/v1/hosts/{hostId}/containers/restart` | 0.0.9 | Body: `{ containerId }` |
 | 删除 | `POST /api/v1/hosts/{hostId}/containers/remove` | 0.0.9 | Body: `{ containerId, force? }`；不带 `force` 删运行中的容器返回 `1404`/409 |
-| **批量删除** | `POST /api/v1/hosts/{hostId}/containers/batch-remove` | 0.2.0 | Body: `{ containerIds: [...] }`，返回每个的成功/失败状态 |
+| **批量删除** | `POST /api/v1/hosts/{hostId}/containers/batch-remove` | 0.1.0 | Body: `{ containerIds: [...] }`，返回每个的成功/失败状态 |
 | 获取日志 | `POST /api/v1/hosts/{hostId}/containers/logs` | 0.0.9 | Body: `{ containerId, tail?, since?, timestamps?, includeStderr? }`；`tail` 取值 0–10000，省略表示全部；**不支持** `follow` |
 | 获取详情 | `POST /api/v1/hosts/{hostId}/containers/inspect` | 0.0.9 | Body: `{ containerId }` |
 
@@ -615,7 +628,7 @@ POST /api/v1/hosts/{hostId}/containers/list
     "image": "nginx:latest",
     "cmd": ["nginx", "-g", "daemon off;"],
     "entrypoint": ["/docker-entrypoint.sh"],
-    "env": ["PATH=…"],                        // ⚠️ 常用于存放密码 / Token，仅管理员可见（0.3.0 起逐资源授权）
+    "env": ["PATH=…"],                        // ⚠️ 常用于存放密码 / Token，仅管理员可见（0.5.0 起逐资源授权）
     "labels": { "com.example.owner": "web" },
     "workingDir": "", "hostname": "3f2c…", "user": "", "tty": false
   },
@@ -647,7 +660,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 >
 > **默认只列运行中的容器**（与 `docker ps` 一致）；`all: true` 等价于 `docker ps -a`。
 >
-> **日志不做实时跟随**：一次性 HTTP 响应跟着日志流只会把连接挂到容器退出；实时流是 0.3.0
+> **日志不做实时跟随**：一次性 HTTP 响应跟着日志流只会把连接挂到容器退出；实时流是 0.4.0
 > 的 SignalR 推送要解决的事。`tail` 越界（负数或 > 10000）返回 `1000`/400 而**不是**静默截断——
 > 调用方要 100 万行却只拿到 1 万行，会误以为「日志就这么多」。
 
@@ -722,10 +735,10 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 获取列表 | `POST /api/v1/hosts/{hostId}/images/list` | 0.0.10 | Body: `{ all?, search?, pageIndex?, pageSize?, sortBy?, sortDir? }`；分页在服务端**内存**完成（Docker 无分页参数），`pageSize` 上限 100 |
 | 拉取 | `POST /api/v1/hosts/{hostId}/images/pull` | 0.0.10 | Body: `{ image, tag?, platform? }`；0.0.10 一次性返回结果，0.3.0 改 SignalR 实时进度 |
 | 删除 | `POST /api/v1/hosts/{hostId}/images/remove` | 0.0.10 | Body: `{ imageId, force? }`；被容器占用的镜像返回 `1404`/409 |
-| **批量删除** | `POST /api/v1/hosts/{hostId}/images/batch-remove` | 0.2.0 | Body: `{ imageIds: [...] }` |
+| **批量删除** | `POST /api/v1/hosts/{hostId}/images/batch-remove` | 0.1.0 | Body: `{ imageIds: [...] }` |
 | 获取详情 | `POST /api/v1/hosts/{hostId}/images/inspect` | 0.0.10 | Body: `{ imageId }` |
-| **构建镜像** | `POST /api/v1/hosts/{hostId}/images/build` | 0.2.0 | multipart: Dockerfile + context tar；通过 SignalR 临时频道推送进度 |
-| **Push 镜像** | `POST /api/v1/hosts/{hostId}/images/push` | 0.4.0 | Body: `{ imageId, registryId }` |
+| **构建镜像** | `POST /api/v1/hosts/{hostId}/images/build` | 0.3.0 | multipart: Dockerfile + context tar；通过 SignalR 临时频道推送进度 |
+| **Push 镜像** | `POST /api/v1/hosts/{hostId}/images/push` | 0.3.0 | Body: `{ imageId, registryId }` |
 
 #### 查询端点的请求 / 响应形态（0.0.10 已实现）
 
@@ -824,7 +837,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 >
 > **0.0.10 的拉取进度只进日志**：拉取层数大时可以到几十秒，一次性 HTTP 响应期间客户端只能干等
 > （前端可以先转圈）。进度同时写进 Serilog（Debug 逐层、Information 记完成）。
-> **SignalR 实时进度推到 0.3.0**——那时列表页与详情页也顺带接上。
+> **SignalR 实时进度推到 0.4.0**——那时列表页与详情页也顺带接上。
 >
 > **拉取完成后额外做一次 inspect**：为了让「拉取成功」的响应直接带上镜像 ID 与大小
 > （验收标准要求），必须在完成后读一次镜像元数据；否则调用方还要再发一次请求才知道拉了什么。
@@ -871,7 +884,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 
 ---
 
-### Docker Compose / Stack（0.4.0）
+### Docker Compose / Stack（0.7.0）
 
 | 操作 | 路径 | 说明 |
 |------|------|------|
@@ -883,15 +896,15 @@ POST /api/v1/hosts/{hostId}/containers/list
 
 ---
 
-### Registry 管理（0.2.0 仅存储 / 0.4.0 暴露 API）
+### Registry 管理（0.3.0）
 
 | 操作 | 路径 | 阶段 | 说明 |
 |------|------|------|------|
-| 获取列表 | `POST /api/v1/registry/list` | 0.4.0 | — |
-| 登录 | `POST /api/v1/registry/login` | 0.4.0 | Body: `{ name, url, username, password }`（凭据加密存储） |
-| 删除 | `POST /api/v1/registry/remove` | 0.4.0 | Body: `{ registryId }` |
+| 获取列表 | `POST /api/v1/registry/list` | 0.3.0 | — |
+| 登录 | `POST /api/v1/registry/login` | 0.3.0 | Body: `{ name, url, username, password }`（凭据加密存储） |
+| 删除 | `POST /api/v1/registry/remove` | 0.3.0 | Body: `{ registryId }` |
 
-### 资源权限管理（0.3.0）
+### 资源权限管理（0.1.0 主机可见性 / 0.5.0 容器粒度）
 
 | 操作 | 路径 | 角色 | 说明 |
 |------|------|------|------|
@@ -901,7 +914,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 
 ---
 
-## SignalR Hub 规范（0.3.0）
+## SignalR Hub 规范（0.4.0）
 
 ### Hub 路径
 
@@ -951,7 +964,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 |------|------|------|
 | `OnContainerDied` | `{ containerId, name, exitCode, timestamp }` | 容器异常退出通知 |
 
-### Image Pull 进度频道（0.3.0）
+### Image Pull 进度频道（0.4.0）
 
 为镜像 pull 操作提供临时频道，仅本请求客户端可见：
 
@@ -960,7 +973,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 
 ---
 
-## WebSocket 终端（0.4.0）
+## WebSocket 终端（0.6.0）
 
 容器 exec 终端使用**原生 WebSocket**，不走 SignalR（独立的原始双向流）：
 

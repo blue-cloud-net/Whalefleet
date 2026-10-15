@@ -323,22 +323,38 @@ socket-proxy 的 `POST` 总闸必须为 `1`，否则只放行 `GET` / `HEAD`，�
 
 ### Release Please（0.0.15 启用）
 
-- 读 Conventional Commits 自动生成 release notes
-- 自动开 PR 修改 `CHANGELOG.md`
-- 自动打 tag
+- 读 Conventional Commits 推导版本号，开一个**版本号 PR**，合并该 PR 即**自动打 tag + 建 GitHub Release**
+- **不生成 CHANGELOG**（配 `skip-changelog: true`）：`CHANGELOG.md` 与 `CHANGELOG.zh-CN.md`
+  全部由人工维护。小节写在**版本号 PR 内**，因为合并的那一瞬间 tag 就产生了，
+  没有「先合并、后补写」的窗口
 - 配置：`.github/release-please-config.json`；状态文件：`.github/release-please-manifest.json`
-  （两者路径在 `release-please.yml` 里显式传给 action，不依赖 Release Please 的默认值——
-  改路径时不必同时改代码）
-- 版本策略 `bump-patch-for-minor-pre-major: true`：`0.0.14` 的 feat 提交应得 `0.0.15`。
-  默认策略会直接跳到 `0.1.0`，而那是 RC 的位置，不是某个 0.0.x 迭代的
+  （两者路径在 `release-please.yml` 里显式传给 action，不依赖默认值——改路径时不必同时改代码）
+- 触发分支**仅 `main`**：`dev` 上的提交随时可变，在那里开 PR 会让版本号 PR 反复长大，
+  也让 tag 有可能指向尚未合并的提交
+- `bootstrap-sha` 指向版本策略重构的那次提交：仓库没有任何历史 tag，
+  不设它则首次运行的提交范围会从仓库起点开始算
+- **版本策略**：`bump-minor-pre-major: true`（`feat!` 在 1.0.0 之前只算小版本）
+- **不启用** `bump-patch-for-minor-pre-major`（它会让 `feat` 只 bump patch，永远长不出 `0.x.0`）
+- **不启用** `skip-github-release`：它的文档明写会**连 tag 一起关掉**
+  （*Release-Please still requires releases to be tagged*）
+- 指定版本（`1.0.0`、`1.0.0-rc.1`）在提交信息里写一行 `Release-As: <version>`
+
+> ⚠️ Release Please 用 `GITHUB_TOKEN` 开的 PR **不触发** `ci.yml`，
+> 且仓库需在 Settings → Actions → General 开启
+> 「Allow GitHub Actions to create and approve pull requests」。
+> 真正的 CI 门是前一次 `dev → main` 的 PR。
 
 ### 镜像发布（0.0.15 起）
 
 | 项 | 策略 |
 |----|------|
 | 镜像仓库 | `ghcr.io/blue-cloud-net/whalefleet` |
-| 标签策略 | **仅 semver**：`v0.1.0` / `0.1.0` / `0.1` / `latest` |
-| 触发规则 | `v0.0.*` tag 仅构建做 sanity test，**不推 GHCR**；`v0.1.0-rc.*` / `v0.x.0` / `v1.0.0` tag 推 GHCR + 创建 Release |
+| 触发点 | **仅 tag**（`v*.*.*`）。tag 是「版本已定」的不可变事实，而合并 PR 到 tag 之间还有一次人工确认 |
+| 标签策略 | 正式版推四个：`v1.2.3` / `1.2.3` / `1.2` / `latest`；候选版只推两个精确版本：`v1.0.0-rc.1` / `1.0.0-rc.1` |
+| `0.x` | **只构建做 sanity test，不推 GHCR**；且 0.x 实际不打 tag |
+| `1.0.0-rc.*` | 推 GHCR 作为 Pre-release，**不推 `latest`**——按 `latest` 部署的人不该吃到未验证版本 |
+| 推送前 | 先在 runner 上起容器冒烟（`/healthz` + 前端首页 + 非 root）。tag 推送后即已被引用，此时才发现起不来只能制造混乱 |
+| Release 创建 | **由 Release Please 独占**，本 workflow 不重复创建（两者都写同一 tag 的 Release 时，后跑的会用自动 notes 覆盖掉手写正文） |
 
 ### 集成测试门槛
 
