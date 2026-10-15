@@ -7,24 +7,138 @@
 
 > **语言 / Language**: [English](CHANGELOG.md) | **简体中文**
 >
-> **与自动化工具的交接**：`0.0.1` – `0.0.14` 的条目由人工维护，内容汇总自
-> [docs/roadmap.md](docs/roadmap.md) 中标记为已完成的里程碑。自 **0.0.15** 起，
-> 英文版 [CHANGELOG.md](CHANGELOG.md) 交由 [Release Please](https://github.com/googleapis/release-please)
-> 接管：它从 Conventional Commits 生成变更说明、每个版本开一个 PR 并自动打 tag。
-> `CHANGELOG.zh-CN.md` **不会**被自动生成，英文版每次变更时必须手工同步本文件。
+> **本文件与英文版均由人工维护，自动化永不写入。** [Release
+> Please](https://github.com/googleapis/release-please) 配置里开了 `skip-changelog`，
+> 它开出的发布 PR 只含版本号变更（`.github/release-please-manifest.json` 与
+> `src/Whalefleet.UI/package.json`）。**必须在合并该 PR 之前于其中手写新版本的小节（中英双语）**
+> —— 合并该 PR 的动作正是产生 tag 的动作，两者之间没有任何时间窗口。
+> 完整流程见 [AGENTS.md](AGENTS.md)。
+>
+> `0.0.1` – `0.0.15` 的条目汇总自 [docs/roadmap.md](docs/roadmap.md) 中标记为已完成的里程碑。
 
-> **关于 `0.0.x` 的说明**：每个 `0.0.x` 迭代都是内部开发里程碑，不向 GHCR 发布 `0.0.*` tag，
-> 迭代之间 API 可能发生破坏性变更。`0.0.6` 已改编号为 `0.0.15`（部署底座与发布流水线），
+> **关于 `0.x` 的说明**：每个 `0.x` 版本都是内部开发里程碑。不打 tag、不向 GHCR 发布，
+> 版本之间 API 可能发生破坏性变更。首个对外版本是 `1.0.0`，此前先出 `1.0.0-rc.N`。
+> `0.0.6` 已改编号为 `0.0.15`（部署底座与发布流水线），
 > 因此 `0.0.6` 是**空号**——不对应任何里程碑。
 
 ---
 
 ## [Unreleased]
 
-暂无。下一个里程碑是 `0.1.0-rc.1`（候选发布：冻结功能，只修 bug）。
+进行中。下一个里程碑是 `0.1.0`——授权基座与 MVP 收口
+（各版本的条目在此以内部草稿形式累积，正式发布前会重写进 `1.0.0` 的发布记录）。
 
-> `0.0.15`（部署底座与发布流水线）已在 `dev` 完成；其变更记录小节与 tag
-> 将由 Release Please 在本次改动合入后自动生成。
+---
+
+## [0.0.15] — 部署底座与发布流水线
+
+里程碑目标：让 `docker run` 一行启动即可登录，并让产物具备可发布性。
+
+### 新增
+
+- **多阶段 `Dockerfile`**（`Node → .NET SDK → .NET runtime`）：运行期镜像只装发布后的 Api 程序集
+  与前端产物——无 SDK、无 Node，**且不含源码**。直挂 socket 的部署形态下，
+  镜像里多一份源码就多一份攻击面，而单容器漏洞等于宿主机沦陷。
+- **非 root 运行用户 `app`（UID 10001）**；`/app/data` 是唯一可写路径，
+  且**只读根文件系统已实测可运行**。
+  - `.NET 8+` 的 `aspnet` 基础镜像**自带** `app` 用户，但 UID 是 1654——
+    `groupadd --gid 10001 app` 会以 `group 'app' already exists` 直接失败并把镜像构建卡死。
+    镜像改用 `groupmod` / `usermod` 改写该账号。坚持写死 10001 是因为挂载宿主目录时生效的是
+    **数字** uid，README 里的 `chown 10001:10001` 必须与镜像一致。
+  - 运行期镜像额外装了 `curl` 与 `sqlite3`。没有 `curl`，`HEALTHCHECK` 只能退化成
+    「进程还在」——而那恰恰挡不住「进程活着，但 SQLite 打不开」；没有 `sqlite3`，
+    README 让人在容器内跑的备份脚本会直接「未找到命令」。
+- **前端产物同源托管**：由 Api 进程托管 `wwwroot`（`Spa` 配置节，生产启用）。
+  启用但找不到产物目录时**启动即失败**——交付一个「能启动但打开是 404」的容器，比启动失败糟得多。
+  - 刻意**不用 `MapFallbackToFile`**：它把所有未匹配路由都导向 `index.html`，包括打错的 `/api`
+    路径。症状是「接口返回 200 + HTML，日志里全是成功」，前端表现为 JSON 解析失败，
+    几乎不可能靠读日志定位。因此 SPA 回退显式排除 `/api` 与 `/healthz`。
+  - 整套挂在 `UseCurrentHost` **之前**：前端路由 `/hosts/{hostId}/…` 与接口
+    `/api/v1/hosts/{hostId}/…` 同前缀，而 `UseCurrentHost` 会把任何请求的 `hostId` 路由值
+    当主机查库。放在它之后，每次刷新深链都先抛「主机不存在」。
+- **健康检查接入 SQLite 连通性**（`SELECT 1`），失败返回 503 并附异常信息。
+  此前 `/healthz` 无条件返回 200——挂进容器后等于一个永远绿的探针：data 卷没挂上、磁盘满、
+  文件权限错，探针照样说健康，而每个业务端点其实都在 500。
+  - 刻意**不查 Docker daemon**：主机停机维护时管理界面仍需可用，把它算进健康检查会导致容器被
+    orchestrator 反复重启，而重启并不能让 Docker 恢复。
+  - ⚠️ 注册必须走 `AddCheck(name)`：直接注册 `IHealthCheck` 会以**实现类全名**作为注册项名字，
+    而 `HealthCheckService` 按名字索引结果——结果是 `/healthz` 永远查不到该项，只能回退成 unhealthy。
+- **反代场景的 `ForwardedHeaders` + 可信代理白名单**（`ReverseProxy` 配置节，默认关闭）。
+  不配的后果：所有用户的登录失败落进同一个限流桶，5 次失败后全体用户在一分钟内都无法登录。
+  三条约束：默认不启用（`X-Forwarded-For` 由客户端可控）；开了开关却没有白名单直接启动失败；
+  地址写错抛异常而非静默忽略。网段解析用 `System.Net.IPNetwork` 而非已标记过时的
+  `HttpOverrides.IPNetwork`（ASPDEPR005）。
+- **`docker-compose.yml` 两种部署模式**（用 `profiles` 隔离）：socket-proxy（默认、推荐）
+  与直挂 socket。
+  - socket 挂载加 `:ro` **不会**降低风险：权限由守护进程的 API 决定，`:ro` 只能防止误写 socket
+    文件本身。
+- **`scripts/backup.sh`**：基于 `sqlite3 .backup` 的**在线**备份——直接 `cp` 拷到的是某一瞬时的
+  文件状态，正在写事务时可能拷出撕裂的文件，而这种损坏要到恢复时才暴露。
+  每次备份后跑 `integrity_check`，并按文件名排序轮转。
+- **Release Please + 镜像发布**：`.github/release-please-config.json` 从 Conventional Commits
+  推导版本号；`release.yml` **仅**在 tag 时构建推送，且推 GHCR 前先冒烟——
+  tag 一旦推送就已被他人引用，此时才发现起不来，撤回只会制造混乱。
+- **`.dockerignore` 扩充**。**必须**排除 `.env*`：compose 用的 `ADMIN__PASSWORD` /
+  `JWT__SECRET` 通常就在那里。
+
+### 变更
+
+- **项目更名为 `Whalefleet`**（原 `Docker.Manager`），含镜像名。
+- **零配置部署**：`JWT__SECRET` / `ADMIN__PASSWORD` 降级为*可选覆盖项*。缺失时在首次启动自动生成
+  并持久化到数据卷（`jwt.key` / `initial-admin.txt`，均 0600）；显式配置则以你给的为准，
+  因此多实例共用密钥、密钥轮换、测试注入的口子都保留。
+  - JWT 密钥**必须**落盘而非每次重新生成。密钥一变，所有已签发的 access token 立即失效，
+    而存在库里的 refresh token 要用**旧密钥**去换——于是「容器重启 = 全员静默登出」，
+    且**无任何报错**。
+  - 自动生成的密码只写文件、**绝不进日志**：日志会被采集器上报到集中式系统，打印等于扩散凭据。
+    有一条测试专门钉住这一点。
+  - `ADMIN__AUTOBOOTSTRAP=false` 可彻底关闭管理员自举，用于数据卷由外部预置的场景
+    （账号已随备份恢复 / 由运维脚本写库）——否则自举会与既有 `admin` 抢用户名，
+    撞上 `users.username` 唯一索引。
+  - `direct` 模式不再写 `container_name`。compose 在**解析配置时**就校验该名字全局唯一，
+    与 `proxy` 共用会让 `docker compose --profile direct up -d` 直接失败、一个容器都起不来。
+    `proxy` 保留该名字——文档与 `backup.sh` 大量依赖 `exec whalefleet`。
+  - 直挂 socket 模式否则会报 **1301**：宿主机 socket 是 `srw-rw---- root:docker`
+    （GID 常为 983），而镜像内 `app` 用户不在该组。用
+    `--group-add $(stat -c '%g' /var/run/docker.sock)`。
+  - `.gitignore` 补上 `.env` 规则。它原本一条都没有，而 `.dockerignore` 只挡镜像不挡 git——
+    `cp .env.example .env` 后一次 `git add .` 就会把密钥提交进去。
+- **CI 增加镜像构建与冒烟**（`/healthz`、首页含 `<div id="app">`、非 root）。
+  只构建不推送——推送是 `release.yml` 在 tag 时的事。
+  之所以要放进 CI：`Dockerfile` 里的前端构建在 .NET 的 build-and-test job 里**完全不会被触发**，
+  而它恰是最容易坏的一环（Node 版本、lockfile、产物目录约定）。
+  曾出现过「后端测试全绿，但镜像根本构建不出来」而 CI 完全无感。
+- Actions 升到 Node 24 运行时，并接入 **Dependabot**（盯 `github-actions`，每周开 PR，
+  minor/patch 合并成一个）。这些 action 都要求 Actions Runner ≥ v2.327.1——
+  GitHub 托管的 `ubuntu-latest` 已满足；**自托管 runner 必须先升级**。
+
+### 修复
+
+- `release.yml` 有一个重复的 `name` 键。
+- `.dockerignore` 用 `**/data`，把 `src/Whalefleet.UI/src/mocks/data/`（前端 mock 源码）也一起
+  排除了，构建以 `Could not resolve "./data/hosts"` 收场，且**无任何提示指向 .dockerignore**。
+  现在只排除仓库根的 `/data` 运行期数据目录。
+
+### 安全
+
+- 备份脚本会把 `jwt.key` 一并拷成 `<备份名>.db.jwt.key`。恢复备份时若漏掉它，程序会生成新密钥
+  → 旧令牌全废、所有在线用户被静默登出，**无任何报错**。
+- 恢复的备份需要 `docker exec -u 0 whalefleet chown 10001:10001 /app/data/jwt.key
+  /app/data/whalefleet.db`：`docker cp` 会把文件落成**执行 cp 的宿主机用户**的 UID（常见 1000），
+  而 `jwt.key` 是 0600 → 镜像内 `app` 用户读不到。已写进 `scripts/backup.sh` 的头部注释。
+- `dotnet format` 接入 CI 但**暂不阻断**：仓库存在 **328 处**违规且非本版引入
+  （`.editorconfig` 从 0.0.1 起就要求成员访问加 `this.`，代码里有 160 处没加）。
+  一次性修正要动 40+ 个文件，而 `IDE0049`（未使用字段）**会删代码**——在依赖 Dapper 约定映射的
+  前提下，不适合由格式化工具静默完成。违规数与分类写进 job summary 作为持续记录的基线。
+
+### 说明
+
+- `0.0.x` 版本不向 GHCR 发布，也**完全不打 tag**——它们只是迭代编号。
+  首个对外镜像随 `1.0.0` 发布。
+- `SECURITY.md` / `CONTRIBUTING.md` / `CODE_OF_CONDUCT.md` 曾在本版起草，随后又被删除。
+  仓库有意不提供这三份文件，任何文档都不得链接它们。
+- 发布流水线在本版之后经过重新设计（首个对外发布由 `0.1.0` 改为 `1.0.0`）。
+  当前流程见 [AGENTS.md](AGENTS.md)。
 
 ---
 
