@@ -1,14 +1,17 @@
 name: ci
 
 # 触发：
-# - push 到 main / dev（集成分支）
-# - pull_request 到 main / dev
+# - push 到 main
+# - pull_request 到 main
 # tag v*.*.* 由 release.yml（0.0.15 起）单独处理。
+#
+# ⚠️ 所有 action 均已升到 Node 24 运行时，要求 Actions Runner ≥ v2.327.1。
+# GitHub 托管的 ubuntu-latest 已满足；**自托管 runner 必须先升级**，否则 job 直接启动失败。
 on:
   push:
-    branches: [main, dev]
+    branches: [main]
   pull_request:
-    branches: [main, dev]
+    branches: [main]
 
 # 取消同分支的前序运行（节省 CI 配额）
 concurrency:
@@ -28,15 +31,15 @@ jobs:
 
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: setup .NET ${{ env.DOTNET_VERSION }}
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: cache NuGet packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', 'Directory.Packages.props') }}
@@ -67,14 +70,14 @@ jobs:
 
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # ⚠️ 必须设 GHA cache，否则每次 CI 都要重装几百 MB 的依赖。
       - name: setup Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: 构建镜像
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: false
@@ -121,10 +124,8 @@ jobs:
           docker rm --force ci-smoke
 
   # ------------------------------------------------------------------
-  # 代码格式（0.0.15，**暂不阻断**）
+  # 代码格式 **暂不阻断**
   # ------------------------------------------------------------------
-  # roadmap 把 format 检查列为 0.0.2 的遗留项，本版接入。
-  #
   # ## 为什么先不阻断
   # 仓库现有 **328 处** dotnet format 违规，且不是本版引入的：
   # .editorconfig 从 0.0.1 起就写了 `dotnet_style_qualification_for_method = true:error`，
@@ -144,10 +145,10 @@ jobs:
 
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: setup .NET ${{ env.DOTNET_VERSION }}
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 

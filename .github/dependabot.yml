@@ -1,0 +1,30 @@
+# 用 Dependabot 盯住 GitHub Actions 的版本。
+#
+# ## 为什么需要它
+# 三个 workflow 里的 action 曾经一路停在旧主版本（checkout v4、build-push-action v6…），
+# 这类依赖"不写代码就不会动"，最后一次性积压到跨 3 个主版本才被发现。
+#
+# ## 为什么只配 github-actions
+# - NuGet 依赖由 Directory.Packages.props（CPM）集中管理，升级需连带跑 dotnet test；
+# - 前端 pnpm 依赖同理，升级要连带跑 pnpm typecheck / lint / test。
+# 这两类的噪音大于收益，等 0.1.0 之后再评估。
+#
+# ## 升级 action 的硬性前提
+# 当前所有 action 都是 Node 24 运行时，要求 Actions Runner ≥ v2.327.1。
+# GitHub 托管的 ubuntu-latest 已满足；**自托管 runner 在跟进前必须先升级**。
+#
+# 只开 PR、不自动合并：CI 是唯一门槛，合并走人工确认。
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    # minor / patch 合并进一个 PR，减少噪音；
+    # major 单独成 PR，便于逐个确认破坏性变更（见 ci.yml 头部的 runner 版本要求）。
+    groups:
+      actions-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]

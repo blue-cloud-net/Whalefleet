@@ -57,11 +57,11 @@ jobs:
 
       - name: checkout
         if: steps.version.outputs.publish == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 登录 GHCR
         if: steps.version.outputs.publish == 'true'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -69,7 +69,7 @@ jobs:
 
       - name: 设置 Buildx
         if: steps.version.outputs.publish == 'true'
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       # 构建并推送。只推版本 tag 与 latest，不推 sha ——
       # 0.1.0 之后每次发版都是 semver，latest 已足够定位当前版本。
@@ -77,7 +77,7 @@ jobs:
       # 以便 docker run 时不必带 v。
       - name: 构建并推送
         if: steps.version.outputs.publish == 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -131,7 +131,7 @@ jobs:
 
       - name: 生成 GitHub Release
         if: steps.version.outputs.publish == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
           files: |
