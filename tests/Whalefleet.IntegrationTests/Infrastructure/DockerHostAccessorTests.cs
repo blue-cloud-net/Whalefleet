@@ -124,7 +124,7 @@ public class DockerHostAccessorTests
     public async Task ResolveAsync_ShouldReturnHostEntityEvenWhenDisabled()
     {
         // 解析只负责「找到主机」；停用与否由取客户端时判定
-        // （0.3.0 的权限校验需要拿到主机的 Guid 主键，那时它也必须拿到停用的主机）。
+        // （0.1.0 的权限校验需要拿到主机的 Guid 主键，那时它也必须拿到停用的主机）。
         await using var host = new PersistenceTestHost();
         await host.InitializeAsync();
 

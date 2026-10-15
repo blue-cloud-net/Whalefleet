@@ -9,7 +9,7 @@ namespace Whalefleet.UnitTests.Common;
 /// <see cref="ErrorCodes"/> 常量表与 <c>docs/api-spec.md</c> 的一致性测试。
 /// </summary>
 /// <remarks>
-/// 这些测试的作用是「防手滑」：错误码是公开 API 契约的一部分（0.1.0 起冻结），
+/// 这些测试的作用是「防手滑」：错误码是公开 API 契约的一部分（1.0.0 起冻结），
 /// 一旦数值被误改、重复或漏登记到 <see cref="ErrorCodeCatalog"/>，必须立刻失败。
 /// </remarks>
 public class ErrorCodesTests

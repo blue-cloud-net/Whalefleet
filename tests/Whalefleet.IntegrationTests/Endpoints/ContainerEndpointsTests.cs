@@ -103,7 +103,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
             $"/api/v1/hosts/{_localHost}/containers/list",
             new { all = true });
 
-        // 0.3.0 之前是 fail-closed：除管理员外一律拒绝，而不是默认放行。
+        // 0.1.0 之前是 fail-closed：除管理员外一律拒绝，而不是默认放行。
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await ReadCodeAsync(response)).Should().Be(ErrorCodes.HostForbidden);
     }

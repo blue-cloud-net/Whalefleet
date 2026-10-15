@@ -20,7 +20,7 @@ namespace Whalefleet.IntegrationTests.Endpoints;
 /// 列表对**非管理员**返回空数组（而不是 403），以及概览在主机离线时返回 <c>status=offline</c>
 /// （而不是 502）——界面要把离线显示成一个状态，不是一个错误。</para>
 /// <para>「主机离线」的分支不在本组用例里构造：本机守护进程可用，而关掉守护进程不是测试能做的事
-/// （那属于 0.3.0 健康轮询的验证范围）。</para>
+/// （那属于 0.4.0 健康轮询的验证范围）。</para>
 /// </remarks>
 #pragma warning disable CA1001
 public class HostsEndpointsTests : IAsyncLifetime
