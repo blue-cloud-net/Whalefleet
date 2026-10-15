@@ -147,12 +147,13 @@
 | `Security:Argon2:Parallelism` | `SECURITY__ARGON2__PARALLELISM` | `4` | 0.0.3 |
 | `Security:Argon2:SaltSizeBytes` | `SECURITY__ARGON2__SALTSIZEBYTES` | `16` | 0.0.3 |
 | `Security:Argon2:HashSizeBytes` | `SECURITY__ARGON2__HASHSIZEBYTES` | `32` | 0.0.3 |
-| `Jwt:Secret` | `JWT__SECRET` | （无；**缺失或 < 32 字节则启动失败**） | 0.0.4 |
+| `Jwt:Secret` | `JWT__SECRET` | （无；**缺失时自动生成到 `/app/data/jwt.key`**） | 0.0.4 |
 | `Jwt:Issuer` / `Jwt:Audience` | `JWT__ISSUER` / `JWT__AUDIENCE` | `whalefleet` | 0.0.4 |
 | `Jwt:AccessTokenLifetime` | `JWT__ACCESSTOKENLIFETIME` | `00:15:00` | 0.0.4 |
 | `Jwt:RefreshTokenLifetime` | `JWT__REFRESHTOKENLIFETIME` | `7.00:00:00` | 0.0.4 |
-| `Admin:User` | `ADMIN__USER` | （无；**仅 `users` 表为空时**用于引导） | 0.0.4 |
-| `Admin:Password` | `ADMIN__PASSWORD` | （无；同上） | 0.0.4 |
+| `Admin:User` | `ADMIN__USER` | `admin`（仅 `users` 表为空时用于引导） | 0.0.4 |
+| `Admin:Password` | `ADMIN__PASSWORD` | （无；**缺失时自动生成并写入 `/app/data/initial-admin.txt`**） | 0.0.4 |
+| `Admin:AutoBootstrap` | `ADMIN__AUTOBOOTSTRAP` | `true`（账号由外部预置时置 `false`） | 0.0.15 |
 
 > **主机不是配置项**（0.0.8 起）：`Docker:Hosts` 已删除。主机是 `hosts` 表里的数据；首次启动时若表为空，
 > 宿主会种入一台默认主机（`name=local`、`type=socket`、`endpoint=/var/run/docker.sock`）。
@@ -187,8 +188,8 @@
 | JWT 算法 | HS256 |
 | JWT access token 有效期 | **15 分钟** |
 | JWT refresh token 有效期 | **7 天**，写入数据库可撤销表 |
-| 初始管理员引导 | 环境变量 `ADMIN__USER` + `ADMIN__PASSWORD`（启动时若 `users` 表为空则创建） |
-| JWT Secret 来源 | 生产环境**仅**环境变量 `JWT__SECRET`；**缺失或过弱（<32 字节）则启动失败**。开发环境例外：`appsettings.Development.json` 提供公开的占位密钥，以免本地开发必须记得导出环境变量 |
+| 初始管理员引导 | 启动时若 `users` 表为空则创建：凭据取自 `ADMIN__USER` + `ADMIN__PASSWORD`；**密码未配置时自动生成**，写入 `/app/data/initial-admin.txt`（`0600`，**不进日志**）。可用 `ADMIN__AUTOBOOTSTRAP=false` 彻底关闭 |
+| JWT Secret 来源 | **优先**环境变量 `JWT__SECRET`（需 ≥ 32 字节，显式给得过短则启动失败）；**缺失时**自动生成到 `/app/data/jwt.key`（`0600`）并于后续启动复用。开发环境例外：`appsettings.Development.json` 提供公开的占位密钥 |
 | 0.4.0 终端短时 token | `POST /api/v1/auth/terminal-token` 返回 5 分钟过期 token，**仅能用于 WebSocket `/ws/hosts/{hostId}/containers/exec`** |
 
 ### 速率限制

@@ -56,9 +56,11 @@ services:
       - "8080:8080"
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
-      - JWT__SECRET=<your-strong-secret-≥32-bytes>
+      # All optional: when omitted, the password and JWT key are generated on first
+      # start and persisted under ./data (jwt.key / initial-admin.txt).
       - ADMIN__USER=admin
-      - ADMIN__PASSWORD=<initial-strong-password>
+      # - ADMIN__PASSWORD=<initial-strong-password>
+      # - JWT__SECRET=<your-strong-secret-≥32-bytes>
       # Hosts are no longer configuration items (they live in the hosts table since 0.0.8):
       # only `local` (/var/run/docker.sock) exists by default. Add hosts pointing at a
       # socket-proxy or elsewhere from the admin UI after startup.
@@ -87,18 +89,23 @@ cd whalefleet
 # 2. Build the image (Node + .NET SDK + runtime, three stages)
 docker build -t whalefleet:local .
 
-# 3. Provide the required secrets
-cp .env.example .env
-#    then edit .env — ADMIN__PASSWORD and JWT__SECRET are mandatory.
-#    Generate a key with: openssl rand -base64 48
-
-# 4. Start. The default is socket-proxy mode (recommended).
+# 3. Start. **No configuration required** — the password and JWT key are both generated for you.
+#    The default is socket-proxy mode (recommended).
 docker compose up -d
 
 #    To use the direct-socket mode instead, stop first, then:
 #    docker compose --profile direct up -d
 
-# 5. Open http://localhost:8080 and log in with the credentials from .env
+# 4. Retrieve the auto-generated admin password
+docker compose exec whalefleet cat /app/data/initial-admin.txt
+
+# 5. Open http://localhost:8080 and log in with the credentials in that file
+#
+# ⚠️ Direct-socket mode needs the container in the host's docker group, or you get error 1301:
+#    export DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)
+#
+# Prefer to set them yourself? Copy .env.example to .env and fill it in as commented.
+# Leaving a value blank is equivalent to not passing it.
 ```
 
 ### Verifying the deployment
@@ -106,6 +113,10 @@ docker compose up -d
 ```bash
 docker compose ps                              # expect STATUS "healthy"
 docker compose exec whalefleet bash /app/scripts/backup.sh   # produces a verified backup
+
+# ⚠️ Alongside the .db you should see a same-named .db.jwt.key —
+#    omitting it on restore silently logs every online user out.
+ls -1 data/backups/
 
 # Scheduled backup (03:17 daily — off the hour to avoid IO contention):
 #   17 3 * * * docker exec whalefleet bash /app/scripts/backup.sh \
@@ -115,16 +126,19 @@ docker compose exec whalefleet bash /app/scripts/backup.sh   # produces a verifi
 ### Option 2: Direct Socket Mount (trusted environments only)
 
 ```bash
+# ⚠️ --group-add is not optional: the in-image app user (UID 10001) is not in the
+#    host's docker group, so it cannot open the socket — you get error 1301.
 docker run -d \
   --name whalefleet \
   -p 8080:8080 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v $(pwd)/data:/app/data \
-  -e JWT__SECRET=$(openssl rand -hex 32) \
-  -e ADMIN__USER=admin \
-  -e ADMIN__PASSWORD='StrongP@ss123' \
+  --group-add "$(stat -c '%g' /var/run/docker.sock)" \
   --restart unless-stopped \
   whalefleet:local
+
+# Retrieve the auto-generated admin password
+docker exec whalefleet cat /app/data/initial-admin.txt
 ```
 
 ### Option 3: Standalone Process

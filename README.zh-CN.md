@@ -56,9 +56,11 @@ services:
       - "8080:8080"
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
-      - JWT__SECRET=<your-strong-secret-≥32-bytes>
+      # 三项全部可选：省略时密码与 JWT 密钥会在首次启动时自动生成，
+      # 并持久化到 ./data（jwt.key / initial-admin.txt）。
       - ADMIN__USER=admin
-      - ADMIN__PASSWORD=<initial-strong-password>
+      # - ADMIN__PASSWORD=<初始强密码>
+      # - JWT__SECRET=<你的强密钥-≥32-字节>
       # 主机不再是配置项（0.0.8 起为 hosts 表）：默认只有 local（/var/run/docker.sock），
       # 指向 socket-proxy 等其他主机请在启动后通过管理界面添加。
     volumes:
@@ -86,18 +88,23 @@ cd whalefleet
 # 2. 构建镜像（Node + .NET SDK + runtime 三阶段）
 docker build -t whalefleet:local .
 
-# 3. 准备必需的密钥
-cp .env.example .env
-#    编辑 .env——ADMIN__PASSWORD 与 JWT__SECRET 必填。
-#    生成密钥：openssl rand -base64 48
-
-# 4. 启动。默认使用 socket-proxy 模式（推荐）
+# 3. 启动。**无需任何配置**——密码与 JWT 密钥都会自动生成。
+#    默认使用 socket-proxy 模式（推荐）
 docker compose up -d
 
 #    改用直挂 socket 模式：先停掉，再
 #    docker compose --profile direct up -d
 
-# 5. 浏览器访问 http://localhost:8080，用 .env 中的凭据登录
+# 4. 取回自动生成的初始管理员密码
+docker compose exec whalefleet cat /app/data/initial-admin.txt
+
+# 5. 浏览器访问 http://localhost:8080，用上面文件里的凭据登录
+#
+# ⚠️ 直挂 socket 模式需要把容器加入宿主机 docker 组，否则报 1301：
+#    export DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)
+#
+# 想自己指定密码与密钥？cp .env.example .env 后按注释填。
+# 留空即等价于不传。
 ```
 
 ### 验证部署
@@ -105,6 +112,10 @@ docker compose up -d
 ```bash
 docker compose ps                              # 期望 STATUS 为 "healthy"
 docker compose exec whalefleet bash /app/scripts/backup.sh   # 产出经过校验的备份
+
+# ⚠️ 备份目录里除了 .db，还应有一个同名的 .db.jwt.key——
+#    恢复时漏掉它会让所有在线用户被静默登出。
+ls -1 data/backups/
 
 # 定时备份（每天 03:17——避开整点以减少与其他任务争抢 IO）：
 #   17 3 * * * docker exec whalefleet bash /app/scripts/backup.sh \
@@ -114,16 +125,19 @@ docker compose exec whalefleet bash /app/scripts/backup.sh   # 产出经过校�
 ### 方式二：直挂 Socket（仅可信环境）
 
 ```bash
+# ⚠️ --group-add 不可省：容器内 app 用户（UID 10001）不在宿主机 docker 组，
+#    连不上 socket，表现为 1301「无法连接 Docker 守护进程」。
 docker run -d \
   --name whalefleet \
   -p 8080:8080 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v $(pwd)/data:/app/data \
-  -e JWT__SECRET=$(openssl rand -hex 32) \
-  -e ADMIN__USER=admin \
-  -e ADMIN__PASSWORD='StrongP@ss123' \
+  --group-add "$(stat -c '%g' /var/run/docker.sock)" \
   --restart unless-stopped \
   whalefleet:local
+
+# 取回自动生成的初始管理员密码
+docker exec whalefleet cat /app/data/initial-admin.txt
 ```
 
 ### 方式三：独立进程部署

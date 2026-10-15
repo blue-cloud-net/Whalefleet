@@ -175,6 +175,9 @@ DDD 战术模式（聚合根 / 领域事件 / 领域服务）**已整体移除**
 | 20 | **`apiFactory.WithSetting` 是就地修改（返回 `this`）** | 打在类共享的 `IClassFixture` 上会把配置留给本类**其他**用例，表现为「随机顺序下某条用例莫名失败」。需要坏配置时必须 `new ApiFactory()` |
 | 21 | **compose 的两种部署模式必须用 `profiles` 隔离，不能靠注释** | 两个 service 若共用 `container_name`，同时启动会直接冲突；而注释掉一个会让「另一种模式」在文件里彻底消失 |
 | 22 | **`sqlite3 .backup` 而非 `cp`** | 直接拷数据库文件拷到的是某一瞬时状态，正在写事务时可能拷出撕裂的文件，恢复时才报 `database disk image is malformed` |
+| 23 | **`.dockerignore` 里的 `**/data` 会吃掉前端源码** | `src/Whalefleet.UI/src/mocks/data/` 是 mock 场景源码，被排除后构建以 `Could not resolve "./data/hosts"` 收场，且**无任何提示指向 .dockerignore**。运行期数据目录只能写 `/data`（仅仓库根） |
+| 24 | **`jwt.key` 必须随数据库一起备份** | 恢复备份时若漏掉它，程序会生成新密钥 → 旧令牌全废、所有在线用户被静默登出，**无任何报错**。`scripts/backup.sh` 已把密钥拷成 `<备份名>.db.jwt.key`；修改该脚本时别把这个附带拷贝漏了 |
+| 25 | **密码永不进日志** | 自动生成的初始管理员密码只写在 `/app/data/initial-admin.txt`。日志会被采集器上报到集中式系统，打印密码等于把它扩散出去。`AdminBootstrapperTests` 有一条用例专门拦这个 |
 
 > **Dapper 物化能力（已核实，勿再沿用旧判断）**：Dapper **可以**物化「非公开构造 + 非公开 setter」
 > 的充血实体，用 `skipVisibility` 动态方法。**不需要** Row DTO，**不需要** `InternalsVisibleTo`。
@@ -203,6 +206,8 @@ DDD 战术模式（聚合根 / 领域事件 / 领域服务）**已整体移除**
 | `CHANGELOG.md` | **英文**；0.0.15 起由 Release Please 自动生成 |
 | `CHANGELOG.zh-CN.md` | 中文镜像，**人工维护** |
 | `docs/*.md`、`AGENTS.md` | 仅中文 |
+| `.env.example` | **中文**（部署指南性质，面向使用者） |
+| `scripts/*.sh` 注释 | 中文 |
 | 提交信息 | 中文 |
 
 > ⚠️ **改一侧必须同步另一侧。** README 两版的徽章块、章节数、链接集合应一一对应；
