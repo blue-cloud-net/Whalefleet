@@ -7,7 +7,7 @@ namespace Whalefleet.Core.Permissions;
 /// <para><b>为什么必须带 HostId</b>：容器 ID 只在单台 Docker 守护进程内唯一，
 /// 不同主机上完全可能出现同名 / 同 ID 的容器；不带 <c>HostId</c> 的容器授权记录会串权。</para>
 /// <para><b>唯一性</b>：<c>(user_id, host_id, container_id) WHERE is_deleted = 0</c>。</para>
-/// <para><b>落地阶段</b>：0.3.0（本迭代只定义实体与接口，不建表）。</para>
+/// <para><b>落地阶段</b>：0.5.0（本迭代只定义实体与接口，不建表）。</para>
 /// <para><b>命名抑制</b>：<c>CA1711</c> 因类型名以 <c>Permission</c> 结尾而报警，
 /// 但本类型就是「一条授权」这一领域概念，改名反而失真，故就地精确抑制。</para>
 /// </remarks>

@@ -9,7 +9,7 @@ namespace Whalefleet.Core.Permissions;
 /// <see cref="Write"/>，授权时由应用服务显式展开）。</para>
 /// <para>对外 API 以小写字符串数组出现（<c>["read", "write", "admin"]</c>），
 /// 转换在 DTO 映射层完成。</para>
-/// <para><b>落地阶段</b>：0.3.0（本迭代只定义实体与接口，不建表）。</para>
+/// <para><b>落地阶段</b>：0.1.0（本迭代只定义实体与接口，不建表）。</para>
 /// </remarks>
 [Flags]
 public enum HostPermissions : byte

@@ -4,7 +4,7 @@ namespace Whalefleet.Core.Permissions;
 /// 用户-容器授权仓储（持久化契约）。
 /// </summary>
 /// <remarks>
-/// <para><b>落地阶段</b>：0.3.0 —— 本迭代仅定义接口与实体，<b>尚无实现、不建表、不注册 DI</b>。</para>
+/// <para><b>落地阶段</b>：0.5.0 —— 本迭代仅定义接口与实体，<b>尚无实现、不建表、不注册 DI</b>。</para>
 /// <para><b>查询必须带主机</b>：容器标识只在单台守护进程内唯一，所有按键查询都要求
 /// <c>hostId</c> 与 <c>containerId</c> 成对出现。</para>
 /// </remarks>

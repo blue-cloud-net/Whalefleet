@@ -4,7 +4,7 @@ namespace Whalefleet.Core.Permissions;
 /// 用户-主机授权仓储（持久化契约）。
 /// </summary>
 /// <remarks>
-/// <para><b>落地阶段</b>：0.3.0 —— 本迭代仅定义接口与实体，<b>尚无实现、不建表、不注册 DI</b>。</para>
+/// <para><b>落地阶段</b>：0.1.0 —— 本迭代仅定义接口与实体，<b>尚无实现、不建表、不注册 DI</b>。</para>
 /// <para><b>软删除语义</b>：读取方法默认过滤已撤销（软删除）的授权。</para>
 /// </remarks>
 public interface IUserHostPermissionRepository

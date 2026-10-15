@@ -8,7 +8,7 @@ namespace Whalefleet.Core.Permissions;
 /// 否则不同主机上同名 / 同 ID 的容器会互相串权。</para>
 /// <para>本枚举<b>没有</b> <c>Admin</c>：容器的管理性操作（创建 / 删除）属于主机级
 /// <see cref="HostPermissions.Write"/>，不在容器粒度重复表达。</para>
-/// <para><b>落地阶段</b>：0.3.0（本迭代只定义实体与接口，不建表）。</para>
+/// <para><b>落地阶段</b>：0.5.0（本迭代只定义实体与接口，不建表）。</para>
 /// </remarks>
 [Flags]
 public enum ContainerPermissions : byte

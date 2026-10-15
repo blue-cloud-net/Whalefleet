@@ -9,7 +9,7 @@ namespace Whalefleet.Core.Permissions;
 /// <see cref="UpdatePermissions"/>，不是再插一条。</para>
 /// <para><b>撤销</b>：软删除（继承 <see cref="FullAuditedEntity{TId, TUserKey}"/>），
 /// 保留授权历史；撤销后可重新授权（唯一索引只看未删除行）。</para>
-/// <para><b>落地阶段</b>：0.3.0（本迭代只定义实体与接口，不建表）。</para>
+/// <para><b>落地阶段</b>：0.1.0（本迭代只定义实体与接口，不建表）。</para>
 /// <para><b>命名抑制</b>：<c>CA1711</c> 因类型名以 <c>Permission</c> 结尾而报警，
 /// 但本类型就是「一条授权」这一领域概念，改名反而失真，故就地精确抑制。</para>
 /// </remarks>
