@@ -1058,12 +1058,13 @@ ErrorCodes    ──►  ErrorCategory   ──►  ErrorHttpStatus
 ```yaml
 services:
   socket-proxy:
-    image: tecnativa/docker-socket-proxy
+    image: tecnativa/docker-socket-proxy:v0.5.0
     environment:
       CONTAINERS: 1
       IMAGES: 1
       NETWORKS: 1
       VOLUMES: 1
+      POST: 1       # 写操作总闸，关掉则全程只读
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     restart: unless-stopped

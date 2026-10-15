@@ -40,12 +40,17 @@
 ```yaml
 services:
   socket-proxy:
-    image: tecnativa/docker-socket-proxy
+    image: tecnativa/docker-socket-proxy:v0.5.0
     environment:
       CONTAINERS: 1
       IMAGES: 1
       NETWORKS: 1
       VOLUMES: 1
+      POST: 1       # 写操作总闸；关掉则整个 API 退化为只读
+      SWARM: 0
+      INFO: 1
+      PING: 1
+      VERSION: 1
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 

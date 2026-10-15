@@ -85,12 +85,13 @@ Whalefleet vs Portainer
 ```yaml
 services:
   socket-proxy:
-    image: tecnativa/docker-socket-proxy
+    image: tecnativa/docker-socket-proxy:v0.5.0
     environment:
       CONTAINERS: 1
       IMAGES: 1
       NETWORKS: 1
       VOLUMES: 1
+      POST: 1       # 写操作总闸；关掉则整个 API 只读（列表能用、启停全 403）
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
@@ -103,7 +104,9 @@ services:
       - PERSISTENCE__DATABASEPATH=/app/data/whalefleet.db
 ```
 
-socket-proxy 作为只读代理，将 Docker API 权限限定到最小子集。如必须直挂 socket，请确保 Whalefleet 实例仅暴露给可信网络。
+socket-proxy 把 Docker API 权限限定到最小分区集。注意 `POST` 这道写操作总闸必须打开——
+它关掉时代理只放行 `GET` / `HEAD`，表现为「容器列表正常，但一启停就 403」。
+如必须直挂 socket，请确保 Whalefleet 实例仅暴露给可信网络。
 
 完整安全声明见 [README.zh-CN.md](../README.zh-CN.md#️-安全声明docker-socket-挂载)（[English](../README.md#️-security-notice-docker-socket-mounting)）与
 [constraints.md](constraints.md#docker-socket-挂载-️-高危)。
@@ -117,7 +120,7 @@ socket-proxy 作为只读代理，将 Docker API 权限限定到最小子集。�
 | [overview.md](./overview.md) | 项目背景、定位、目标与非目标（本文档） |
 | [constraints.md](./constraints.md) | 技术栈版本基线、安全 / CI/CD 约束、部署约束 |
 | [features.md](./features.md) | 按模块分组的完整功能列表（按版本标注） |
-| [roadmap.md](./roadmap.md) | 20 个版本迭代（0.0.1 ~ 1.0.0）的路线图 |
+| [roadmap.md](./roadmap.md) | 以 `1.0.0` 为目标的版本规划（0.1.0 – 0.8.0 功能迭代 + RC 与正式发布） |
 | [architecture.md](./architecture.md) | 系统分层、多主机 DockerClient 工厂、通信机制 |
 | [api-spec.md](./api-spec.md) | RPC 风格 API 约定 + SignalR Hub + WebSocket 规范 |
 | [ui-guidelines.md](./ui-guidelines.md) | UI 布局规范（整体布局、断点、组件分层、交互约定） |

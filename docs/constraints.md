@@ -238,13 +238,17 @@
 # docker-compose.yml 推荐写法
 services:
   socket-proxy:
-    image: tecnativa/docker-socket-proxy
+    image: tecnativa/docker-socket-proxy:v0.5.0
     environment:
       CONTAINERS: 1
       IMAGES: 1
       NETWORKS: 1
       VOLUMES: 1
-      POST: 0       # 禁用 POST（禁止 exec/创建容器）—— 仅在只读模式下开启
+      POST: 1       # ⚠️ 必须为 1：写操作的总闸，关掉则整个 API 退化为只读
+      SWARM: 0
+      INFO: 1
+      PING: 1
+      VERSION: 1
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
@@ -259,10 +263,20 @@ services:
       - ./data:/app/data
 ```
 
-socket-proxy 默认仅授予 `GET`（只读 + 列出），如需写操作（创建容器、启动/停止等）按需开启对应子集。
+> **⚠️ `POST` 与子集开关不是互斥关系**。上游文档：「When disabled, only `GET` and `HEAD`
+> operations are allowed, meaning any section of the API is read-only.」
+> 子集开关（`CONTAINERS` 等）限制的是**能碰哪些 API 分区**，
+> `POST` 限制的是**这些分区里能不能写**——两层都要开才完整可用。
+> 只开子集不开 `POST` 的症状极具误导性：列表页一切正常，但创建 / 启停 / 删除容器
+> 与拉取镜像一律 `403`，而开关列表看上去全是开的。
+>
+> 另：`INFO` 不能省（主机启动时间靠 `GetSystemInfoAsync`），`PING` 是连通性探测，
+> `VERSION` 供概览页展示版本。仓库根 [docker-compose.yml](../docker-compose.yml) 是权威副本。
 
 详细的安全声明与部署模式见仓库根 [README.zh-CN.md](../README.zh-CN.md#️-安全声明docker-socket-挂载)（[English](../README.md#️-security-notice-docker-socket-mounting)）。
-（独立的 `SECURITY.md` 已于 0.0.15 交付，其中「如何部署」比「代码如何安全」更重要。）
+socket-proxy 的 `POST` 总闸必须为 `1`，否则只放行 `GET` / `HEAD`，表现为「列表正常、启停全 403」。
+仓库根 [docker-compose.yml](../docker-compose.yml) 是权威副本；修改时四处示例需同步
+（`docs/overview.md`、`docs/architecture.md`、两份 `README`）。
 
 ### 日志输出基线（0.0.2 起）
 

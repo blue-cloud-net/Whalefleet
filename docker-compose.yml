@@ -8,7 +8,8 @@
 #                 交给容器内任何进程（含本项目自身与将来任何拉进来的依赖）。
 #                 只适合「完全信任这台机器上的一切」的场景。
 #   2. proxy   —— 经 tecnativa/docker-socket-proxy 中介，只授予
-#                 CONTAINERS / IMAGES / NETWORKS / VOLUMES 四个子集。
+#                 CONTAINERS / IMAGES / NETWORKS / VOLUMES 四个分区
+#                 （并打开 POST 这道写操作总闸，否则全程只读）。
 #                 本项目用不到 host 级 API，因此代理能挡住大部分 Docker API 滥用。
 #
 # ⚠️ 即便走 proxy 模式，代理容器本身仍持有完整 socket。
@@ -101,7 +102,10 @@ services:
       Docker__Host__Default: tcp://socket-proxy:2375
 
   socket-proxy:
-    image: tecnativa/docker-socket-proxy:latest
+    # ⚠️ 固定小版本，不跟 latest：`latest` 会随上游发布漂移，
+    #    而这是一个**发布给用户照抄**的部署文件——上游一次改坏就可能让
+    #    别人的 `docker compose up` 直接起不来。升版本是显式的一次改动。
+    image: tecnativa/docker-socket-proxy:v0.5.0
     container_name: whalefleet-socket-proxy
     restart: unless-stopped
     # 同理：socket-proxy 容器内跑的是 haproxy，它的用户同样可能不在宿主机 docker 组。
@@ -109,18 +113,36 @@ services:
       - "${DOCKER_GID:-983}"
     environment:
       # 只授予本项目实际用到的子集。删掉任意一项前请先确认没有功能依赖它：
-      #   CONTAINERS : 容器列表 / 启停 / 删 / 建
-      #   IMAGES     : 镜像列表 / 拉取 / 删 / 打标签
+      #   CONTAINERS : 容器列表 / 建 / 启停 / 重启 / 删 / 日志 / inspect
+      #   IMAGES     : 镜像列表 / 拉取 / 删 / inspect
       #   NETWORKS   : 0.2.0 的网络管理会用；当前版本尚未调用，保留以便后续启用
       #   VOLUMES    : 0.2.0 的数据卷管理会用；当前版本尚未调用，保留以便后续启用
       CONTAINERS: 1
       IMAGES: 1
       NETWORKS: 1
       VOLUMES: 1
-      # ⚠️ 刻意**不**开 SWARM：它能创建 / 更新 swarm，本身就是宿主机级提权。
+
+      # ⚠️ **POST 必须为 1，否则整个 Docker API 退化成只读。**
+      # 上游 README 原文：「When disabled, only GET and HEAD operations are
+      # allowed, meaning any section of the API is read-only.」它与 CONTAINERS /
+      # IMAGES 等**不是互斥关系**，而是「写操作的总闸」——不打开它，代理会对
+      # 创建 / 启停 / 删除容器、拉取镜像一律返回 403，而子集开关看着都是开的，
+      # 排查起来极易误判成「权限配错了」。
+      #
+      # 子集开关（CONTAINERS 等）限制的是**能碰哪些 API 分区**，
+      # POST 限制的是**这些分区里能不能写**；两层都要开才是完整可用。
+      POST: 1
+
+      # ⚠️ 显式关掉 SWARM / AUTH / SECRETS / BUILD / COMMIT / SYSTEM / NODES，
+      #    不依赖上游默认值（上游当前默认也是关，但默认值会变，显式更稳）：
+      #    SWARM 能创建 / 更新 swarm（宿主机级提权），BUILD 与 COMMIT 能落地镜像，
+      #    SYSTEM / NODES 是 Swarm 专有。
       SWARM: 0
-      # ⚠️ 刻意**不**开 INFO / POST / PING 的全量：INFO 会泄露宿主机详情，
-      #    而 POST 是「写」的总开关——单开子集时它必须为 0，否则子集形同虚设。
+      # INFO / PING / VERSION 是只读的基础探活与版本展示，本项目确实要用：
+      #   VERSION : Docker / API 版本（概览页「版本」）
+      #   INFO    : 守护进程启动时刻（概览页「已运行 x」）
+      #   PING    : 主机连通性探测（主机列表的状态列）
+      # 去掉 INFO 会让「已运行 x」显示不出来，去掉 VERSION 会让版本列为空。
       INFO: 1
       PING: 1
       VERSION: 1
