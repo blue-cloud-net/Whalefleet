@@ -299,8 +299,13 @@ socket-proxy 默认仅授予 `GET`（只读 + 列出），如需写操作（创�
 ### Conventional Commits 严格规范
 
 - 允许 `feat!:`、`fix!:` 等破坏性变更前缀
-- 推荐使用 scope（如 `feat(container):`、`fix(auth):`）
+- scope **可选**，但改动落在某个模块或项目级关注点上时**必须带**；
+  取值与组合写法见 [AGENTS.md §提交规范](../AGENTS.md#提交规范)
 - Type 限定：`feat` / `fix` / `docs` / `style` / `refactor` / `perf` / `test` / `build` / `ci` / `chore`
+- **subject ≤ 30 字**，中文描述、动词开头、不加句号、单一 scope（禁逗号并列）
+- **一次提交只做一件事**：不「顺手重构」、不把无关格式化混进功能提交
+- 禁 `/`、`+`、`§x`、`Phase N`、`RM-` / `TASK-` 式编号；
+  **版本号 `0.0.x` 不禁**（它是交付批次，不是工作流编号）
 
 ### Release Please（0.0.15 启用）
 

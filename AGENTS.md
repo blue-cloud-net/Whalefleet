@@ -187,13 +187,51 @@ DDD 战术模式（聚合根 / 领域事件 / 领域服务）**已整体移除**
 
 ## 提交规范
 
-- **Conventional Commits，正文用中文**。Type 白名单：
-  `feat` / `fix` / `docs` / `style` / `refactor` / `perf` / `test` / `build` / `ci` / `chore`
-- scope 用**小写模块名**：`core` / `infra` / `api` / `application` / `ui` / `build` / `sln` / `scaffold`
-- 破坏性变更用 `feat!:` / `fix!:`
-- 分支：`main`（仅稳定发布）+ `dev`（集成分支）；合并策略 **Squash merge**；
-  **PR 标题**走 Conventional Commits
+**格式**：`type(scope): 中文描述`。Type 白名单（10 个，**勿自造**）：
+`feat` / `fix` / `docs` / `style` / `refactor` / `perf` / `test` / `build` / `ci` / `chore`
+
+- **scope 可选**，但**改动落在某个模块 / 项目级关注点上时必须带**（跨模块一律拆成多次提交）
+- **破坏性变更**用 `feat!:` / `fix!:`
+- **分支**：`main`（仅稳定发布）+ `dev`（集成分支）；**Squash merge**；**PR 标题**走 Conventional Commits
 - 详细规范见 [docs/constraints.md](docs/constraints.md)
+
+### scope 取值
+
+| 归属 | 取值 | 覆盖范围 |
+|------|------|----------|
+| 模块 | `core` / `application` / `infra` / `api` / `ui` | 对应 csproj 与 `src/Whalefleet.UI/` |
+| 测试 | `unit` / `integration` | 两个测试项目 |
+| 项目级 | `docs` / `ci` / `docker` / `build` / `mock` / `scaffold` | 文档 / workflow / 镜像与 compose / 构建与依赖脚本 / 前端 mock 场景 / 脚手架 |
+| 组合 | `{模块}-{功能域}` | 改动只落在模块内某个功能面时，如 `ui-icons`、`infra-security`、`api-auth` |
+
+> `build` 与 `ci` **既是 type 也是 scope**：`ci: …` 表示改流水线，`build(docker): …` 表示改镜像/compose 定义。
+> 判断依据是**改的是流水线还是构建产物**。
+>
+> 历史上有三个 scope 已作废，**不要照抄**：`domain`（DDD 时代遗留，项目已删除）、
+> `sln`（解决方案文件，改动归 `build`）、`security`（跨模块关注点，按硬约束拆成
+> `core-security` / `infra-security` 各自提交）。
+
+### 硬约束
+
+| # | 规则 | 反例 |
+|---|------|------|
+| 1 | **subject ≤ 30 字**，写「做了什么」而非「改了哪些文件」 | `refactor(api): 重构并修复并优化 Api 项目全部控制器与中间件` |
+| 2 | **动词开头**，**不加句号** | `修复了 xxx 的 bug。` |
+| 3 | **单一 scope**，禁止逗号并列 | `fix(rsa,sm2,key): 修复加解密` |
+| 4 | **禁 `/`、`+`、`§x`、`Phase N`、`RM-` / `TASK-` 式编号** | `feat(ui): 容器/镜像列表 + 详情` |
+| 5 | **一次提交只做一件事**——不「顺手重构」、不把无关格式化混进功能提交 | — |
+| 6 | 术语保留英文（JWT / SQLite / Docker / CI / KDF / Argon2） | — |
+
+> ⚠️ **版本号 `0.0.x` 不在禁用之列**。它标的是**交付批次**而非工作项编号，本仓库一贯在用
+> （如 `docs: 勾选 0.0.15 并同步文档`）。被禁的是 `RM-` / `TASK-` / `Phase N` 这类
+> 外部工作流编号——本仓库 roadmap「版本号即执行顺序」，两者语义不同，不要混为一谈。
+
+### 提交前
+
+- **一个文件含多处不相关改动时，按 hunk 拆成多次提交**，不要合成一条
+- 拆分用 `split-patches.py` 按**中间状态**生成 patch（顺序应用必然成功）；
+  **不要手工重算 hunk header**，极易出错
+- 同 hunk 内归属交错（A,B,A,B…）时**直接合并为一次提交**，不做行级硬拆
 
 ---
 
