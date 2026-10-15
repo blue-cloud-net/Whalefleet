@@ -11,12 +11,12 @@ namespace Whalefleet.Infrastructure.Permissions;
 /// </summary>
 /// <remarks>
 /// <para><b>现状</b>：管理员对所有主机可见；非管理员一律拒绝。逐资源授权的数据基础
-/// （<c>user_host_permissions</c>）排在 0.3.0 建表，此前没有"哪些主机对该用户可见"的答案，
+/// （<c>user_host_permissions</c>）排在 0.1.0 建表，此前没有"哪些主机对该用户可见"的答案，
 /// 因此只能给一个安全的方向——<b>fail-closed</b>：拿不准就不放行。</para>
 /// <para><b>为什么不先放行</b>：放行是"零成本的错"，而它错得很隐蔽——界面一切正常，
 /// 直到某天发现普通用户能停掉生产容器。拒绝则立刻表现为 403，使用者会来问"怎么授权"，
-/// 而 0.3.0 正是回答这个问题的地方。</para>
-/// <para><b>实现为何在 Infrastructure</b>：0.3.0 起它要读权限表（依赖仓储），
+/// 而 0.1.0 正是回答这个问题的地方。</para>
+/// <para><b>实现为何在 Infrastructure</b>：0.1.0 起它要读权限表（依赖仓储），
 /// 那时就不属于应用层了；现在就放在它最终该在的位置，避免以后又一次搬迁。</para>
 /// </remarks>
 internal sealed class ResourcePermissionService : IResourcePermissionService
@@ -59,7 +59,7 @@ internal sealed class ResourcePermissionService : IResourcePermissionService
 
         throw new BusinessException(
             ErrorCodes.HostForbidden,
-            $"无权访问主机「{host.Name}」。逐资源授权将在 0.3.0 提供。");
+            $"无权访问主机「{host.Name}」。逐资源授权将在 0.1.0 提供。");
     }
 
     /// <inheritdoc />

@@ -9,7 +9,7 @@ namespace Whalefleet.Infrastructure.Persistence;
 /// 基于 <c>PRAGMA user_version</c> 的 SQLite 架构迁移器。
 /// </summary>
 /// <remarks>
-/// <para><b>为什么现在就版本化</b>：0.1.0 已承诺「SQLite schema 版本化管理（启动时检查 + 自动迁移）」。
+/// <para><b>为什么现在就版本化</b>：1.0.0 已承诺「SQLite schema 版本化管理（启动时检查 + 自动迁移）」。
 /// 先用 <c>user_version</c> 打好地基，比日后把「一堆 <c>CREATE TABLE IF NOT EXISTS</c>」
 /// 反向拆成迁移要便宜得多。</para>
 /// <para><b>版本来源</b>：嵌入资源文件名前缀（<c>0001_users.sql</c> → 版本 1）。

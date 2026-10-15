@@ -13,7 +13,7 @@ namespace Whalefleet.IntegrationTests.Infrastructure;
 /// <c>ResourcePermissionService</c> 的可见性策略。
 /// </summary>
 /// <remarks>
-/// <para>当前策略只有两条：管理员全可见；非管理员全拒绝（逐资源授权表排在 0.3.0）。</para>
+/// <para>当前策略只有两条：管理员全可见；非管理员全拒绝（逐资源授权表排在 0.1.0）。</para>
 /// <para><b>为什么专门测「拒绝」这一条</b>：它是 fail-closed 的体现——拿不准就不放行。
 /// 一旦有人为了"先把功能跑起来"把它改成放行，这套测试会立刻响；而如果没有这条用例，
 /// 那种改动不会有任何可观察的失败（界面照常工作，只是普通用户突然能停生产容器）。</para>
@@ -61,7 +61,7 @@ public class ResourcePermissionServiceTests
 
         // 使用者看到的是 403，必须能从消息里知道"这不是 bug，是还没做的功能"。
         (await act.Should().ThrowAsync<BusinessException>())
-            .Which.Message.Should().Contain("0.3.0");
+            .Which.Message.Should().Contain("0.1.0");
     }
 
     [Fact]

@@ -76,7 +76,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IDockerHostAccessor, DockerHostAccessor>();
 
         // 资源级权限校验：Scoped（角色判定来自当前请求）。当前只做 host 可见性且默认拒绝，
-        // 逐资源授权表在 0.3.0 落地后本实现改为查表。
+        // 逐资源授权表在 0.1.0 落地后本实现改为查表。
         services.AddScoped<IResourcePermissionService, ResourcePermissionService>();
 
         // 密码哈希（Argon2id）：参数越界在启动时即失败（ValidateOnStart），
