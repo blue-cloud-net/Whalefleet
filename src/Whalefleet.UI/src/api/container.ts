@@ -95,7 +95,7 @@ export interface ContainerLogsParams {
  * 读取容器日志（一次性返回整段文本）。
  *
  * **不支持实时跟随**：后端刻意没暴露 `follow`（一次性 HTTP 响应跟着日志流只会把连接挂住）。
- * 实时流属 0.3.0 的 SignalR 推送。
+ * 实时流属 0.4.0 的 SignalR 推送。
  */
 export function getContainerLogs(
   hostId: string,

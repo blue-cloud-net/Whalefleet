@@ -18,7 +18,7 @@ import type { ImagePullResult } from '@/types/api'
  *
  * ## 0.0.10 的拉取是一次性请求
  * 服务端聚合进度后一次性返回，期间 HTTP 一直挂着——所以这里只能给不确定进度
- * （转圈 + 「拉取中」）。SignalR 实时进度排 0.3.0，届时换成进度条即可，
+ * （转圈 + 「拉取中」）。SignalR 实时进度排 0.4.0，届时换成进度条即可，
  * 本对话框的对外契约（`pulled` 事件）不需要改。
  */
 const props = defineProps<{

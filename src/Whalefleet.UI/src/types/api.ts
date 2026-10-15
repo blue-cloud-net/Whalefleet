@@ -48,7 +48,7 @@ export const ErrorCode = {
   RefreshTokenRevoked: 1102,
   /** 登录速率限制（5 次/分钟） */
   LoginRateLimited: 1103,
-  /** Terminal token 无效或已过期（0.4.0） */
+  /** Terminal token 无效或已过期（0.6.0） */
   TerminalTokenInvalid: 1104,
 
   // ===== 1200-1299 用户管理 =====
@@ -121,7 +121,7 @@ export interface HostCounts {
 /**
  * 主机分组。
  *
- * **是展示信息，不是权限边界**：「谁能操作哪台主机」由 0.3.0 的资源权限表回答。
+ * **是展示信息，不是权限边界**：「谁能操作哪台主机」由 0.1.0 落地的可见性表回答。
  *
  * `name` 是管理员可改的数据（自定义分组直接展示）；三个内置分组由后端按英文标识种入
  * （`production` / `staging` / `local`），前端用 `host.group.<name>` 取 i18n 文案。
@@ -546,7 +546,7 @@ export interface UserListResult {
 /**
  * 主机分组。
  *
- * **是展示信息，不是权限边界**：「谁能操作哪台主机」由 0.3.0 的资源权限表回答。
+ * **是展示信息，不是权限边界**：「谁能操作哪台主机」由 0.1.0 落地的可见性表回答。
  *
  * `name` 是管理员输入的数据（自定义分组直接展示）；内置的三个分组由后端种入固定名
  * （`production` / `staging` / `local`），前端用 `host.group.<name>` 取 i18n 文案，

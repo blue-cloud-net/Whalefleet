@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import PageHeader from '@/components/common/PageHeader.vue'
 import PlaceholderSection from '@/components/common/PlaceholderSection.vue'
 
-/** 编排页预告（整块排在 0.4.0）。 */
+/** 编排页预告（整块排在 0.7.0）。 */
 const { t } = useI18n()
 
 const capabilities = computed(() => [
@@ -28,7 +28,7 @@ const capabilities = computed(() => [
       <PlaceholderSection
         icon="i-carbon-layers"
         :title="t('state.notImplemented')"
-        version="0.4.0"
+        version="0.7.0"
         :capabilities="capabilities"
         :note="t('page.stacks.note')"
       />
