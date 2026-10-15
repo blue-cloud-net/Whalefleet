@@ -16,7 +16,7 @@ namespace Whalefleet.Application.Abstractions;
 /// <para><b>主机标识即主机名</b>：<paramref name="hostId"/> 是 <c>DockerHost.Name</c>
 /// （不区分大小写，由数据库部分唯一索引保证唯一）。<c>DockerHost.Id</c>（<see cref="Guid"/>）
 /// 只用于权限外键与审计，<b>不</b>出现在 URL / Header 中。</para>
-/// <para><b>后续演进</b>：0.3.0 起增加资源可见性校验，接在 Api 的
+/// <para><b>后续演进</b>：0.1.0 起增加资源可见性校验，接在 Api 的
 /// <c>CurrentHostMiddleware</c>（从路由值 <c>hostId</c> 解析当前主机）之后；
 /// 本接口本身保持「解析 + 转发」这两件事。</para>
 /// </remarks>

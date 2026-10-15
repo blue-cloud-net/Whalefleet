@@ -121,7 +121,7 @@ public sealed record ContainerState(
 /// <remarks>
 /// ⚠️ <see cref="Env"/> 常含密码 / Token 之类的敏感值（很多人把连接串塞进环境变量）。
 /// 因此本投影<b>只</b>在 inspect（单容器详情）里给出，列表与列表项都不带它；
-/// 0.3.0 起接入逐资源授权后，非管理员将不再能拿到主机级详情。
+/// 0.1.0 起接入逐资源授权后，非管理员将不再能拿到主机级详情。
 /// </remarks>
 public sealed record ContainerConfigDetail(
     string Image,
@@ -176,7 +176,7 @@ public sealed record ContainerNetworkDetail(string Name, string IpAddress, strin
 /// <param name="Content">日志文本。</param>
 /// <remarks>
 /// <b>为什么是整段文本而不是行数组</b>：日志里本来就有多行堆栈，按行切开再让前端拼回去只是徒增噪音；
-/// 需要结构化时是 0.3.0 的实时流要解决的问题。
+/// 需要结构化时是 0.4.0 的实时流要解决的问题。
 /// </remarks>
 public sealed record ContainerLogsResult(string ContainerId, string Content);
 

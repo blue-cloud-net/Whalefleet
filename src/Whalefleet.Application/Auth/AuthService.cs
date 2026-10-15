@@ -283,7 +283,7 @@ public sealed class AuthService
     /// 因"令牌已经没用了"而报错只会让客户端在重试逻辑上绕圈子。</para>
     /// <para><b>不影响 access token</b>：它在到期前仍然有效（无状态 JWT 的固有性质）。
     /// 前端登出时必须同时清除本地的 access token——服务端无法让一个已签发的 JWT 立即失效
-    /// （那也是 0.3.0 才需要的"单 token 撤销"议题）。</para>
+    /// （「让单个已签发的 JWT 立即失效」是一个尚未排期的议题）。</para>
     /// </remarks>
     public async Task LogoutAsync(string? refreshToken, CancellationToken cancellationToken = default)
     {

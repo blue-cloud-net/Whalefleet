@@ -239,7 +239,7 @@ public sealed class ContainerService
     /// </exception>
     /// <remarks>
     /// <b>为什么不支持 follow</b>：一次性 HTTP 响应跟着日志流没有意义（连接会一直挂到容器退出）。
-    /// 实时日志是 0.3.0 的 SignalR 推送要解决的事。
+    /// 实时日志是 0.4.0 的 SignalR 推送要解决的事。
     /// </remarks>
     public async Task<ContainerLogsResult> GetLogsAsync(
         string hostId,

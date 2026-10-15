@@ -68,7 +68,7 @@ public sealed class HostQueryService
     /// 取它们要额外调用守护进程（版本一次、计数四次），主机一多列表就会明显变慢甚至超时。
     /// 这两项由概览接口按需取——列表只做每台一次的轻量探测。</para>
     /// <para><b>探测是并行的</b>：串行时 N 台离线主机各自等一次超时，列表页会慢到不可用。</para>
-    /// <para><b>非管理员当前拿到空列表</b>：0.3.0 的逐资源授权表落地前「哪些主机对该用户可见」
+    /// <para><b>非管理员当前拿到空列表</b>：0.1.0 的可见性表落地前「哪些主机对该用户可见」
     /// 没有答案，只能 fail-closed；空列表比 403 更合适——列表接口返回 403 会让前端的
     /// 「主机选择器」整块报错，而它本该显示「暂无可用主机」。</para>
     /// </remarks>
@@ -171,7 +171,7 @@ public sealed class HostQueryService
             exception.Code is ErrorCodes.HostUnreachable or ErrorCodes.HostDisabled)
         {
             // 离线 / 已停用是**正常状态**，要在界面上显示成「离线」而不是错误。
-            // 记 Information 而不是 Warning：主机离线本身不该触发告警（0.3.0 的健康轮询会统一处理）。
+            // 记 Information 而不是 Warning：主机离线本身不该触发告警（0.4.0 的健康轮询会统一处理）。
             _logger.LogInformation("主机 {HostName} 概览不可用：{Message}", host.Name, exception.Message);
 
             return Map(

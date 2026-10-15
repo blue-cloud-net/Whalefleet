@@ -12,10 +12,10 @@ namespace Whalefleet.Application.Abstractions;
 /// 把后者塞进角色会立刻撞上「角色不可扩展」的问题。</para>
 /// <para><b>当前的落地程度</b>：0.0.9 起已有实现（`Infrastructure/Permissions/ResourcePermissionService`），
 /// 但策略只有两条——管理员放行、非管理员一律拒绝。逐资源授权的数据基础
-/// （<c>user_host_permissions</c> / <c>user_container_permissions</c>）排在 0.3.0 建表，
+/// （<c>user_host_permissions</c> / <c>user_container_permissions</c>）排在 0.1.0（主机）/ 0.5.0（容器）建表，
 /// 在那之前「哪些主机对该用户可见」没有答案，只能 fail-closed。</para>
 /// <para><b>调用点</b>：Api 的 <c>CurrentHostMiddleware</c> 在解析主机之后调用它，
-/// 因此所有主机作用域端点自动受保护。容器 / 镜像 / Volume / Network 的细粒度校验随权限表一起在 0.3.0 补齐。</para>
+/// 因此所有主机作用域端点自动受保护。容器 / 镜像 / Volume / Network 的细粒度校验随权限表一起在 0.1.0（主机）与 0.5.0（容器）补齐。</para>
 /// </remarks>
 public interface IResourcePermissionService
 {

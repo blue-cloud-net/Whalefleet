@@ -152,7 +152,7 @@ public sealed class ImageService
     /// 主机不可达（<c>1301</c>）或超时（<c>1403</c>）。
     /// </exception>
     /// <remarks>
-    /// <b>实时进度推到 0.3.0</b>：这里只把进度写进日志，客户端在响应回来之前只能转圈。
+    /// <b>实时进度推到 0.4.0</b>：这里只把进度写进日志，客户端在响应回来之前只能转圈。
     /// 那时连同列表页与详情页一起改用 SignalR 推送。
     /// </remarks>
     public async Task<ImagePullResult> PullAsync(
@@ -178,7 +178,7 @@ public sealed class ImageService
 
         _logger.LogInformation("开始拉取镜像 {Reference}", reference);
 
-        // 认证参数传 null：0.4.0 之前没有 Registry 配置，拉的都是公开镜像。
+        // 认证参数传 null：0.3.0 之前没有 Registry 配置，拉的都是公开镜像。
         // 不能传 new AuthConfig() —— 那会被当成「空用户名 + 空密码」去认证公开仓库并失败。
         await DockerErrorTranslator.ExecuteAsync(
             () => client.Images.CreateImageAsync(parameters, authConfig: null, collector, cancellationToken),

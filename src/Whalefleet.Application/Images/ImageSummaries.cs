@@ -75,7 +75,7 @@ public sealed record ImageListResult(
 /// /// <c>{"80/tcp": {}}</c> 这种没有信息量的空对象。去重后的键列表表达得更准，
 /// 也省掉前端一层 <c>Object.keys()</c>。</para>
 /// <para><b><see cref="Env"/> 与标签同样可能含敏感值</b>（有人把构建参数写进 <c>ENV</c> 或
-/// <c>LABEL</c>）。因此本投影只在 inspect 里给出，列表项都不带；0.3.0 接入逐资源授权后，
+/// <c>LABEL</c>）。因此本投影只在 inspect 里给出，列表项都不带；0.1.0 接入逐资源授权后，
 /// 非管理员将不再能拿到镜像级详情。</para>
 /// </remarks>
 public sealed record ImageDetail(

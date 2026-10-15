@@ -55,7 +55,7 @@ public sealed class HostService
     /// <returns>主机列表，顺序为创建时间升序（同时间按名称），与仓储约定一致。</returns>
     /// <remarks>
     /// 逐台探活是<b>并行</b>的：串行时 N 台离线主机各自等一次超时，列表页会慢到不可用。
-    /// 0.3.0 起改用后台健康轮询 + 实时推送后，这里应当只读缓存状态。
+    /// 0.4.0 起改用后台健康轮询 + 实时推送后，这里应当只读缓存状态。
     /// </remarks>
     public async Task<IReadOnlyList<HostSummary>> ListAsync(CancellationToken cancellationToken = default)
     {
