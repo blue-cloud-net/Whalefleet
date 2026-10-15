@@ -96,8 +96,13 @@ public class ApiFactory : WebApplicationFactory<Program>
                 // 因此干脆关掉池化：每个连接用完即释放，测试之间自然隔离。
                 ["Persistence:Pooling"] = "false",
 
-                // JWT 签名密钥（缺失会导致启动校验失败）。
+                // JWT 签名密钥（缺失会触发启动校验失败）。
                 ["Jwt:Secret"] = TestJwtSecret,
+
+                // 关闭管理员自举：端点测试要自己建 admin / operator 来测授权，
+                // 若让宿主自举，生成的 admin 会与它们撞 users.username 唯一索引。
+                // 这是"账号由外部预置"的等效场景，与该开关的用途一致。
+                ["Admin:AutoBootstrap"] = "false",
 
                 // 认证端点测试会真实调用 Argon2；用便宜参数避免整套测试被 KDF 拖慢。
                 // 参数强度由 Argon2PasswordHasherTests 用默认值单独覆盖。

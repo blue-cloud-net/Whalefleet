@@ -6,6 +6,8 @@ using Whalefleet.Infrastructure.Security;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
@@ -172,12 +174,16 @@ public class JwtTokenServiceTests
     [Theory]
     [InlineData("too-short")]
     [InlineData("0123456789012345678901234567890")] // 31 字节，差一字节
-    [InlineData("")]
-    [InlineData(null)]
-    public void Secret_缺失或不足32字节_启动校验失败(string? secret)
+    public void Secret_显式配置但不足32字节_启动校验失败(string secret)
     {
+        // 显式给了却给得太短 = 把弱口令当签名密钥用，必须失败。
+        // （「完全没给」是另一回事：会自动生成，见下方用例。）
+        // 显式给了过短密钥时同样需要密钥存储可解析（后置配置会被构造）。
         var services = new ServiceCollection();
-        services.AddInfrastructure(BuildConfiguration(("Jwt:Secret", secret)));
+        services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
+        services.AddInfrastructure(BuildConfiguration(
+            ("Jwt:Secret", secret),
+            ("Persistence:DatabasePath", Path.Combine(Path.GetTempPath(), "whalefleet-jwt-fixture", "whalefleet.db"))));
 
         using var provider = services.BuildServiceProvider();
 
@@ -186,10 +192,171 @@ public class JwtTokenServiceTests
         act.Should().Throw<OptionsValidationException>();
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(null)]
+    public async Task Secret_未配置_自动生成且落盘复用(string? secret)
+    {
+        var directory = CreateTemporaryDirectory();
+
+        try
+        {
+            var first = ResolveIn(directory, ("Jwt:Secret", secret));
+            var second = ResolveIn(directory, ("Jwt:Secret", secret));
+
+            // 自动生成的密钥必须满足强度下限——否则校验器会挡下它，
+            // 表现为「零配置启动失败」，那正是本次改动要消除的行为。
+            first.Options.Secret.Should().NotBeNullOrWhiteSpace();
+            Encoding.UTF8.GetByteCount(first.Options.Secret!).Should().BeGreaterThanOrEqualTo(32);
+
+            // 核心契约：两次「启动」（两个独立的 ServiceProvider + 同一数据目录）
+            // 必须拿到同一份密钥，否则重启会把所有在线用户踢下线。
+            second.Options.Secret.Should().Be(first.Options.Secret);
+
+            // 文件确实写下来了，且不在临时目录之外。
+            var keyFile = Path.Combine(directory, "jwt.key");
+            File.Exists(keyFile).Should().BeTrue();
+            (await File.ReadAllTextAsync(keyFile)).Trim().Should().Be(first.Options.Secret);
+
+            // 用它签发的令牌能通过同一份配置验签。
+            var accessToken = first.Tokens.CreateAccessToken(_userId, "admin", "admin", _utcNow);
+            Validate(accessToken.Value, first.Options)
+                .FindFirst(JwtClaimNames.Subject)!.Value
+                .Should().Be(_userId.ToString("D"));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Secret_显式配置优先于磁盘上已生成的密钥()
+    {
+        var directory = CreateTemporaryDirectory();
+
+        try
+        {
+            // 先在数据目录留下一份自动生成的密钥。
+            var generated = ResolveIn(directory);
+            File.Exists(Path.Combine(directory, "jwt.key")).Should().BeTrue();
+
+            // 再显式配置：显式值必须原样生效，否则运维无法做密钥轮换或让多实例共用密钥。
+            var explicitSecret = "explicitly-configured-secret-of-sufficient-length-000";
+            var configured = ResolveIn(directory, ("Jwt:Secret", explicitSecret));
+
+            configured.Options.Secret.Should().Be(explicitSecret);
+            configured.Options.Secret.Should().NotBe(generated.Options.Secret);
+
+            // 磁盘上那份不应被覆盖——否则一次临时的手工配置会毁掉持久化的密钥。
+            File.ReadAllText(Path.Combine(directory, "jwt.key")).Trim()
+                .Should().Be(generated.Options.Secret);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Secret_磁盘上的密钥文件为空_视为不存在并重新生成()
+    {
+        var directory = CreateTemporaryDirectory();
+
+        try
+        {
+            // 进程可能在写入过程中被强杀，留下 0 字节文件。
+            // 若把它当成有效密钥，所有令牌都会被空字符串签名——那比重新生成更糟。
+            File.WriteAllText(Path.Combine(directory, "jwt.key"), String.Empty);
+
+            var resolved = ResolveIn(directory);
+
+            resolved.Options.Secret.Should().NotBeNullOrWhiteSpace();
+            Encoding.UTF8.GetByteCount(resolved.Options.Secret!).Should().BeGreaterThanOrEqualTo(32);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Secret_自动生成的文件权限为0600()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return; // Windows 无 POSIX 权限位，ACL 由目录继承，不在此断言。
+        }
+
+        var directory = CreateTemporaryDirectory();
+
+        try
+        {
+            ResolveIn(directory);
+
+            var mode = File.GetUnixFileMode(Path.Combine(directory, "jwt.key"));
+
+            // 密钥只允许属主读写：同机其他用户读到它就等于能伪造任意身份。
+            mode.Should().Be(
+                UnixFileMode.UserRead | UnixFileMode.UserWrite,
+                "密钥文件权限必须是 0600，否则同机其他用户可读取并伪造任意用户的令牌");
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static string CreateTemporaryDirectory()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "whalefleet-jwt-tests",
+            Guid.NewGuid().ToString("N"));
+
+        Directory.CreateDirectory(directory);
+
+        return directory;
+    }
+
+    private static (ITokenService Tokens, JwtOptions Options) ResolveIn(
+        string directory,
+        params (string Key, string? Value)[] settings)
+    {
+        var values = new Dictionary<string, string?>(StringComparer.Ordinal)
+        {
+            ["Persistence:DatabasePath"] = Path.Combine(directory, "whalefleet.db"),
+            ["Persistence:Pooling"] = "false",
+        };
+
+        foreach (var (key, value) in settings)
+        {
+            values[key] = value;
+        }
+
+        var services = new ServiceCollection();
+        services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
+        services.AddInfrastructure(new ConfigurationBuilder().AddInMemoryCollection(values).Build());
+
+        var provider = services.BuildServiceProvider();
+
+        return (
+            provider.GetRequiredService<ITokenService>(),
+            provider.GetRequiredService<IOptions<JwtOptions>>().Value);
+    }
+
     private static (ITokenService Tokens, JwtOptions Options) Resolve()
     {
         var services = new ServiceCollection();
-        services.AddInfrastructure(BuildConfiguration(("Jwt:Secret", _secret)));
+
+        // JwtSecretPostConfigure 依赖 SecretFileStore，后者依赖 IOptions<SqliteOptions>；
+        // 解析 JwtOptions 因此会连带触发 Persistence 的启动校验，而 DatabasePath 是必填的。
+        // 这里给一个临时路径：这些用例都显式给了密钥，密钥文件不会被真的创建。
+        services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
+        services.AddInfrastructure(BuildConfiguration(
+            ("Jwt:Secret", _secret),
+            ("Persistence:DatabasePath", Path.Combine(Path.GetTempPath(), "whalefleet-jwt-fixture", "whalefleet.db"))));
 
         var provider = services.BuildServiceProvider();
 

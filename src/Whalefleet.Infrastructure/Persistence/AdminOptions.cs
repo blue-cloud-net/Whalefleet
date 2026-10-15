@@ -7,9 +7,10 @@ namespace Whalefleet.Infrastructure.Persistence;
 /// <para><b>只在 <c>users</c> 表为空时使用</b>：一旦系统里有了账号，本节的取值就被忽略。
 /// 因此它不是一个"管理员密码配置项"，而是<b>一次性引导参数</b>——设置完成后应当从环境里移除，
 /// 避免密码长期以明文形式留在部署配置中。</para>
-/// <para><b>缺失不等于启动失败</b>：表为空且本节未配置时只记 Warning 并继续启动。
-/// 若强行要求必须配置，本地开发就得先设两个环境变量才能起服务；而"没有账号"这件事
-/// 在登录时会有明确表现为"凭据错误"，不会静默成安全漏洞。</para>
+/// <para><b>缺失时自动生成密码</b>：<c>Password</c> 为空时，
+/// <c>AdminBootstrapper</c> 会生成一个满足强度策略的随机密码并写入数据目录下的
+/// <c>initial-admin.txt</c>（权限 <c>0600</c>，<b>不进日志</b>），因此零配置即可完成部署。
+/// 只配了 <c>User</c> 而没配 <c>Password</c> 会被视为笔误：用户名回落为默认值并记 Warning。</para>
 /// </remarks>
 public sealed class AdminOptions
 {
@@ -31,6 +32,17 @@ public sealed class AdminOptions
     /// 也<b>不得</b>在日志里以结构化属性的形式传出本对象。
     /// </remarks>
     public string? Password { get; set; }
+
+    /// <summary>
+    /// 是否允许在 <c>users</c> 表为空时自动创建初始管理员。默认为 <see langword="true"/>。
+    /// </summary>
+    /// <remarks>
+    /// <para>设为 <see langword="false"/>（环境变量 <c>ADMIN__AUTOBOOTSTRAP=false</c>）可彻底关闭自举，
+    /// 此时既不会用配置的凭据创建账号，也不会自动生成密码。</para>
+    /// <para>适用场景：数据卷由外部预置（账号已随备份恢复、或由运维脚本直接写库），
+    /// 此时自举会与既有账号抢 <c>admin</c> 这个用户名而使启动失败。</para>
+    /// </remarks>
+    public bool AutoBootstrap { get; set; } = true;
 
     /// <summary>
     /// 是否两项都已提供。

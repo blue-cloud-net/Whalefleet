@@ -8,6 +8,7 @@ using Whalefleet.Infrastructure.Security;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using System.Text;
 
 namespace Whalefleet.Infrastructure.DependencyInjection;
@@ -93,14 +94,23 @@ public static class InfrastructureServiceCollectionExtensions
         // 初始管理员引导（0.0.4，原属部署迭代）：注册为单例，与 DatabaseInitializer 同属启动阶段。
         services.AddSingleton<IAdminBootstrapper, AdminBootstrapper>();
 
-        // 令牌服务（0.0.4）：HS256 签名密钥缺失或过短在启动时即失败。
-        // ⚠️ 允许 Secret 存在默认值会使生产环境"忘了配也能启动"，因此刻意只靠校验器兵它。
+        // 密钥存储（数据卷上的 jwt.key / initial-admin.txt）：无状态，Singleton。
+        // 先于 JwtOptions 注册——后置配置要在首次读取 JwtOptions.Value 时用到它。
+        services.AddSingleton<SecretFileStore>();
+        services.AddSingleton<ISecretProvider>(static provider =>
+            provider.GetRequiredService<SecretFileStore>());
+
+        // 令牌服务（0.0.4）：HS256 签名密钥优先取环境变量，缺失时自动生成并持久化到数据目录。
+        // 刻意用 IPostConfigureOptions（而非 IConfigureOptions）：它排在 Bind **之后**执行，
+        // 因此后置配置能可靠地看到"配置里到底有没有给密钥"，只在确实缺失时才补。
+        services.AddSingleton<IPostConfigureOptions<JwtOptions>, JwtSecretPostConfigure>();
+
         services
             .AddOptions<JwtOptions>()
             .Bind(configuration.GetSection(JwtOptions.SectionName))
             .Validate(
                 static options => IsValidJwtOptions(options),
-                $"Jwt:Secret 缺失或不足 {JwtOptions.MinSecretLengthBytes} 字节，或 AccessTokenLifetime / RefreshTokenLifetime 非正值")
+                $"Jwt:Secret 不足 {JwtOptions.MinSecretLengthBytes} 字节（显式配置时），或 AccessTokenLifetime / RefreshTokenLifetime 非正值")
             .ValidateOnStart();
 
         // 初始管理员引导配置（0.0.4，原属部署迭代）。
@@ -166,6 +176,11 @@ public static class InfrastructureServiceCollectionExtensions
     /// </summary>
     /// <param name="options">待校验的选项。</param>
     /// <returns>合法返回 <see langword="true"/>。</returns>
+    /// <remarks>
+    /// 密钥<b>缺失</b>不算非法：<see cref="JwtSecretPostConfigure"/> 会在校验之前把它补齐。
+    /// 但若部署方<b>显式</b>配置了一个过短的密钥，则必须失败——
+    /// 那通常是把弱口令当密钥用，静默接受等于放任签名强度不足。
+    /// </remarks>
     private static bool IsValidJwtOptions(JwtOptions options) =>
         !String.IsNullOrWhiteSpace(options.Secret)
         && Encoding.UTF8.GetByteCount(options.Secret) >= JwtOptions.MinSecretLengthBytes

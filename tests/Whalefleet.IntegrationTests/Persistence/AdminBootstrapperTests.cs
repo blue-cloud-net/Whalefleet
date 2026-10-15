@@ -1,5 +1,6 @@
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Persistence;
+using Whalefleet.Application.Security;
 using Whalefleet.Core.Users;
 using Whalefleet.Infrastructure.DependencyInjection;
 using Whalefleet.Infrastructure.Persistence;
@@ -7,7 +8,6 @@ using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Persistence;
@@ -89,30 +89,117 @@ public class AdminBootstrapperTests
     }
 
     [Fact]
-    public async Task 未配置凭据_不创建且不抛异常()
+    public async Task 未配置凭据_自动生成密码创建管理员且落盘可登录()
     {
         await using var host = await AdminTestHost.CreateAsync();
 
-        (await host.Services.GetRequiredService<IUserRepository>().QueryAllListAsync())
-            .Should().BeEmpty();
+        var users = host.Services.GetRequiredService<IUserRepository>();
+        var hasher = host.Services.GetRequiredService<IPasswordHasher>();
+
+        var admin = await users.FindByUsernameAsync("admin");
+        admin.Should().NotBeNull();
+
+        // 密码写在数据目录的凭据文件里（不进日志），且必须真的能登录。
+        var credentialPath = Path.Combine(host.DataDirectory, "initial-admin.txt");
+        File.Exists(credentialPath).Should().BeTrue();
+
+        var content = await File.ReadAllTextAsync(credentialPath);
+        var password = ExtractPassword(content);
+
+        hasher.Verify(password, admin!.PasswordHash).Should().BeTrue();
+
+        // 强度策略必须被满足——否则用户拿到密码却登不进去。
+        PasswordPolicy.IsSatisfied(password).Should().BeTrue();
+
+        // 明文密码绝不进数据库。
+        admin.PasswordHash.Should().NotContain(password);
+        admin.PasswordHash.Should().StartWith("$argon2id$");
     }
 
     [Fact]
-    public async Task 只配置用户名_视为未配置()
+    public async Task 未配置凭据时用户名回落为admin()
     {
-        await using var host = await AdminTestHost.CreateAsync(("Admin:User", "admin"));
+        await using var host = await AdminTestHost.CreateAsync();
 
-        (await host.Services.GetRequiredService<IUserRepository>().QueryAllListAsync())
-            .Should().BeEmpty();
+        (await host.Services.GetRequiredService<IUserRepository>().FindByUsernameAsync("admin"))
+            .Should().NotBeNull();
     }
 
     [Fact]
-    public async Task 只配置密码_视为未配置()
+    public async Task 只配置用户名_沿用该用户名且自动生成密码()
+    {
+        // 用户名是部署方明确表达的意图，应当被尊重；只有密码必须保密，改由生成。
+        await using var host = await AdminTestHost.CreateAsync(("Admin:User", "custom-admin"));
+
+        var users = host.Services.GetRequiredService<IUserRepository>();
+        var hasher = host.Services.GetRequiredService<IPasswordHasher>();
+
+        var custom = await users.FindByUsernameAsync("custom-admin");
+        custom.Should().NotBeNull();
+
+        // 密码是自动生成的，且确实能登录。
+        var credentialPath = Path.Combine(host.DataDirectory, "initial-admin.txt");
+        var password = ExtractPassword(await File.ReadAllTextAsync(credentialPath));
+        hasher.Verify(password, custom!.PasswordHash).Should().BeTrue();
+
+        // 默认用户名不应被创建——用户明确指定了别的名字。
+        (await users.FindByUsernameAsync("admin")).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task 只配置密码_使用该密码且用户名回落为admin()
     {
         await using var host = await AdminTestHost.CreateAsync(("Admin:Password", _strongPassword));
 
-        (await host.Services.GetRequiredService<IUserRepository>().QueryAllListAsync())
-            .Should().BeEmpty();
+        var users = host.Services.GetRequiredService<IUserRepository>();
+        var hasher = host.Services.GetRequiredService<IPasswordHasher>();
+
+        var admin = await users.FindByUsernameAsync("admin");
+        admin.Should().NotBeNull();
+        hasher.Verify(_strongPassword, admin!.PasswordHash).Should().BeTrue();
+
+        // 显式提供的密码不该被自动生成的覆盖，也就不需要写凭据文件。
+        var credentialPath = Path.Combine(host.DataDirectory, "initial-admin.txt");
+        File.Exists(credentialPath).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task 自动生成的密码不落日志()
+    {
+        // 密码只允许出现在数据目录的凭据文件里。若哪天有人图省事加了一行
+        // LogInformation("{Password}", password)，这条测试就会挡住它。
+        await using var host = await AdminTestHost.CreateAsync();
+
+        var admin = await host.Services.GetRequiredService<IUserRepository>().FindByUsernameAsync("admin");
+
+        var credentialPath = Path.Combine(host.DataDirectory, "initial-admin.txt");
+        var password = ExtractPassword(await File.ReadAllTextAsync(credentialPath));
+
+        host.CapturedLogs.Should().NotContain(password);
+        host.CapturedLogs.Should().Contain("initial-admin.txt");
+    }
+
+    [Fact]
+    public async Task 用户表已有账号时不生成凭据文件()
+    {
+        await using var host = await AdminTestHost.CreateAsync(
+            ("Admin:User", "admin"),
+            ("Admin:Password", _strongPassword));
+
+        var credentialPath = Path.Combine(host.DataDirectory, "initial-admin.txt");
+        File.Exists(credentialPath).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// 从凭据文件中取出 <c>ADMIN__PASSWORD</c> 的值。
+    /// </summary>
+    private static string ExtractPassword(string credentialContent)
+    {
+        var line = credentialContent
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .First(candidate => candidate.StartsWith("ADMIN__PASSWORD=", StringComparison.Ordinal));
+
+        return line["ADMIN__PASSWORD=".Length..].Trim();
     }
 
     [Theory]
@@ -144,20 +231,27 @@ public class AdminBootstrapperTests
     }
 
     /// <summary>
-    /// 引导测试宿主：真实 SQLite + 真实 Argon2，并在构造时依次执行数据库初始化与管理員引导。
+    /// 引导测试宿主：真实 SQLite + 真实 Argon2，并在构造时依次执行数据库初始化与管理员引导。
     /// </summary>
     private sealed class AdminTestHost : IAsyncDisposable
     {
         private readonly ServiceProvider _provider;
         private readonly string _directory;
 
-        private AdminTestHost(ServiceProvider provider, string directory)
+        private AdminTestHost(ServiceProvider provider, string directory, string capturedLogs)
         {
             _provider = provider;
             _directory = directory;
+            CapturedLogs = capturedLogs;
         }
 
         internal IServiceProvider Services => _provider;
+
+        /// <summary>数据目录（密钥与凭据文件所在处）。</summary>
+        internal string DataDirectory => _directory;
+
+        /// <summary>引导期间捕获的全部日志文本。</summary>
+        internal string CapturedLogs { get; }
 
         internal static async Task<AdminTestHost> CreateAsync(params (string Key, string Value)[] settings)
         {
@@ -186,9 +280,12 @@ public class AdminBootstrapperTests
 
             var configuration = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
 
+            var recorder = new CapturingLoggerProvider();
+
             var services = new ServiceCollection();
-            services.AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance);
-            services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
+            services.AddSingleton(recorder);
+            services.AddSingleton<ILoggerFactory>(recorder);
+            services.AddSingleton(typeof(ILogger<>), typeof(CapturingLogger<>));
             services.AddInfrastructure(configuration);
 
             var provider = services.BuildServiceProvider();
@@ -205,7 +302,7 @@ public class AdminBootstrapperTests
                 throw;
             }
 
-            return new AdminTestHost(provider, directory);
+            return new AdminTestHost(provider, directory, recorder.Text);
         }
 
         public ValueTask DisposeAsync()
@@ -219,5 +316,92 @@ public class AdminBootstrapperTests
 
             return ValueTask.CompletedTask;
         }
+    }
+
+    /// <summary>
+    /// 把日志写入内存，供「密码不得进日志」这类断言检查。
+    /// </summary>
+    /// <remarks>
+    /// 刻意在格式化消息之外<b>额外记录一次 <c>state.ToString()</c></b>：
+    /// 那正是「把 <c>LogInformation("…{Options}", options)</c> 这类整对象打出来」的常见写法，
+    /// 若只记格式化后的消息，结构化属性里的密码会漏过本测试。
+    /// </remarks>
+    public sealed class CapturingLoggerProvider : ILoggerFactory
+    {
+        private readonly List<string> _lines = [];
+
+        internal string Text => String.Join('\n', _lines);
+
+        public ILogger CreateLogger(string categoryName) => new CoreCapturingLogger(this);
+
+        public void AddProvider(ILoggerProvider provider)
+        {
+        }
+
+        public void Dispose()
+        {
+        }
+
+        internal void Write<TState>(
+            Func<TState, Exception?, string> formatter,
+            TState state,
+            Exception? exception)
+        {
+            ArgumentNullException.ThrowIfNull(formatter);
+            ArgumentNullException.ThrowIfNull(state);
+
+            _lines.Add(formatter(state, exception));
+
+            // 污染日志：让「整个 state 对象被序列化进日志」这种写法也能被断言捕获。
+            _lines.Add(state.ToString() ?? String.Empty);
+        }
+    }
+
+    /// <summary>
+    /// 非泛型的日志核心。两个泛型/非泛型外壳共享同一份缓冲。
+    /// </summary>
+    public sealed class CoreCapturingLogger : ILogger
+    {
+        private readonly CapturingLoggerProvider _provider;
+
+        internal CoreCapturingLogger(CapturingLoggerProvider provider) => _provider = provider;
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            _provider.Write(formatter, state, exception);
+    }
+
+    /// <summary>
+    /// DI 注册 <c>ILogger&lt;T&gt;</c> 时使用的泛型外壳；非泛型核心持有同一份行缓冲。
+    /// </summary>
+    /// <remarks>
+    /// 构造必须是 <b>public</b>：DI 只挑 public 构造，internal 会被当成「没有可用构造」而报
+    /// "A suitable constructor ... could not be located"。
+    /// </remarks>
+    public sealed class CapturingLogger<T> : ILogger<T>
+    {
+        private readonly CapturingLoggerProvider _provider;
+
+        public CapturingLogger(CapturingLoggerProvider provider) => _provider = provider;
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            _provider.Write(formatter, state, exception);
     }
 }
