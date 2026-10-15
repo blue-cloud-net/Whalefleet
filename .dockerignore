@@ -14,7 +14,12 @@
 **/TestResults
 **/coverage
 **/logs
-**/data
+
+# ⚠️ 本地运行期数据目录只能是**仓库根**的 /data，**绝不能写成 **/data**。
+# `src/Whalefleet.UI/src/mocks/data/` 是前端 mock 场景的**源码**，
+# 被误排除时前端构建会以 "Could not resolve './data/hosts'" 收场——
+# 而编译期没有任何提示，看起来像源码缺失而不是构建配置问题。
+/data
 
 # ---------- 版本控制与 CI ----------
 # ⚠️ 排除 .github：构建不需要 CI 配置，但 release 阶段要用到源码——
