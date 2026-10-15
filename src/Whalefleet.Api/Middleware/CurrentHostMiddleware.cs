@@ -13,13 +13,13 @@ namespace Whalefleet.Api.Middleware;
 /// 放在中间件里做，未知主机统一变成 <c>1300</c>/404、无权限统一变成 <c>1501</c>/403，
 /// 控制器可以直接信任路径里的 <c>hostId</c>，不必各自重复一遍校验。</para>
 /// <para><b>代价</b>：主机作用域的每个请求多一次按主机名的查询（<c>ux_hosts_name</c> 唯一索引命中）。
-/// 与后续真正的 Docker 调用相比可以忽略；若 0.3.0 的权限校验需要复用实体，再考虑把实体本身缓存到
+/// 与后续真正的 Docker 调用相比可以忽略；若 0.1.0 的权限校验需要复用实体，再考虑把实体本身缓存到
 /// 请求级。</para>
 /// <para><b>全局作用域不受影响</b>：没有 <c>{hostId}</c> 路由段时 <c>HostId</c> 保持
 /// <see langword="null"/>，这正是「无主机上下文」的语义（不是错误）。</para>
 /// <para><b>管道位置</b>：必须在路由匹配之后（否则读不到路由值）、在端点之前。当前实现里
 /// 由 <c>Program.cs</c> 放在 <c>UseAuthentication()</c> 之后——
-/// 这样 0.3.0 加可见性校验时能直接读 <c>HttpContext.User</c>。</para>
+/// 这样 0.1.0 加可见性校验时能直接读 <c>HttpContext.User</c>。</para>
 /// </remarks>
 internal sealed class CurrentHostMiddleware
 {

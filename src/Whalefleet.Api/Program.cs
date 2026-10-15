@@ -155,7 +155,7 @@ if (spaRoot is not null)
 }
 
 // 8) 当前主机：从路由值 hostId 解析并写入 Scoped ICurrentHost；主机不存在则 1300/404。
-//    放在鉴权之后：0.3.0 的资源可见性校验要读 HttpContext.User。
+//    放在鉴权之后：0.1.0 的资源可见性校验要读 HttpContext.User。
 //    放在 SPA 回退之后：前端的同前缀深链不是主机请求，不能让它进主机解析。
 app.UseCurrentHost();
 

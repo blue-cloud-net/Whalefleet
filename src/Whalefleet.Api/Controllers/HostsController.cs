@@ -11,7 +11,7 @@ namespace Whalefleet.Api.Controllers;
 /// <remarks>
 /// <para><b>与 <c>/api/v1/admin/hosts</c> 的分工</b>：那边是管理（增删改、凭据、测试连通性，仅管理员）；
 /// 这里是「我能用哪些主机、它们现在什么状态」，总览页与侧栏主机选择器都靠它，
-/// 因此对所有角色开放——按「当前用户可见」过滤（0.3.0 前只有管理员可见，非管理员得到空列表）。</para>
+/// 因此对所有角色开放——按「当前用户可见」过滤（0.1.0 前只有管理员可见，非管理员得到空列表）。</para>
 /// <para><b>路径里没有 <c>{hostId}</c> 的 <c>list</c></b>：这是全局作用域端点，
 /// 因此 <c>CurrentHostMiddleware</c> 不会介入；只有 <c>{hostId}/overview</c> 才受它保护。</para>
 /// </remarks>

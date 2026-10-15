@@ -21,7 +21,7 @@ public static class ApiServiceCollectionExtensions
     /// <para><b>默认拒绝</b>：当 <c>Cors:AllowedOrigins</c> 为空（默认）时，<b>不注册默认策略</b>，
     /// 因此不会发出任何 <c>Access-Control-*</c> 响应头，浏览器端等价于完全拒绝跨域。</para>
     /// <para>白名单非空时注册默认策略，并开启 <c>AllowCredentials</c>：本 API 依赖
-    /// <c>Authorization</c> 头携带 JWT，本身不需要凭据模式，但开启后可在 0.3.0 引入 SignalR
+    /// <c>Authorization</c> 头携带 JWT，本身不需要凭据模式，但开启后可在 0.4.0 引入 SignalR
     /// （JS 客户端默认 <c>withCredentials: true</c>）时无需再改配置。
     /// 由于白名单是<b>显式枚举</b>的具体 origin（而非 <c>AllowAnyOrigin</c>），
     /// 该放宽被严格限制在运营者信任的来源内。</para>

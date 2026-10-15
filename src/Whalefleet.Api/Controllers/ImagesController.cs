@@ -92,7 +92,7 @@ public sealed class ImagesController : ControllerBase
     }
 
     /// <summary>
-    /// 拉取镜像（一次性等待完成；实时进度推送属 0.3.0）。
+    /// 拉取镜像（一次性等待完成；实时进度推送属 0.4.0）。
     /// </summary>
     /// <param name="hostId">主机标识（主机名）。</param>
     /// <param name="request">拉取请求（仓库名、标签、平台）。</param>
