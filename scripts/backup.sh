@@ -22,6 +22,20 @@
 # 镜像内**已自带** sqlite3（与 curl 一起在 runtime 阶段安装），
 # 因此容器内执行无需额外准备。宿主机上跑则需要自行安装。
 #
+# ## jwt.key 也必须一并备份（重要）
+# JWT 签名密钥在未配置 JWT__SECRET 时由程序自动生成到 /app/data/jwt.key。
+# 恢复备份时若漏掉它，程序会生成一份**新**密钥，而旧密钥签发的令牌全部失效——
+# 表现为「恢复完之后所有人都被登出」，且没有任何报错。因此密钥与数据库同目录存一份。
+#
+# 密钥文件是普通文件且极小（几十字节），直接 cp 即可，无需 .backup。
+#
+# ## ⚠️ 手工恢复时的属主陷阱
+# 用 `docker cp` 把备份放进数据卷，文件会属到**执行 cp 的那个宿主机用户**（常见是 1000），
+# 而容器内 app 用户是 10001。jwt.key 是 0600，于是 app 读不到它 → 启动直接失败：
+#   Permission denied / unable to open database file
+# 恢复后必须改回属主（或直接在容器内 cp，容器内 cp 会落到 app 用户）：
+#   docker exec -u 0 whalefleet chown 10001:10001 /app/data/jwt.key /app/data/whalefleet.db
+#
 # ## 用法
 #   # 容器内执行（推荐：镜像已含 sqlite3）
 #   docker compose exec whalefleet bash /app/scripts/backup.sh
@@ -47,6 +61,9 @@ set -Eeuo pipefail
 # ---------------------------------------------------------------------------
 DB_PATH="${WHALEFLEET_DB:-/app/data/whalefleet.db}"
 BACKUP_DIR="${WHALEFLEET_BACKUP_DIR:-/app/data/backups}"
+# JWT 签名密钥。它与数据库同目录，但**不是**数据库文件，因此不能靠 .backup 带出。
+# 路径由 DB_PATH 推导，保证两者永远在同一目录。
+JWT_SECRET_PATH="${WHALEFLEET_JWT_SECRET:-$(dirname "${DB_PATH}")/jwt.key}"
 # 保留最近多少份。备份的意义在于「出事后手边有东西」，
 # 留 14 份 ≈ 两周的每日备份；再多通常只是占满磁盘。
 KEEP="${WHALEFLEET_BACKUP_KEEP:-14}"
@@ -105,6 +122,20 @@ fi
 log "完整性检查通过"
 
 # ---------------------------------------------------------------------------
+# JWT 签名密钥
+# ---------------------------------------------------------------------------
+# 放在 .backup **之后**：先保证数据库快照成功，再处理附属文件。
+# 密钥丢失的代价（全员登出）小于数据库丢失，但也不该让前者拖垮后者。
+if [[ -f "${JWT_SECRET_PATH}" ]]; then
+  cp -p "${JWT_SECRET_PATH}" "${BACKUP_FILE}.jwt.key"
+  chmod 600 "${BACKUP_FILE}.jwt.key"
+  log "已备份 JWT 签名密钥 ${BACKUP_FILE}.jwt.key"
+else
+  # 缺失只说明部署方显式配了 JWT__SECRET（密钥不在文件里），不是错误。
+  log "未找到 ${JWT_SECRET_PATH}，跳过（显式配置 JWT__SECRET 时本就没有该文件）"
+fi
+
+# ---------------------------------------------------------------------------
 # 轮转清理
 # ---------------------------------------------------------------------------
 # 用「按文件名排序」而非 mtime：文件名含时间戳，排序结果与时间一致，
@@ -113,6 +144,8 @@ mapfile -t OLD < <(find "${BACKUP_DIR}" -maxdepth 1 -type f -name 'whalefleet-*.
 REMOVED=0
 for (( i=KEEP; i<${#OLD[@]}; i++ )); do
   rm -f "${OLD[i]}"
+  # 密钥副本与数据库快照同名对应，必须一起清，否则会残留一批无主密钥。
+  rm -f "${OLD[i]}.jwt.key"
   REMOVED=$((REMOVED + 1))
 done
 [[ ${REMOVED} -gt 0 ]] && log "已清理 ${REMOVED} 份旧备份（保留最近 ${KEEP} 份）"
