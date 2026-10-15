@@ -397,3 +397,11 @@ FodyWeavers.xsd
 # JetBrains Rider
 *.sln.iml
 .idea/
+
+# ---------- 部署密钥 ----------
+# .env 里放的是 JWT 签名密钥与初始管理员密码，**绝不能进版本库**。
+# ⚠️ .dockerignore 只挡镜像、不挡 git：漏掉这里，一次 `git add .` 就会把
+#    密钥连同历史一起提交，事后只能靠改密钥 + 清历史来补救。
+.env
+.env.*
+!.env.example

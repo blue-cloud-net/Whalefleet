@@ -2,7 +2,7 @@
 # Whalefleet — 部署示例
 # ============================================================================
 # **两种模式都在下面，默认启用第 2 种（socket-proxy，推荐）。**
-# 切换方式：注释掉一个 service 块。
+# 切换方式：用 --profile direct 指定模式（不能靠注释掉其中一个）。
 #
 #   1. direct  —— 直挂 Docker socket。功能完整，但等价于把宿主机 root 权限
 #                 交给容器内任何进程（含本项目自身与将来任何拉进来的依赖）。
@@ -15,25 +15,33 @@
 #    真正的收益是「应用容器的代码 / 一个被攻破的依赖」无法直接触碰 socket，
 #    攻击面从「所有容器」缩小到「代理容器」这一个极小的、无业务代码的容器。
 #
-# 启动：
+# 启动（**零配置**，无需先建 .env）：
 #   docker compose up -d
 #   docker compose logs -f
+#   docker compose exec whalefleet cat /app/data/initial-admin.txt
+#
+# 换成直挂 socket 模式：
+#   docker compose down && docker compose --profile direct up -d
+#   docker compose exec direct cat /app/data/initial-admin.txt
 # ============================================================================
 
 name: whalefleet
 
 services:
   # ------------------------------------------------------------------
-  # 模式 1：直挂 socket（不推荐）
+  # 模式 1：直挂 socket
   # ------------------------------------------------------------------
   # ⚠️ 本 service 带 `direct` profile，**默认不启动**。
   #    启用方式：docker compose --profile direct up -d
-  #    两个模式共用 container_name，若同时启动会直接冲突——
-  #    所以必须靠 profile 隔离，不能靠注释掉其中一个。
   direct:
     profiles: ["direct"]
     image: ${WHALEFLEET_IMAGE:-whalefleet:local}
-    container_name: whalefleet
+    # ⚠️ 刻意**不**写 container_name。compose 在解析配置时就会校验
+    # container_name 全局唯一，而 proxy 没有 profile（默认总是启用），
+    # 两个 service 同名会让 `docker compose --profile direct up -d` 直接报
+    # 'container name "whalefleet" is already in use' 而一个容器都起不来。
+    # 需要按名字 exec 时用 `docker compose exec direct ...`，或
+    # `docker compose ps` 查实际生成的 <项目>-direct-1。
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -48,21 +56,34 @@ services:
       - whalefleet-data:/app/data
     environment:
       # 初始管理员：仅在 users 表为空时创建，之后改环境变量无效。
-      # ⚠️ 必须用强密码——校验不通过会直接启动失败（这是有意的）。
-      ADMIN__USER: admin
-      ADMIN__PASSWORD: ${ADMIN__PASSWORD:?请在 .env 中设置 ADMIN__PASSWORD}
-      # JWT 签名密钥。缺失或过短会导致启动失败。
-      # 用下面这行生成：openssl rand -base64 48
-      JWT__SECRET: ${JWT__SECRET:?请在 .env 中设置 JWT__SECRET}
+      # ⚠️ 三项**全部可选**，不填也能启动：
+      #   · 不填 → 自动生成随机密码，写到 /app/data/initial-admin.txt（不进日志）
+      #   · 填了 → 用你指定的，但密码仍必须满足强度要求，否则启动失败
+      # 查看自动生成的密码：docker compose exec whalefleet cat /app/data/initial-admin.txt
+      # JWT__SECRET 同理：不填则首次启动自动生成到 /app/data/jwt.key 并此后复用；
+      # 填了则以你给的为准（多实例共用同一密钥、密钥轮换时才需要）。
+      ADMIN__USER: ${ADMIN__USER:-admin}
+      ADMIN__PASSWORD: ${ADMIN__PASSWORD:-}
+      JWT__SECRET: ${JWT__SECRET:-}
       TZ: ${TZ:-UTC}
+    # ⚠️ 宿主机 socket 通常是 srw-rw---- root:docker，而镜像内 app 用户（UID 10001）
+    #    不在该组 → 直接连会报 "无法连接 Docker 守护进程"(1301)。
+    #    这里补上宿主机 docker 组的 GID 才能真正连上。
+    #    取值：stat -c '%g' /var/run/docker.sock
+    group_add:
+      - "${DOCKER_GID:-983}"
 
   # ------------------------------------------------------------------
-  # 模式 2：socket-proxy（推荐）
+  # 模式 2：socket-proxy（默认启用）
   # ------------------------------------------------------------------
-  # ⚠️ 默认启用的模式。启用另一模式需加 --profile direct 并停掉本模式，
-  #    两者共用 container_name，无法共存。
+  # 切换到另一种模式：先 docker compose down，再
+  #   docker compose --profile direct up -d
+  # 两者共用同一个数据卷与同一个 8080 端口，无法共存。
   proxy:
     image: ${WHALEFLEET_IMAGE:-whalefleet:local}
+    # ⚠️ 这里保留 container_name 是有意的：它是默认模式，
+    #    `docker compose exec whalefleet ...` 这类命令在文档与 backup.sh 里被大量使用。
+    #    direct 模式必须不写（见该 service 的注释）。
     container_name: whalefleet
     restart: unless-stopped
     ports:
@@ -70,9 +91,9 @@ services:
     volumes:
       - whalefleet-data:/app/data
     environment:
-      ADMIN__USER: admin
-      ADMIN__PASSWORD: ${ADMIN__PASSWORD:?请在 .env 中设置 ADMIN__PASSWORD}
-      JWT__SECRET: ${JWT__SECRET:?请在 .env 中设置 JWT__SECRET}
+      ADMIN__USER: ${ADMIN__USER:-admin}
+      ADMIN__PASSWORD: ${ADMIN__PASSWORD:-}
+      JWT__SECRET: ${JWT__SECRET:-}
       TZ: ${TZ:-UTC}
       # 指向代理容器的服务名与端口，而不是 socket 路径。
       # 主机侧的连接信息是**数据**（存 hosts 表），不在这里配置——
@@ -83,6 +104,9 @@ services:
     image: tecnativa/docker-socket-proxy:latest
     container_name: whalefleet-socket-proxy
     restart: unless-stopped
+    # 同理：socket-proxy 容器内跑的是 haproxy，它的用户同样可能不在宿主机 docker 组。
+    group_add:
+      - "${DOCKER_GID:-983}"
     environment:
       # 只授予本项目实际用到的子集。删掉任意一项前请先确认没有功能依赖它：
       #   CONTAINERS : 容器列表 / 启停 / 删 / 建
