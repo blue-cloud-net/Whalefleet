@@ -13,6 +13,11 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { mockServer } from '../src/mocks/node'
 import { setMockScenario } from '../src/mocks/index'
 import { ERROR_HTTP_STATUS, ERROR_MESSAGES, ErrorCode, httpStatusOf } from '../src/mocks/envelope'
+import { resetSessionContainers } from '../src/mocks/handlers/containers'
+import { resetSessionHosts } from '../src/mocks/handlers/hosts'
+import { resetSessionImages } from '../src/mocks/handlers/images'
+import { resetSessionRoles } from '../src/mocks/handlers/permissions'
+import { resetSessionUsers } from '../src/mocks/handlers/users'
 import type { HostOverview } from '../src/types/api'
 
 /**
@@ -31,6 +36,15 @@ beforeAll(() => mockServer.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
   mockServer.resetHandlers()
   setMockScenario('default')
+
+  // ⚠️ `resetHandlers()` 只还原 handler，**不还原 handler 里的会话态**
+  // （模块级 Map / Set）。不清的话，「撤销权限」这类写操作会漏到下一个用例，
+  // 症状是随机顺序下某条用例莫名失败——而且越靠后的用例越容易被污染。
+  resetSessionContainers()
+  resetSessionHosts()
+  resetSessionImages()
+  resetSessionRoles()
+  resetSessionUsers()
 })
 afterAll(() => mockServer.close())
 
@@ -103,6 +117,13 @@ describe('错误码 → HTTP 状态码（与后端 ErrorCodeCatalog + ErrorHttpS
     [1500, 403],
     [1501, 403],
     [1502, 403],
+    [1503, 404],
+    [1510, 404],
+    [1511, 400],
+    [1512, 400],
+    [1513, 400],
+    [1514, 400],
+    [1515, 404],
     [9999, 500]
   ]
 
@@ -217,7 +238,9 @@ describe('令牌轮换语义（前端最容易写错的地方）', () => {
     expect(typeof result.expiresIn).toBe('number')
     const user = result.user as Record<string, unknown>
     expect(typeof user.username).toBe('string')
-    expect(typeof user.role).toBe('string')
+    // 0.1.0 起是**角色数组 + 全局有效权限集**，不再是单值 role
+    expect(Array.isArray(user.roles)).toBe(true)
+    expect(Array.isArray(user.permissions)).toBe(true)
   })
 })
 
@@ -623,8 +646,8 @@ describe('用户管理端点', () => {
     })
 
     expect(created.status).toBe(200)
-    // 省略 role 时取默认角色（当前为 auditor）
-    expect((created.json.data as { role: string }).role).toBe('auditor')
+    // 省略 role 时取**默认角色**（由角色自身的 isDefault 决定，当前为 auditor）
+    expect((created.json.data as { roles: string[] }).roles).toEqual(['auditor'])
 
     const list = await post('/api/v1/admin/users/list', {})
     expect(
@@ -649,9 +672,9 @@ describe('用户管理端点', () => {
   it('删除最后一个管理员 → 1000 / 400', async () => {
     // 先把唯一的管理员之外没有其他 admin，因此删它必然命中「最后一个管理员」
     const list = await post('/api/v1/admin/users/list', {})
-    const admins = (list.json.data as { items: { id: string; role: string }[] }).items.filter(
-      (user) => user.role === 'admin'
-    )
+    const admins = (
+      list.json.data as { items: { id: string; roles: string[] }[] }
+    ).items.filter((user) => user.roles.includes('admin'))
 
     expect(admins).toHaveLength(1)
 
@@ -841,5 +864,484 @@ describe('主机管理端点', () => {
     })
 
     expect(reachable.json.data).toBe(true)
+  })
+})
+
+describe('批量删除端点（0.1.0）', () => {
+  /** 后端上限 100，超出会是整批 1000 而不是逐条失败。 */
+  const overLimit = Array.from({ length: 101 }, (_, index) => `c${index}`)
+
+  it('入参为空 → 1000 / 400（整批失败，与逐条失败形态不同）', async () => {
+    const containers = await post('/api/v1/hosts/local/containers/batch-remove', {
+      containerIds: []
+    })
+    expect(containers.status).toBe(400)
+    expect(containers.json.code).toBe(ErrorCode.ValidationFailed)
+
+    const images = await post('/api/v1/hosts/local/images/batch-remove', { imageIds: [] })
+    expect(images.status).toBe(400)
+    expect(images.json.code).toBe(ErrorCode.ValidationFailed)
+  })
+
+  it('列表全为空串 → 1000 / 400', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/containers/batch-remove', {
+      containerIds: ['  ', '', '\t']
+    })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.ValidationFailed)
+  })
+
+  it('超过 100 条 → 1000 / 400', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/containers/batch-remove', {
+      containerIds: overLimit
+    })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.ValidationFailed)
+    expect(json.message).toContain('100')
+  })
+
+  it('重复 ID 按去重后的个数统计（否则界面会显示「成功 0、失败 2」）', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/containers/batch-remove', {
+      containerIds: ['ghost-batch', 'ghost-batch', ' ghost-batch ']
+    })
+
+    expect(status).toBe(200)
+
+    const result = json.data as { requested: number; succeeded: number }
+    expect(result.requested).toBe(1)
+    expect(result.succeeded).toBe(0)
+  })
+
+  it('部分成功也是 200，失败逐条带容器 ID 与错误码', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/containers/batch-remove', {
+      containerIds: ['ghost-a', 'ghost-b']
+    })
+
+    // 关键：全部失败**也**是 200。若这里是 4xx，界面就只能弹一个笼统的错误框
+    expect(status).toBe(200)
+
+    const result = json.data as {
+      requested: number
+      succeeded: number
+      failures: { resourceId: string; code: number; message: string }[]
+    }
+
+    expect(result.requested).toBe(2)
+    expect(result.succeeded).toBe(0)
+    expect(result.failures).toHaveLength(2)
+    expect(result.failures.map((failure) => failure.resourceId)).toEqual(['ghost-a', 'ghost-b'])
+    // 错误码必须与单条端点一致（1401），界面才能复用同一套文案
+    expect(result.failures.every((failure) => failure.code === ErrorCode.DockerResourceNotFound)).toBe(
+      true
+    )
+  })
+
+  it('不带 force 删除运行中的容器 → 该条失败 1404，其余照常成功', async () => {
+    const list = await post('/api/v1/hosts/local/containers/list', { all: true })
+    const items = (list.json.data as { items: { id: string; state: string }[] }).items
+    const running = items.find((item) => item.state === 'running')
+    const stopped = items.find((item) => item.state !== 'running')
+
+    if (running === undefined || stopped === undefined) {
+      // 夹具里没有「一运行一停止」的组合：前提不成立，跳过而不是假装通过
+      return
+    }
+
+    const { status, json } = await post('/api/v1/hosts/local/containers/batch-remove', {
+      containerIds: [running.id, stopped.id]
+    })
+
+    expect(status).toBe(200)
+
+    const result = json.data as {
+      succeeded: number
+      failures: { resourceId: string; code: number }[]
+    }
+
+    // 关键：已停止的那个**必须真的删掉**，而不是因为同批里有一条失败就整批中止
+    expect(result.succeeded).toBe(1)
+    expect(result.failures).toHaveLength(1)
+    expect(result.failures[0].resourceId).toBe(running.id)
+    expect(result.failures[0].code).toBe(ErrorCode.DockerResourceConflict)
+
+    const after = await post('/api/v1/hosts/local/containers/list', { all: true })
+    expect((after.json.data as { items: { id: string }[] }).items.map((i) => i.id)).not.toContain(
+      stopped.id
+    )
+  })
+
+  it('镜像批量删除同样返回逐条失败', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/images/batch-remove', {
+      imageIds: ['ghost-image:latest']
+    })
+
+    expect(status).toBe(200)
+
+    const result = json.data as { requested: number; failures: { code: number }[] }
+    expect(result.requested).toBe(1)
+    expect(result.failures[0].code).toBe(ErrorCode.DockerResourceNotFound)
+  })
+
+  it('主机不存在 → 1300 / 404（整批失败）', async () => {
+    const { status, json } = await post('/api/v1/hosts/nope/containers/batch-remove', {
+      containerIds: ['anything']
+    })
+
+    expect(status).toBe(404)
+    expect(json.code).toBe(ErrorCode.HostNotFound)
+  })
+})
+
+describe('角色与权限目录端点（0.1.0）', () => {
+  const ADMIN_ROLE = '00000000-0000-0000-0000-0000000000a1'
+  const AUDITOR_ROLE = '00000000-0000-0000-0000-0000000000a4'
+  const DEPLOYER_ROLE = '00000000-0000-0000-0000-0000000000c1'
+
+  it('角色列表返回**普通数组**（不是分页信封），字段与 RoleSummary 对齐', async () => {
+    const { status, json } = await post('/api/v1/admin/roles/list')
+
+    expect(status).toBe(200)
+    expect(Array.isArray(json.data)).toBe(true)
+
+    const roles = json.data as {
+      id: string
+      name: string
+      displayName: string | null
+      description: string | null
+      isBuiltIn: boolean
+      isDefault: boolean
+      permissions: string[]
+      assignmentCount: number
+    }[]
+
+    // 夹具里的五个角色（四个内置 + 一个自定义）
+    expect(roles.map((role) => role.name)).toEqual([
+      'admin',
+      'operator',
+      'viewer',
+      'auditor',
+      'deployer'
+    ])
+
+    const admin = roles.find((role) => role.name === 'admin')!
+    expect(admin.isBuiltIn).toBe(true)
+    expect(admin.permissions).toHaveLength(16)
+    expect(typeof admin.assignmentCount).toBe('number')
+
+    // 全库至多一个默认角色
+    expect(roles.filter((role) => role.isDefault).map((role) => role.name)).toEqual(['auditor'])
+  })
+
+  it('customOnly=true 只返回自定义角色', async () => {
+    const { json } = await post('/api/v1/admin/roles/list', { customOnly: true })
+
+    const roles = json.data as { name: string; isBuiltIn: boolean }[]
+    expect(roles.map((role) => role.name)).toEqual(['deployer'])
+    expect(roles.every((role) => !role.isBuiltIn)).toBe(true)
+  })
+
+  it('权限目录共 16 条，Host 域在前、Global 在后（矩阵的分组顺序就来自它）', async () => {
+    const { status, json } = await post('/api/v1/admin/roles/permissions')
+
+    expect(status).toBe(200)
+
+    const permissions = json.data as {
+      name: string
+      domain: string
+      level: string
+      scope: string
+    }[]
+
+    expect(permissions).toHaveLength(16)
+    expect(permissions[0].name).toBe('host.read')
+    expect(permissions.at(-1)!.name).toBe('audit.read')
+    // 作用域是判定依据：host.manage 与 host.read 前缀相同、作用域完全不同
+    expect(permissions.find((item) => item.name === 'host.manage')!.scope).toBe('global')
+    expect(permissions.find((item) => item.name === 'host.read')!.scope).toBe('host')
+  })
+
+  it('角色名重复 → 1511 / 400（且不区分大小写）', async () => {
+    const { status, json } = await post('/api/v1/admin/roles/create', {
+      name: 'Deployer',
+      displayName: '重复'
+    })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.RoleNameAlreadyExists)
+  })
+
+  it('未知权限名 → 1000 / 400，且不落库', async () => {
+    const { status, json } = await post('/api/v1/admin/roles/create', {
+      name: 'audit-only',
+      displayName: '审计专用',
+      permissions: ['root']
+    })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.ValidationFailed)
+
+    // 校验必须在写库之前：非法输入不允许留下「待修正」的角色
+    const after = await post('/api/v1/admin/roles/list')
+    expect((after.json.data as { name: string }[]).some((role) => role.name === 'audit-only')).toBe(
+      false
+    )
+  })
+
+  it('新建的角色立即出现在列表里（否则界面会「创建成功但看不到」）', async () => {
+    const created = await post('/api/v1/admin/roles/create', {
+      name: 'maintainer',
+      displayName: '维护',
+      permissions: ['host.read', 'container.read']
+    })
+
+    expect(created.status).toBe(200)
+
+    const { json } = await post('/api/v1/admin/roles/list')
+    const names = (json.data as { name: string }[]).map((role) => role.name)
+    expect(names).toContain('maintainer')
+  })
+
+  it('内置角色的可读信息**可以**改（受保护的是权限集与删除）', async () => {
+    const { status } = await post('/api/v1/admin/roles/update', {
+      roleId: AUDITOR_ROLE,
+      displayName: '审计员',
+      description: '只读 + 审计'
+    })
+
+    expect(status).toBe(200)
+  })
+
+  it('内置角色的权限集不可改 → 1513 / 400', async () => {
+    const { status, json } = await post('/api/v1/admin/roles/set-permissions', {
+      roleId: AUDITOR_ROLE,
+      permissions: ['audit.read']
+    })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.RoleProtected)
+  })
+
+  it('内置角色不可删 → 1513 / 400', async () => {
+    const { status, json } = await post('/api/v1/admin/roles/remove', { roleId: ADMIN_ROLE })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.RoleProtected)
+  })
+
+  it('仍有有效分配的角色不可删 → 1512 / 400（不级联撤销）', async () => {
+    // ⚠️ 必须用**自定义**角色：内置角色在权限集 / 删除上先被 1513 拦住，
+    // 用内置角色测 1512 永远看不到那条分支。deployer 夹具里被 deployer-bot 全局持有。
+    const { status, json } = await post('/api/v1/admin/roles/remove', {
+      roleId: DEPLOYER_ROLE
+    })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.RoleInUse)
+  })
+
+  it('自定义角色在分配撤销后可以删除', async () => {
+    // deployer 夹具里正被 deployer-bot 全局持有 → 先撤销再删
+    await post('/api/v1/admin/users/00000000-0000-0000-0000-0000000000b4/roles/revoke', {
+      roleId: DEPLOYER_ROLE,
+      host: null
+    })
+
+    const { status } = await post('/api/v1/admin/roles/remove', { roleId: DEPLOYER_ROLE })
+    expect(status).toBe(200)
+
+    const after = await post('/api/v1/admin/roles/list')
+    expect((after.json.data as { name: string }[]).some((role) => role.name === 'deployer')).toBe(
+      false
+    )
+  })
+
+  it('set-permissions 是覆盖语义（没给的不再保留）', async () => {
+    await post('/api/v1/admin/roles/create', {
+      name: 'ops-lite',
+      displayName: '轻运维',
+      permissions: ['host.read', 'container.read']
+    })
+
+    const before = await post('/api/v1/admin/roles/list')
+    const target = (before.json.data as { id: string; name: string }[]).find(
+      (role) => role.name === 'ops-lite'
+    )!
+
+    await post('/api/v1/admin/roles/set-permissions', {
+      roleId: target.id,
+      permissions: ['image.read']
+    })
+
+    const after = await post('/api/v1/admin/roles/list')
+    const updated = (after.json.data as { id: string; permissions: string[] }[]).find(
+      (role) => role.id === target.id
+    )!
+
+    expect(updated.permissions).toEqual(['image.read'])
+  })
+
+  it('set-default 保证全库至多一个默认角色', async () => {
+    await post('/api/v1/admin/roles/set-default', { roleId: DEPLOYER_ROLE })
+
+    const { json } = await post('/api/v1/admin/roles/list')
+    const defaults = (json.data as { name: string; isDefault: boolean }[]).filter(
+      (role) => role.isDefault
+    )
+
+    expect(defaults.map((role) => role.name)).toEqual(['deployer'])
+  })
+
+  it('角色不存在 → 1510 / 404', async () => {
+    const { status, json } = await post('/api/v1/admin/roles/set-permissions', {
+      roleId: '00000000-0000-0000-0000-0000000000ff',
+      permissions: ['host.read']
+    })
+
+    expect(status).toBe(404)
+    expect(json.code).toBe(ErrorCode.RoleNotFound)
+  })
+
+  it('既没给 roleId 也没给 role → 1000 / 400（定位条件缺失与「不存在」不同）', async () => {
+    const { status, json } = await post('/api/v1/admin/roles/set-permissions', {
+      permissions: ['host.read']
+    })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.ValidationFailed)
+  })
+})
+
+describe('角色分配端点（0.1.0）', () => {
+  const OPERATOR_ROLE = '00000000-0000-0000-0000-0000000000a2'
+  const VIEWER_ROLE = '00000000-0000-0000-0000-0000000000a3'
+  const OPS = '00000000-0000-0000-0000-0000000000b2'
+  const LI = '00000000-0000-0000-0000-0000000000b3'
+
+  it('用户视角的 list 同时带出全局分配与主机分配', async () => {
+    const { status, json } = await post(`/api/v1/admin/users/${OPS}/roles/list`)
+
+    expect(status).toBe(200)
+
+    const assignments = json.data as {
+      userId: string
+      role: string
+      hostId: string | null
+      hostName: string | null
+    }[]
+
+    // ops-zhang：全局 operator + staging-01 上的 viewer
+    expect(assignments).toHaveLength(2)
+    expect(assignments.some((item) => item.hostId === null && item.hostName === null)).toBe(true)
+    expect(assignments.some((item) => item.hostName === 'staging-01')).toBe(true)
+  })
+
+  it('主机视角的 list **不含全局分配**（它对所有主机生效、无法归属到某一台）', async () => {
+    const { status, json } = await post('/api/v1/admin/hosts/prod-01/roles/list')
+
+    expect(status).toBe(200)
+
+    const assignments = json.data as { username: string; hostName: string }[]
+
+    // prod-01 上只有 readonly-li 的 viewer；ops-zhang 的分配在 staging-01 上
+    expect(assignments.map((item) => item.username)).toEqual(['readonly-li'])
+    expect(assignments[0].hostName).toBe('prod-01')
+  })
+
+  it('主机视角的 list 带 userId 即按人过滤；用户不存在 → 1201 / 404', async () => {
+    const filtered = await post('/api/v1/admin/hosts/staging-01/roles/list', { userId: OPS })
+    expect((filtered.json.data as unknown[])).toHaveLength(1)
+
+    const missing = await post('/api/v1/admin/hosts/staging-01/roles/list', {
+      userId: '00000000-0000-0000-0000-999999999999'
+    })
+
+    expect(missing.status).toBe(404)
+    expect(missing.json.code).toBe(ErrorCode.UserNotFound)
+  })
+
+  it('主机不存在 → 1300 / 404', async () => {
+    const { status, json } = await post('/api/v1/admin/hosts/nope/roles/list')
+
+    expect(status).toBe(404)
+    expect(json.code).toBe(ErrorCode.HostNotFound)
+  })
+
+  it('分配是幂等的：重复分配返回同一条记录（主键不变）', async () => {
+    const first = await post(`/api/v1/admin/hosts/prod-01/roles/assign`, {
+      userId: LI,
+      roleId: OPERATOR_ROLE
+    })
+    const second = await post(`/api/v1/admin/hosts/prod-01/roles/assign`, {
+      userId: LI,
+      roleId: OPERATOR_ROLE
+    })
+
+    expect(first.status).toBe(200)
+    expect((first.json.data as { id: string }).id).toBe((second.json.data as { id: string }).id)
+  })
+
+  it('同一用户在同一台主机上可以持有多个角色（有效权限取并集）', async () => {
+    // readonly-li 夹具里已在 prod-01 上是 viewer，再补一个 operator
+    await post(`/api/v1/admin/hosts/prod-01/roles/assign`, {
+      userId: LI,
+      roleId: OPERATOR_ROLE
+    })
+
+    const { json } = await post('/api/v1/admin/hosts/prod-01/roles/list', { userId: LI })
+    const assignments = json.data as { role: string }[]
+
+    expect(assignments.map((item) => item.role).sort()).toEqual(['operator', 'viewer'])
+  })
+
+  it('用户视角的 assign 省略 host 即全局分配（与主机分配严格区分）', async () => {
+    await post(`/api/v1/admin/users/${LI}/roles/assign`, { roleId: VIEWER_ROLE })
+
+    const { json } = await post(`/api/v1/admin/users/${LI}/roles/list`)
+    const assignments = json.data as { roleId: string; hostId: string | null }[]
+
+    const global = assignments.filter((item) => item.hostId === null)
+    expect(global.map((item) => item.roleId)).toContain(VIEWER_ROLE)
+  })
+
+  it('撤销不存在的分配 → 1515 / 404', async () => {
+    const { status, json } = await post(`/api/v1/admin/users/${LI}/roles/revoke`, {
+      roleId: OPERATOR_ROLE,
+      host: null
+    })
+
+    expect(status).toBe(404)
+    expect(json.code).toBe(ErrorCode.RoleAssignmentNotFound)
+  })
+
+  it('撤销走软删除：撤销后可以重新分配同一组合', async () => {
+    const revoke = await post(`/api/v1/admin/users/${OPS}/roles/revoke`, {
+      roleId: OPERATOR_ROLE,
+      host: null
+    })
+    expect(revoke.status).toBe(200)
+
+    const reassign = await post(`/api/v1/admin/users/${OPS}/roles/assign`, {
+      roleId: OPERATOR_ROLE
+    })
+    expect(reassign.status).toBe(200)
+
+    const { json } = await post(`/api/v1/admin/users/${OPS}/roles/list`)
+    expect(
+      (json.data as { roleId: string; hostId: string | null }[]).some(
+        (item) => item.roleId === OPERATOR_ROLE && item.hostId === null
+      )
+    ).toBe(true)
+  })
+
+  it('角色不存在 → 1510 / 404（分配端点也要报对错误码）', async () => {
+    const { status, json } = await post('/api/v1/admin/hosts/prod-01/roles/assign', {
+      userId: LI,
+      roleId: '00000000-0000-0000-0000-0000000000ff'
+    })
+
+    expect(status).toBe(404)
+    expect(json.code).toBe(ErrorCode.RoleNotFound)
   })
 })

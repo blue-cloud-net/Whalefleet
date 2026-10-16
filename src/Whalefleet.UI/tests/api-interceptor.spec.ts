@@ -40,7 +40,7 @@ function tokenPair(accessToken: string, refreshToken: string): LoginResult {
     accessToken,
     refreshToken,
     expiresIn: 900,
-    user: { id: 'u-1', username: 'admin', role: 'admin' }
+    user: { id: 'u-1', username: 'admin', roles: ['admin'], permissions: ['audit.read'] }
   }
 }
 

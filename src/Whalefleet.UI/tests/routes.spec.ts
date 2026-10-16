@@ -21,6 +21,25 @@ describe('路由表', () => {
     expect(hosts?.meta?.requiresAdmin).toBe(true)
   })
 
+  it('roles 与 users / hosts 同属管理组，且图标进 safelist', () => {
+    const roles = children().find((r) => r.name === 'roles')
+
+    expect(roles?.meta?.requiresAdmin).toBe(true)
+    expect(roles?.meta?.scope).toBe('global')
+    expect(roles?.meta?.group).toBe('manage')
+    // 图标写作动态字符串，UnoCSS 扫不到，必须与路由一起进 safelist
+    // （`uno.config.ts` 的 collectRouteIcons 自动收集）
+    expect(roles?.meta?.icon).toBe('i-carbon-user-role')
+  })
+
+  it('管理组菜单顺序：主机 → 用户 → 角色（日常动线是「看人再建角色」）', () => {
+    const manage = children()
+      .filter((r) => r.meta?.scope !== 'host' && r.meta?.group === 'manage')
+      .map((r) => r.name)
+
+    expect(manage).toEqual(['hosts', 'users', 'roles'])
+  })
+
   it('全局作用域：overview 与 settings 存在且 scope=global', () => {
     const overview = children().find((r) => r.name === 'overview')
     const settings = children().find((r) => r.name === 'settings')

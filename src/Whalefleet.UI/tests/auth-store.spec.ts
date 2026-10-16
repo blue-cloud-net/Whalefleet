@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { login, logoutSession, refreshSession } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
+import { ADMIN_PERMISSIONS } from '@/utils/roles'
 import type { LoginResult } from '@/types/api'
 
 vi.mock('@/api/auth', () => ({
@@ -19,7 +20,7 @@ function session(overrides: Partial<LoginResult> = {}): LoginResult {
     accessToken: 'access-1',
     refreshToken: 'refresh-1',
     expiresIn: 900,
-    user: { id: 'u-1', username: 'admin', role: 'admin' },
+    user: { id: 'u-1', username: 'admin', roles: ['admin'], permissions: ADMIN_PERMISSIONS },
     ...overrides
   }
 }
@@ -41,13 +42,69 @@ describe('认证 store — 会话落库', () => {
     expect(auth.isAuthenticated).toBe(true)
   })
 
-  it('isAdmin 只认 admin：自定义角色不应被当成管理员', () => {
+  it('isAdmin 只看权限集，不看角色名（自定义角色同样可以带全部权限）', () => {
     const auth = useAuthStore()
 
-    auth.setSession(session({ user: { id: 'u-2', username: 'op', role: 'operator' } }))
+    // 角色名不是 admin，但权限集与管理面一致 → 仍算管理员
+    auth.setSession(
+      session({
+        user: {
+          id: 'u-2',
+          username: 'chief',
+          roles: ['ops-lead'],
+          permissions: [...ADMIN_PERMISSIONS]
+        }
+      })
+    )
 
     expect(auth.isAuthenticated).toBe(true)
+    expect(auth.isAdmin).toBe(true)
+  })
+
+  it('名字叫 admin 但权限集被改窄 → 不再算管理员', () => {
+    const auth = useAuthStore()
+
+    auth.setSession(
+      session({
+        user: {
+          id: 'u-3',
+          username: 'admin',
+          roles: ['admin'],
+          permissions: ['audit.read']
+        }
+      })
+    )
+
     expect(auth.isAdmin).toBe(false)
+  })
+
+  it('只有部分管理权限 → 不算管理员（三个都得具备）', () => {
+    const auth = useAuthStore()
+
+    auth.setSession(
+      session({
+        user: {
+          id: 'u-4',
+          username: 'ops-zhang',
+          roles: ['operator'],
+          permissions: ['host.read', 'role.write']
+        }
+      })
+    )
+
+    expect(auth.isAdmin).toBe(false)
+  })
+
+  it('hasPermission 按权限集直判，用于按钮显隐', () => {
+    const auth = useAuthStore()
+    auth.setSession(
+      session({
+        user: { id: 'u-5', username: 'viewer', roles: ['viewer'], permissions: ['host.read'] }
+      })
+    )
+
+    expect(auth.hasPermission('host.read')).toBe(true)
+    expect(auth.hasPermission('role.write')).toBe(false)
   })
 
   it('clearSession 清空令牌与用户', () => {
