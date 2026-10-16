@@ -37,7 +37,7 @@ public class JwtTokenServiceTests
     {
         var (tokens, options) = Resolve();
 
-        var accessToken = tokens.CreateAccessToken(_userId, "admin", "admin", _utcNow);
+        var accessToken = tokens.CreateAccessToken(_userId, "admin", ["admin"], _utcNow);
 
         var principal = Validate(accessToken.Value, options);
 
@@ -52,7 +52,7 @@ public class JwtTokenServiceTests
     {
         var (tokens, options) = Resolve();
 
-        var accessToken = tokens.CreateAccessToken(_userId, "admin", "admin", _utcNow);
+        var accessToken = tokens.CreateAccessToken(_userId, "admin", ["admin"], _utcNow);
 
         accessToken.ExpiresAt.Should().Be(_utcNow.Add(options.AccessTokenLifetime));
         accessToken.ExpiresAt.Should().Be(_utcNow.AddMinutes(15));
@@ -70,9 +70,9 @@ public class JwtTokenServiceTests
     {
         var (tokens, options) = Resolve();
 
-        var first = Validate(tokens.CreateAccessToken(_userId, "admin", "admin", _utcNow).Value, options)
+        var first = Validate(tokens.CreateAccessToken(_userId, "admin", ["admin"], _utcNow).Value, options)
             .FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
-        var second = Validate(tokens.CreateAccessToken(_userId, "admin", "admin", _utcNow).Value, options)
+        var second = Validate(tokens.CreateAccessToken(_userId, "admin", ["admin"], _utcNow).Value, options)
             .FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
 
         first.Should().NotBeNullOrEmpty();
@@ -80,16 +80,59 @@ public class JwtTokenServiceTests
     }
 
     [Theory]
-    [InlineData("", "admin")]
-    [InlineData("   ", "admin")]
-    [InlineData("admin", "")]
-    public void CreateAccessToken_用户名或角色名为空_抛出参数异常(string username, string roleName)
+    [InlineData("")]
+    [InlineData("   ")]
+    public void CreateAccessToken_用户名为空_抛出参数异常(string username)
     {
         var (tokens, _) = Resolve();
 
-        var act = () => tokens.CreateAccessToken(_userId, username, roleName, _utcNow);
+        var act = () => tokens.CreateAccessToken(_userId, username, ["admin"], _utcNow);
 
         act.Should().Throw<ArgumentException>();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("admin")]
+    public void CreateAccessToken_角色名为空或空白_跳过它而不是抛异常(string roleName)
+    {
+        // 「没有角色」是**正常状态**：新建用户到被分配角色之间存在一个窗口期，
+        // 那段时间他确实一个角色都没有。若这里抛异常，那个窗口期里的用户
+        // 会**登录失败**——一个连登录都做不到的中间态显然不是我们想要的。
+        // 授权判定也不依赖这些声明（走 IPermissionChecker 查库），所以少一个角色
+        // 只影响界面展示，不影响他实际能做什么。
+        var (tokens, options) = Resolve();
+
+        var token = tokens.CreateAccessToken(_userId, "admin", [roleName], _utcNow);
+        var principal = Validate(token.Value, options);
+
+        principal.FindFirst(JwtClaimNames.UniqueName)?.Value.Should().Be("admin");
+
+        var roles = principal.FindAll(JwtClaimNames.Role);
+        if (String.IsNullOrWhiteSpace(roleName))
+        {
+            roles.Should().BeEmpty();
+        }
+        else
+        {
+            roles.Should().ContainSingle().Which.Value.Should().Be("admin");
+        }
+    }
+
+    [Fact]
+    public void CreateAccessToken_多个角色_签成多个同名声明()
+    {
+        var (tokens, options) = Resolve();
+
+        var token = tokens.CreateAccessToken(_userId, "admin", ["admin", "operator"], _utcNow);
+        var principal = Validate(token.Value, options);
+
+        // 多角色必须是**多个同名 claim**而不是一个数组 claim：
+        // JwtSecurityTokenHandler 会把同名 claim 依次写进数组元素，
+        // 而数组 claim 需要额外的 claim-mapping 配置，部分验证库处理并不一致。
+        principal.FindAll(JwtClaimNames.Role).Select(claim => claim.Value)
+            .Should().BeEquivalentTo(["admin", "operator"]);
     }
 
     [Fact]
@@ -152,7 +195,7 @@ public class JwtTokenServiceTests
     {
         var (tokens, _) = Resolve();
 
-        var accessToken = tokens.CreateAccessToken(_userId, "admin", "admin", _utcNow);
+        var accessToken = tokens.CreateAccessToken(_userId, "admin", ["admin"], _utcNow);
 
         var otherKey = new SymmetricSecurityKey(
             Encoding.UTF8.GetBytes("another-completely-different-signing-key-0123"));
@@ -220,7 +263,7 @@ public class JwtTokenServiceTests
             (await File.ReadAllTextAsync(keyFile)).Trim().Should().Be(first.Options.Secret);
 
             // 用它签发的令牌能通过同一份配置验签。
-            var accessToken = first.Tokens.CreateAccessToken(_userId, "admin", "admin", _utcNow);
+            var accessToken = first.Tokens.CreateAccessToken(_userId, "admin", ["admin"], _utcNow);
             Validate(accessToken.Value, first.Options)
                 .FindFirst(JwtClaimNames.Subject)!.Value
                 .Should().Be(_userId.ToString("D"));

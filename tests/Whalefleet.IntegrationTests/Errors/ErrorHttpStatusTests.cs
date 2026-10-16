@@ -54,6 +54,14 @@ public class ErrorHttpStatusTests
         [ErrorCodes.ResourceForbidden] = 403,
         [ErrorCodes.HostForbidden] = 403,
         [ErrorCodes.OperationForbidden] = 403,
+        [ErrorCodes.PermissionNotFound] = 404,
+
+        [ErrorCodes.RoleNotFound] = 404,
+        [ErrorCodes.RoleNameAlreadyExists] = 400,
+        [ErrorCodes.RoleInUse] = 400,
+        [ErrorCodes.RoleProtected] = 400,
+        [ErrorCodes.PermissionUnknown] = 400,
+        [ErrorCodes.RoleAssignmentNotFound] = 404,
 
         [ErrorCodes.InternalError] = 500,
     };

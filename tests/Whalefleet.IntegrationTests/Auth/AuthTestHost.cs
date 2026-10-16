@@ -1,6 +1,7 @@
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Auth;
 using Whalefleet.Application.DependencyInjection;
+using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.Infrastructure.DependencyInjection;
 using Whalefleet.Infrastructure.Persistence;
@@ -117,15 +118,20 @@ internal sealed class AuthTestHost : IAsyncDisposable
     {
         var roles = _provider.GetRequiredService<IRoleRepository>();
         var users = _provider.GetRequiredService<IUserRepository>();
+        var assignments = _provider.GetRequiredService<IUserRoleAssignmentRepository>();
         var hasher = _provider.GetRequiredService<IPasswordHasher>();
 
         var role = await roles.FindByNameAsync(roleName);
         role.Should().NotBeNull($"内置角色 {roleName} 应由迁移种入");
 
-        var user = User.Create(Guid.NewGuid(), username, hasher.Hash(Password), role!.Id);
-        await users.AddAsync(user);
-
-        return user.Id;
+        // 身份来自**全局分配**而不是用户表上的外键（0.1.0 起）。
+        // 少这一步的话账号能登录，但响应里的 Roles 恒为空——看起来像登录功能坏了。
+        return await TestAccounts.CreateUserAsync(
+            users,
+            assignments,
+            username,
+            hasher.Hash(Password),
+            role);
     }
 
     /// <summary>

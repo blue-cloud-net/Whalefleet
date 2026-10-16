@@ -56,6 +56,14 @@ public class ErrorCodesTests
         [nameof(ErrorCodes.ResourceForbidden)] = 1500,
         [nameof(ErrorCodes.HostForbidden)] = 1501,
         [nameof(ErrorCodes.OperationForbidden)] = 1502,
+        [nameof(ErrorCodes.PermissionNotFound)] = 1503,
+
+        [nameof(ErrorCodes.RoleNotFound)] = 1510,
+        [nameof(ErrorCodes.RoleNameAlreadyExists)] = 1511,
+        [nameof(ErrorCodes.RoleInUse)] = 1512,
+        [nameof(ErrorCodes.RoleProtected)] = 1513,
+        [nameof(ErrorCodes.PermissionUnknown)] = 1514,
+        [nameof(ErrorCodes.RoleAssignmentNotFound)] = 1515,
 
         // 服务器内部错误
         [nameof(ErrorCodes.InternalError)] = 9999,

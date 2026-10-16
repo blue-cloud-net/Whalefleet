@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
+using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
@@ -44,6 +45,7 @@ public class AdminUsersEndpointsTests : IAsyncLifetime
         using var scope = _factory.Services.CreateScope();
         var roles = scope.ServiceProvider.GetRequiredService<IRoleRepository>();
         var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
+        var assignments = scope.ServiceProvider.GetRequiredService<IUserRoleAssignmentRepository>();
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
 
         var adminRole = await roles.FindByNameAsync(Role.AdminName);
@@ -52,17 +54,19 @@ public class AdminUsersEndpointsTests : IAsyncLifetime
         adminRole.Should().NotBeNull();
         operatorRole.Should().NotBeNull();
 
-        await users.AddAsync(User.Create(
-            Guid.NewGuid(),
+        await TestAccounts.CreateUserAsync(
+            users,
+            assignments,
             _adminName,
             hasher.Hash(_adminPassword),
-            adminRole!.Id));
+            adminRole);
 
-        await users.AddAsync(User.Create(
-            Guid.NewGuid(),
+        await TestAccounts.CreateUserAsync(
+            users,
+            assignments,
             _operatorName,
             hasher.Hash(_userPassword),
-            operatorRole!.Id));
+            operatorRole);
     }
 
     /// <inheritdoc />
@@ -100,7 +104,7 @@ public class AdminUsersEndpointsTests : IAsyncLifetime
         var created = await CreateUserAsync(client, "no-role-user", "NoRoleP@ss1");
 
         // 迁移把 auditor 种为默认角色；这里断言的是"省略角色也能建出来且落到默认角色"。
-        created.Role.Should().Be("auditor");
+        created.Roles.Should().ContainSingle().Which.Should().Be("auditor");
     }
 
     [Fact]
@@ -110,7 +114,7 @@ public class AdminUsersEndpointsTests : IAsyncLifetime
 
         var created = await CreateUserAsync(client, "viewer-user", "ViewerP@ss1", role: "viewer");
 
-        created.Role.Should().Be("viewer");
+        created.Roles.Should().ContainSingle().Which.Should().Be("viewer");
     }
 
     [Fact]
@@ -383,7 +387,7 @@ public class AdminUsersEndpointsTests : IAsyncLifetime
         JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.Clone();
 
     /// <summary>用户对象的响应投影（只取断言用得到的字段）。</summary>
-    private sealed record UserPayload(Guid Id, string Username, string Role);
+    private sealed record UserPayload(Guid Id, string Username, IReadOnlyList<string> Roles);
 
     /// <summary>分页结果的响应投影。</summary>
     private sealed record PagedPayload(List<UserPayload> Items, int Total, int PageIndex, int PageSize);

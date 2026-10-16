@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
+using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
@@ -51,6 +52,7 @@ public class AdminHostsEndpointsTests : IAsyncLifetime
         using var scope = _factory.Services.CreateScope();
         var roles = scope.ServiceProvider.GetRequiredService<IRoleRepository>();
         var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
+        var assignments = scope.ServiceProvider.GetRequiredService<IUserRoleAssignmentRepository>();
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
 
         var adminRole = await roles.FindByNameAsync(Role.AdminName);
@@ -61,8 +63,18 @@ public class AdminHostsEndpointsTests : IAsyncLifetime
 
         var passwordHash = hasher.Hash(_password);
 
-        await users.AddAsync(User.Create(Guid.NewGuid(), _adminName, passwordHash, adminRole!.Id));
-        await users.AddAsync(User.Create(Guid.NewGuid(), _operatorName, passwordHash, operatorRole!.Id));
+        await TestAccounts.CreateUserAsync(
+            users,
+            assignments,
+            _adminName,
+            passwordHash,
+            adminRole);
+        await TestAccounts.CreateUserAsync(
+            users,
+            assignments,
+            _operatorName,
+            passwordHash,
+            operatorRole);
     }
 
     /// <inheritdoc />

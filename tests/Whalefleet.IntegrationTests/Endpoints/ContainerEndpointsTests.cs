@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
+using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
 using FluentAssertions;
@@ -30,6 +31,9 @@ public class ContainerEndpointsTests : IAsyncLifetime
     private const string _password = "StrongP@ss123";
     private const string _adminName = "admin";
     private const string _operatorName = "operator";
+
+    /// <summary>没有任何角色分配的账号：用于验证 fail-closed。</summary>
+    private const string _noRoleName = "norole";
     private const string _localHost = "local";
     private const string _unknownHost = "no-such-host";
     private const string _unknownContainer = "no-such-container-0123456789";
@@ -52,6 +56,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
         using var scope = _factory.Services.CreateScope();
         var roles = scope.ServiceProvider.GetRequiredService<IRoleRepository>();
         var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
+        var assignments = scope.ServiceProvider.GetRequiredService<IUserRoleAssignmentRepository>();
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
 
         var adminRole = await roles.FindByNameAsync(Role.AdminName);
@@ -62,8 +67,19 @@ public class ContainerEndpointsTests : IAsyncLifetime
 
         var passwordHash = hasher.Hash(_password);
 
-        await users.AddAsync(User.Create(Guid.NewGuid(), _adminName, passwordHash, adminRole!.Id));
-        await users.AddAsync(User.Create(Guid.NewGuid(), _operatorName, passwordHash, operatorRole!.Id));
+        await TestAccounts.CreateUserAsync(
+            users,
+            assignments,
+            _adminName,
+            passwordHash,
+            adminRole);
+        await TestAccounts.CreateUserAsync(
+            users,
+            assignments,
+            _operatorName,
+            passwordHash,
+            operatorRole);
+        await TestAccounts.CreateUserOnlyAsync(users, _noRoleName, passwordHash);
     }
 
     /// <inheritdoc />
@@ -95,9 +111,9 @@ public class ContainerEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task 非管理员访问主机_返回1501()
+    public async Task 无任何角色分配访问主机_返回1501()
     {
-        using var client = await CreateAuthenticatedClientAsync(_operatorName);
+        using var client = await CreateAuthenticatedClientAsync(_noRoleName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/list",
@@ -340,9 +356,9 @@ public class ContainerEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task 变更_非管理员_返回1501()
+    public async Task 变更_无任何角色分配_返回1501()
     {
-        using var client = await CreateAuthenticatedClientAsync(_operatorName);
+        using var client = await CreateAuthenticatedClientAsync(_noRoleName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/start",

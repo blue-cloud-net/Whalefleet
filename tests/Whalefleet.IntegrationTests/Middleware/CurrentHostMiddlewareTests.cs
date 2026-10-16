@@ -5,7 +5,7 @@ using Whalefleet.Api.Middleware;
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Hosts;
-using Whalefleet.Core.Users;
+using Whalefleet.Core.Permissions;
 using FluentAssertions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -34,20 +34,20 @@ public class CurrentHostMiddlewareTests : IAsyncLifetime
 {
     private WebApplication _app = null!;
     private HttpClient _client = null!;
-    private StubPermissionService _permission = null!;
+    private StubPermissionChecker _permission = null!;
 
     /// <inheritdoc />
     public async Task InitializeAsync()
     {
         var builder = WebApplication.CreateSlimBuilder();
 
-        _permission = new StubPermissionService();
+        _permission = new StubPermissionChecker();
 
         builder.WebHost.UseTestServer();
         builder.Services.AddRouting();
         builder.Services.AddSingleton<IDockerHostAccessor>(HostsWithLocal());
-        builder.Services.AddSingleton<ICurrentUser>(new StubCurrentUser(Role.AdminName));
-        builder.Services.AddSingleton<IResourcePermissionService>(_permission);
+        builder.Services.AddSingleton<ICurrentUser>(new StubCurrentUser("admin"));
+        builder.Services.AddSingleton<IPermissionChecker>(_permission);
         builder.Services.AddApiCurrentHost();
 
         _app = builder.Build();
@@ -181,7 +181,7 @@ public class CurrentHostMiddlewareTests : IAsyncLifetime
     /// <summary>探针端点的响应体：回显端点读到的「当前主机」。</summary>
     private sealed record ProbePayload(string? HostId);
 
-    /// <summary>当前用户替身：角色可切换，用于验证管理员/非管理员两条路径。</summary>
+    /// <summary>当前用户替身：角色可切换，用于验证已认证 / 未认证两条路径。</summary>
     /// <remarks>
     /// 用显式字段而不是主构造器参数：主构造器参数同时被捕获进状态又用来初始化属性时会触发 CS9124。
     /// </remarks>
@@ -191,9 +191,9 @@ public class CurrentHostMiddlewareTests : IAsyncLifetime
 
         internal StubCurrentUser(string? role)
         {
-            this.Role = role;
             _authenticated = role is not null;
             this.UserId = role is null ? null : Guid.NewGuid();
+            this.Roles = role is null ? [] : [role];
         }
 
         public bool IsAuthenticated => _authenticated;
@@ -202,27 +202,49 @@ public class CurrentHostMiddlewareTests : IAsyncLifetime
 
         public string? Username => "stub";
 
-        public string? Role { get; }
+        public IReadOnlyList<string> Roles { get; }
     }
 
     /// <summary>
-    /// 权限服务替身：默认放行，<see cref="Deny"/> 打开时拒绝。
+    /// 权限判定替身：默认拥有 host.read，<see cref="Deny"/> 打开时拒绝。
     /// </summary>
-    /// <remarks>真实实现（管理员放行 / 非管理员拒绝）由 <c>ResourcePermissionServiceTests</c> 覆盖。</remarks>
-    private sealed class StubPermissionService : IResourcePermissionService
+    /// <remarks>真实实现（全局 / 主机分配的作用域规则）由权限判定的集成测试覆盖。</remarks>
+    private sealed class StubPermissionChecker : IPermissionChecker
     {
-        /// <summary>是否拒绝访问（模拟非管理员访问未授权主机）。</summary>
+        /// <summary>是否拒绝访问（模拟无权看这台主机）。</summary>
         internal bool Deny { get; set; }
 
-        public Task EnsureHostVisibleAsync(
+        public Task EnsurePermissionAsync(
             Guid userId,
-            DockerHost host,
+            Guid? hostId,
+            string permission,
             CancellationToken cancellationToken = default) =>
             this.Deny
-                ? throw new BusinessException(ErrorCodes.HostForbidden, $"无权访问主机「{host.Name}」")
+                ? throw new BusinessException(ErrorCodes.HostForbidden, "无权访问")
                 : Task.CompletedTask;
 
-        public bool IsHostVisible(Guid userId, DockerHost host) => !this.Deny;
+        public Task<bool> HasPermissionAsync(
+            Guid userId,
+            Guid? hostId,
+            string permission,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(!this.Deny);
+
+        public Task<IReadOnlySet<string>> GetEffectivePermissionsAsync(
+            Guid userId,
+            Guid? hostId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlySet<string>>(
+                this.Deny ? new HashSet<string>() : [Permission.HostRead]);
+
+        public Task<IReadOnlyList<DockerHost>> FilterVisibleHostsAsync(
+            Guid userId,
+            IReadOnlyList<DockerHost> hosts,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(this.Deny ? [] : hosts);
+
+        public Task<bool> IsAdministratorAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(!this.Deny);
     }
 
     /// <summary>

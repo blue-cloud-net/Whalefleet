@@ -1,6 +1,7 @@
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Persistence;
 using Whalefleet.Application.Security;
+using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.Infrastructure.DependencyInjection;
 using Whalefleet.Infrastructure.Persistence;
@@ -40,7 +41,15 @@ public class AdminBootstrapperTests
         hasher.Verify(_strongPassword, admin!.PasswordHash).Should().BeTrue();
 
         var adminRole = await roles.FindByNameAsync("admin");
-        admin.RoleId.Should().Be(adminRole!.Id);
+        adminRole.Should().NotBeNull();
+
+        // 管理员身份来自**全局分配**（host_id IS NULL），而不是用户表上的某个外键。
+        // 只认全局：主机分配里的 admin 只带来该主机的 Host 域权限，不是系统管理员。
+        var assignments = host.Services.GetRequiredService<IUserRoleAssignmentRepository>();
+        var adminAssignments = await assignments.ListByUserAsync(admin.Id);
+        adminAssignments.Should().ContainSingle();
+        adminAssignments[0].RoleId.Should().Be(adminRole!.Id);
+        adminAssignments[0].IsGlobal.Should().BeTrue();
 
         // 密码绝不落明文。
         admin.PasswordHash.Should().NotContain(_strongPassword);
@@ -55,12 +64,18 @@ public class AdminBootstrapperTests
             ("Admin:Password", _strongPassword));
 
         var users = host.Services.GetRequiredService<IUserRepository>();
+        var assignments = host.Services.GetRequiredService<IUserRoleAssignmentRepository>();
         var hasher = host.Services.GetRequiredService<IPasswordHasher>();
 
         // 再造一个用户，然后再次运行引导。
         var defaultRole = await host.Services.GetRequiredService<IRoleRepository>()
             .GetDefaultAsync();
-        await users.AddAsync(User.Create(Guid.NewGuid(), "someone", hasher.Hash(_strongPassword), defaultRole!.Id));
+        await TestAccounts.CreateUserAsync(
+            users,
+            assignments,
+            "someone",
+            hasher.Hash(_strongPassword),
+            defaultRole);
 
         await host.Services.GetRequiredService<IAdminBootstrapper>().InitializeAsync();
 

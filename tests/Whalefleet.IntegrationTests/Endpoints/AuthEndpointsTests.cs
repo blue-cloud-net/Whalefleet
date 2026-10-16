@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
+using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
@@ -54,10 +55,16 @@ public class AuthEndpointsTests : IAsyncLifetime
         var adminRole = await roles.FindByNameAsync("admin");
         adminRole.Should().NotBeNull("内置角色应由迁移种入");
 
-        var user = User.Create(Guid.NewGuid(), _username, hasher.Hash(_password), adminRole!.Id);
-        await users.AddAsync(user);
+        var assignments = scope.ServiceProvider.GetRequiredService<IUserRoleAssignmentRepository>();
 
-        _userId = user.Id;
+        // 身份来自**全局分配**（0.1.0 起）；只建用户的话登录能成功，
+        // 但 me / 登录响应里的 Roles 会恒为空。
+        _userId = await TestAccounts.CreateUserAsync(
+            users,
+            assignments,
+            _username,
+            hasher.Hash(_password),
+            adminRole);
     }
 
     /// <inheritdoc />
@@ -84,7 +91,7 @@ public class AuthEndpointsTests : IAsyncLifetime
         login.ExpiresIn.Should().Be(900);
         login.User.Id.Should().Be(_userId);
         login.User.Username.Should().Be(_username);
-        login.User.Role.Should().Be("admin");
+        login.User.Roles.Should().Contain("admin");
     }
 
     [Fact]
@@ -184,7 +191,7 @@ public class AuthEndpointsTests : IAsyncLifetime
 
         user.Id.Should().Be(_userId);
         user.Username.Should().Be(_username);
-        user.Role.Should().Be("admin");
+        user.Roles.Should().Contain("admin");
     }
 
     [Fact]
@@ -280,7 +287,7 @@ public class AuthEndpointsTests : IAsyncLifetime
         using var scope = _factory.Services.CreateScope();
         var tokens = scope.ServiceProvider.GetRequiredService<ITokenService>();
 
-        return tokens.CreateAccessToken(userId, _username, "admin", issuedAt).Value;
+        return tokens.CreateAccessToken(userId, _username, ["admin"], issuedAt).Value;
     }
 
     /// <summary>
@@ -325,7 +332,7 @@ public class AuthEndpointsTests : IAsyncLifetime
 
     private sealed record LoginData(string AccessToken, string RefreshToken, int ExpiresIn, UserData User);
 
-    private sealed record UserData(Guid Id, string Username, string Role);
+    private sealed record UserData(Guid Id, string Username, IReadOnlyList<string> Roles);
 
-    private sealed record AuthenticatedUserData(Guid Id, string Username, string Role);
+    private sealed record AuthenticatedUserData(Guid Id, string Username, IReadOnlyList<string> Roles);
 }

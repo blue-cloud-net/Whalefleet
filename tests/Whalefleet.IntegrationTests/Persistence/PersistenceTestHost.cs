@@ -121,6 +121,33 @@ internal sealed class PersistenceTestHost : IAsyncDisposable
     }
 
     /// <summary>
+    /// 判断某张表是否含有指定列。
+    /// </summary>
+    /// <param name="table">表名。</param>
+    /// <param name="column">列名。</param>
+    /// <returns>存在返回 <see langword="true"/>。</returns>
+    /// <remarks>
+    /// 专门用于断言「某列已被迁移删掉」——例如 0.1.0 起 <c>users</c> 不再有 <c>role_id</c>。
+    /// 这类断言不能只看实体：实体上没有该属性并不等于表里没有那一列，
+    /// 而遗留的旧列会让「迁移漏了重建表」这类问题静默通过。
+    /// </remarks>
+    public async Task<bool> ColumnExistsAsync(string table, string column)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(table);
+        ArgumentException.ThrowIfNullOrWhiteSpace(column);
+
+        await using var connection = CreateConnection();
+        await connection.OpenAsync();
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT COUNT(1) FROM pragma_table_info('{table}') WHERE name = '{column}'";
+
+        var result = await command.ExecuteScalarAsync();
+
+        return Convert.ToInt64(result, CultureInfo.InvariantCulture) > 0;
+    }
+
+    /// <summary>
     /// 读取当前架构版本（<c>PRAGMA user_version</c>）。
     /// </summary>
     /// <returns>架构版本号。</returns>
@@ -135,13 +162,35 @@ internal sealed class PersistenceTestHost : IAsyncDisposable
     /// </summary>
     /// <param name="sql">语句。</param>
     /// <returns>受影响行数。</returns>
-    public async Task<int> ExecuteAsync(string sql)
+    public async Task<int> ExecuteAsync(string sql) =>
+        await this.ExecuteAsync(sql, []);
+
+    /// <summary>
+    /// 执行一条带参数的非查询语句。
+    /// </summary>
+    /// <param name="sql">语句，用 <c>$name</c> 占位（SQLite 原生参数语法）。</param>
+    /// <param name="parameters">参数（<c>("$name", value)</c> 形式）。</param>
+    /// <returns>受影响行数。</returns>
+    /// <remarks>
+    /// <b>为什么这里坚持用参数而不是把值拼进 SQL</b>：为了让「绕过实体的直接写库」用例
+    /// （例如故意插一条违反 CHECK 的行）读起来与真实调用一致；拼字符串的写法一旦遇上
+    /// 含引号的输入就会变成一个语法错误，测试失败的原因和想测的东西完全无关。
+    /// </remarks>
+    public async Task<int> ExecuteAsync(string sql, IReadOnlyList<(string Name, object Value)> parameters)
     {
         await using var connection = CreateConnection();
         await connection.OpenAsync();
 
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
+
+        foreach (var (name, value) in parameters)
+        {
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = name;
+            parameter.Value = value;
+            command.Parameters.Add(parameter);
+        }
 
         return await command.ExecuteNonQueryAsync();
     }
@@ -181,12 +230,12 @@ internal sealed class StubCurrentUser : ICurrentUser
     /// </summary>
     /// <param name="userId">用户主键；<see langword="null"/> 表示未认证。</param>
     /// <param name="username">用户名。</param>
-    /// <param name="role">角色名。</param>
+    /// <param name="role">角色名；可含多个。</param>
     public StubCurrentUser(Guid? userId, string? username = null, string? role = null)
     {
         this.UserId = userId;
         this.Username = username;
-        this.Role = role;
+        this.Roles = role is null ? [] : [role];
     }
 
     /// <inheritdoc />
@@ -199,5 +248,5 @@ internal sealed class StubCurrentUser : ICurrentUser
     public string? Username { get; }
 
     /// <inheritdoc />
-    public string? Role { get; }
+    public IReadOnlyList<string> Roles { get; }
 }

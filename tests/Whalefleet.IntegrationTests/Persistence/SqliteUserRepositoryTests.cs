@@ -47,7 +47,6 @@ public class SqliteUserRepositoryTests
         loaded!.Id.Should().Be(user.Id);
         loaded.Username.Should().Be("admin");
         loaded.PasswordHash.Should().Be(_passwordHash);
-        loaded.RoleId.Should().Be(_adminRoleId);
 
         // 审计填充：时间取自 TimeProvider，操作人取自 ICurrentUser
         loaded.CreationTime.Should().Be(PersistenceTestHost.Now.UtcDateTime);
@@ -58,20 +57,23 @@ public class SqliteUserRepositoryTests
     }
 
     [Fact]
-    public async Task 落库形态_角色外键与主键为规范小写文本()
+    public async Task 落库形态_主键与审计人为规范小写文本()
     {
         await using var host = new PersistenceTestHost(_operatorId);
         await host.InitializeAsync();
 
         var users = host.Services.GetRequiredService<IUserRepository>();
-        var user = CreateUser("admin", _adminRoleId);
+        var user = CreateUser("admin");
 
         await users.AddAsync(user);
 
-        (await host.QueryScalarAsync("SELECT role_id FROM users")).Should().Be(_adminRoleId.ToString("D"));
         (await host.QueryScalarAsync("SELECT id FROM users")).Should().Be(user.Id.ToString("D"));
         (await host.QueryScalarAsync("SELECT creator_id FROM users")).Should().Be(_operatorId.ToString("D"));
         (await host.QueryScalarAsync("SELECT is_deleted FROM users")).Should().Be("0");
+
+        // users 表不再有 role_id 列——角色是「分配」而非用户属性（0.1.0 起）。
+        // 这条断言挡住的是「迁移漏了重建 users 表」这类会静默保留旧列的问题。
+        (await host.ColumnExistsAsync("users", "role_id")).Should().BeFalse();
 
         // 时间为 UTC TEXT，不带时区偏移
         (await host.QueryScalarAsync("SELECT creation_time FROM users")).Should().StartWith("2026-10-10 08:00:00");
@@ -169,37 +171,33 @@ public class SqliteUserRepositoryTests
         await host.InitializeAsync();
 
         var users = host.Services.GetRequiredService<IUserRepository>();
-        var admin = CreateUser("admin", _adminRoleId);
-        var member = CreateUser("member", _operatorRoleId);
-        var removed = CreateUser("removed", _operatorRoleId);
+        var admin = CreateUser("admin");
+        var member = CreateUser("member");
+        var removed = CreateUser("removed");
 
         await users.AddAsync(admin);
         await users.AddAsync(member);
         await users.AddAsync(removed);
 
         (await users.CountAsync()).Should().Be(3);
-        (await users.CountByRoleIdAsync(_adminRoleId)).Should().Be(1);
-        (await users.CountByRoleIdAsync(_operatorRoleId)).Should().Be(2);
 
         await users.RemoveByIdAsync(removed.Id);
 
         (await users.CountAsync()).Should().Be(2);
-        (await users.CountByRoleIdAsync(_operatorRoleId)).Should().Be(1);
     }
 
     [Fact]
-    public async Task UpdateAsync_写入修改审计并持久化新密码与角色()
+    public async Task UpdateAsync_写入修改审计并持久化新密码()
     {
         await using var host = new PersistenceTestHost(_operatorId);
         await host.InitializeAsync();
 
         var users = host.Services.GetRequiredService<IUserRepository>();
-        var user = CreateUser("admin", _operatorRoleId);
+        var user = CreateUser("admin");
         await users.AddAsync(user);
 
         host.TimeProvider.Advance(TimeSpan.FromHours(2));
         user.ChangePassword("$argon2id$v=19$m=65536,t=3,p=1$bmV3$aGFzaA");
-        user.ChangeRole(_adminRoleId);
 
         var updated = await users.UpdateAsync(user);
 
@@ -207,7 +205,6 @@ public class SqliteUserRepositoryTests
 
         var loaded = (await users.QueryByIdAsync(user.Id))!;
         loaded.PasswordHash.Should().Be("$argon2id$v=19$m=65536,t=3,p=1$bmV3$aGFzaA");
-        loaded.RoleId.Should().Be(_adminRoleId);
         loaded.LastModificationTime.Should().Be(PersistenceTestHost.Now.AddHours(2).UtcDateTime);
         loaded.LastModifierId.Should().Be(_operatorId);
     }
@@ -296,5 +293,5 @@ public class SqliteUserRepositoryTests
     }
 
     private static User CreateUser(string username, Guid? roleId = null) =>
-        User.Create(Guid.NewGuid(), username, _passwordHash, roleId ?? _adminRoleId);
+        User.Create(Guid.NewGuid(), username, _passwordHash);
 }

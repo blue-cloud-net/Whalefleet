@@ -42,7 +42,7 @@ public class AuthRefreshLogoutTests : IAsyncLifetime
 
         var adminRole = await roles.FindByNameAsync("admin");
         await users.AddAsync(
-            User.Create(Guid.NewGuid(), _username, hasher.Hash(_password), adminRole!.Id));
+            User.Create(Guid.NewGuid(), _username, hasher.Hash(_password)));
     }
 
     /// <inheritdoc />

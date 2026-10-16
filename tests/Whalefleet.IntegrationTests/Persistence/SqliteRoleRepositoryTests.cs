@@ -1,3 +1,4 @@
+using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
@@ -219,21 +220,34 @@ public class SqliteRoleRepositoryTests
     }
 
     [Fact]
-    public async Task 新用户可引用运行时新增的角色()
+    public async Task 新用户可被分配运行时新增的角色()
     {
         await using var host = await CreateHostAsync();
         var roles = host.Services.GetRequiredService<IRoleRepository>();
         var users = host.Services.GetRequiredService<IUserRepository>();
+        var assignments = host.Services.GetRequiredService<IUserRoleAssignmentRepository>();
 
         var role = Role.Create(Guid.NewGuid(), "nightshift", "夜班运维");
         await roles.AddAsync(role);
 
-        await users.AddAsync(
-            User.Create(Guid.NewGuid(), "alice", "$argon2id$hash", role.Id));
+        var userId = await TestAccounts.CreateUserAsync(
+            users,
+            assignments,
+            "alice",
+            "$argon2id$stub",
+            role);
 
         var loaded = (await users.FindByUsernameAsync("alice"))!;
-        loaded.RoleId.Should().Be(role.Id);
-        (await users.CountByRoleIdAsync(role.Id)).Should().Be(1);
+        loaded.Should().NotBeNull();
+
+        // 角色是「分配」而非用户属性：这条用例证明**运行时新增**的角色
+        // 不需要改任何代码就能被分配出去——这正是 0.0.3 把角色从枚举改成表的初衷。
+        var userAssignments = await assignments.ListByUserAsync(userId);
+        userAssignments.Should().ContainSingle();
+        userAssignments[0].RoleId.Should().Be(role.Id);
+        userAssignments[0].IsGlobal.Should().BeTrue();
+
+        (await assignments.CountByRoleIdAsync(role.Id)).Should().Be(1);
     }
 
     private static async Task<PersistenceTestHost> CreateHostAsync()

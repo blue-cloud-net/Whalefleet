@@ -36,7 +36,7 @@ public class AuthServiceTests
         response.ExpiresIn.Should().Be(900);
         response.User.Id.Should().Be(userId);
         response.User.Username.Should().Be("admin");
-        response.User.Role.Should().Be("admin");
+        response.User.Roles.Should().Contain("admin");
 
         // 落库的是哈希，而不是返回给客户端的原文。
         var tokens = host.Services.GetRequiredService<IRefreshTokenRepository>();

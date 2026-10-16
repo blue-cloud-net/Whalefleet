@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
+using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
 using FluentAssertions;
@@ -55,13 +56,21 @@ public class BatchRemoveEndpointsTests : IAsyncLifetime
         using var scope = _factory.Services.CreateScope();
         var roles = scope.ServiceProvider.GetRequiredService<IRoleRepository>();
         var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
+        var assignments = scope.ServiceProvider.GetRequiredService<IUserRoleAssignmentRepository>();
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
 
         var adminRole = await roles.FindByNameAsync(Role.AdminName);
         adminRole.Should().NotBeNull("内置角色应由迁移种入");
 
-        await users.AddAsync(
-            User.Create(Guid.NewGuid(), _adminName, hasher.Hash(_password), adminRole!.Id));
+        // 管理员身份来自**全局分配**，而不是用户表上的某个外键（0.1.0 起）。
+        // 只建用户不建分配的话，这个账号能登录却对任何主机都没有 host.read，
+        // 于是每个端点测试都会拿到 403 而不是它真正想验证的状态码。
+        await TestAccounts.CreateUserAsync(
+            users,
+            assignments,
+            _adminName,
+            hasher.Hash(_password),
+            adminRole);
     }
 
     /// <inheritdoc />

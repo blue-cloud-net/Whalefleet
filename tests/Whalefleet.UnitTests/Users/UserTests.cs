@@ -17,21 +17,16 @@ public class UserTests
 
     private static readonly DateTime _createdAt = new(2026, 10, 10, 8, 0, 0, DateTimeKind.Utc);
 
-    private static readonly Guid _roleId = new("00000000-0000-0000-0000-0000000000a2");
-
-    private static readonly Guid _otherRoleId = new("00000000-0000-0000-0000-0000000000a1");
-
     [Fact]
     public void Create_合法入参_写入全部属性且默认未删除()
     {
         var id = Guid.NewGuid();
 
-        var user = User.Create(id, "admin", _validHash, _roleId);
+        var user = User.Create(id, "admin", _validHash);
 
         user.Id.Should().Be(id);
         user.Username.Should().Be("admin");
         user.PasswordHash.Should().Be(_validHash);
-        user.RoleId.Should().Be(_roleId);
         user.IsDeleted.Should().BeFalse();
 
         // 审计由仓储在写库前填充，实体自身不取当前时间也不取当前用户
@@ -42,7 +37,7 @@ public class UserTests
     [Fact]
     public void Create_去掉用户名首尾空白()
     {
-        var user = User.Create(Guid.NewGuid(), "  admin  ", _validHash, _roleId);
+        var user = User.Create(Guid.NewGuid(), "  admin  ", _validHash);
 
         user.Username.Should().Be("admin");
     }
@@ -56,7 +51,7 @@ public class UserTests
     [InlineData("管理员")]
     public void Create_非法用户名_抛出参数异常(string username)
     {
-        var act = () => User.Create(Guid.NewGuid(), username, _validHash, _roleId);
+        var act = () => User.Create(Guid.NewGuid(), username, _validHash);
 
         act.Should().Throw<ArgumentException>();
     }
@@ -66,7 +61,7 @@ public class UserTests
     {
         var username = new string('a', User.MaxUsernameLength + 1);
 
-        var act = () => User.Create(Guid.NewGuid(), username, _validHash, _roleId);
+        var act = () => User.Create(Guid.NewGuid(), username, _validHash);
 
         act.Should().Throw<ArgumentException>();
     }
@@ -76,7 +71,7 @@ public class UserTests
     {
         var username = new string('a', User.MaxUsernameLength);
 
-        var user = User.Create(Guid.NewGuid(), username, _validHash, _roleId);
+        var user = User.Create(Guid.NewGuid(), username, _validHash);
 
         user.Username.Should().Be(username);
     }
@@ -88,7 +83,7 @@ public class UserTests
     [InlineData("User123")]
     public void Create_允许的字符集_通过(string username)
     {
-        var user = User.Create(Guid.NewGuid(), username, _validHash, _roleId);
+        var user = User.Create(Guid.NewGuid(), username, _validHash);
 
         user.Username.Should().Be(username);
     }
@@ -98,35 +93,15 @@ public class UserTests
     [InlineData("   ")]
     public void Create_密码哈希为空_抛出参数异常(string passwordHash)
     {
-        var act = () => User.Create(Guid.NewGuid(), "admin", passwordHash, _roleId);
+        var act = () => User.Create(Guid.NewGuid(), "admin", passwordHash);
 
         act.Should().Throw<ArgumentException>();
-    }
-
-    [Fact]
-    public void Create_角色为空Guid_抛出参数异常()
-    {
-        var act = () => User.Create(Guid.NewGuid(), "admin", _validHash, Guid.Empty);
-
-        act.Should().Throw<ArgumentException>();
-    }
-
-    [Fact]
-    public void Create_任意角色外键均可_因为角色是运行时数据()
-    {
-        // 角色不再由枚举约束：实体只保证「非空」，角色是否存在由外键与查询判定。
-        // 这正是「角色可运行时添加」在实体层的体现——新角色不需要改这里的代码。
-        var unknownRoleId = Guid.NewGuid();
-
-        var user = User.Create(Guid.NewGuid(), "admin", _validHash, unknownRoleId);
-
-        user.RoleId.Should().Be(unknownRoleId);
     }
 
     [Fact]
     public void ChangePassword_覆盖旧哈希()
     {
-        var user = User.Create(Guid.NewGuid(), "admin", _validHash, _roleId);
+        var user = User.Create(Guid.NewGuid(), "admin", _validHash);
 
         user.ChangePassword("$argon2id$v=19$m=65536,t=3,p=1$bmV3$aGFzaA");
 
@@ -136,7 +111,7 @@ public class UserTests
     [Fact]
     public void ChangePassword_空哈希_抛出参数异常且不改动原值()
     {
-        var user = User.Create(Guid.NewGuid(), "admin", _validHash, _roleId);
+        var user = User.Create(Guid.NewGuid(), "admin", _validHash);
 
         var act = () => user.ChangePassword("  ");
 
@@ -145,24 +120,19 @@ public class UserTests
     }
 
     [Fact]
-    public void ChangeRole_更新角色外键()
+    public void 实体不携带角色字段_因为角色是分配而非属性()
     {
-        var user = User.Create(Guid.NewGuid(), "admin", _validHash, _roleId);
+        // 角色与用户是**多对多且带作用域**的（user_role_assignments），
+        // 因此 User 上不存在任何角色属性——这条用例是「用户天生属于某个角色」
+        // 这一旧模型已被移除的编译期证据。
+        var user = User.Create(Guid.NewGuid(), "admin", _validHash);
 
-        user.ChangeRole(_otherRoleId);
+        typeof(User)
+            .GetProperties()
+            .Should()
+            .NotContain(property => property.Name.Contains("Role", StringComparison.Ordinal));
 
-        user.RoleId.Should().Be(_otherRoleId);
-    }
-
-    [Fact]
-    public void ChangeRole_空Guid_抛出参数异常且不改动原值()
-    {
-        var user = User.Create(Guid.NewGuid(), "admin", _validHash, _roleId);
-
-        var act = () => user.ChangeRole(Guid.Empty);
-
-        act.Should().Throw<ArgumentException>();
-        user.RoleId.Should().Be(_roleId);
+        user.Username.Should().Be("admin");
     }
 
     [Fact]
@@ -170,7 +140,7 @@ public class UserTests
     {
         var creator = Guid.NewGuid();
         var deleter = Guid.NewGuid();
-        var user = User.Create(Guid.NewGuid(), "admin", _validHash, _roleId);
+        var user = User.Create(Guid.NewGuid(), "admin", _validHash);
         user.MarkCreated(_createdAt, creator);
 
         user.Delete(_createdAt.AddHours(1), deleter);

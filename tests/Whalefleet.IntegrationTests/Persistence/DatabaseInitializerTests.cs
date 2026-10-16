@@ -16,12 +16,16 @@ namespace Whalefleet.IntegrationTests.Persistence;
 public class DatabaseInitializerTests
 {
     /// <summary>
-    /// 当前迁移脚本数量——新增迁移时必须同步上调，以此强制"新脚本确实被跑过"。
+    /// 最新架构版本（<c>PRAGMA user_version</c>）——新增迁移时必须同步上调，
+    /// 以此强制「新脚本确实被跑过」。
     /// </summary>
-    private const int _expectedSchemaVersion = 5;
+    /// <remarks>
+    /// 0.1.0 新增 <c>0006_rbac.sql</c>。
+    /// </remarks>
+    private const int _expectedSchemaVersion = 6;
 
     [Fact]
-    public async Task 初始化_建出三张业务表并推进架构版本()
+    public async Task 初始化_建出业务表并推进架构版本()
     {
         await using var host = new PersistenceTestHost();
 
@@ -29,10 +33,13 @@ public class DatabaseInitializerTests
 
         (await host.GetSchemaVersionAsync()).Should().Be(_expectedSchemaVersion);
 
+        // 0.1.0 新增 role_permissions / user_role_assignments 两张表，所以清单变了：
+        // 授权相关的两张新表取代了原先的角色字段。
         var tableCount = await host.QueryScalarAsync(
-            "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name IN ('users', 'roles', 'hosts', 'refresh_tokens')");
+            "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' "
+            + "AND name IN ('users', 'roles', 'hosts', 'refresh_tokens', 'user_role_assignments')");
 
-        tableCount.Should().Be("4");
+        tableCount.Should().Be("5");
     }
 
     [Fact]
