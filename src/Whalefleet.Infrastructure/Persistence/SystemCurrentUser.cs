@@ -26,6 +26,4 @@ internal sealed class SystemCurrentUser : ICurrentUser
     /// <inheritdoc />
     public IReadOnlyList<string> Roles => [];
 
-    /// <inheritdoc />
-    public string? Role => null;
 }
