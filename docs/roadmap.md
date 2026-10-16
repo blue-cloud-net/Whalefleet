@@ -70,7 +70,7 @@
 | 版本 | 主题 | 状态 | 备注 |
 |------|------|:---:|------|
 | `0.0.1` – `0.0.15` | 项目骨架到部署底座 | ✅ | 15 个迭代全部完成，交付内容见 CHANGELOG |
-| `0.1.0` | 授权基座与 MVP 收口 | ⬜ | 建 `user_host_permissions`；修 socket-proxy 写操作被拦 |
+| `0.1.0` | 授权基座与 MVP 收口 | 🚧 | 授权重写为带作用域的 User → Role → Permission（进行中）；批量删除 / socket-proxy / 反代示例已完成 |
 | `0.2.0` | Volume 与 Network | ⬜ | 两类资源的 CRUD + 详情 |
 | `0.3.0` | 镜像构建与私有 Registry | ⬜ | 构建 + 凭据存储 + login + push |
 | `0.4.0` | 实时通道（SignalR） | ⬜ | 日志流 / stats / 通知条；进度推送改实时 |
@@ -88,21 +88,62 @@
 > 每个 `0.x.0` 迭代 = 1 个可独立验收的功能块。允许破坏性变更，仅自测。
 > 0.0.15 已交付的容器 / 镜像 / 主机 / 用户能力不在此重复列出。
 
-### 0.1.0 ⬜ — 授权基座与 MVP 收口
+### 0.1.0 🚧 — 授权基座与 MVP 收口
 
-**目标**：补上授权的实际可用性，并修掉影响部署正确性的缺陷。
+**目标**：落地**带作用域的 User → Role → Permission** 授权模型——权限落在角色上、分配带主机作用域，
+让角色真正参与授权判定；并修掉影响部署正确性的缺陷。
 
-- **主机可见性落地**：`user_host_permissions` 建表与迁移（实体与仓储接口已在 `Core/Permissions/` 定义），
-  `ResourcePermissionService` 从「只认管理员」改为查表
-- 授权管理 API：`POST /api/v1/admin/hosts/{hostId}/permissions/{grant,revoke,list}`
-- 用户管理页增加「可见主机」分配；非管理员登录后能看到被授权主机
-- **批量删除端点**：容器与镜像各一条 `batch-remove`（前端 `BatchActionBar` 已就绪，缺的是后端）
-- **socket-proxy 写操作修复**：`docker-compose.yml` 补 `POST: 1`，
-  固定 `tecnativa/docker-socket-proxy` 版本；同步 README / constraints / overview 的示例
-- 反向代理示例配置（nginx / Traefik，含 TLS 与 `X-Forwarded-*`）
+**授权基座**
 
-**验收**：非管理员用户登录后能看到被授权主机并操作其容器；
-`socket-proxy` 模式下真的完成「创建 → 启动 → 停止 → 删除」一个 nginx 容器并拉取一个镜像。
+- ⬜ **权限目录**：静态封闭集合（**不建表**——「应用有没有某功能」是编译期事实），
+  按 `domain.level` 命名，分 Global 与 Host 两类作用域。Host 域为 `host.read` / `host.admin`
+  与 `container` / `image` / `network` / `volume` 各自的 read + write；
+  Global 域为 `user.read` / `user.write` / `role.read` / `role.write` / `host.manage` / `audit.read`。
+  `PermissionScope` **预留 Container 一档**，但本迭代只开放全局与主机两条分配路径
+- ⬜ **角色携带权限**：新增 `role_permissions` 表与迁移；`Role` 实体带权限集合，
+  内置角色（`admin` / `operator` / `viewer` / `auditor`）的权限集**不可修改**。
+  `users.role_id` 废弃——用户 ↔ 角色改为多对多
+- ⬜ **带作用域的角色分配**：新增 `user_role_assignments`（`host_id` 可空，NULL = 全局分配）。
+  全局分配的全局权限生效；主机分配只在该主机上生效，且其**全局权限被忽略**
+  ——否则「把 admin 分配到某台主机」会静默变成全局提权
+- ⬜ **角色管理 API**：`POST /api/v1/admin/roles/{list,create,update,remove,set-default,set-permissions}`；
+  删除仍有有效分配的角色返回 `1512`（须先撤销分配）
+- ⬜ **角色分配 API**：主机中心 `POST /api/v1/admin/hosts/{hostId}/roles/{list,assign,revoke}`
+  与用户中心 `POST /api/v1/admin/users/{userId}/roles/{list,assign,revoke}`
+- ⬜ **鉴权解析改查库**：带作用域的分配装不进单个 JWT claim，因此授权事实改为**每次请求解析并缓存**，
+  `[Authorize(Roles = …)]` 换成按权限判定的自定义 `AuthorizationHandler`，内置 `admin` 角色短路。
+  JWT 里的角色名只供界面展示、不再参与判定；附带收益是角色与权限改动**即时生效**，不等 token 过期
+- ⬜ 新错误码：`1510` 角色不存在、`1511` 角色名已占用、`1512` 角色仍有分配、
+  `1513` 内置角色受保护、`1514` 未知权限、`1515` 角色分配不存在
+- ⬜ **前端**：角色管理页（角色 → 权限矩阵，内置角色只读）；用户管理与主机视图的
+  「可见主机」对话框改为**角色选择器**；登录与 `auth/me` 返回 `roles` 与全局有效权限集，
+  菜单与操作按钮按权限集显隐
+
+**MVP 收口**
+
+- ✅ **批量删除端点**：容器与镜像各一条 `batch-remove`（前端 `BatchActionBar` 已就绪，本迭代补上后端；
+  **部分成功也返回 200**，逐条汇报失败）
+- ✅ **socket-proxy 写操作修复**：`docker-compose.yml` 的 `POST: 1` 与固定版本已就位（0.0.x），
+  本迭代补上 `proxy` 对 `socket-proxy` 的 `depends_on`（否则启动顺序不定 → 首启探活报 `1301`）
+- ✅ 反向代理示例配置：`examples/reverse-proxy/`（nginx 与 Traefik，含 TLS 与 `X-Forwarded-*`），
+  `.env.example` 补 `REVERSEPROXY__*`
+
+**验收**：
+
+1. `viewer` 被分配到某台主机后，能看到该主机及其全部容器 / 镜像 / 卷 / 网络，
+   但启停 / 删除任一资源返回 `1502`；改授 `operator` 后可写
+2. 同一用户在 A 主机为 `operator`、在 B 主机为 `viewer` 时，两台主机上的操作权限**互不串味**
+3. 运行时新建自定义角色并分配后，**无需重登、无需等待 token 过期**即生效
+4. 新建用户自动获得默认角色（`auditor`）的全局分配
+5. 把内置 `admin` 分配到某台主机后，它带来的**全局权限不生效**（主机分配只认主机域权限）
+6. `socket-proxy` 模式下真的完成「创建 → 启动 → 停止 → 删除」一个 nginx 容器并拉取一个镜像
+
+> **待手工跑的那一条**：socket-proxy 模式的「创建 → 启动 → 停止 → 删除 + 拉取镜像」
+> 需要真实起一套 compose + socket-proxy 容器，属于部署验收而非 CI 能覆盖的范围。
+> 其余条目（授权闭环、批量删除的 200/1404 分支、反代配置）已有集成测试与前端契约测试覆盖。
+>
+> **迁移口径**：迁移建出授权相关的两张新表并调整 `users`，**不搬运历史授权数据**——
+> 0.x 从未产出正式发布，没有存量部署可搬运。迁移脚本的注释需写明这一取舍，避免后来者以为是漏写。
 
 ---
 
@@ -153,15 +194,16 @@
 
 ### 0.5.0 ⬜ — 资源粒度 RBAC
 
-**目标**：把授权从主机级下沉到容器级。
+**目标**：把 0.1.0 建好的作用域化角色分配下沉到容器级。
 
-- `user_container_permissions` 建表与迁移（实体与接口已在 `Core/Permissions/` 定义）
-- `ResourcePermissionMiddleware` 扩展到容器级校验（read / write / admin 三档）
-- 授权管理 UI 细化到容器粒度
-- 错误码 `1502`（write 权限缺失）在本版启用
+- `user_role_assignments` 增加 `container_id`（与 `host_id` 成对出现——容器 ID 只在单台守护进程内唯一），
+  容器级分配复用同一张表与同一套判定，不另立模型
+- 判定链路扩展到容器级：主机级分配给的是该主机的域级权限，容器级分配在其之上**再收窄**——
+  两者取交集，容器级分配不会放宽主机级分配已经禁止的操作
+- 授权管理 UI 细化到容器粒度；错误码 `1502`（write 权限缺失）在本版启用
 
-**验收**：只授主机权限的用户能看列表但不能启停容器；
-授到容器级 write 后可操作该容器、且操作不到同主机的其他容器。
+**验收**：只在主机级分配了 `container.read` 的用户能看列表但不能启停容器；
+追加一条容器级 `container.write` 分配后可操作该容器、且操作不到同主机的其他容器。
 
 ---
 

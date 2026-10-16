@@ -31,6 +31,102 @@ Work in progress. The next milestone is `0.1.0` — authorization baseline and M
 (its per-version notes accumulate here as internal drafts and are rewritten into the `1.0.0` entry
 before the first public release).
 
+### `0.1.0` — Authorization baseline and MVP consolidation (internal draft)
+
+#### Added
+
+- **A permission catalog**: a **static, closed set** of permissions named `domain.level`
+  (`host.read`, `container.write`, `user.manage`, …), split into Global and Host scopes.
+  - It is deliberately **not a table**. "Does this build have this feature" is a compile-time fact,
+    and a table for it would let the runtime-only roles drift away from what the code can enforce.
+  - `PermissionScope` reserves a **Container** value now, but this milestone only opens the global
+    and host assignment paths — see `0.5.0` for the container scope.
+- **`role_permissions` table** (migration `0006`). A role now **carries** its permission set — a role's
+  name on its own decides nothing, so the set is what makes an operator actually *be* one.
+  - Permissions are stored as their `domain.level` **text**, one row per (role, permission) pair:
+    a new permission is a new catalog entry plus a row, not a new column every existing row has to
+    be widened to hold.
+  - The **built-in** roles' permission sets are **immutable**. Administrators may add, edit and delete
+    their own roles freely, but `admin` / `operator` / `viewer` / `auditor` are seeded with a fixed
+    meaning — a role whose permission set can be emptied is no longer the role its name claims to be.
+  - `admin` is seeded with **every** permission row *and* still short-circuits on its role name. The
+    rows keep the permission matrix honest in the UI; the short-circuit means a permission added in a
+    later release does not silently fail to reach administrators.
+- **`user_role_assignments` table** (migration `0006`) — the user-to-role link is now **many-to-many**
+  and **scoped**. `host_id` is nullable: `NULL` is a global assignment, otherwise the assignment
+  applies to that one host.
+  - A **global** assignment contributes the role's Global permissions. A **host** assignment
+    contributes only that role's Host-scope permissions, **on that host**, and its Global permissions
+    are ignored — otherwise assigning `admin` to one host would silently be a system-wide promotion.
+  - The same user may hold several roles on the same host; the effective set is their **union**. The
+    uniqueness index is partial (`WHERE is_deleted = 0`) so a revoked assignment can be re-created,
+    and it is keyed on `(user_id, role_id, host_id)` rather than on the pair.
+  - `users.role_id` is **dropped**. Roles are no longer something a user *has*; they are something a
+    user is *assigned*.
+- **`SqliteRoleRepository` now reads and writes permissions**, and
+  **`SqliteUserRoleAssignmentRepository`** is registered in DI. Both go through the shared
+  `RepositoryBase`, so audit stamps and soft deletion behave like every other entity.
+- **Role management endpoints** under `api/v1/admin/roles` — `list` / `create` / `update` / `remove` /
+  `set-default` / `set-permissions`. Deleting a role that still has **live assignments** is refused
+  with `1512` rather than cascading: a cascade silently revokes access nobody asked to revoke, and
+  "this role is in use" is a question the administrator can act on.
+- **Role assignment endpoints**, host-centred and user-centred:
+  `api/v1/admin/hosts/{hostId}/roles/{list,assign,revoke}` and
+  `api/v1/admin/users/{userId}/roles/{list,assign,revoke}`.
+  - Both are kept because they answer two different questions — "who can reach this machine?" and
+    "what does this person have?" — and a UI that has to filter one list by the other's answer is a
+    UI that renders a half-truth.
+- **Authorization now resolves from the database on every request**, cached for the request's
+  lifetime. `[Authorize(Roles = "admin")]` is replaced by a permission-based `AuthorizationHandler`.
+  - Scoped assignments **cannot** fit in a single JWT claim: the same person may be an `operator` on
+    one host and a `viewer` on another, so any claim snapshot is a partial and eventually wrong answer.
+  - Side effect worth having: role and permission edits now take effect **immediately** instead of
+    waiting for the access token to expire.
+  - The `role` claim is still issued — the UI shows roles and hides menu items from them — but it no
+    longer takes part in an authorization decision.
+- **New error codes `1510`–`1515`** (role not found, role name taken, role still assigned,
+  built-in role protected, unknown permission, assignment not found), wired into the catalog, the HTTP
+  status mapping, both guard tests, the API spec, and the frontend error-code tables.
+- **Batch removal for containers and images** (`POST .../containers/batch-remove` and
+  `.../images/batch-remove`). Up to **100** ids per request, trimmed, de-duplicated, order preserved.
+  - The response is `200` with a per-item result rather than a single status: half a batch is expected
+    to fail on a busy Docker host, and collapsing that into one 4xx/5xx throws away the part that did
+    work. A total failure still reports `IsTotalFailure` so the caller can raise a toast instead of
+    a silent no-op.
+  - Image removal is submitted as **two** batches, one per force mode. A batch carries a single `force`
+    flag, and splitting it client-side is the only way to express "force-remove the safe ones, refuse
+    on the running ones" without a second endpoint.
+- **Role management page** (roles → permission matrix; built-in roles render read-only) and the
+  host-centred "who can reach this machine" and user-centred "what does this person have" views.
+  Login and `auth/me` now return the user's roles together with their effective **global** permission
+  set, which is what menu items and action buttons are shown from.
+- **`examples/reverse-proxy/`** — nginx (`whalefleet.conf` + proxy-params include) and Traefik
+  (label-only) configurations, plus the `REVERSEPROXY__ENABLED` / `KNOWNPROXIES` / `KNOWNNETWORKS`
+  keys documented in `.env.example`. Forwarded-header handling has to match the proxy that sets the
+  headers, and getting it wrong is invisible until a login rate-limit starts locking out every user
+  from one shared `X-Forwarded-For` bucket.
+
+#### Changed
+
+- **`ResourcePermissionService` resolves from roles instead of per-user grants.** Its per-host
+  predicate became `FilterVisibleAsync` (reads the user's assignments **once**, filters in memory —
+  per-host querying turns a host list into N round trips), and visibility is now the question "does
+  this user's effective permission set on this host contain `host.read`" rather than "does a row with
+  the read bit exist". Administrators still short-circuit.
+- **`User` no longer carries a `RoleId`.** Creating a user now creates an assignment of the default
+  role (`auditor`) with `host_id = NULL`; "keep at least one administrator" counts global assignments
+  of `admin` rather than users pointing at it.
+- **`ICurrentUser.Role` becomes `ICurrentUser.Roles`**, and the access token carries **multiple** role
+  claims instead of one. It remains a display concern only.
+
+> **Deployment acceptance for `0.1.0` is still open**: the socket-proxy profile's
+> create → start → stop → delete + pull round trip needs a real `docker compose up` run. CI does not
+> exercise the composed stack.
+>
+> **Migration note**: `0006` builds the authorization tables and reshapes `users`; it does **not**
+> carry historical authorization rows across. This milestone has never produced a tagged release,
+> so there is no production data to migrate.
+
 ---
 
 ## [0.0.15] — Deployment groundwork and release pipeline
