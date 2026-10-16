@@ -108,7 +108,7 @@ UnoCSS 默认 + 自定义：
   - **折叠态仍保留可点的状态点**：此时它是菜单区内唯一能进主机概览的入口，不可一并删掉
 - 路由声明顺序即菜单顺序；调整 `router/index.ts` 中的**排列顺序**即可改变菜单顺序
 - **菜单顺序与能力交付节奏对齐**：容器 / 镜像排在 0.0.11 / 0.0.12，「编排」（Compose）
-  依赖它们且后端排在 0.7.0，因此置于网络之后；`tests/routes.spec.ts` 钉住这个顺序
+  依赖它们且后端排在 0.5.0，因此置于网络之后；`tests/routes.spec.ts` 钉住这个顺序
 - 纯重定向路由（`hosts/:hostId`）与内容与其他菜单项重叠的页面（`host-dashboard`）
   **必须**声明 `meta.showInSidebar: false`，否则会被当成菜单项，因缺 `meta.title` 而在 `t(undefined)` 处抛错
 
@@ -153,10 +153,10 @@ UnoCSS 默认 + 自定义：
 | 面包屑（`el-breadcrumb`） | 由 `utils/breadcrumbs.ts` 的纯函数从路由 meta 派生：全局 `总览 / {当前页}`；主机作用域 `总览 / {主机名} / {当前页}`（主机名链到该主机概览）。各页面**不要**自己写面包屑 | 0.0.7 |
 | HostSelector（下拉） | 主机作用域：显示当前主机名 + 状态点；全局作用域：显示「选择主机」占位。点开列出全部可访问主机，**切换后停留在当前资源页**；admin 可见「管理主机」入口 | 0.0.11 |
 | 语言切换 / 主题切换 | 顶栏独立控件（切换频繁，不藏进下拉） | 0.0.7 |
-| 通知按钮（铃铛） | 0.4.0+ 容器 died 通知，未读小红点 | 0.4.0 |
+| 通知按钮（铃铛） | 0.7.0+ 容器 died 通知，未读小红点 | 0.7.0 |
 | 用户菜单（头像下拉） | 用户名 / 角色标签 / 修改密码 / 登出（修改密码已随 0.0.13 加进下拉） | 0.0.7 |
 
-> 顶栏通知铃铛在当前代码中**尚未实现**（排在 0.4.0），不要按截图当 bug 修。
+> 顶栏通知铃铛在当前代码中**尚未实现**（排在 0.7.0），不要按截图当 bug 修。
 
 ### 主机作用域两页的职责切分
 
@@ -391,15 +391,15 @@ HOST_TONE_RAIL[tone]                // 卡片左侧色条
   /hosts/:hostId                    → redirect → /hosts/:hostId/dashboard
   /hosts/:hostId/dashboard          → HostDashboardView（落地页，承载「主机信息」卡片；不进侧边栏）
   /hosts/:hostId/status             → HostStatusView（状态图，菜单第一项）
-  /hosts/:hostId/stacks             → StacksView（编排 / Compose，0.7.0 占位）
+  /hosts/:hostId/stacks             → StacksView（编排 / Compose，0.5.0 占位）
   /hosts/:hostId/containers         → ContainersView
     /hosts/:hostId/containers/:id   → ContainerDetailView (tab: info / logs / stats / inspect)
   /hosts/:hostId/images             → ImagesView
   /hosts/:hostId/volumes            → VolumesView      (0.2.0+)
   /hosts/:hostId/networks           → NetworksView     (0.2.0+)
-  /hosts/:hostId/events             → EventsView       (操作审计，1.0.0+ 占位)
-  /hosts/:hostId/stacks/:name       → StackDetailView  (0.7.0+)
-  /hosts/:hostId/registries         → RegistryListView (0.3.0+)
+  /hosts/:hostId/events             → EventsView       (操作审计，0.9.0+ 占位)
+  /hosts/:hostId/stacks/:name       → StackDetailView  (0.5.0+)
+  /hosts/:hostId/registries         → RegistryListView (0.4.0+)
 ```
 
 > **注意**：`/hosts`（主机管理，admin CRUD）与 `/hosts/:hostId/**`（某台主机的资源作用域）

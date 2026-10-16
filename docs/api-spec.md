@@ -6,12 +6,14 @@
 > **可能在下一次迭代里就改变**（见 [roadmap.md](./roadmap.md#版本段与发布模型)）。
 >
 > **自 `1.0.0` 起，公开 API 冻结**：路径与请求 / 响应结构保持向后兼容，直到 `2.0.0`。
-> 这条承诺的可执行手段是 **0.8.0 落地的路由清单与响应 DTO 快照测试**——
+> 这条承诺的可执行手段是 **0.19.0 落地的路由清单与响应 DTO 快照测试**——
 > 改动任一响应 DTO 都会让测试失败。冻结承诺若没有测试支撑，只是文档里的一句话。
 >
-> 两个仍可变更的例外（不计入冻结范围）：
+> 三个仍可变更的例外（不计入冻结范围）：
 > - **`/api/v1/dev/throw`**：仅开发环境注册，生产不存在。
 > - **`/scalar/v1`** 与 OpenAPI 描述：文档端点，不参与业务契约。
+> - **`/mcp`**：MCP 端点是 **JSON-RPC 2.0 协议面**（0.18.0 起），工具清单随权限与配置变化，
+>   不返回 `ApiResult` 信封。
 
 ## 请求风格约定
 
@@ -121,6 +123,8 @@
 | `1300-1399` | **主机管理**——主机不存在、连通性失败等 |
 | `1400-1499` | **资源操作**（容器 / 镜像 / Volume / Network）——状态不允许、镜像不存在等 |
 | `1500-1599` | **资源权限**——无权限访问此主机 / 容器 / 资源等 |
+| `1600-1699` | **操作审计**——审计查询、导出等（0.9.0 起） |
+| `1700-1799` | **告警与通知**——告警规则、通知渠道等（0.11.0 起） |
 | `9000-9999` | **服务器内部错误**——未捕获异常、数据库错误等 |
 
 ### 当前已分配的错误码
@@ -141,26 +145,35 @@
 | `1101` | 401 | Token 已过期 | 0.0.5 |
 | `1102` | 401 | Refresh token 已撤销或无效 | 0.0.5 |
 | `1103` | 429 | 登录速率限制（5 次/分钟） | 0.0.4 |
-| `1104` | 401 | Terminal token 无效或已过期 | 0.6.0 |
+| `1104` | 401 | Terminal token 无效或已过期 | 0.8.0 |
+| `1105` | 401 | 个人访问令牌（PAT）无效或已撤销 | 0.18.0 |
+| `1106` | 401 | 个人访问令牌已过期 | 0.18.0 |
+| `1107` | 404 | 个人访问令牌不存在 | 0.18.0 |
 | `1200` | 400 | 用户名已存在 | 0.0.8 |
 | `1201` | 404 | 用户不存在 | 0.0.8 |
 | `1202` | 400 | 密码强度不满足要求 | 0.0.5 |
+| `1203` | 400 | 团队名已占用 | 0.13.0 |
+| `1204` | 404 | 团队不存在 | 0.13.0 |
 | `1300` | 404 | 主机不存在 | 0.0.8 |
 | `1301` | 502 | 主机连通性失败 | 0.0.13 |
 | `1302` | 400 | 主机已停用 | 0.0.8 |
 | `1303` | 400 | 主机名已被占用 | 0.0.8 |
 | `1304` | 400 | 分组名已被占用 | 0.0.13 |
 | `1305` | 404 | 分组不存在 | 0.0.13 |
+| `1306` | 404 | 主机标签不存在 | 0.10.0 |
+| `1307` | 400 | 主机标签名已占用 | 0.10.0 |
 | `1401` | 404 | 容器 / 镜像 / Volume / Network 不存在 | 0.0.9 |
 | `1402` | 500 | Docker API 调用失败 | 0.0.9 |
 | `1403` | 408 | Docker 操作超时 | 0.0.9 |
 | `1404` | 409 | 资源当前状态不允许该操作（如不带 `force` 删除运行中的容器） | 0.0.9 |
 | `1500` | 403 | 无权限访问此资源 | 0.0.8 |
 | `1501` | 403 | 无权限访问此主机 | 0.0.8 |
-| `1502` | 403 | 无权限执行此操作（write 权限缺失） | 0.5.0 |
+| `1502` | 403 | 无权限执行此操作（write 权限缺失） | 0.12.0 |
+| `1503` | 404 | 授权记录不存在 | 0.1.0 |
+| `1504` | 403 | MCP 写工具未启用（`Mcp:AllowWrite=false`） | 0.18.0 |
 | `9999` | 500 | 服务器内部错误 | 0.0.2 |
 
-> 各代码段保留充足空间，0.4.0 / 0.5.0 起按需分配更细的错误码。
+> 各代码段保留充足空间，0.9.0 起按需分配更细的错误码（已启用 `1600-1699` 审计、`1700-1799` 告警）。
 
 ### Mock 与契约同步
 
@@ -247,13 +260,13 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 不存在 / 已停用 | `1300`（404）/ `1302`（400） |
 | 缺省值 | **无**。全局作用域端点不含该段；主机作用域端点必须显式给出 |
 
-> **Hub 与 WebSocket 路径**（0.4.0 / 0.6.0）同样遵循「主机进路径」；`NotificationHub` 是**唯一**的全局 Hub，不含 `hostId`。
+> **Hub 与 WebSocket 路径**（0.7.0 / 0.8.0）同样遵循「主机进路径」；`NotificationHub` 是**唯一**的全局 Hub，不含 `hostId`。
 
 ---
 
 ## API 接口列表
 
-### 认证（0.0.4 - 0.0.5 / 0.4.0）
+### 认证（0.0.4 - 0.0.5 / 0.7.0）
 
 | 操作 | 路径 | 阶段 | 说明 |
 |------|------|------|------|
@@ -261,7 +274,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 当前用户 | `POST /api/v1/auth/me` | 0.0.4 | 需认证；返回当前登录用户摘要。前端刷新页面时用它校验持久化的 token 是否**仍然有效**（签名、过期、角色以服务端为准），比前端自行解码 JWT 更可靠 |
 | 刷新 Token | `POST /api/v1/auth/refresh` | 0.0.5 | 用 refreshToken 换新 accessToken |
 | 登出 | `POST /api/v1/auth/logout` | 0.0.5 | 撤销当前 refreshToken |
-| 终端短时 Token | `POST /api/v1/auth/terminal-token` | 0.6.0 | 返回 5 分钟过期的 terminalToken，仅用于 WebSocket `/ws/hosts/{hostId}/containers/exec` |
+| 终端短时 Token | `POST /api/v1/auth/terminal-token` | 0.8.0 | 返回 5 分钟过期的 terminalToken，仅用于 WebSocket `/ws/hosts/{hostId}/containers/exec` |
 
 **请求/响应示例**：
 
@@ -346,6 +359,47 @@ POST /api/v1/hosts/{hostId}/containers/list
 > 而「已登出的令牌被使用」只说明对方拿着一个已经作废的凭据（例如用户在多设备场景下的旧副本），
 > 牵连其他会话没有安全收益，反而会误伤。两者的区别由 `replaced_by_token_hash` 是否为空表达。
 
+### MCP 与访问令牌（0.18.0）
+
+> MCP 端点是 **JSON-RPC 2.0 协议面**，不返回 `ApiResult` 信封（与 `GET /healthz` 同类例外）。
+
+| 操作 | 路径 | 阶段 | 说明 |
+|------|------|------|------|
+| 访问令牌列表 | `POST /api/v1/auth/tokens/list` | 0.18.0 | 只返回前缀与元数据（`lastUsedAt` / `expiresAt`），**不返回明文** |
+| 创建访问令牌 | `POST /api/v1/auth/tokens/create` | 0.18.0 | Body: `{ name, expiresAt? }`；**明文仅在本次响应里出现一次** |
+| 撤销访问令牌 | `POST /api/v1/auth/tokens/revoke` | 0.18.0 | Body: `{ tokenId }`；撤销**即时生效**，不等过期 |
+| MCP 端点 | `POST /mcp`（Streamable HTTP） | 0.18.0 | 与 `/api/v1` 并列，**同进程同端口**；返回 JSON-RPC 2.0 |
+
+> **PAT 不走 `auth/refresh` / `auth/logout` 语义**：它没有会话，只有「有效 / 已撤销 / 已过期」三态。
+> **`/mcp` 必须与 `/api`、`/healthz` 一同排除在 SPA 回退之外**，否则打错的子路径会变成 200 + HTML。
+> **`Mcp:AllowedHosts` 不匹配返回 421**（DNS-rebinding 防护）——这是 MCP 客户端配置里最容易漏的一项。
+
+### 0.9.0 起的新增端点（索引）
+
+> 这些迭代沿用既有约定（RPC 风格 + 主机作用域路径 + `ApiResult` 信封），此处只列路径与阶段；
+> 请求 / 响应形态在各迭代落地时补全。
+
+| 能力 | 端点 | 阶段 |
+|------|------|------|
+| 认证日志列表 | `POST /api/v1/admin/logs/authentication/list` | 0.9.0 |
+| 活动日志列表 | `POST /api/v1/admin/logs/activity/list` | 0.9.0 |
+| 审计导出 | `POST /api/v1/admin/logs/activity/export` | 0.9.0 |
+| 主机标签 CRUD | `POST /api/v1/admin/host-tags/{list,create,remove}` | 0.10.0 |
+| 主机打标 / 去标 | `POST /api/v1/admin/hosts/{hostId}/tags/{attach,detach}` | 0.10.0 |
+| 磁盘用量 | `POST /api/v1/hosts/{hostId}/system/df` | 0.10.0 |
+| 告警规则 | `POST /api/v1/admin/alert-rules/{list,update}` | 0.11.0 |
+| 通知中心 | `POST /api/v1/notifications/{list,read}` | 0.11.0 |
+| 通知渠道测试 | `POST /api/v1/admin/notifications/test` | 0.11.0 |
+| 团队 CRUD 与成员 | `POST /api/v1/admin/teams/*` | 0.13.0 |
+| **团队批量授权** | `POST /api/v1/admin/teams/{teamId}/grant` | 0.13.0 |
+| 镜像 / 容器导出导入 | `POST /api/v1/hosts/{hostId}/{images,containers}/{export,import,commit}` | 0.14.0 |
+| 容器 / 卷文件浏览 | `POST /api/v1/hosts/{hostId}/{containers,volumes}/files/{list,download}` | 0.14.0 |
+| 资源 Webhook | `POST /api/v1/webhooks/{token}` | 0.15.0 |
+| 镜像自动更新策略 | `POST /api/v1/hosts/{hostId}/images/auto-update` | 0.15.0 |
+
+> 审计写入由**应用服务层统一埋点**（非每个 Controller 各写一遍），中间件兜底记录 4xx / 5xx。
+> **Webhook 端点无需认证头**——URL 里的 token 即凭据；因此令牌必须可撤销、可重置，且随库备份。
+
 ---
 
 ### 用户管理（0.0.8 / 0.0.13）
@@ -386,7 +440,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 
 | 操作 | 路径 | 角色 | 说明 |
 |------|------|------|------|
-| 可见主机列表 | `POST /api/v1/hosts/list` | 任意已登录 | 返回**当前用户可见**的主机（含 `status`）；admin 调用时返回全部，非 admin 当前返回**空数组** |
+| 可见主机列表 | `POST /api/v1/hosts/list` | 任意已登录 | 返回**当前用户可见**的主机（含 `status`）；admin 调用时返回全部，非 admin 返回 `user_host_permissions` 里被授权的主机 |
 | 单台概览 | `POST /api/v1/hosts/{hostId}/overview` | 任意已登录 | 返回单台主机的 `version` / `counts` / `startedAt`；失败形态 `1300`/404、`1501`/403 |
 
 **两个端点共用同一个响应形状**（列表里取不到的字段为 `null`，对应界面上的「—」占位）：
@@ -429,9 +483,15 @@ POST /api/v1/hosts/{hostId}/containers/list
 > **主机离线不是错误**：概览对离线 / 已停用主机返回 `200` + `status: "offline"` + 空字段，
 > 而不是 `502`——界面要把离线显示成一个状态，不是一个错误页。只有「主机本身不存在」才是 `1300`/404。
 >
-> **非管理员当前拿到空列表**：0.1.0 的主机可见性表落地前是 fail-closed。列表用**空数组**表达
-> 「没有可见主机」，而不是 403——后者会让前端的主机选择器整块报错，而它本该显示「暂无可用主机」。
-> 单台概览则仍走 403/`1501`（那是明确的一次越权访问）。
+> **非管理员只看到被授权的主机**（0.1.0 起）：过滤由 `IResourcePermissionService` 一次查库完成
+> （数据来自 `user_host_permissions`，判定标准是是否具备 `Read` 位）。
+> 没被授权时返回**空数组**而不是 403——列表接口一报错，前端的主机选择器整块就红了，
+> 而它本该显示「暂无可用主机」。
+> 单台概览则走 403/`1501`（那是明确的一次越权访问）。
+>
+> **管理员不受这条限制**：`ResourcePermissionService` 对管理员短路放行且**不查库**——
+> 管理员的语义本就是「全部可见」，为它插 N 条授权行意味着每加一个管理员就要同步维护 N 条数据，
+> 而一旦漏同步，那个管理员就莫名看不见某台机器，比「表里没有他的记录」更难排查。
 
 > **为什么要与 `admin/hosts/list` 分开**：总览页与侧栏主机选择器对**所有角色**可见，
 > 而 `admin/hosts/list` 是主机管理页专用（含管理操作所需的完整信息）。
@@ -522,7 +582,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 ]
 ```
 
-> **分组是展示信息，不是权限边界**：「谁能操作哪台主机」由 0.1.0 落地的可见性表与 0.5.0 的容器级权限表回答。
+> **分组是展示信息，不是权限边界**：「谁能操作哪台主机」由 0.1.0 落地的可见性表与 0.12.0 的容器级权限表回答。
 > 若让分组承担授权，「把主机挪进生产分组」就会变成一次隐式提权。理由同
 > [architecture.md](./architecture.md) 的实体清单说明。
 >
@@ -543,7 +603,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 > 「要不要翻页」的判断，而真实数据永远在第一页。
 ---
 
-### 容器管理（0.0.9 / 0.2.0）
+### 容器管理（0.0.9 / 0.3.0 / 0.6.0 / 0.14.0）
 
 | 操作 | 路径 | 阶段 | 说明 |
 |------|------|------|------|
@@ -553,9 +613,46 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 停止 | `POST /api/v1/hosts/{hostId}/containers/stop` | 0.0.9 | Body: `{ containerId, waitSeconds? }`；`waitSeconds` 取值 0–300（默认 10，与 Docker 一致） |
 | 重启 | `POST /api/v1/hosts/{hostId}/containers/restart` | 0.0.9 | Body: `{ containerId }` |
 | 删除 | `POST /api/v1/hosts/{hostId}/containers/remove` | 0.0.9 | Body: `{ containerId, force? }`；不带 `force` 删运行中的容器返回 `1404`/409 |
-| **批量删除** | `POST /api/v1/hosts/{hostId}/containers/batch-remove` | 0.1.0 | Body: `{ containerIds: [...] }`，返回每个的成功/失败状态 |
+| **批量删除** | `POST /api/v1/hosts/{hostId}/containers/batch-remove` | **0.1.0** | Body: `{ containerIds: string[], force? }`；响应为汇总结果，**部分成功也是 200**（见下） |
 | 获取日志 | `POST /api/v1/hosts/{hostId}/containers/logs` | 0.0.9 | Body: `{ containerId, tail?, since?, timestamps?, includeStderr? }`；`tail` 取值 0–10000，省略表示全部；**不支持** `follow` |
 | 获取详情 | `POST /api/v1/hosts/{hostId}/containers/inspect` | 0.0.9 | Body: `{ containerId }` |
+
+#### 批量删除的响应形态（0.1.0 已实现）
+
+容器与镜像的 `batch-remove` 共用同一个响应形状，因此前端的批量操作条可以用同一套逻辑处理两者：
+
+```jsonc
+{
+  "requested": 3,        // ⚠️ 是**去重后**的个数：传两次同一个容器不会显示成「成功 1、失败 1」
+  "succeeded": 2,
+  "failures": [
+    { "resourceId": "abc123", "code": 1404, "message": "容器正在运行，需指定 force" }
+  ]
+}
+```
+
+> **部分成功返回 200 而不是 4xx**：HTTP 状态码表达不了「3 个里成了 2 个」。
+> 整批失败**也**是 200——逐条失败的原因通常彼此不同（有的 `1404`、有的 `1401`），
+> 没有哪一个能代表整批的状态码。
+>
+> **真正的错误响应只有两类**，且都是**整批失败**（没有任何一个条目被处理）：
+> 入参非法（列表为空 / 全是空白 / 超过 100 条 → `1000`/400）与
+> 主机不可达或已停用（`1301`/502、`1302`/400）。界面必须把这两种显示成
+> 「操作无效」而不是「部分成功」。
+>
+> **`failures[].code` 与单条端点抛出的错误码完全一致**，因此界面能复用同一套提示文案，
+> 而不必为批量场景另写一张错误码表。
+>
+> **服务端去重**：同一个容器 ID 出现两次时，第二次必然是「已删除」的 `1401`。
+> 用户看到「成功 1、失败 1，失败的还是同一个容器」只会觉得系统在胡说；
+> 去重之后「删 1 个、成功 1 个」正是他期望的语义。
+>
+> **主机客户端只取一次、串行处理**：取一次是因为 N 个容器取 N 次就是 N 次可达性探测，
+> 而它抛的 `1301`/`1302` 本身就是整批失败，必须发生在循环之外；
+> 串行是因为删除会触发网络断开、卷解绑等清理动作，并发时守护进程内部的锁会让失败原因不可预测。
+>
+> **镜像批量响应不含逐条的解绑标签明细**（那是单条端点的职责）：
+> 批量场景下用户需要知道的只有「删没删掉」，逐条明细只会让响应体随选中数量膨胀。
 
 #### 查询端点的请求 / 响应形态（0.0.9 已实现）
 
@@ -628,7 +725,7 @@ POST /api/v1/hosts/{hostId}/containers/list
     "image": "nginx:latest",
     "cmd": ["nginx", "-g", "daemon off;"],
     "entrypoint": ["/docker-entrypoint.sh"],
-    "env": ["PATH=…"],                        // ⚠️ 常用于存放密码 / Token，仅管理员可见（0.5.0 起逐资源授权）
+    "env": ["PATH=…"],                        // ⚠️ 常用于存放密码 / Token；逐资源授权从 0.12.0 起；MCP 工具返回时此项的值默认遮蔽（0.18.0）
     "labels": { "com.example.owner": "web" },
     "workingDir": "", "hostname": "3f2c…", "user": "", "tty": false
   },
@@ -660,7 +757,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 >
 > **默认只列运行中的容器**（与 `docker ps` 一致）；`all: true` 等价于 `docker ps -a`。
 >
-> **日志不做实时跟随**：一次性 HTTP 响应跟着日志流只会把连接挂到容器退出；实时流是 0.4.0
+> **日志不做实时跟随**：一次性 HTTP 响应跟着日志流只会把连接挂到容器退出；实时流是 0.7.0
 > 的 SignalR 推送要解决的事。`tail` 越界（负数或 > 10000）返回 `1000`/400 而**不是**静默截断——
 > 调用方要 100 万行却只拿到 1 万行，会误以为「日志就这么多」。
 
@@ -728,17 +825,19 @@ POST /api/v1/hosts/{hostId}/containers/list
 
 ---
 
-### 镜像管理（0.0.10 / 0.2.0 / 0.4.0）
+### 镜像管理（0.0.10 / 0.4.0 / 0.7.0）
 
 | 操作 | 路径 | 阶段 | 说明 |
 |------|------|------|------|
 | 获取列表 | `POST /api/v1/hosts/{hostId}/images/list` | 0.0.10 | Body: `{ all?, search?, pageIndex?, pageSize?, sortBy?, sortDir? }`；分页在服务端**内存**完成（Docker 无分页参数），`pageSize` 上限 100 |
-| 拉取 | `POST /api/v1/hosts/{hostId}/images/pull` | 0.0.10 | Body: `{ image, tag?, platform? }`；0.0.10 一次性返回结果，0.3.0 改 SignalR 实时进度 |
+| 拉取 | `POST /api/v1/hosts/{hostId}/images/pull` | 0.0.10 | Body: `{ image, tag?, platform? }`；0.0.10 一次性返回结果，0.7.0 改 SignalR 实时进度 |
 | 删除 | `POST /api/v1/hosts/{hostId}/images/remove` | 0.0.10 | Body: `{ imageId, force? }`；被容器占用的镜像返回 `1404`/409 |
-| **批量删除** | `POST /api/v1/hosts/{hostId}/images/batch-remove` | 0.1.0 | Body: `{ imageIds: [...] }` |
+| **批量删除** | `POST /api/v1/hosts/{hostId}/images/batch-remove` | **0.1.0** | Body: `{ imageIds: string[], force? }`；响应为汇总结果，**部分成功也是 200**（容器侧同形状） |
 | 获取详情 | `POST /api/v1/hosts/{hostId}/images/inspect` | 0.0.10 | Body: `{ imageId }` |
-| **构建镜像** | `POST /api/v1/hosts/{hostId}/images/build` | 0.3.0 | multipart: Dockerfile + context tar；通过 SignalR 临时频道推送进度 |
-| **Push 镜像** | `POST /api/v1/hosts/{hostId}/images/push` | 0.3.0 | Body: `{ imageId, registryId }` |
+| **打标签** | `POST /api/v1/hosts/{hostId}/images/tag` | **0.3.0** | Body: `{ imageId, repository, tag? }` |
+| **构建镜像** | `POST /api/v1/hosts/{hostId}/images/build` | 0.4.0 | multipart: Dockerfile + context tar；通过 SignalR 临时频道推送进度（0.7.0 起） |
+| **Push 镜像** | `POST /api/v1/hosts/{hostId}/images/push` | 0.4.0 | Body: `{ imageId, registryId }` |
+| **清理** | `POST /api/v1/hosts/{hostId}/images/prune` | **0.6.0** | Body: `{ danglingOnly? }`；返回回收量；**不是** `system/prune` |
 
 #### 查询端点的请求 / 响应形态（0.0.10 已实现）
 
@@ -837,7 +936,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 >
 > **0.0.10 的拉取进度只进日志**：拉取层数大时可以到几十秒，一次性 HTTP 响应期间客户端只能干等
 > （前端可以先转圈）。进度同时写进 Serilog（Debug 逐层、Information 记完成）。
-> **SignalR 实时进度推到 0.4.0**——那时列表页与详情页也顺带接上。
+> **SignalR 实时进度推到 0.7.0**——那时列表页与详情页也顺带接上。
 >
 > **拉取完成后额外做一次 inspect**：为了让「拉取成功」的响应直接带上镜像 ID 与大小
 > （验收标准要求），必须在完成后读一次镜像元数据；否则调用方还要再发一次请求才知道拉了什么。
@@ -861,7 +960,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 
 ---
 
-### Volume 管理（0.2.0）
+### Volume 管理（0.2.0 / 0.6.0 / 0.14.0）
 
 | 操作 | 路径 | 说明 |
 |------|------|------|
@@ -873,7 +972,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 
 ---
 
-### Network 管理（0.2.0）
+### Network 管理（0.2.0 / 0.3.0）
 
 | 操作 | 路径 | 说明 |
 |------|------|------|
@@ -884,7 +983,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 
 ---
 
-### Docker Compose / Stack（0.7.0）
+### Docker Compose / Stack（0.5.0 / 0.15.0）
 
 | 操作 | 路径 | 说明 |
 |------|------|------|
@@ -896,25 +995,61 @@ POST /api/v1/hosts/{hostId}/containers/list
 
 ---
 
-### Registry 管理（0.3.0）
+### Registry 管理（0.4.0）
 
 | 操作 | 路径 | 阶段 | 说明 |
 |------|------|------|------|
-| 获取列表 | `POST /api/v1/registry/list` | 0.3.0 | — |
-| 登录 | `POST /api/v1/registry/login` | 0.3.0 | Body: `{ name, url, username, password }`（凭据加密存储） |
-| 删除 | `POST /api/v1/registry/remove` | 0.3.0 | Body: `{ registryId }` |
+| 获取列表 | `POST /api/v1/registry/list` | 0.4.0 | — |
+| 登录 | `POST /api/v1/registry/login` | 0.4.0 | Body: `{ name, url, username, password }`（凭据加密存储） |
+| 删除 | `POST /api/v1/registry/remove` | 0.4.0 | Body: `{ registryId }` |
 
-### 资源权限管理（0.1.0 主机可见性 / 0.5.0 容器粒度）
+### 资源权限管理（0.1.0 主机可见性 / 0.12.0 容器粒度）
 
 | 操作 | 路径 | 角色 | 说明 |
 |------|------|------|------|
 | 列表 | `POST /api/v1/admin/hosts/{hostId}/permissions/list` | admin | Body: `{ userId? }` |
-| 授权 | `POST /api/v1/admin/hosts/{hostId}/permissions/grant` | admin | Body: `{ userId, permissions: ["read", "write", "admin"], containerIds? }` |
-| 撤销 | `POST /api/v1/admin/hosts/{hostId}/permissions/revoke` | admin | Body: `{ userId, permissions?, containerIds? }` |
+| 授权 | `POST /api/v1/admin/hosts/{hostId}/permissions/grant` | admin | Body: `{ userId, permissions: ["read", "write", "admin"] }` |
+| 撤销 | `POST /api/v1/admin/hosts/{hostId}/permissions/revoke` | admin | Body: `{ userId, permissions? }` |
+
+**0.1.0 已实现**，容器粒度（`user_container_permissions`）排 0.12.0，因此
+`grant` / `revoke` 的请求体**不含** `containerIds`。
+
+响应形状（`list` 的每一项、`grant` 的返回值同形状）：
+
+```jsonc
+{
+  "userId": "…uuid…",
+  "username": "ops-zhang",      // 冗余自用户表：界面要显示人名，不该自己再查一次
+  "role": "operator",
+  "permissions": ["read", "write"],   // 由弱到强固定排序
+  "lastModificationTime": "2026-10-10T06:12:00Z"   // 从未变更过为 null
+}
+```
+
+> **`hostId` 是主机名**（与 `admin/hosts/{hostId}/update` 一致）；授权表里的 `host_id`
+> 是 `hosts.id`（Guid），转换在服务端完成。这样前端不必为了调授权接口先查一遍主机的 Guid。
+>
+> **管理员自己不出现在 `list` 结果里**：管理员的可见性来自角色短路，不落授权表。
+> 这个列表回答的正是「谁因为显式授权而能看到这台机器」——而管理员本来就能看到全部。
+>
+> **`grant` 是覆盖而不是叠加**：再次提交把该用户在主机上的权限改成提交的内容。
+> 实体只提供 `UpdatePermissions`（覆盖式）而没有 `AddPermission`，就是为了让这个决定只有一处。
+>
+> **蕴含关系由服务端展开，前端不需要推导**：授 `write` 自动带上 `read`，授 `admin` 展开成全部三项；
+> 撤销则反向传导——撤 `admin` 保留读写，撤 `read` 连 `write` 一起去掉。
+> 留一个「能改但看不见」的授权既不合逻辑，也让权限复查无法解释。
+>
+> **未知权限名一律 `1000`/400，且不落库**：解析发生在写库之前，非法输入不允许留下
+> 「待修正」的授权。校验用白名单而非 `Enum.TryParse`——后者还会接受 `"7"`、`"read, write"` 这类
+> 客户端绝不该发的东西，而猜错的方向永远是「权限更多」。
+>
+> **`revoke` 省略 `permissions` 即全部撤销**（软删除，保留授权历史）。
+> 对**从未存在**的授权撤销 → `1503`/404（后端读的是当前有效行）；
+> 对**本来就没有**的那一项撤销 → `200`（目标状态已达成，不该报错）。
 
 ---
 
-## SignalR Hub 规范（0.4.0）
+## SignalR Hub 规范（0.7.0）
 
 ### Hub 路径
 
@@ -964,7 +1099,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 |------|------|------|
 | `OnContainerDied` | `{ containerId, name, exitCode, timestamp }` | 容器异常退出通知 |
 
-### Image Pull 进度频道（0.4.0）
+### Image Pull 进度频道（0.7.0）
 
 为镜像 pull 操作提供临时频道，仅本请求客户端可见：
 
@@ -973,7 +1108,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 
 ---
 
-## WebSocket 终端（0.6.0）
+## WebSocket 终端（0.8.0）
 
 容器 exec 终端使用**原生 WebSocket**，不走 SignalR（独立的原始双向流）：
 
@@ -995,6 +1130,8 @@ POST /api/v1/hosts/{hostId}/containers/list
 
 - ❌ `POST /api/v1/hosts/{hostId}/containers/exec`（一次性 exec）
 - ❌ `POST /api/v1/hosts/{hostId}/containers/stats`（一次性 stats）
-- ❌ `POST /api/v1/system/prune`（容器/镜像/网络/卷清理）
+- ❌ `POST /api/v1/system/prune`（一次清四类）——**资源级 prune 已在 0.6.0 交付**，不做的是「一键全清」
 - ❌ OAuth / OIDC 登录相关 API
-- ❌ 审计日志相关 API
+- ❌ 应用模板相关 API、GitOps 从 Git 同步 Stack 的 API
+- ❌ 计划任务 / cron 相关 API
+- ❌ MCP 的 stdio 传输与独立部署形态（只做同进程 `/mcp`）

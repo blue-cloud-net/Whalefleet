@@ -23,6 +23,7 @@
 | JWT | `Microsoft.AspNetCore.Authentication.JwtBearer` | 跟随 .NET | 内置 |
 | 实时通信 | ASP.NET Core SignalR | 10 | 原生集成 |
 | SignalR 客户端 | `@microsoft/signalr` | **9+** | 跟随 .NET 主版本 |
+| MCP 服务器（0.18.0） | [`ModelContextProtocol.AspNetCore`](https://github.com/modelcontextprotocol/csharp-sdk) | 最新稳定 | 官方 C# SDK（Microsoft + Anthropic 共同维护）；Streamable HTTP 承载于 `/mcp`，工具用 `[McpServerTool]` 标注 |
 | 日志 | Serilog | 最新稳定 | 控制台 + 滚动文件 |
 | OpenAPI（1.0.0） | `Microsoft.AspNetCore.OpenApi` + **Scalar** | 最新稳定 | 替代 Swagger UI |
 
@@ -41,7 +42,7 @@
 | UnoCSS 预设 | `presetUno` + `presetTypography` + `presetIcons` | — | Iconify 按需加载 |
 | 构建工具 | Vite | **7+** | 开发期快速构建 |
 | 状态管理 | Pinia | **4** | Vue 3.5 适配 |
-| 终端组件 | xterm.js | **5.5+** | 容器 exec 终端（0.4.0） |
+| 终端组件 | xterm.js | **5.5+** | 容器 exec 终端（0.8.0） |
 | 国际化 | vue-i18n | **11** | Vue 3.5 适配；中文 / 英文双语 |
 | 包管理 | pnpm | 最新稳定 | 比 npm/yarn 快、磁盘省 |
 
@@ -190,7 +191,17 @@
 | JWT refresh token 有效期 | **7 天**，写入数据库可撤销表 |
 | 初始管理员引导 | 启动时若 `users` 表为空则创建：凭据取自 `ADMIN__USER` + `ADMIN__PASSWORD`；**密码未配置时自动生成**，写入 `/app/data/initial-admin.txt`（`0600`，**不进日志**）。可用 `ADMIN__AUTOBOOTSTRAP=false` 彻底关闭 |
 | JWT Secret 来源 | **优先**环境变量 `JWT__SECRET`（需 ≥ 32 字节，显式给得过短则启动失败）；**缺失时**自动生成到 `/app/data/jwt.key`（`0600`）并于后续启动复用。开发环境例外：`appsettings.Development.json` 提供公开的占位密钥 |
-| 0.4.0 终端短时 token | `POST /api/v1/auth/terminal-token` 返回 5 分钟过期 token，**仅能用于 WebSocket `/ws/hosts/{hostId}/containers/exec`** |
+| 0.8.0 终端短时 token | `POST /api/v1/auth/terminal-token` 返回 5 分钟过期 token，**仅能用于 WebSocket `/ws/hosts/{hostId}/containers/exec`** |
+| 0.18.0 个人访问令牌（PAT） | MCP 客户无法交互登录，改用 PAT：库里只存 **Argon2id 哈希**，明文仅创建时返回一次；可撤销、可设过期；**不走 `auth/refresh` 语义** |
+
+### 0.9.0 起新增的配置键
+
+| 配置键 | 用途 |
+|--------|------|
+| `Alerts:*` | 告警规则阈值与冷却期（三级严重度各一组） |
+| `Notifications:*` | 通知渠道（Webhook URL / 邮件 SMTP） |
+| `Webhooks:*` | 资源 Webhook 的令牌密钥 —— **必须随数据库一起备份**，否则恢复后全部 Webhook 静默失效 |
+| `Mcp:*` | `AllowWrite`（默认 `false`）、`AllowedHosts`（DNS-rebinding 白名单，不匹配返回 421） |
 
 ### 速率限制
 
@@ -434,17 +445,17 @@ dotnet Whalefleet.Api.dll --urls http://0.0.0.0:8080
 ### 镜像构建
 
 - 0.1.0 仅支持从 Docker Hub pull
-- 镜像构建（Dockerfile 上传）→ 0.2.0
+- 镜像构建（Dockerfile 上传）→ 0.4.0
 - 私有 Registry login → 0.4.0
 
 ### 容器终端
 
-- 0.4.0 仅 WebSocket 长连接交互式终端（xterm.js）
+- 0.8.0 仅 WebSocket 长连接交互式终端（xterm.js）
 - **不做一次性 exec API**（`POST /api/v1/hosts/{hostId}/containers/exec`）
 
 ### 容器 stats
 
-- 0.3.0 仅 SignalR 实时流
+- 0.7.0 仅 SignalR 实时流
 - **不做一次性 stats API**（`POST /api/v1/hosts/{hostId}/containers/stats` 单次查询）
 
 ### Prune / 清理

@@ -20,15 +20,17 @@
 
 ## ✨ Features
 
-- 🐳 **Full container lifecycle**: create / start / stop / restart / remove / logs / inspect (0.0.9); bulk remove from 0.1.0
-- 🖼 **Image management**: pull / remove / inspect (0.0.10); bulk remove from 0.1.0; Dockerfile build + private registries from 0.3.0
+- 🐳 **Full container lifecycle**: create / start / stop / restart / rename / duplicate / remove / logs / inspect (0.0.9); bulk remove from 0.1.0; **bulk start / stop and resource-level prune** (0.6.0); **export / import / commit** (0.14.0)
+- 🖼 **Image management**: pull / remove / inspect / tag (0.0.10+); bulk remove from 0.1.0; **Dockerfile build + private registries** (0.4.0); **save / load** and **update detection** (0.14.0 / 0.16.0)
 - 💾 **Complete Volume / Network CRUD** (0.2.0)
-- 🖥 **Multi-host management**: local socket + remote TCP (optional TLS / Basic auth), switchable from the top bar (from 0.0.8)
-- 🔐 **Authentication from day one**: JWT + refresh token + Argon2id password hashing + login rate limiting (from 0.0.4)
-- 👥 **Four built-in roles** (admin / operator / viewer / auditor) + host visibility (0.0.8, assignment from 0.1.0); **container-level RBAC** (0.5.0)
-- 🔔 **Real-time push** (0.4.0): SignalR live log streams / CPU, memory, and network metrics / container anomaly notifications
-- 💻 **Web terminal** (0.6.0): xterm.js + a dedicated short-lived terminal token
-- 📦 **Docker Compose / Stack management** (0.7.0)
+- 🖥 **Multi-host management**: local socket + remote TCP (optional TLS / Basic auth), switchable from the top bar (from 0.0.8); **groups + tags, with group-scoped batch operations and disk usage** (0.10.0)
+- 🔐 **Authentication from day one**: JWT + refresh token + Argon2id password hashing + login rate limiting (from 0.0.4); **audit log** (0.9.0)
+- 👥 **Four built-in roles** (admin / operator / viewer / auditor) + host visibility (0.0.8, assignment from 0.1.0); **container-level RBAC** (0.12.0); **teams with bulk granting** (0.13.0)
+- 🔔 **Real-time push** (0.7.0): SignalR live log streams / CPU, memory, and network metrics / container anomaly notifications
+- 🚨 **Alerting rules** (0.11.0): three severity levels with configurable thresholds, cooldowns, and webhook / email channels
+- 💻 **Web terminal** (0.8.0): xterm.js + a dedicated short-lived terminal token
+- 📦 **Docker Compose / Stack management** (0.5.0), with **resource webhooks and `.env` variables** (0.15.0)
+- 🤖 **MCP server** (0.18.0): expose Docker management to AI clients (VS Code Copilot, Claude Desktop) — read-only by default, with environment-variable redaction
 - 🎨 **Modern UI**: UnoCSS + Element Plus + command palette (Ctrl+K) + global shortcuts + light/dark themes + three accent colors
 
 ---
@@ -178,7 +180,7 @@ The current host user needs read/write access to `/var/run/docker.sock` (usually
 | [docs/overview.md](docs/overview.md) | Background, positioning, goals, non-goals, release model, repository identifiers |
 | [docs/constraints.md](docs/constraints.md) | Technology stack version baseline, security / CI-CD constraints, deployment constraints, boundary conditions |
 | [docs/features.md](docs/features.md) | Complete feature list grouped by module (annotated by version) |
-| [docs/roadmap.md](docs/roadmap.md) | Version plan targeting `1.0.0` (0.1.0 – 0.8.0 feature iterations, then RC and the official release) |
+| [docs/roadmap.md](docs/roadmap.md) | Version plan targeting `1.0.0` (0.1.0 – 0.19.0 feature iterations, then RC and the official release) |
 | [docs/architecture.md](docs/architecture.md) | System layering, multi-host DockerClient factory, SDK isolation, communication mechanisms |
 | [docs/api-spec.md](docs/api-spec.md) | RPC-style API conventions + error code ranges + SignalR hubs + WebSocket terminal |
 | [docs/ui-guidelines.md](docs/ui-guidelines.md) | UI layout specs (layout diagrams / breakpoints / component tiers / shortcuts / themes / routing) |
@@ -238,8 +240,8 @@ Development environment: .NET 10 SDK + Node.js 20+ + pnpm.
 
 - **The project is in the 0.x feature-iteration phase** and is not officially released; the public API may change in breaking ways until `1.0.0`
 - **Single-instance deployment**: SQLite does not support horizontal multi-instance scaling (see [docs/constraints.md](docs/constraints.md#sqlite-部署细节))
-- **HTTPS**: the image listens on plain HTTP only; **production deployments must terminate TLS in front of it** (Caddy / Traefik / nginx)
-- **Authorization granularity**: host visibility is host-scoped; container-level RBAC is scheduled for [0.5.0](docs/roadmap.md#050--资源粒度-rbac)
+- **HTTPS**: the image listens on plain HTTP only; **production deployments must terminate TLS in front of it** — ready-to-adapt nginx and Traefik configs live in [examples/reverse-proxy/](examples/reverse-proxy/), and `ReverseProxy__*` must be set alongside them (see [.env.example](.env.example))
+- **Authorization granularity**: host visibility is host-scoped; container-level RBAC is scheduled for [0.12.0](docs/roadmap.md#0120--资源粒度-rbac)
 - **No native package**: container and standalone-process deployments only; a systemd/native package is tracked in [docs/backlog.md](docs/backlog.md)
 
 ---

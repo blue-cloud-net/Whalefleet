@@ -20,15 +20,17 @@
 
 ## ✨ 核心特性
 
-- 🐳 **容器全生命周期管理**：创建 / 启动 / 停止 / 重启 / 删除 / 日志查看 / 详情（0.0.9）；0.1.0 起支持批量删除
-- 🖼 **镜像管理**：拉取 / 删除 / 详情（0.0.10）；0.1.0 起支持批量删除；0.3.0 起支持 Dockerfile 构建与私有 Registry
+- 🐳 **容器全生命周期管理**：创建 / 启动 / 停止 / 重启 / 重命名 / 复制 / 删除 / 日志查看 / 详情（0.0.9）；0.1.0 起支持批量删除；**批量启停与资源级清理**（0.6.0）；**导出 / 导入 / commit**（0.14.0）
+- 🖼 **镜像管理**：拉取 / 删除 / 详情 / 打标签（0.0.10 起）；0.1.0 起支持批量删除；**Dockerfile 构建与私有 Registry**（0.4.0）；**save / load** 与**更新检测**（0.14.0 / 0.16.0）
 - 💾 **Volume / Network 完整 CRUD**（0.2.0）
-- 🖥 **多主机管理**：本地 socket + 远程 TCP（可选 TLS / Basic 认证），顶栏切换（0.0.8 起）
-- 🔐 **首日鉴权**：JWT + refresh token + Argon2id 密码哈希 + 登录速率限制（0.0.4 起）
-- 👥 **四个内置角色**（admin / operator / viewer / auditor）+ 主机粒度可见性（0.0.8，分配能力 0.1.0）；**容器级 RBAC**（0.5.0）
-- 🔔 **实时推送**（0.4.0）：SignalR 实时日志流 / CPU 内存网络监控 / 容器异常通知
-- 💻 **Web 终端**（0.6.0）：xterm.js + 独立短时 terminal token
-- 📦 **Docker Compose / Stack 管理**（0.7.0）
+- 🖥 **多主机管理**：本地 socket + 远程 TCP（可选 TLS / Basic 认证），顶栏切换（0.0.8 起）；**分组 + 标签，支持按分组批量操作与磁盘用量**（0.10.0）
+- 🔐 **首日鉴权**：JWT + refresh token + Argon2id 密码哈希 + 登录速率限制（0.0.4 起）；**操作审计**（0.9.0）
+- 👥 **四个内置角色**（admin / operator / viewer / auditor）+ 主机粒度可见性（0.0.8，分配能力 0.1.0）；**容器级 RBAC**（0.12.0）；**团队与批量授权**（0.13.0）
+- 🔔 **实时推送**（0.7.0）：SignalR 实时日志流 / CPU 内存网络监控 / 容器异常通知
+- 🚨 **告警规则体系**（0.11.0）：三级严重度 + 可配阈值 + 冷却期 + Webhook / 邮件渠道
+- 💻 **Web 终端**（0.8.0）：xterm.js + 独立短时 terminal token
+- 📦 **Docker Compose / Stack 管理**（0.5.0），并支持**资源 Webhook 与 `.env` 变量**（0.15.0）
+- 🤖 **MCP 服务器**（0.18.0）：把 Docker 管理能力暴露给 AI 客户端（VS Code Copilot、Claude Desktop）——默认只读，环境变量值自动脱敏
 - 🎨 **现代 UI**：UnoCSS + Element Plus + 命令面板（Ctrl/K）+ 全局快捷键 + 亮/暗主题 + 三色主题色
 
 ---
@@ -174,7 +176,7 @@ dotnet Whalefleet.Api.dll --urls http://0.0.0.0:8080
 | [docs/overview.md](docs/overview.md) | 项目背景、定位、目标、非目标、发布模型、仓库标识 |
 | [docs/constraints.md](docs/constraints.md) | 技术栈版本基线、安全 / CI/CD 约束、部署约束、边界条件 |
 | [docs/features.md](docs/features.md) | 按模块分组的完整功能列表（按版本标注） |
-| [docs/roadmap.md](docs/roadmap.md) | 以 `1.0.0` 为目标的版本规划（0.1.0 – 0.8.0 功能迭代 + RC 与正式发布） |
+| [docs/roadmap.md](docs/roadmap.md) | 以 `1.0.0` 为目标的版本规划（0.1.0 – 0.19.0 功能迭代 + RC 与正式发布） |
 | [docs/architecture.md](docs/architecture.md) | 系统分层、多主机 DockerClient 工厂、SDK 隔离、通信机制 |
 | [docs/api-spec.md](docs/api-spec.md) | RPC 风格 API 约定 + 错误码分段 + SignalR Hub + WebSocket 终端 |
 | [docs/ui-guidelines.md](docs/ui-guidelines.md) | UI 布局规范（布局图 / 断点 / 组件分层 / 快捷键 / 主题 / 路由） |
@@ -234,8 +236,8 @@ dotnet Whalefleet.Api.dll --urls http://0.0.0.0:8080
 
 - **当前处于 0.x 功能迭代期**，未正式发布；公开 API 在 `1.0.0` 之前可能破坏性变更
 - **单实例部署**：SQLite 不支持多实例水平扩展（详见 [docs/constraints.md](docs/constraints.md#sqlite-部署细节)）
-- **HTTPS**：镜像内仅监听 HTTP；**生产部署必须前置 HTTPS 反代**（Caddy / Traefik / nginx）
-- **资源授权粒度**：主机可见性按主机粒度；容器级 RBAC 见 [0.5.0](docs/roadmap.md#050--资源粒度-rbac)
+- **HTTPS**：镜像内仅监听 HTTP；**生产部署必须前置 HTTPS 反代**——可直接改用的 nginx 与 Traefik 示例见 [examples/reverse-proxy/](examples/reverse-proxy/)，且必须同时设置 `ReverseProxy__*`（见 [.env.example](.env.example)）
+- **资源授权粒度**：主机可见性按主机粒度；容器级 RBAC 见 [0.12.0](docs/roadmap.md#0120--资源粒度-rbac)
 - **无原生包**：只提供容器化与独立进程两种部署形态；systemd 原生包记录在 [docs/backlog.md](docs/backlog.md)
 
 ---

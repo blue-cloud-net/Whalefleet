@@ -40,7 +40,7 @@ before the first public release).
   - It is deliberately **not a table**. "Does this build have this feature" is a compile-time fact,
     and a table for it would let the runtime-only roles drift away from what the code can enforce.
   - `PermissionScope` reserves a **Container** value now, but this milestone only opens the global
-    and host assignment paths — see `0.5.0` for the container scope.
+    and host assignment paths — see `0.12.0` for the container scope.
 - **`role_permissions` table** (migration `0006`). A role now **carries** its permission set — a role's
   name on its own decides nothing, so the set is what makes an operator actually *be* one.
   - Permissions are stored as their `domain.level` **text**, one row per (role, permission) pair:
@@ -395,7 +395,7 @@ Milestone goal: visual container management.
   container can be started immediately after creation.
 - **Container logs view**: line-count selection + tail loading + timestamps / stderr toggles
   (auto-scroll is out of scope: the backend has no `follow` support; live streaming is scheduled for
-  0.3.0).
+  0.7.0).
 - **Container inspect view**: grouped cards (basic info / host config / startup config / mounts /
   networks / environment variables / labels) rather than a JSON tree.
 - **`stores/host.ts`**: Pinia store for the current host selection.
@@ -423,7 +423,7 @@ Milestone goal: image CRUD + pull with progress reporting.
 
 - Pull progress is aggregated server-side via `IProgress<JSONMessage>` and returned **once in the
   response body**; progress is also written to the Serilog log. **SignalR live progress is deferred to
-  0.3.0.**
+  0.7.0.**
 - Integration tests cover all four endpoints, including a real pull against the host daemon and the
   "removing only untags the image, the image itself is kept" semantics.
 
@@ -444,7 +444,7 @@ Milestone goal: every container CRUD operation is reachable through the API.
   - `POST /api/v1/hosts/{hostId}/containers/inspect` (curated projection: status / startup config /
     host config / mounts / networks)
   - `POST /api/v1/hosts/{hostId}/containers/logs` (`tail` / `since` / `timestamps` / `includeStderr`;
-    **`follow` is not supported** — live streaming is scheduled for 0.3.0)
+    **`follow` is not supported** — live streaming is scheduled for 0.7.0)
   - `start` / `stop` / `restart` / `remove` — the first three are **idempotent** (the daemon's `304` is
     treated as success); `remove` without `force` against a running container returns `1404` / 409
 - All endpoints obtain the client through `IDockerHostAccessor` and perform host-scoped visibility
@@ -486,7 +486,7 @@ Milestone goal: register multiple Docker hosts and switch the target host per op
   endpoints need no per-endpoint existence checks.
 - **Resource visibility**: `IResourcePermissionService.IsHostVisible` (administrators see everything,
   everyone else fails closed with an empty list until the grant tables land). Per-resource grant tables
-  remain scheduled for 0.3.0.
+  landed in `0.1.0` (host scope) with the container scope at `0.12.0`.
 - **`IDockerClientFactory`** (stateless): creates clients with `DockerClientBuilder` only — socket via
   `WithEndpoint(new Uri("unix:///var/run/docker.sock"))`, plain TCP via `tcp://host:2375`, TCP + TLS via
   an `https://` endpoint (default port 2376) with a client certificate (all three of CA, certificate,
@@ -552,7 +552,7 @@ shortcut foundations.
   Inline actions (edit for admins, view details, status chart) use `@click.stop` so they do not trigger
   row navigation.
 - **Host status page** (`HostStatusView.vue` + `HostStatusPanel.vue`): runtime status (online/offline),
-  uptime, four resource counts and CPU/memory placeholders (real data arrives with SignalR in 0.3.0).
+  uptime, four resource counts and CPU/memory placeholders (real data arrives with SignalR in 0.7.0).
   The overview card's "details / status chart" buttons **reuse the same component**.
 - **Top-bar components**: `AppBreadcrumb.vue` (hierarchy derived by the pure function
   `utils/breadcrumbs.ts`, covered by unit tests) and `UserMenu.vue` (username / role tag / logout).
@@ -581,7 +581,7 @@ shortcut foundations.
   events.
 - The host sidebar menu order is "status → containers → images → volumes → networks → orchestration →
   events", aligned with the delivery sequence (orchestration depends on containers and images and is
-  scheduled for 0.4.0).
+  scheduled for 0.5.0).
 - Placeholder pages became **feature announcements** (`PlaceholderSection`): icon + version badge +
   capability list + scheduling rationale, instead of a blank card with one sentence.
 - Cleanups: removed a duplicate "details" button (bound to the same function as "status chart") and the

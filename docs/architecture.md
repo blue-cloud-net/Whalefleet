@@ -186,7 +186,11 @@ dotnet list src/Whalefleet.Application/Whalefleet.Application.csproj package
 | `UserHostPermission` | `Core/Permissions/` | `FullAuditedEntity<Guid, Guid>` | `(user_id, host_id)` 部分唯一索引 | 权限位不得含未定义位；`Has` 对组合位要求**全部**具备 |
 | `UserContainerPermission` | `Core/Permissions/` | `FullAuditedEntity<Guid, Guid>` | `(user_id, host_id, container_id)` | 容器标识必须与主机成对出现（容器 ID 只在单台守护进程内唯一） |
 
-> 权限实体的**表与仓储实现排到 0.1.0（容器级排 0.5.0）**：本迭代只落地实体与仓储接口，不建表、不注册 DI。
+> **0.1.0 已落地 `user_host_permissions`**（建表、仓储、DI 与授权管理端点）；`user_container_permissions` 排到 0.12.0，本迭代仍只落地实体与仓储接口，不建表、不注册 DI。
+>
+> `permissions` 以**整数位掩码**存储（`1=Read / 2=Write / 4=Admin`，CHECK 钉在 0..7），
+> 而不是文本：`StorageTextExtensions.ToStorageText` 对 `[Flags]` 枚举会产出
+> `"read, write"` 这种逗号分隔文本，读侧再也算不出位运算。
 
 **值对象**：`HostEndpoint`（端点原文，不可变、按值相等）、`HostCredentials`（认证方式 + 不透明 JSON 载荷，
 `ToString()` 只输出认证方式、**不泄漏载荷**）。
@@ -218,7 +222,7 @@ dotnet list src/Whalefleet.Application/Whalefleet.Application.csproj package
 | `viewer` | 只读 | 对已授权资源仅可查看，不可修改 | |
 | `auditor` | 审计 | 只读，并可查看操作审计（审计能力排在 1.0.0 之后） | ✅ |
 
-**角色不编码资源范围**：角色只是身份标签，“某用户能碰哪些主机 / 容器”由 0.1.0 的可见性表与 0.5.0 的容器级权限表承担。
+**角色不编码资源范围**：角色只是身份标签，“某用户能碰哪些主机 / 容器”由 0.1.0 落地的可见性表与 0.12.0 的容器级权限表承担。
 因此不会出现“新建一个角色就等于新增一套权限”这种隐性授权。
 若日后需要“按角色批量授权”，应在 `user_host_permissions` 上增加角色维度，而非往角色上挂权限。
 
@@ -241,7 +245,7 @@ dotnet list src/Whalefleet.Application/Whalefleet.Application.csproj package
 
 **主机分组为什么建表而不是枚举 / 配置**（0.0.13）：分组是**运行时可变的数据**（管理员随时增删改），
 枚举会把「有哪些分组」焊死在编译期，与 0.0.3 把角色从枚举改成表是同一个理由。
-它还刻意**不承担授权语义**——「某人能碰哪些主机」由 0.1.0 落地的可见性表与 0.5.0 的容器级权限表回答，
+它还刻意**不承担授权语义**——「某人能碰哪些主机」由 0.1.0 落地的可见性表（`user_host_permissions`）与 0.12.0 的容器级权限表回答，
 分组只影响总览页的呈现。两者混在一起会让「把主机挪进某个分组」变成一次隐式提权。
 
 **完整实现**见 `src/Whalefleet.Core/{Users,Hosts,Auth,Permissions}/`；
@@ -337,7 +341,20 @@ protected abstract Task<bool> ExecuteUpdateAsync(DbConnection connection, TEntit
 - JWT 鉴权 + `[Authorize(Roles = "admin")]` 角色检查
 - 不包含业务逻辑
 
-### SignalR Hub 层（0.4.0 起）
+### MCP 层（0.18.0 起）
+
+- 与 Controllers **平级的入站适配器**：`Api/Mcp/` 下的工具类只调用 `Application` 服务，**不新增后端项目**
+- 端点 `/mcp`（Streamable HTTP，官方 C# SDK）。工具按 `Application` 服务的方法划分，
+  **一个工具只做一件事**——模型看到的是工具名与描述，不是代码
+- 鉴权用**个人访问令牌（PAT）**，与 JWT 走同一条授权判定链路；
+  `tools/list` 按调用者权限过滤，写工具另受 `Mcp:AllowWrite`（默认关闭）与工具组开关两道闸门
+- **返回前必须脱敏**：容器 / 镜像配置里的 `env` **值**默认遮蔽（键名保留）
+- 响应是 **JSON-RPC 2.0**，不是 `ApiResult` 信封；`/mcp` 必须与 `/api`、`/healthz` 一起排除在 SPA 回退之外
+
+**审计写入点（0.9.0 起）**：审计由**应用服务层统一埋点**，不在 Controller 逐个写；
+中间件兜底记录未被业务捕获的 4xx / 5xx，WebSocket（exec）会话由会话管理器在关闭时写入。
+
+### SignalR Hub 层（0.7.0 起）
 
 | Hub | 职责 |
 |-----|------|
@@ -371,7 +388,7 @@ Hub 鉴权：JWT 通过 `?access_token=...` 查询参数传递（WebSocket 不�
 - **WAL 模式**启用（`PRAGMA journal_mode=WAL`；文件级属性，设置一次持久生效）
 - 应用启动时（开始监听**之前**）自动执行**版本化迁移**（`PRAGMA user_version` + 内嵌 `000N_*.sql`）
 - 单次操作一个连接（用完还池），不提供跨仓储事务——0.0.3 的业务写入均为单语句
-- 存储内容：用户信息、资源授权关系、Docker 主机配置、刷新令牌哈希、Registry 凭据（加密，0.3.0 起）
+- 存储内容：用户信息、资源授权关系、Docker 主机配置、刷新令牌哈希、Registry 凭据（加密，0.4.0 起）
 
 ---
 
@@ -573,7 +590,7 @@ HTTP Request
 | 取值来源 | `HttpContext.GetRouteData().Values["hostId"]`，**不是**请求头（`X-Host-Id` 方案已废弃）。取到的是**库里的 `Name`**（规范形态），因此 URL 里的大小写不影响后续取值 |
 | 中间件 | `CurrentHostMiddleware`——Singleton 中间件不能构造注入 Scoped 服务，故用 `InvokeAsync(HttpContext, ICurrentHostAccessor, IDockerHostAccessor)` **方法注入**。管道注册走公开扩展 `UseCurrentHost()`（中间件本体是 internal，但接线入口公开，便于集成测试用与生产一致的顺序接线） |
 | 存在性校验 | 中间件**会解析主机**（`IDockerHostAccessor.ResolveAsync`）：未知主机在进入控制器之前就变成 `1300`/404，主机作用域端点无需各自重复校验。代价是每请求多一次按主机名的索引查询（相对后续 Docker 调用可忽略） |
-| 可见性校验 | 紧接着解析之后调用 `IResourcePermissionService.EnsureHostVisibleAsync`：无权限 → `1501`/403。挂在这里意味着**每个主机作用域端点自动受保护**，无需各自写一遍。0.0.9 起的策略是「管理员放行 / 非管理员一律拒绝」（逐资源授权表在 0.3.0 落地，拿不准就拒绝：fail-closed） |
+| 可见性校验 | 紧接着解析之后调用 `IResourcePermissionService.EnsureHostVisibleAsync`：无权限 → `1501`/403。挂在这里意味着**每个主机作用域端点自动受保护**，无需各自写一遍。0.1.0 起的策略是「管理员短路放行（不落授权表）/ 非管理员查 `user_host_permissions` 看是否具备 `Read` 位」，拿不准就不放行（fail-closed） |
 | 管道位置 | `UseAuthentication()` 之后（可见性校验要读 `HttpContext.User`）、`MapControllers()` 之前 |
 | 缺省值 | **无**。全局作用域端点没有该路由段；主机作用域端点由路由模板保证其存在 |
 | 消费方 | Api 层控制器与后续主机作用域端点（首个在 0.0.9 的容器 API） |
@@ -600,8 +617,9 @@ public interface IDockerHostAccessor
 > 因此「解析主机」与「池化客户端」分属两层。这也让 Singleton 侧**不依赖** Scoped 仓储——不会构成捕获依赖。
 >
 > **0.0.8 起**由 Api 中间件从**路由值** `hostId` 解析「当前主机」（写入 Scoped `ICurrentHost`）；
-> **0.0.9 起**在此之上加资源可见性校验（`IResourcePermissionService`，当前策略见 `CurrentHostMiddleware` 的可见性行）；
-> 0.1.0 落地可见性表后改为查表。旧 `X-Host-Id` 请求头方案已废弃。
+> **0.0.9 起**在此之上加资源可见性校验（`IResourcePermissionService`）；
+> **0.1.0 起**可见性由 `user_host_permissions` 表决定（管理员短路，非管理员查表）。
+> 旧 `X-Host-Id` 请求头方案已废弃。
 
 ### `IDockerClientFactory` 与 `IDockerClientPool`
 
@@ -710,7 +728,7 @@ public interface IDockerClientPool
 | `basic` | `{ "username": "...", "password": "..." }` |
 
 > **为什么 TLS 存的是**路径**而不是 PEM 内容**（0.0.8 定案，与早期草稿不同）：
-> 1. **私钥不进数据库**——明文私钥落盘要等 0.3.0 的字段级加密，而存路径当下就没这个问题；
+> 1. **私钥不进数据库**——明文私钥落盘要等 0.4.0 的字段级加密，而存路径当下就没这个问题；
 > 2. 与 `docker --tlscacert/--tlscert/--tlskey` 及 `~/.docker` 目录一致，运维不必转换格式；
 > 3. 管理 API 可以安全地**回显**配置（路径不是机密）。若存 PEM，编辑表单要么把私钥回显给浏览器，
 >    要么发明「留空表示不修改」这种别扭约定。
@@ -845,7 +863,7 @@ JWT 中间件默认在验证失败时**直接写 401 且不带响应体**。若�
 > **为什么提前到 0.0.4**：0.0.4 的验收标准是「curl 登录成功」，但此时还没有任何创建用户的入口
 > （用户管理 API 在 0.0.8 且是 admin 专用），存在鸡生蛋问题。
 
-### SignalR Hub 鉴权（0.4.0）
+### SignalR Hub 鉴权（0.7.0）
 
 WebSocket 不支持自定义 Header，JWT 通过 `?access_token=...` 查询参数传递：
 
@@ -855,7 +873,7 @@ const connection = new HubConnectionBuilder()
   .build()
 ```
 
-### WebSocket Terminal 鉴权（0.6.0）
+### WebSocket Terminal 鉴权（0.8.0）
 
 为最小化 access token 泄漏风险，**独立短时 terminal token**：
 
@@ -978,10 +996,11 @@ src/Whalefleet.UI/src/
 | 场景 | 方式 |
 |------|------|
 | 普通数据请求 | HTTP POST（axios），RPC 风格路径 |
-| 实时日志（0.4.0） | SignalR WebSocket，`ContainerLogHub` |
-| 实时监控（0.4.0） | SignalR WebSocket，`ContainerStatsHub` |
-| 页面内通知（0.4.0） | SignalR WebSocket，`NotificationHub` |
-| 容器终端（0.6.0） | 原生 WebSocket `/ws/hosts/{hostId}/containers/exec` + terminal token |
+| 实时日志（0.7.0） | SignalR WebSocket，`ContainerLogHub` |
+| 实时监控（0.7.0） | SignalR WebSocket，`ContainerStatsHub` |
+| 页面内通知（0.7.0） | SignalR WebSocket，`NotificationHub` |
+| 容器终端（0.8.0） | 原生 WebSocket `/ws/hosts/{hostId}/containers/exec` + terminal token |
+| AI 接入（0.18.0） | Streamable HTTP `/mcp`（JSON-RPC 2.0，不入 `ApiResult` 信封） |
 
 ---
 
