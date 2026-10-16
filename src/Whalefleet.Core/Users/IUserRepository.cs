@@ -12,8 +12,9 @@ namespace Whalefleet.Core.Users;
 /// <para><b>软删除语义</b>：所有读取方法<b>默认过滤</b>已软删除的用户
 /// （<c>WHERE is_deleted = 0</c>）；按主键查中软删除行按「不存在」处理（返回 <see langword="null"/>），
 /// 不暴露"该行已删除"这一事实。<see cref="RemoveAsync"/> 也是软删除。</para>
-/// <para><b>角色</b>：<see cref="User.RoleId"/> 指向 <c>roles</c> 表（见 <see cref="Role"/>），
-/// 本仓储只负责按角色主键统计/筛选，不负责角色本身的增删。</para>
+/// <para><b>角色</b>：用户与角色的关系<b>不在本仓储</b>——它是带作用域的多对多，
+/// 存放于 <c>user_role_assignments</c>（见 <c>Core/Permissions/IUserRoleAssignmentRepository</c>）。
+/// 「这个用户有多少条全局 admin 分配」这类计数走那边，本接口不做。</para>
 /// <para><b>审计填充</b>：<see cref="AddAsync"/> / <see cref="UpdateAsync"/> / <see cref="RemoveAsync"/>
 /// 由实现负责写入创建 / 修改 / 删除审计（时间与操作人来自 <c>TimeProvider</c> 与 <c>ICurrentUser</c>），
 /// 调用方无需自行调用 <c>MarkCreated</c> 等方法。</para>
@@ -29,6 +30,17 @@ public interface IUserRepository : Common.IRepository<User, Guid>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>用户；不存在或已软删除时返回 <see langword="null"/>。</returns>
     Task<User?> FindByUsernameAsync(string username, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 按主键集合批量查询用户。
+    /// </summary>
+    /// <param name="ids">用户主键集合；为空时直接返回空列表（不发 SQL）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>查到的用户；主键不存在或已软删除的会被<b>静默跳过</b>。</returns>
+    /// <remarks>用于授权列表补齐展示用的用户名，避免逐行查询把 N 行变成 N 次往返。</remarks>
+    Task<IReadOnlyList<User>> QueryListByIdsAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// 判断用户名是否已被占用（不区分大小写，忽略已软删除的用户）。
@@ -53,15 +65,4 @@ public interface IUserRepository : Common.IRepository<User, Guid>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>用户数。</returns>
     Task<int> CountAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// 统计指定角色的用户数，用于「不得删除最后一名管理员」之类的规则判定。
-    /// </summary>
-    /// <param name="roleId">角色主键。</param>
-    /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>该角色的用户数。</returns>
-    Task<int> CountByRoleIdAsync(Guid roleId, CancellationToken cancellationToken = default);
-
-
-
 }

@@ -5,12 +5,12 @@ namespace Whalefleet.Core.Users;
 /// </summary>
 /// <remarks>
 /// <para><b>充血职责</b>：本实体负责用户名的格式不变量与密码哈希的「非空」约束。
-/// 「系统里至少要保留一名管理员」「用户名是否已被占用」「该角色是否存在」这类
-/// <b>需要查库/跨行</b>的规则不属于实体，由应用服务在调用实体方法前判定。</para>
-/// <para><b>角色是外键不是枚举</b>：<see cref="RoleId"/> 指向 <c>roles</c> 表的一条记录
-/// （见 <see cref="Role"/>）——角色可在运行时增删，枚举做不到。
-/// 这也意味着「用户拥有某个角色」<b>不是</b>静态类型保证：拿到 <see cref="RoleId"/> 之后
-/// 仍需查库确认角色存在，因此引用完整性由数据库外键兜底。</para>
+/// 「系统里至少要保留一名管理员」「用户名是否已被占用」这类<b>需要查库 / 跨行</b>的规则不属于实体，
+/// 由应用服务在调用实体方法前判定。</para>
+/// <para><b>用户没有角色字段</b>（0.1.0 起）：角色与用户是<b>多对多且带作用域</b>的，
+/// 由 <c>user_role_assignments</c> 表表达（见 <c>Core/Permissions/UserRoleAssignment</c>）。
+/// 在此之前 <c>User.RoleId</c> 指向单条 <see cref="Role"/>，那个模型表达不了
+/// 「在 A 主机是运维、在 B 主机只读」。</para>
 /// <para><b>用户名不可变</b>：它同时是登录凭据与唯一业务键，允许改名会让唯一约束与审计同时复杂化。
 /// 需要「换名」时删除旧用户、新建用户。</para>
 /// <para><b>删除语义</b>：软删除（继承 <see cref="FullAuditedEntity{TId, TUserKey}"/>），
@@ -43,11 +43,6 @@ public sealed class User : FullAuditedEntity<Guid, Guid>
     public string PasswordHash { get; private set; } = String.Empty;
 
     /// <summary>
-    /// 角色主键，指向 <c>roles</c> 表；不得为 <see cref="Guid.Empty"/>。
-    /// </summary>
-    public Guid RoleId { get; private set; }
-
-    /// <summary>
     /// 供 Dapper 物化使用的非公开无参构造。业务代码请改用 <see cref="Create"/>。
     /// </summary>
     private User()
@@ -60,21 +55,22 @@ public sealed class User : FullAuditedEntity<Guid, Guid>
     /// <param name="id">用户主键（Guid.Empty 表示尚未分配，由调用方保证非空）。</param>
     /// <param name="username">用户名；首尾空白会被去除，长度 3-32，仅允许 ASCII 字母、数字与 <c>. _ -</c>。</param>
     /// <param name="passwordHash">密码哈希（不得为明文，也不得为空）。</param>
-    /// <param name="roleId">角色主键；不得为 <see cref="Guid.Empty"/>（未指定角色时应传入默认角色的主键）。</param>
     /// <returns>新建的用户实体。</returns>
     /// <exception cref="ArgumentException">
-    /// 用户名为空、长度越界、含非法字符，密码哈希为空，或 <paramref name="roleId"/> 为空。
+    /// 用户名为空、长度越界、含非法字符，或密码哈希为空。
     /// </exception>
-    public static User Create(Guid id, string username, string passwordHash, Guid roleId)
+    /// <remarks>
+    /// <b>创建用户不会附带任何角色</b>：角色是<b>分配</b>给用户的（<c>user_role_assignments</c>），
+    /// 应用服务在创建后另外建立默认角色的全局分配。
+    /// 把角色写进本实体会让它看起来像「用户天生就属于某个角色」，而那不是事实。
+    /// </remarks>
+    public static User Create(Guid id, string username, string passwordHash)
     {
-        EnsureValidRoleId(roleId);
-
         return new User
         {
             Id = id,
             Username = NormalizeUsername(username),
             PasswordHash = EnsurePasswordHash(passwordHash),
-            RoleId = roleId,
         };
     }
 
@@ -86,18 +82,6 @@ public sealed class User : FullAuditedEntity<Guid, Guid>
     public void ChangePassword(string passwordHash)
     {
         this.PasswordHash = EnsurePasswordHash(passwordHash);
-    }
-
-    /// <summary>
-    /// 变更角色。
-    /// </summary>
-    /// <param name="roleId">新角色主键；不得为 <see cref="Guid.Empty"/>。</param>
-    /// <exception cref="ArgumentException"><paramref name="roleId"/> 为空。</exception>
-    /// <remarks>「不得移除最后一名管理员」的校验在应用服务层，本方法不做。</remarks>
-    public void ChangeRole(Guid roleId)
-    {
-        EnsureValidRoleId(roleId);
-        this.RoleId = roleId;
     }
 
     private static string NormalizeUsername(string username)
@@ -132,13 +116,5 @@ public sealed class User : FullAuditedEntity<Guid, Guid>
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(passwordHash);
         return passwordHash;
-    }
-
-    private static void EnsureValidRoleId(Guid roleId)
-    {
-        if (roleId == Guid.Empty)
-        {
-            throw new ArgumentException("用户必须归属一个角色", nameof(roleId));
-        }
     }
 }

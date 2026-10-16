@@ -26,6 +26,17 @@ public interface IHostRepository : Common.IRepository<DockerHost, Guid>
     Task<DockerHost?> FindByNameAsync(string name, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// 按主键集合批量查询主机。
+    /// </summary>
+    /// <param name="ids">主机主键集合；为空时直接返回空列表（不发 SQL）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>查到的主机；主键不存在或已软删除的会被<b>静默跳过</b>。</returns>
+    /// <remarks>用于把分配记录里的 <c>host_id</c>（GUID）翻译成对外的主机名（路径里用的是它）。</remarks>
+    Task<IReadOnlyList<DockerHost>> QueryListByIdsAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 判断显示名是否已被占用（不区分大小写，忽略已软删除的主机）。
     /// </summary>
     /// <param name="name">主机显示名。</param>

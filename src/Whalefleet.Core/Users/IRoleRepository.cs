@@ -26,6 +26,20 @@ public interface IRoleRepository : Common.IRepository<Role, Guid>
     Task<Role?> FindByNameAsync(string name, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// 按主键集合批量查询角色。
+    /// </summary>
+    /// <param name="ids">角色主键集合；为空时直接返回空列表（不发 SQL）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>查到的角色；主键不存在或已软删除的会被<b>静默跳过</b>（不报错、不补空位）。</returns>
+    /// <remarks>
+    /// 存在的原因是分配列表的展示字段补齐：一条列表 N 行，逐行 <c>QueryByIdAsync</c>
+    /// 就是 N 次往返。批量查一次在内存里映射是这里唯一的合理写法。
+    /// </remarks>
+    Task<IReadOnlyList<Role>> QueryListByIdsAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 判断角色标识是否已被占用（不区分大小写，忽略已软删除的角色）。
     /// </summary>
     /// <param name="name">角色标识。</param>
@@ -40,6 +54,37 @@ public interface IRoleRepository : Common.IRepository<Role, Guid>
     /// <returns>默认角色；正常情况下恒有值（迁移已种入），无则返回 <see langword="null"/>。</returns>
     /// <remarks>创建用户时未指定角色即采用它；查不到属于数据异常，应用服务应显式报错而非静默兜底。</remarks>
     Task<Role?> GetDefaultAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 查询某个角色的权限集（规范化、已排序）。
+    /// </summary>
+    /// <param name="roleId">角色主键。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>权限标识列表；角色存在但一个权限都没有时返回<b>空列表</b>（不是 <see langword="null"/>）。</returns>
+    /// <remarks>
+    /// 权限存于 <c>role_permissions</c> 表而非 <c>roles</c> 的列，因此读取需要独立的联表查询。
+    /// 鉴权路径上通常需要<b>多个</b>角色的权限（一次请求里同一人可能持多个角色），
+    /// 实现应保证单角色查询不产生 N+1——调用方按需自行批量化。
+    /// </remarks>
+    Task<IReadOnlyList<string>> GetPermissionsAsync(Guid roleId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 覆盖式替换某个角色的权限集（一个事务内完成「差量写入」）。
+    /// </summary>
+    /// <param name="roleId">角色主键。</param>
+    /// <param name="permissions">新的权限集（须已规范化或在实现内规范化）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>确实替换成功返回 <see langword="true"/>；角色不存在或已软删除返回 <see langword="false"/>。</returns>
+    /// <remarks>
+    /// <b>为什么是「覆盖」而不是「增删」</b>：权限矩阵的提交天然是「我勾了这些」，
+    /// 由调用方算出差量会把同一条规则复制到每一个写入点。
+    /// <b>调用方须先校验内置角色</b>（<see cref="Role.SetPermissions"/> 会抛
+    /// <see cref="InvalidOperationException"/>，但那是应用层的职责——仓储只管落库）。
+    /// </remarks>
+    Task<bool> ReplacePermissionsAsync(
+        Guid roleId,
+        IReadOnlyList<string> permissions,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// 统计未删除的角色总数。
