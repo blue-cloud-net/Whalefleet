@@ -124,27 +124,33 @@
 
 **授权基座**
 
-- ⬜ **权限目录**：静态封闭集合（**不建表**——「应用有没有某功能」是编译期事实），
+- ✅ **权限目录**：静态封闭集合（**不建表**——「应用有没有某功能」是编译期事实），
   按 `domain.level` 命名，分 Global 与 Host 两类作用域。Host 域为 `host.read` / `host.admin`
   与 `container` / `image` / `network` / `volume` 各自的 read + write；
   Global 域为 `user.read` / `user.write` / `role.read` / `role.write` / `host.manage` / `audit.read`。
   `PermissionScope` **预留 Container 一档**，但本迭代只开放全局与主机两条分配路径
-- ⬜ **角色携带权限**：新增 `role_permissions` 表与迁移；`Role` 实体带权限集合，
+  （落地：`Core/Permissions/Permission.cs`，16 项；目录与 `POST /admin/roles/permissions` 逐项一致有守卫测试）
+- ✅ **角色携带权限**：新增 `role_permissions` 表与迁移；`Role` 实体带权限集合，
   内置角色（`admin` / `operator` / `viewer` / `auditor`）的权限集**不可修改**。
   `users.role_id` 废弃——用户 ↔ 角色改为多对多
-- ⬜ **带作用域的角色分配**：新增 `user_role_assignments`（`host_id` 可空，NULL = 全局分配）。
+  （落地：迁移 `0006_rbac.sql`，并有「`users` 表不再有 `role_id` 列」的断言）
+- ✅ **带作用域的角色分配**：新增 `user_role_assignments`（`host_id` 可空，NULL = 全局分配）。
   全局分配的全局权限生效；主机分配只在该主机上生效，且其**全局权限被忽略**
   ——否则「把 admin 分配到某台主机」会静默变成全局提权
-- ⬜ **角色管理 API**：`POST /api/v1/admin/roles/{list,create,update,remove,set-default,set-permissions}`；
+  （落地：`PermissionCheckerTests` 钉住两条作用域规则 + 缓存键必须带 hostId）
+- ✅ **角色管理 API**：`POST /api/v1/admin/roles/{list,create,update,remove,set-default,set-permissions}`；
   删除仍有有效分配的角色返回 `1512`（须先撤销分配）
-- ⬜ **角色分配 API**：主机中心 `POST /api/v1/admin/hosts/{hostId}/roles/{list,assign,revoke}`
+  （落地：`RoleEndpointsTests` 24 条，覆盖 1511/1512/1513/1514/1510 与幂等）
+- ✅ **角色分配 API**：主机中心 `POST /api/v1/admin/hosts/{hostId}/roles/{list,assign,revoke}`
   与用户中心 `POST /api/v1/admin/users/{userId}/roles/{list,assign,revoke}`
-- ⬜ **鉴权解析改查库**：带作用域的分配装不进单个 JWT claim，因此授权事实改为**每次请求解析并缓存**，
+- ✅ **鉴权解析改查库**：带作用域的分配装不进单个 JWT claim，因此授权事实改为**每次请求解析并缓存**，
   `[Authorize(Roles = …)]` 换成按权限判定的自定义 `AuthorizationHandler`，内置 `admin` 角色短路。
   JWT 里的角色名只供界面展示、不再参与判定；附带收益是角色与权限改动**即时生效**，不等 token 过期
-- ⬜ 新错误码：`1510` 角色不存在、`1511` 角色名已占用、`1512` 角色仍有分配、
+- ✅ 新错误码：`1510` 角色不存在、`1511` 角色名已占用、`1512` 角色仍有分配、
   `1513` 内置角色受保护、`1514` 未知权限、`1515` 角色分配不存在
-- ⬜ **前端**：角色管理页（角色 → 权限矩阵，内置角色只读）；用户管理与主机视图的
+  （⚠️ `1514` 曾在实现里漏成 `1000`——它在五处都登记齐了，唯独抛出点没用上；
+  已修并补上分流守卫：未知名 `1514`、空白项 `1000`）
+- ✅ **前端**：角色管理页（角色 → 权限矩阵，内置角色只读）；用户管理与主机视图的
   「可见主机」对话框改为**角色选择器**；登录与 `auth/me` 返回 `roles` 与全局有效权限集，
   菜单与操作按钮按权限集显隐
 
@@ -169,7 +175,9 @@
 
 > **待手工跑的那一条**：socket-proxy 模式的「创建 → 启动 → 停止 → 删除 + 拉取镜像」
 > 需要真实起一套 compose + socket-proxy 容器，属于部署验收而非 CI 能覆盖的范围。
-> 其余条目（授权闭环、批量删除的 200/1404 分支、反代配置）已有集成测试与前端契约测试覆盖。
+> 其余条目（授权闭环、批量删除的 200/1404 分支、反代配置）已有集成测试与前端契约测试覆盖：
+> `PermissionCheckerTests`（作用域隔离与 admin 短路）、`RoleEndpointsTests`（角色与分配端点）、
+> `PermissionNamesTests`（错误码分流）、`mock-contract.spec.ts`（mock 与后端同口径）。
 >
 > **迁移口径**：迁移建出授权相关的两张新表并调整 `users`，**不搬运历史授权数据**——
 > 0.x 从未产出正式发布，没有存量部署可搬运。迁移脚本的注释需写明这一取舍，避免后来者以为是漏写。
