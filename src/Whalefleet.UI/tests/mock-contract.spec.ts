@@ -1072,21 +1072,35 @@ describe('角色与权限目录端点（0.1.0）', () => {
     expect(json.code).toBe(ErrorCode.RoleNameAlreadyExists)
   })
 
-  it('未知权限名 → 1000 / 400，且不落库', async () => {
+  it('未知权限名 → 1514 / 400，且不落库', async () => {
     const { status, json } = await post('/api/v1/admin/roles/create', {
       name: 'audit-only',
       displayName: '审计专用',
       permissions: ['root']
     })
 
+    // ⚠️ 必须是 1514 而不是笼统的 1000：客户端最容易犯的错就是拼错权限名
+    // （"read" 而不是 "host.read"、"ALL"、"7"），给它独立码，
+    // 界面才能提示「请从权限目录里选」。见 docs/api-spec.md「未知权限名一律 1514」。
     expect(status).toBe(400)
-    expect(json.code).toBe(ErrorCode.ValidationFailed)
+    expect(json.code).toBe(ErrorCode.PermissionUnknown)
 
     // 校验必须在写库之前：非法输入不允许留下「待修正」的角色
     const after = await post('/api/v1/admin/roles/list')
     expect((after.json.data as { name: string }[]).some((role) => role.name === 'audit-only')).toBe(
       false
     )
+  })
+
+  it('空串权限标识 → 1000 / 400（参数本身不合法，与「名字拼错」分开）', async () => {
+    const { status, json } = await post('/api/v1/admin/roles/create', {
+      name: 'blankperm',
+      permissions: ['  ']
+    })
+
+    // 1000 = 参数不合法；1514 = 名字不在目录里。两者语义不同，界面提示也不同
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.ValidationFailed)
   })
 
   it('新建的角色立即出现在列表里（否则界面会「创建成功但看不到」）', async () => {
