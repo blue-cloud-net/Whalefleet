@@ -274,7 +274,7 @@ public sealed class UserService
     /// </remarks>
     private static IReadOnlyList<string> MapRoleNames(
         IEnumerable<UserRoleAssignment> assignments,
-        IReadOnlyDictionary<Guid, string> nameByRoleId) =>
+        Dictionary<Guid, string> nameByRoleId) =>
         [
             .. assignments
                 .Select(assignment => assignment.RoleId)
