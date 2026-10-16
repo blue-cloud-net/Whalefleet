@@ -1,3 +1,4 @@
+using Whalefleet.Api.Security;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Users;
 using Whalefleet.Core.Users;
@@ -44,7 +45,7 @@ public sealed class AdminUsersController : ControllerBase
     /// <response code="200">查询成功。</response>
     /// <response code="403">非管理员（<c>1500</c>）。</response>
     [HttpPost("list")]
-    [Authorize(Roles = Role.AdminName)]
+    [Authorize(Policy = PermissionPolicies.UsersRead)]
     [ProducesResponseType(typeof(ApiResult<UserListResult>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> ListAsync(
@@ -66,7 +67,7 @@ public sealed class AdminUsersController : ControllerBase
     /// <response code="400">字段非法（<c>1000</c>）、用户名已存在（<c>1200</c>）或密码强度不足（<c>1202</c>）。</response>
     /// <response code="403">非管理员（<c>1500</c>）。</response>
     [HttpPost("create")]
-    [Authorize(Roles = Role.AdminName)]
+    [Authorize(Policy = PermissionPolicies.UsersWrite)]
     [ProducesResponseType(typeof(ApiResult<UserSummary>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
@@ -90,7 +91,7 @@ public sealed class AdminUsersController : ControllerBase
     /// <response code="404">用户不存在（<c>1201</c>）。</response>
     /// <response code="403">非管理员（<c>1500</c>）。</response>
     [HttpPost("delete")]
-    [Authorize(Roles = Role.AdminName)]
+    [Authorize(Policy = PermissionPolicies.UsersWrite)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]

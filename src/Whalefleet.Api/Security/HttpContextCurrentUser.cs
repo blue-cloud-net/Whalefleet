@@ -46,7 +46,13 @@ internal sealed class HttpContextCurrentUser : ICurrentUser
     public string? Username => this.FindClaim(JwtClaimNames.UniqueName);
 
     /// <inheritdoc />
-    public string? Role => this.FindClaim(JwtClaimNames.Role);
+    public IReadOnlyList<string> Roles =>
+        this.Principal?.FindAll(JwtClaimNames.Role)
+            .Select(claim => claim.Value)
+            .Where(value => !String.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray()
+        ?? [];
 
     private ClaimsPrincipal? Principal => _httpContextAccessor.HttpContext?.User;
 

@@ -1,6 +1,6 @@
+using Whalefleet.Api.Security;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.HostGroups;
-using Whalefleet.Core.Users;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,7 +18,7 @@ namespace Whalefleet.Api.Controllers;
 /// </remarks>
 [ApiController]
 [Route("api/v1/admin/host-groups")]
-[Authorize(Roles = Role.AdminName)]
+[Authorize(Policy = PermissionPolicies.HostsManage)]
 public sealed class AdminHostGroupsController : ControllerBase
 {
     private readonly HostGroupService _groups;

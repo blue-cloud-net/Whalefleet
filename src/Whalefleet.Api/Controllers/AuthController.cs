@@ -23,6 +23,7 @@ public sealed class AuthController : ControllerBase
 {
     private readonly AuthService _authService;
     private readonly ICurrentUser _currentUser;
+    private readonly IPermissionChecker _permissions;
     private readonly ILogger<AuthController> _logger;
 
     /// <summary>
@@ -30,19 +31,23 @@ public sealed class AuthController : ControllerBase
     /// </summary>
     /// <param name="authService">认证用例服务。</param>
     /// <param name="currentUser">当前登录用户（由 JWT claims 解析）。</param>
+    /// <param name="permissions">权限判定（<c>me</c> 端点回传全局有效权限集）。</param>
     /// <param name="logger">日志记录器。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
     public AuthController(
         AuthService authService,
         ICurrentUser currentUser,
+        IPermissionChecker permissions,
         ILogger<AuthController> logger)
     {
         ArgumentNullException.ThrowIfNull(authService);
         ArgumentNullException.ThrowIfNull(currentUser);
+        ArgumentNullException.ThrowIfNull(permissions);
         ArgumentNullException.ThrowIfNull(logger);
 
         _authService = authService;
         _currentUser = currentUser;
+        _permissions = permissions;
         _logger = logger;
     }
 
@@ -139,25 +144,41 @@ public sealed class AuthController : ControllerBase
     /// </remarks>
     /// <response code="200">返回当前用户。</response>
     /// <response code="401">未携带 Token（<c>1100</c>）或 Token 已过期（<c>1101</c>）。</response>
+    /// <remarks>
+    /// <b>返回的是「全局」有效权限集</b>，主机级权限不在这里——它随主机而变，
+    /// 由主机列表接口按需带回。<b>⚠️ 这份数据只供界面显隐，不是安全边界</b>：
+    /// 服务端一律按 <c>IPermissionChecker</c> 查库判定。
+    /// </remarks>
     [HttpPost("me")]
     [Authorize]
     [ProducesResponseType(typeof(ApiResult<AuthenticatedUser>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
-    public IActionResult GetCurrentUser()
+    public async Task<IActionResult> GetCurrentUserAsync(CancellationToken cancellationToken)
     {
         var userId = _currentUser.UserId;
         var username = _currentUser.Username;
-        var role = _currentUser.Role;
 
         // [Authorize] 已保证请求通过鉴权，因此走到这里的令牌必然由本项目签发。
         // 仍做一次显式检查：宁可回 401，也不要让一个残缺的声明集变成下游的空引用。
-        if (userId is null || String.IsNullOrEmpty(username) || String.IsNullOrEmpty(role))
+        // 注意这里**不**检查角色——角色是展示信息，「没有角色」是正常状态
+        // （新建用户到被分配角色之间的窗口期），不该因此把人踢下线。
+        if (userId is null || String.IsNullOrEmpty(username))
         {
             _logger.LogWarning("已通过鉴权的请求缺少必要的用户声明，可能来自旧密钥签发的令牌");
 
             throw BusinessException.Unauthenticated("令牌缺少必要的用户声明");
         }
 
-        return this.Ok(ApiResults.Ok(new AuthenticatedUser(userId.Value, username, role)));
+        // 这里查库而不是读令牌里的声明：带作用域的分配装不进 claim，
+        // 而「我有哪些全局权限」恰恰是界面隐藏菜单所需的准确答案。
+        var permissions = await _permissions
+            .GetEffectivePermissionsAsync(userId.Value, null, cancellationToken)
+            .ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok(new AuthenticatedUser(
+            userId.Value,
+            username,
+            _currentUser.Roles,
+            [.. Core.Permissions.Permission.All.Where(permissions.Contains)])));
     }
 }

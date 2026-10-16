@@ -87,6 +87,8 @@ public static class AuthenticationServiceCollectionExtensions
         services.AddHttpContextAccessor();
         services.Replace(ServiceDescriptor.Scoped<ICurrentUser, HttpContextCurrentUser>());
 
+        services.AddPermissionAuthorization();
+
         return services;
     }
 }

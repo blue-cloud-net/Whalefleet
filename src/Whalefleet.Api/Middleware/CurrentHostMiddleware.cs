@@ -1,5 +1,7 @@
 using Whalefleet.Api.Security;
 using Whalefleet.Application.Abstractions;
+using Whalefleet.Application.Common;
+using Whalefleet.Core.Permissions;
 
 namespace Whalefleet.Api.Middleware;
 
@@ -19,7 +21,7 @@ namespace Whalefleet.Api.Middleware;
 /// <see langword="null"/>，这正是「无主机上下文」的语义（不是错误）。</para>
 /// <para><b>管道位置</b>：必须在路由匹配之后（否则读不到路由值）、在端点之前。当前实现里
 /// 由 <c>Program.cs</c> 放在 <c>UseAuthentication()</c> 之后——
-/// 这样 0.1.0 加可见性校验时能直接读 <c>HttpContext.User</c>。</para>
+/// 这样权限判定能直接读 <c>HttpContext.User</c>。</para>
 /// </remarks>
 internal sealed class CurrentHostMiddleware
 {
@@ -53,8 +55,8 @@ internal sealed class CurrentHostMiddleware
     /// <param name="context">当前 HTTP 上下文。</param>
     /// <param name="currentHost">当前主机上下文的写入侧（从请求作用域解析）。</param>
     /// <param name="hosts">主机访问器（用于校验主机确实存在）。</param>
-    /// <param name="currentUser">当前登录用户（可见性校验需要角色与主体）。</param>
-    /// <param name="permissions">资源级权限校验。</param>
+    /// <param name="currentUser">当前登录用户（权限判定的主体）。</param>
+    /// <param name="permissions">权限判定。</param>
     /// <returns>表示异步操作的任务。</returns>
     /// <exception cref="ArgumentNullException">任一参数为 <see langword="null"/>。</exception>
     public async Task InvokeAsync(
@@ -62,7 +64,7 @@ internal sealed class CurrentHostMiddleware
         ICurrentHostAccessor currentHost,
         IDockerHostAccessor hosts,
         ICurrentUser currentUser,
-        IResourcePermissionService permissions)
+        IPermissionChecker permissions)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(currentHost);
@@ -78,12 +80,26 @@ internal sealed class CurrentHostMiddleware
             // 用库里的 Name 而不是原始路径片段：URL 里的大小写不应影响后续取值。
             var host = await hosts.ResolveAsync(hostId, context.RequestAborted).ConfigureAwait(false);
 
-            // 可见性校验挂在解析之后、端点之前：0.0.9 起的每个主机作用域端点自动受保护，
-            // 不必各写一遍。未认证请求（UserId 为空）在这里会被当作非管理员拒掉（fail-closed）；
+            // 可见性 = 在这台主机上是否有 host.read。挂在解析之后、端点之前：
+            // 每个主机作用域端点自动受保护，不必各写一遍。
+            // 未认证请求（UserId 为空）在这里会被当作无权限拒掉（fail-closed）；
             // 带 [Authorize] 的端点其实在更早的 UseAuthorization 就已经 401。
-            await permissions
-                .EnsureHostVisibleAsync(currentUser.UserId ?? Guid.Empty, host, context.RequestAborted)
-                .ConfigureAwait(false);
+            //
+            // ⚠️ 不具备 host.read 时报的是 1501（看不见这台机器）而不是 1502（缺某项操作权限）：
+            // 对调用方而言「这台机器对我不可见」与「我能看但不能改」是两件不同的事，
+            // 前端据此应该退回主机选择器，而不是弹一个「权限不足」。
+            if (!await permissions
+                    .HasPermissionAsync(
+                        currentUser.UserId ?? Guid.Empty,
+                        host.Id,
+                        Permission.HostRead,
+                        context.RequestAborted)
+                    .ConfigureAwait(false))
+            {
+                throw new BusinessException(
+                    ErrorCodes.HostForbidden,
+                    $"无权访问主机「{host.Name}」，请联系管理员开通。");
+            }
 
             currentHost.Set(host.Name);
         }
