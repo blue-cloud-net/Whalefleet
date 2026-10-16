@@ -2,6 +2,7 @@ using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Security;
 using Whalefleet.Core.Auth;
+using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Microsoft.Extensions.Logging;
 
@@ -31,6 +32,7 @@ public sealed class UserService
 
     private readonly IUserRepository _users;
     private readonly IRoleRepository _roles;
+    private readonly IUserRoleAssignmentRepository _assignments;
     private readonly IRefreshTokenRepository _refreshTokens;
     private readonly IPasswordHasher _passwordHasher;
     private readonly ICurrentUser _currentUser;
@@ -42,6 +44,7 @@ public sealed class UserService
     /// </summary>
     /// <param name="users">用户仓储。</param>
     /// <param name="roles">角色仓储。</param>
+    /// <param name="assignments">分配仓储（角色的多对多关系；创建用户与删除管理员都走它）。</param>
     /// <param name="refreshTokens">刷新令牌仓储（改密码后撤销会话）。</param>
     /// <param name="passwordHasher">密码哈希器。</param>
     /// <param name="currentUser">当前登录用户（判断"改自己"还是"改别人"）。</param>
@@ -51,6 +54,7 @@ public sealed class UserService
     public UserService(
         IUserRepository users,
         IRoleRepository roles,
+        IUserRoleAssignmentRepository assignments,
         IRefreshTokenRepository refreshTokens,
         IPasswordHasher passwordHasher,
         ICurrentUser currentUser,
@@ -59,6 +63,7 @@ public sealed class UserService
     {
         ArgumentNullException.ThrowIfNull(users);
         ArgumentNullException.ThrowIfNull(roles);
+        ArgumentNullException.ThrowIfNull(assignments);
         ArgumentNullException.ThrowIfNull(refreshTokens);
         ArgumentNullException.ThrowIfNull(passwordHasher);
         ArgumentNullException.ThrowIfNull(currentUser);
@@ -67,6 +72,7 @@ public sealed class UserService
 
         _users = users;
         _roles = roles;
+        _assignments = assignments;
         _refreshTokens = refreshTokens;
         _passwordHasher = passwordHasher;
         _currentUser = currentUser;
@@ -95,15 +101,25 @@ public sealed class UserService
             .ListAsync(pageIndex * pageSize, pageSize, cancellationToken)
             .ConfigureAwait(false);
 
-        // 角色表一次取回后在内存里映射：逐行查库是 N+1，而角色总共只有几条。
-        var roleNames = (await _roles.QueryAllListAsync(cancellationToken).ConfigureAwait(false))
+        // 角色表与分配各取一次后在内存里映射：逐行查库是 N+1，
+        // 而角色总共只有十几条，一个用户的分配也只有个位数。
+        var nameByRoleId = (await _roles.QueryAllListAsync(cancellationToken).ConfigureAwait(false))
             .ToDictionary(role => role.Id, role => role.Name);
+
+        var userIds = users.Select(user => user.Id).ToArray();
+        var assignments = await _assignments.ListByUsersAsync(userIds, cancellationToken).ConfigureAwait(false);
+
+        var rolesByUser = new Dictionary<Guid, IReadOnlyList<string>>();
+        foreach (var group in assignments.GroupBy(assignment => assignment.UserId))
+        {
+            rolesByUser[group.Key] = MapRoleNames(group, nameByRoleId);
+        }
 
         var items = users
             .Select(user => new UserSummary(
                 user.Id,
                 user.Username,
-                MapRoleName(roleNames, user.RoleId),
+                rolesByUser.TryGetValue(user.Id, out var names) ? names : [],
                 user.CreationTime))
             .ToList();
 
@@ -140,13 +156,20 @@ public sealed class UserService
 
         var role = await ResolveRoleAsync(request.Role, cancellationToken).ConfigureAwait(false);
 
-        var user = User.Create(Guid.NewGuid(), username, _passwordHasher.Hash(password), role.Id);
+        var user = User.Create(Guid.NewGuid(), username, _passwordHasher.Hash(password));
 
         await _users.AddAsync(user, cancellationToken).ConfigureAwait(false);
 
+        // 角色是「分配」给用户的，不是用户自带的：创建用户后另外建一条全局分配。
+        // 写成 User.RoleId 会让「默认角色」变成用户实体的一部分，
+        // 而那件事在多角色模型里根本不属于用户。
+        await _assignments
+            .AddAsync(UserRoleAssignment.Assign(Guid.NewGuid(), user.Id, role.Id), cancellationToken)
+            .ConfigureAwait(false);
+
         _logger.LogInformation("已创建用户 {Username}（角色={Role}）", user.Username, role.Name);
 
-        return new UserSummary(user.Id, user.Username, role.Name, user.CreationTime);
+        return new UserSummary(user.Id, user.Username, [role.Name], user.CreationTime);
     }
 
     /// <summary>
@@ -238,8 +261,28 @@ public sealed class UserService
             isSelf);
     }
 
-    private static string MapRoleName(Dictionary<Guid, string> roleNames, Guid roleId) =>
-        roleNames.TryGetValue(roleId, out var name) ? name : String.Empty;
+    /// <summary>
+    /// 把一个用户的分配翻译成角色名数组。
+    /// </summary>
+    /// <param name="assignments">该用户的全部分配（全局 + 各主机）。</param>
+    /// <param name="nameByRoleId">角色主键 → 角色名。</param>
+    /// <returns>去重并按字典序排列的角色名数组。</returns>
+    /// <remarks>
+    /// <b>刻意<b>不</b>按「全局分配优先」排序</b>：同一用户既可能是管理员又是运维，
+    /// 而列表只是给人看的。排序规则一旦有业务含义，界面就会开始依赖它。
+    /// 查不到的角色（已软删除）被静默跳过而不是留空串——空串会让界面渲染出一个空标签。
+    /// </remarks>
+    private static IReadOnlyList<string> MapRoleNames(
+        IEnumerable<UserRoleAssignment> assignments,
+        IReadOnlyDictionary<Guid, string> nameByRoleId) =>
+        [
+            .. assignments
+                .Select(assignment => assignment.RoleId)
+                .Where(nameByRoleId.ContainsKey)
+                .Select(roleId => nameByRoleId[roleId])
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(name => name, StringComparer.Ordinal),
+        ];
 
     private static string Require(string? value, string field)
     {
@@ -252,7 +295,7 @@ public sealed class UserService
     }
 
     private bool IsAdministrator =>
-        String.Equals(_currentUser.Role, Role.AdminName, StringComparison.OrdinalIgnoreCase);
+        _currentUser.Roles.Contains(Role.AdminName, StringComparer.OrdinalIgnoreCase);
 
     private async Task<User> ResolvePasswordTargetAsync(
         UpdatePasswordRequest request,
@@ -297,12 +340,23 @@ public sealed class UserService
     {
         var adminRole = await _roles.FindByNameAsync(Role.AdminName, cancellationToken).ConfigureAwait(false);
 
-        if (adminRole is null || target.RoleId != adminRole.Id)
+        if (adminRole is null)
         {
             return;
         }
 
-        var adminCount = await _users.CountByRoleIdAsync(adminRole.Id, cancellationToken).ConfigureAwait(false);
+        var targetCount = await _assignments
+            .CountGlobalByUserAndRoleAsync(target.Id, adminRole.Id, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (targetCount == 0)
+        {
+            // 目标不是管理员（主机分配里的 admin 不算系统管理员），本规则不适用
+            return;
+        }
+
+        var adminCount = await _assignments.CountGlobalByRoleAsync(adminRole.Id, cancellationToken)
+            .ConfigureAwait(false);
 
         if (adminCount <= 1)
         {

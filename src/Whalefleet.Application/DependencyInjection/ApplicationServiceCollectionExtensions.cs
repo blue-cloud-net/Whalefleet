@@ -4,6 +4,7 @@ using Whalefleet.Application.Containers;
 using Whalefleet.Application.HostGroups;
 using Whalefleet.Application.Hosts;
 using Whalefleet.Application.Images;
+using Whalefleet.Application.Permissions;
 using Whalefleet.Application.Users;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -55,6 +56,12 @@ public static class ApplicationServiceCollectionExtensions
 
         // 主机分组用例（0.0.13）。Scoped：依赖 Scoped 的仓储。
         services.AddScoped<HostGroupService>();
+
+        // 角色管理用例（0.1.0）。Scoped：依赖 Scoped 的角色 / 分配仓储。
+        services.AddScoped<RoleService>();
+
+        // 角色分配用例（0.1.0）。Scoped：依赖 Scoped 的分配 / 角色 / 用户 / 主机仓储。
+        services.AddScoped<RoleAssignmentService>();
 
         return services;
     }

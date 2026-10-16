@@ -18,11 +18,23 @@ public interface ITokenService
     /// </summary>
     /// <param name="userId">用户主键（写入 <c>sub</c> 声明）。</param>
     /// <param name="username">用户名（写入 <c>unique_name</c> 声明）。</param>
-    /// <param name="roleName">角色名（写入 <c>role</c> 声明，供 <c>[Authorize(Roles = …)]</c> 使用）。</param>
+    /// <param name="roleNames">
+    /// 角色名集合（每个写成一个 <c>role</c> 声明）。<b>允许为空</b>——
+    /// 新建用户到被分配角色之间存在一个窗口期，那段时间他确实没有任何角色。
+    /// </param>
     /// <param name="utcNow">当前 UTC 时间（用于计算过期时刻）。</param>
     /// <returns>令牌原文与过期时间。</returns>
-    /// <exception cref="ArgumentException">任一字符串参数为空或全空白。</exception>
-    AccessToken CreateAccessToken(Guid userId, string username, string roleName, DateTime utcNow);
+    /// <exception cref="ArgumentException">用户名为空或全空白。</exception>
+    /// <remarks>
+    /// <b>⚠️ 角色声明不是授权事实</b>：带作用域的分配装不进单个声明，
+    /// 因此接口层一律查库判定（见 <c>IPermissionChecker</c>）。
+    /// 这里的角色名只供界面展示与菜单显隐；权限改动也因此<b>立即生效</b>，不等令牌过期。
+    /// </remarks>
+    AccessToken CreateAccessToken(
+        Guid userId,
+        string username,
+        IReadOnlyList<string> roleNames,
+        DateTime utcNow);
 
     /// <summary>
     /// 生成一个新的 refresh token（<b>随机字节，非 JWT</b>）。

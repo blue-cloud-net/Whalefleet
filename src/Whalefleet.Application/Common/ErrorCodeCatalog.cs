@@ -58,6 +58,14 @@ public static class ErrorCodeCatalog
             [ErrorCodes.ResourceForbidden] = (ErrorCategory.Forbidden, "无权限访问此资源"),
             [ErrorCodes.HostForbidden] = (ErrorCategory.Forbidden, "无权限访问此主机"),
             [ErrorCodes.OperationForbidden] = (ErrorCategory.Forbidden, "无权限执行此操作"),
+            [ErrorCodes.PermissionNotFound] = (ErrorCategory.NotFound, "授权不存在"),
+
+            [ErrorCodes.RoleNotFound] = (ErrorCategory.NotFound, "角色不存在"),
+            [ErrorCodes.RoleNameAlreadyExists] = (ErrorCategory.Validation, "角色标识已存在"),
+            [ErrorCodes.RoleInUse] = (ErrorCategory.Validation, "该角色仍有有效分配，请先撤销分配"),
+            [ErrorCodes.RoleProtected] = (ErrorCategory.Validation, "内置角色不可修改或删除"),
+            [ErrorCodes.PermissionUnknown] = (ErrorCategory.Validation, "未知的权限标识"),
+            [ErrorCodes.RoleAssignmentNotFound] = (ErrorCategory.NotFound, "角色分配不存在"),
 
             [ErrorCodes.InternalError] = (ErrorCategory.Internal, "服务器内部错误"),
         }.ToFrozenDictionary();

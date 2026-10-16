@@ -15,9 +15,10 @@ namespace Whalefleet.Application.Hosts;
 /// <para><b>为什么单独一个服务而不是并进 <c>HostService</c></b>：那是管理员的主机 CRUD
 /// （增删改端点、凭据、客户端失效），而这里是任意已认证用户都能看的只读查询。
 /// 混在一起会让「哪些方法需要管理员」只能靠读方法体去猜。</para>
-/// <para><b>可见性判定复用权限服务</b>：列表要按「这个人能看到哪些主机」**过滤**，
+/// <para><b>可见性判定复用权限服务</b>：列表要按「这个人能看到哪些主机」**过滤**
+/// （<see cref="IPermissionChecker.FilterVisibleHostsAsync"/>），
 /// 单台概览则由 <c>CurrentHostMiddleware</c> 在进入本服务前**拒绝**。两者用的是同一条规则，
-/// 因此都走 <see cref="IResourcePermissionService"/>，避免两处各写一套而漂移。</para>
+/// 因此都走同一个权限服务，避免两处各写一套而漂移。</para>
 /// <para><b>离线主机不报错</b>：主机离线要在界面上显示成「离线」而不是一个错误页，
 /// 因此取不到数据时返回 <c>status=offline</c> 与空字段，只有「主机本身不存在」才抛 <c>1300</c>。</para>
 /// </remarks>
@@ -25,7 +26,7 @@ public sealed class HostQueryService
 {
     private readonly IHostRepository _hosts;
     private readonly IDockerHostAccessor _accessor;
-    private readonly IResourcePermissionService _permissions;
+    private readonly IPermissionChecker _permissions;
     private readonly ICurrentUser _currentUser;
     private readonly ILogger<HostQueryService> _logger;
 
@@ -34,14 +35,14 @@ public sealed class HostQueryService
     /// </summary>
     /// <param name="hosts">主机仓储。</param>
     /// <param name="accessor">主机访问器（解析主机并取得 Docker 客户端）。</param>
-    /// <param name="permissions">资源级权限校验（列表过滤用）。</param>
+    /// <param name="permissions">权限判定（列表过滤用）。</param>
     /// <param name="currentUser">当前登录用户（权限判定的主体）。</param>
     /// <param name="logger">日志。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
     public HostQueryService(
         IHostRepository hosts,
         IDockerHostAccessor accessor,
-        IResourcePermissionService permissions,
+        IPermissionChecker permissions,
         ICurrentUser currentUser,
         ILogger<HostQueryService> logger)
     {
@@ -68,9 +69,9 @@ public sealed class HostQueryService
     /// 取它们要额外调用守护进程（版本一次、计数四次），主机一多列表就会明显变慢甚至超时。
     /// 这两项由概览接口按需取——列表只做每台一次的轻量探测。</para>
     /// <para><b>探测是并行的</b>：串行时 N 台离线主机各自等一次超时，列表页会慢到不可用。</para>
-    /// <para><b>非管理员当前拿到空列表</b>：0.1.0 的可见性表落地前「哪些主机对该用户可见」
-    /// 没有答案，只能 fail-closed；空列表比 403 更合适——列表接口返回 403 会让前端的
-    /// 「主机选择器」整块报错，而它本该显示「暂无可用主机」。</para>
+    /// <para><b>非管理员只看到被授权的主机</b>：过滤由 <see cref="IPermissionChecker"/>
+    /// 一次查库完成（0.1.0 起数据来自带作用域的角色分配）。没被授权时返回<b>空列表</b>
+    /// 而不是 403——列表接口一报错，前端的「主机选择器」整块就红了，而它本该显示「暂无可用主机」。</para>
     /// </remarks>
     public async Task<IReadOnlyList<HostOverviewSummary>> ListVisibleAsync(
         CancellationToken cancellationToken = default)
@@ -78,9 +79,9 @@ public sealed class HostQueryService
         var hosts = await _hosts.QueryAllListAsync(cancellationToken).ConfigureAwait(false);
         var userId = _currentUser.UserId ?? Guid.Empty;
 
-        var visible = hosts
-            .Where(host => _permissions.IsHostVisible(userId, host))
-            .ToArray();
+        var visible = (await _permissions
+            .FilterVisibleHostsAsync(userId, hosts, cancellationToken)
+            .ConfigureAwait(false)).ToArray();
 
         var statuses = await Task
             .WhenAll(visible.Select(host => this.ProbeAsync(host, cancellationToken)))

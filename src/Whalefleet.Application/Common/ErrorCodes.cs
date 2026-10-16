@@ -123,6 +123,50 @@ public static class ErrorCodes
     /// <summary>无权限执行此操作（缺少 write 权限，HTTP 403）。</summary>
     public const int OperationForbidden = 1502;
 
+    /// <summary>授权记录不存在（HTTP 404）。</summary>
+    /// <remarks>
+    /// 与 <see cref="ResourceForbidden"/>（1500）的区别：1500 是「你没有权限」，
+    /// 本码是「你问的那条授权根本不存在」。两者都是 404 / 403 的分界，
+    /// 界面需要据此区分「换个用户试试」和「重新授权」。
+    /// </remarks>
+    public const int PermissionNotFound = 1503;
+
+    /// <summary>角色不存在（HTTP 404）。</summary>
+    public const int RoleNotFound = 1510;
+
+    /// <summary>角色标识已被占用（HTTP 400）。</summary>
+    /// <remarks>
+    /// 与 <see cref="UsernameAlreadyExists"/>（1200）分开而非复用：两者都是「名字冲突」，
+    /// 但界面需要把提示精确落在对应字段上，错误码一旦合并就再也分不开了。
+    /// </remarks>
+    public const int RoleNameAlreadyExists = 1511;
+
+    /// <summary>角色仍有有效分配，拒绝删除（HTTP 400）。</summary>
+    /// <remarks>
+    /// <b>为什么不级联撤销</b>：级联会悄悄收回没人要求收回的访问权。
+    /// 报这个错是把决定权交还管理员——先看谁在用，再逐个撤销，最后才删角色。
+    /// 只数<b>有效</b>分配；已撤销的行不该让角色永远删不掉。
+    /// </remarks>
+    public const int RoleInUse = 1512;
+
+    /// <summary>内置角色受保护，不可修改或删除（HTTP 400）。</summary>
+    /// <remarks>
+    /// 内置角色的语义随迁移固定。一个能被清空权限集的 <c>operator</c> 已经不是它的名字所声称的那个角色；
+    /// 更现实的风险是管理员把 <c>admin</c> 改窄，把自己锁在门外且只能改库恢复。
+    /// </remarks>
+    public const int RoleProtected = 1513;
+
+    /// <summary>未知权限标识（HTTP 400）。</summary>
+    /// <remarks>
+    /// 单列而不是复用 <see cref="ValidationFailed"/>：客户端最容易犯的错就是拼错权限名
+    /// （<c>"read"</c> 而不是 <c>"host.read"</c>、<c>"ALL"</c>、<c>"7"</c>），
+    /// 给它独立码，界面才能提示「请从权限目录里选」。
+    /// </remarks>
+    public const int PermissionUnknown = 1514;
+
+    /// <summary>角色分配不存在（HTTP 404）。</summary>
+    public const int RoleAssignmentNotFound = 1515;
+
     // ==================== 9000-9999 服务器内部错误 ====================
 
     /// <summary>服务器内部错误（未捕获异常，HTTP 500）。</summary>

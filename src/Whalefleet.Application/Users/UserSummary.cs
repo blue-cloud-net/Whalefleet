@@ -5,7 +5,9 @@ namespace Whalefleet.Application.Users;
 /// </summary>
 /// <param name="Id">用户主键。</param>
 /// <param name="Username">用户名。</param>
-/// <param name="Role">角色名（如 <c>admin</c>）。</param>
+/// <param name="Roles">
+/// 角色名数组（多角色；尚未被分配时是<b>空数组</b>）。
+/// </param>
 /// <param name="CreationTime">创建时间（UTC）。</param>
 /// <remarks>
 /// <para><b>为什么不用实体直接序列化</b>：<c>User</c> 带 <c>PasswordHash</c>。
@@ -15,7 +17,7 @@ namespace Whalefleet.Application.Users;
 public sealed record UserSummary(
     Guid Id,
     string Username,
-    string Role,
+    IReadOnlyList<string> Roles,
     DateTimeOffset CreationTime);
 
 /// <summary>

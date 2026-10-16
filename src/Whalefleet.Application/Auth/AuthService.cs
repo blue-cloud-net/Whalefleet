@@ -1,6 +1,7 @@
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Auth;
+using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Microsoft.Extensions.Logging;
 
@@ -25,6 +26,8 @@ public sealed class AuthService
 {
     private readonly IUserRepository _users;
     private readonly IRoleRepository _roles;
+    private readonly IUserRoleAssignmentRepository _assignments;
+    private readonly IPermissionChecker _permissions;
     private readonly IRefreshTokenRepository _refreshTokens;
     private readonly IPasswordHasher _passwordHasher;
     private readonly ITokenService _tokenService;
@@ -36,7 +39,9 @@ public sealed class AuthService
     /// 初始化 <see cref="AuthService"/>。
     /// </summary>
     /// <param name="users">用户仓储。</param>
-    /// <param name="roles">角色仓储。</param>
+    /// <param name="roles">角色仓储（把分配里的角色主键翻译成角色名）。</param>
+    /// <param name="assignments">分配仓储（用户的角色是多对多且带作用域的）。</param>
+    /// <param name="permissions">权限判定（登录响应里回传全局有效权限集，供界面显隐菜单）。</param>
     /// <param name="refreshTokens">刷新令牌仓储。</param>
     /// <param name="passwordHasher">密码哈希器。</param>
     /// <param name="tokenService">令牌服务。</param>
@@ -47,6 +52,8 @@ public sealed class AuthService
     public AuthService(
         IUserRepository users,
         IRoleRepository roles,
+        IUserRoleAssignmentRepository assignments,
+        IPermissionChecker permissions,
         IRefreshTokenRepository refreshTokens,
         IPasswordHasher passwordHasher,
         ITokenService tokenService,
@@ -56,6 +63,8 @@ public sealed class AuthService
     {
         ArgumentNullException.ThrowIfNull(users);
         ArgumentNullException.ThrowIfNull(roles);
+        ArgumentNullException.ThrowIfNull(assignments);
+        ArgumentNullException.ThrowIfNull(permissions);
         ArgumentNullException.ThrowIfNull(refreshTokens);
         ArgumentNullException.ThrowIfNull(passwordHasher);
         ArgumentNullException.ThrowIfNull(tokenService);
@@ -65,6 +74,8 @@ public sealed class AuthService
 
         _users = users;
         _roles = roles;
+        _assignments = assignments;
+        _permissions = permissions;
         _refreshTokens = refreshTokens;
         _passwordHasher = passwordHasher;
         _tokenService = tokenService;
@@ -134,23 +145,12 @@ public sealed class AuthService
             throw this.FailLogin(clientIp, username);
         }
 
-        var role = await _roles.QueryByIdAsync(user.RoleId, cancellationToken).ConfigureAwait(false);
-
-        if (role is null)
-        {
-            // 外键保证用户必然指向一个存在的角色；走到这里说明数据被手工破坏。
-            _logger.LogError(
-                "用户 {Username} 的角色 {RoleId} 不存在，无法登录",
-                user.Username,
-                user.RoleId);
-
-            throw BusinessException.Internal("用户所属角色不存在");
-        }
+        var roleNames = await this.ResolveRoleNamesAsync(user.Id, cancellationToken).ConfigureAwait(false);
 
         _attemptTracker.Reset(clientIp, username);
 
         var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
-        var accessToken = _tokenService.CreateAccessToken(user.Id, user.Username, role.Name, utcNow);
+        var accessToken = _tokenService.CreateAccessToken(user.Id, user.Username, roleNames, utcNow);
         var refreshToken = _tokenService.CreateRefreshToken(utcNow);
 
         await _refreshTokens.AddAsync(
@@ -159,11 +159,51 @@ public sealed class AuthService
 
         _logger.LogInformation("用户 {Username} 登录成功（IP={ClientIp}）", user.Username, clientIp);
 
+        var globalPermissions = await _permissions
+            .GetEffectivePermissionsAsync(user.Id, null, cancellationToken)
+            .ConfigureAwait(false);
+
         return new LoginResponse(
             accessToken.Value,
             refreshToken.Raw,
             (int)Math.Max(0, (accessToken.ExpiresAt - utcNow).TotalSeconds),
-            new AuthenticatedUser(user.Id, user.Username, role.Name));
+            new AuthenticatedUser(
+                user.Id,
+                user.Username,
+                roleNames,
+                [.. Permission.All.Where(globalPermissions.Contains)]));
+    }
+
+    /// <summary>
+    /// 解析用户的角色名集合（登录与刷新时给令牌与界面用）。
+    /// </summary>
+    /// <param name="userId">用户主键。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>角色名数组（去重、大写无关比较后保留首次出现的大小写形式）。</returns>
+    /// <remarks>
+    /// <para><b>取全部分配而不是「默认那一个」</b>：多角色后只报一个名字会让界面只显示一个角色，
+    /// 而用户实际拥有几个是必须如实呈现的事实。</para>
+    /// <para><b>返回空数组是合法状态</b>：新建用户到被分配角色之间存在一个窗口期，
+    /// 强行取「默认角色」会让他看起来像拥有自己还没有的权限。</para>
+    /// <para><b>⚠️ 这不是授权事实</b>：它只供展示与菜单显隐。真正的判定走
+    /// <see cref="IPermissionChecker"/>，因为带作用域的分配根本装不进令牌。</para>
+    /// </remarks>
+    private async Task<IReadOnlyList<string>> ResolveRoleNamesAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var assignments = await _assignments.ListByUserAsync(userId, cancellationToken).ConfigureAwait(false);
+
+        if (assignments.Count == 0)
+        {
+            return [];
+        }
+
+        var roles = await _roles
+            .QueryListByIdsAsync([.. assignments.Select(assignment => assignment.RoleId).Distinct()], cancellationToken)
+            .ConfigureAwait(false);
+
+        return [.. roles.Select(role => role.Name).Distinct(StringComparer.OrdinalIgnoreCase)];
     }
 
     /// <summary>
@@ -239,16 +279,9 @@ public sealed class AuthService
             throw InvalidRefreshToken();
         }
 
-        var role = await _roles.QueryByIdAsync(user.RoleId, cancellationToken).ConfigureAwait(false);
+        var roleNames = await this.ResolveRoleNamesAsync(user.Id, cancellationToken).ConfigureAwait(false);
 
-        if (role is null)
-        {
-            _logger.LogError("用户 {Username} 的角色 {RoleId} 不存在，无法刷新令牌", user.Username, user.RoleId);
-
-            throw BusinessException.Internal("用户所属角色不存在");
-        }
-
-        var accessToken = _tokenService.CreateAccessToken(user.Id, user.Username, role.Name, utcNow);
+        var accessToken = _tokenService.CreateAccessToken(user.Id, user.Username, roleNames, utcNow);
         var newRefreshToken = _tokenService.CreateRefreshToken(utcNow);
 
         // 先撤销旧的（并记录取代关系），再写入新的——两条写操作都在同一请求内，
@@ -268,7 +301,7 @@ public sealed class AuthService
             accessToken.Value,
             newRefreshToken.Raw,
             (int)Math.Max(0, (accessToken.ExpiresAt - utcNow).TotalSeconds),
-            new AuthenticatedUser(user.Id, user.Username, role.Name));
+            new AuthenticatedUser(user.Id, user.Username, roleNames, []));
     }
 
     /// <summary>
