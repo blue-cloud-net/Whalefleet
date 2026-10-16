@@ -1,8 +1,8 @@
 import { http, HttpResponse, delay } from 'msw'
 import { ErrorCode, fail, httpStatusOf, ok } from '../envelope'
-import { delayFor, type MockScenario } from '../scenarios'
+import { delayFor, hostsFor, type MockScenario } from '../scenarios'
 import { MOCK_IMAGE_DETAILS, MOCK_IMAGES_DEFAULT } from '../data/images'
-import type { ImageDetail, ImageSummary } from '@/types/api'
+import type { BatchOperationFailure, ImageDetail, ImageSummary } from '@/types/api'
 
 /**
  * 本次会话里「拉取进来」的镜像。
@@ -253,8 +253,109 @@ export function imageHandlers(scenario: () => MockScenario) {
       removedInSession.add(image.id)
 
       return HttpResponse.json(ok({ untagged: image.repoTags, deleted: [image.id] }))
+    }),
+
+    http.post('*/api/v1/hosts/:hostId/images/batch-remove', async ({ request }) => {
+      await delay(delayFor(scenario()))
+
+      const body = await readBody(request)
+      const force = body.force === true
+      const raw = Array.isArray(body.imageIds) ? (body.imageIds as unknown[]) : []
+
+      // 主机不存在是**整批**失败（1300）。真实后端由 CurrentHostMiddleware 在进入端点前抛出，
+      // mock 没有中间件，因此必须在这里补上。
+      const hostId = new URL(request.url).pathname.match(/\/hosts\/([^/]+)\/images\/batch-remove$/)?.[1]
+      if (hostId === undefined || !hostsFor(scenario()).some((host) => host.name === decodeURIComponent(hostId))) {
+        return HttpResponse.json(fail(ErrorCode.HostNotFound), {
+          status: httpStatusOf(ErrorCode.HostNotFound)
+        })
+      }
+
+      // 入参非法是**整批**失败（1000）；逐条失败才走 failures，两者界面上要显示成不同的东西
+      const requested = normalizeBatchIds(raw)
+
+      if (requested === null) {
+        return HttpResponse.json(
+          fail(ErrorCode.ValidationFailed, batchValidationMessage(raw, 'imageIds')),
+          { status: httpStatusOf(ErrorCode.ValidationFailed) }
+        )
+      }
+
+      const failures: BatchOperationFailure[] = []
+      let succeeded = 0
+
+      for (const imageId of requested) {
+        const image = findImage(scenario(), imageId)
+
+        if (!image) {
+          failures.push({
+            resourceId: imageId,
+            code: ErrorCode.DockerResourceNotFound,
+            message: '镜像不存在'
+          })
+          continue
+        }
+
+        if (image.containerCount > 0 && !force) {
+          failures.push({
+            resourceId: imageId,
+            code: ErrorCode.DockerResourceConflict,
+            message: '镜像正被容器引用，需指定 force'
+          })
+          continue
+        }
+
+        pulledInSession.delete(image.id)
+        untaggedInSession.delete(image.id)
+        removedInSession.add(image.id)
+        succeeded += 1
+      }
+
+      // 批量响应**不含**每条镜像解绑了哪些标签——那会让响应体随选中数量膨胀，
+      // 而用户在批量场景下需要知道的只有「删没删掉」。
+      return HttpResponse.json(ok({ requested: requested.length, succeeded, failures }))
     })
   ]
+}
+
+/**
+ * 批量入参非法的**具体**原因（与后端 `BatchRequest.NormalizeIds` 的消息一致）。
+ *
+ * 复刻具体文案而不是用默认的「参数校验失败」：「101 个 ID 超了上限 100」这个信息
+ * 只有说清楚才有用，笼统的报错只会让人反复重试同一个必然失败的操作。
+ */
+function batchValidationMessage(raw: unknown[], field: string): string {
+  if (raw.length === 0) return `${field} 不能为空`
+
+  if (raw.length > 100) return `${field} 最多 100 个，当前 ${raw.length} 个`
+
+  return `${field} 不能全为空值`
+}
+
+/**
+ * 批量 ID 列表的归一化（与后端 `BatchRequest.NormalizeIds` 同规则）。
+ *
+ * @returns 去空白、去空项、去重后的 ID；**列表为空 / 超限 / 全为空串时返回 null**（对应后端 1000）。
+ */
+function normalizeBatchIds(raw: unknown[]): string[] | null {
+  if (raw.length === 0) return null
+
+  // ⚠️ 上限必须与后端一致：服务端超过 100 就整批 400，而 mock 不拦的话
+  // 前端会以为「1000 条也能批量删」，到真机上才发现整批失败。
+  if (raw.length > 100) return null
+
+  const seen = new Set<string>()
+  const normalized: string[] = []
+
+  for (const item of raw) {
+    const trimmed = typeof item === 'string' ? item.trim() : ''
+    if (trimmed.length === 0 || seen.has(trimmed)) continue
+
+    seen.add(trimmed)
+    normalized.push(trimmed)
+  }
+
+  return normalized.length > 0 ? normalized : null
 }
 
 /** 把「只解绑一个标签」的结果记进会话覆盖层（不改夹具本身）。 */

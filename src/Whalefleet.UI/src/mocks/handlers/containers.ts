@@ -1,12 +1,12 @@
 import { http, HttpResponse, delay } from 'msw'
 import { ErrorCode, fail, httpStatusOf, ok } from '../envelope'
-import { delayFor, type MockScenario } from '../scenarios'
+import { delayFor, hostsFor, type MockScenario } from '../scenarios'
 import {
   MOCK_CONTAINER_DETAILS,
   MOCK_CONTAINER_LOGS,
   MOCK_CONTAINERS_DEFAULT
 } from '../data/containers'
-import type { ContainerDetail, ContainerSummary } from '@/types/api'
+import type { BatchOperationFailure, ContainerDetail, ContainerSummary } from '@/types/api'
 
 /**
  * 本次会话里「创建出来」的容器。
@@ -20,6 +20,16 @@ import type { ContainerDetail, ContainerSummary } from '@/types/api'
  */
 const createdInSession = new Map<string, CreatedContainer>()
 
+/**
+ * 本次会话里被**删除**的夹具容器 id。
+ *
+ * 与镜像那边的 `removedInSession` 同构：`createdInSession.delete()` 只对会话新建的容器有效，
+ * 而夹具容器是模块级常量，删掉它就意味着改了夹具本身（会让下一次走查看到不同的数据）。
+ * 因此用「已删除集合」过滤，让列表与删除结果保持自洽——
+ * 否则删完刷新它又回来了，界面上看起来像删除没生效。
+ */
+const removedInSession = new Set<string>()
+
 /** 本次会话新建的容器：详情 + 列表项需要的端口映射（`ContainerDetail` 里没有端口字段）。 */
 interface CreatedContainer {
   detail: ContainerDetail
@@ -29,6 +39,7 @@ interface CreatedContainer {
 /** 清空会话内创建的容器（供测试隔离用）。 */
 export function resetSessionContainers(): void {
   createdInSession.clear()
+  removedInSession.clear()
 }
 
 /**
@@ -57,18 +68,30 @@ export function containerHandlers(scenario: () => MockScenario) {
     }
   }
 
-  /** 当前场景下的容器列表（含本次会话新建的）。 */
+  /** 当前场景下的容器列表（含本次会话新建的，已删除的除外）。 */
   function containersFor(current: MockScenario): ContainerSummary[] {
     if (current === 'empty') return []
 
-    return [...MOCK_CONTAINERS_DEFAULT, ...[...createdInSession.values()].map((item) => toSummary(item))]
+    return [
+      ...MOCK_CONTAINERS_DEFAULT.filter((item) => !removedInSession.has(item.id)),
+      ...[...createdInSession.values()].map((item) => toSummary(item))
+    ]
   }
 
-  /** 全部可查详情的容器（夹具 + 会话新建）。 */
+  /** 全部可查详情的容器（夹具 + 会话新建，已删除的除外）。 */
   function detailsFor(current: MockScenario): ContainerDetail[] {
     if (current === 'empty') return []
 
-    return [...MOCK_CONTAINER_DETAILS, ...[...createdInSession.values()].map((item) => item.detail)]
+    return [
+      ...MOCK_CONTAINER_DETAILS.filter((item) => !removedInSession.has(item.id)),
+      ...[...createdInSession.values()].map((item) => item.detail)
+    ]
+  }
+
+  /** 标记删除：会话新建的从会话态移除，夹具的进已删除集合（两种来源都要真的从列表里消失）。 */
+  function markRemoved(containerId: string): void {
+    createdInSession.delete(containerId)
+    removedInSession.add(containerId)
   }
 
   async function readBody(request: Request): Promise<Record<string, unknown>> {
@@ -270,12 +293,118 @@ export function containerHandlers(scenario: () => MockScenario) {
         })
       }
 
-      // 删除成功则从会话记忆里移除：否则删完再点「刷新」它又回来了。
-      createdInSession.delete(containerId)
+      // 删除成功则从列表移除：否则删完再点「刷新」它又回来了。
+      markRemoved(containerId)
 
       return HttpResponse.json(ok(null))
+    }),
+
+    http.post('*/api/v1/hosts/:hostId/containers/batch-remove', async ({ request }) => {
+      await delay(delayFor(scenario()))
+
+      const { hostId } = parse(request)
+      const body = await readBody(request)
+      const force = body.force === true
+      const raw = Array.isArray(body.containerIds) ? (body.containerIds as unknown[]) : []
+
+      // ⚠️ 主机不存在是**整批**失败（1300）。真实后端由 CurrentHostMiddleware 在进入端点前
+      // 抛出，mock 没有中间件，因此必须在这里补上——否则前端在 mock 下永远走不到
+      // 「主机已被删除」这条分支，而真机上刷新一个旧深链恰好会碰到它。
+      if (!hostsFor(scenario()).some((host) => host.name === hostId)) {
+        return HttpResponse.json(fail(ErrorCode.HostNotFound), {
+          status: httpStatusOf(ErrorCode.HostNotFound)
+        })
+      }
+
+      // ⚠️ 批量端点的入参校验同样是**整批**失败（1000），与逐条失败形态不同：
+      // 界面据此显示「操作无效」而不是「部分成功」。
+      const requested = normalizeBatchIds(raw)
+
+      if (requested === null) {
+        return HttpResponse.json(
+          fail(ErrorCode.ValidationFailed, batchValidationMessage(raw, 'containerIds')),
+          { status: httpStatusOf(ErrorCode.ValidationFailed) }
+        )
+      }
+
+      const containers = containersFor(scenario())
+      const failures: BatchOperationFailure[] = []
+      let succeeded = 0
+
+      for (const containerId of requested) {
+        const container = containers.find((item) => item.id === containerId)
+
+        if (!container) {
+          // 逐条失败：错误码与单条端点**完全一致**，界面才能复用同一套文案
+          failures.push({
+            resourceId: containerId,
+            code: ErrorCode.DockerResourceNotFound,
+            message: '容器不存在'
+          })
+          continue
+        }
+
+        if (container.state === 'running' && !force) {
+          failures.push({
+            resourceId: containerId,
+            code: ErrorCode.DockerResourceConflict,
+            message: '容器正在运行，需指定 force'
+          })
+          continue
+        }
+
+        createdInSession.delete(containerId)
+        removedInSession.add(containerId)
+        succeeded += 1
+      }
+
+      // 部分成功也是 200：真正的错误响应只有「入参非法」与「主机不可达」两种
+      return HttpResponse.json(
+        ok({ requested: requested.length, succeeded, failures })
+      )
     })
   ]
+}
+
+/**
+ * 批量入参非法的**具体**原因（与后端 `BatchRequest.NormalizeIds` 的消息一致）。
+ *
+ * 为什么不直接用 `fail(code)` 的默认文案：默认文案是「参数校验失败」，
+ * 而「101 个 ID 超了上限 100」这个信息只有说清楚才有用——用户看到笼统的报错
+ * 只会反复重试，而重试还是同一个错误。
+ */
+function batchValidationMessage(raw: unknown[], field: string): string {
+  if (raw.length === 0) return `${field} 不能为空`
+
+  if (raw.length > 100) return `${field} 最多 100 个，当前 ${raw.length} 个`
+
+  return `${field} 不能全为空值`
+}
+
+/**
+ * 批量 ID 列表的归一化（与后端 `BatchRequest.NormalizeIds` 同规则）。
+ *
+ * @returns 去空白、去空项、去重后的 ID；**列表为空 / 超限 / 全为空串时返回 null**（对应后端 1000）。
+ */
+function normalizeBatchIds(raw: unknown[]): string[] | null {
+  if (raw.length === 0) return null
+
+  // ⚠️ 上限必须与后端一致：服务端超过 100 就整批 400，而 mock 不拦的话
+  // 前端会以为「1000 条也能批量删」，到真机上才发现整批失败。
+  if (raw.length > 100) return null
+
+  const seen = new Set<string>()
+  const normalized: string[] = []
+
+  for (const item of raw) {
+    const trimmed = typeof item === 'string' ? item.trim() : ''
+    if (trimmed.length === 0 || seen.has(trimmed)) continue
+
+    seen.add(trimmed)
+    normalized.push(trimmed)
+  }
+
+  return normalized.length > 0 ? normalized : null
 }
 
 /**
