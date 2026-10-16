@@ -1,0 +1,93 @@
+# ============================================================================
+# Whalefleet —— Traefik 反向代理示例（静态标签版）
+# ============================================================================
+#
+# ## 什么时候选 Traefik 而不是 nginx
+#
+# Traefik **从容器标签自动发现路由**，不需要为每个服务改配置、reload。
+# 若 Whalefleet 会与其它容器服务共存、又不想维护一份 include，
+# Traefik 更省事；只要一个服务、要精细控制超时与限流时，nginx 更直白
+# （见同目录 `../nginx/whalefleet.conf`）。
+#
+# ## 认证中间件：强制 HTTPS（ACME 由 Traefik 自动签发续期）
+# ---------------------------------------------------------------------------
+# 这份配置假定已部署官方 ACME 客户端：
+#   docker run -d --name traefik \
+#     -p 80:80 -p 443:443 \
+#     -v /var/run/docker.sock:/var/run/docker.sock:ro \
+#     -v traefik-cert:/letsencrypt \
+#     traefik:v3.0 \
+#     --providers.docker \
+#     --entrypoints.web.address=:80 \
+#     --entrypoints.web.http.redirections.entrypoint.to=websecure \
+#     --entrypoints.web.http.redirections.entrypoint.scheme=https \
+#     --certificatesresolvers.le.acme.email=you@example.com \
+#     --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json \
+#     --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+#
+# ⚠️ docker.sock 的挂载让 Traefik 具备宿主机 Docker 权限——这是它的设计取舍，
+#    风险分析与 Whalefleet 自己挂 socket 是同一个问题，见 docs/constraints.md。
+#    它是**另一个**容器具备该权限，不影响 Whalefleet 自身的 socket-proxy 方案。
+#
+# ## 应用侧必须配的可信代理（与 nginx 版同一条铁律）
+# ---------------------------------------------------------------------------
+#   ReverseProxy__Enabled=true
+#   ReverseProxy__KnownNetworks=172.17.0.0/16    # Traefik 所在的 docker 网络
+#
+# 不配的后果与 nginx 版完全相同：所有用户共用一个登录限流桶，
+# 5 次失败后全体用户 1 分钟内都登不进去。
+# 不填 0.0.0.0/0：那等于采信任何人的 X-Forwarded-For。
+#
+# ## 部署
+# ---------------------------------------------------------------------------
+# 1. 把下面三个标签加到 Whalefleet 的 service 上（socket-proxy 模式的 service 名是 proxy）
+# 2. docker compose up -d
+# 3. 确认证书签发成功：
+#      docker logs traefik | grep -i acme
+# ============================================================================
+
+labels:
+  # ---- 路由与入口 ----
+  traefik.enable: "true"
+  traefik.http.routers.whalefleet.rule: "Host(`whalefleet.example.com`)"
+  traefik.http.routers.whalefleet.entrypoints: "websecure"
+
+  # ---- TLS ----
+  # 让 Traefik 为该域名自动签发并续期证书（上面已配置 ACME 解析器）。
+  # 去掉这一行则回落到 Traefik 默认的 self-signed 证书，
+  # 浏览器会报「不安全」——而用户随后要在这个页面里输入管理员密码。
+  traefik.http.routers.whalefleet.tls: "true"
+  traefik.http.routers.whalefleet.tls.certresolver: "le"
+
+  # ---- 转发头（关键）----
+  # 这两项就是 nginx 版里 proxy_set_header 的等价物。
+  # 不配的话应用拿到的 TCP 对端永远是 Traefik 自己，于是登录限流对所有人生效。
+  traefik.http.middlewares.whalefleet-headers.headers.customRequestHeaders.X-Forwarded-Proto: "https"
+  traefik.http.middlewares.whalefleet-headers.headers.customRequestHeaders.X-Forwarded-For: "{{client_ip}}"
+  traefik.http.routers.whalefleet.middlewares: "whalefleet-headers"
+
+  # ---- 上传体积 ----
+  # 容器日志与未来的镜像构建（0.3.0）走 multipart，默认限制远不够。
+  traefik.http.middlewares.whalefleet-size.maxRequestBodyBytes: "104857600"
+
+  # ---- 超时 ----
+  # 默认 60s 对拉镜像 / 删大镜像偏短；提前断开时后端仍在执行，
+  # 前端只会看到「超时」而操作其实生效了。
+  traefik.http.middlewares.whalefleet-timeout.timeout.readTimeout: "300s"
+  traefik.http.middlewares.whalefleet-timeout.timeout.idleTimeout: "300s"
+  traefik.http.routers.whalefleet.middlewares: "whalefleet-timeout"
+
+  # ---- 安全响应头 ----
+  traefik.http.middlewares.whalefleet-security.headers.frameDeny: "true"
+  traefik.http.middlewares.whalefleet-security.headers.contentTypeNosniff: "true"
+  traefik.http.middlewares.whalefleet-security.headers.referrerPolicy: "same-origin"
+  traefik.http.middlewares.whalefleet-security.headers.customResponseHeaders.Strict-Transport-Security: "max-age=31536000"
+  traefik.http.routers.whalefleet.middlewares: "whalefleet-security"
+
+  # ---- 限流 ----
+  # ⚠️ Traefik v3 的 rate limit 依赖**付费中间件**（RateLimit 在 v3 已移出核心）。
+  #   没有 license 时这段配置会被忽略——应用侧的登录限流仍然生效，
+  #   但它防的是「反复输错密码」，防不住单 IP 刷只读接口。
+  traefik.http.middlewares.whalefleet-ratelimit.ratelimit.average: "120"
+  traefik.http.middlewares.whalefleet-ratelimit.ratelimit.burst: "60"
+  traefik.http.routers.whalefleet.middlewares: "whalefleet-ratelimit"
