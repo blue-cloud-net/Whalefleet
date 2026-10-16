@@ -13,7 +13,7 @@ import BatchActionBar from '@/components/common/BatchActionBar.vue'
 import PullImageDialog from '@/components/business/PullImageDialog.vue'
 import ImageSize from '@/components/business/ImageSize.vue'
 import { onActionRequest } from '@/composables/useActionBus'
-import { listImages, removeImage, type ImageSortField } from '@/api/image'
+import { batchRemoveImages, listImages, removeImage, type ImageSortField } from '@/api/image'
 import { ApiRequestError } from '@/api'
 import {
   DANGLING_IMAGE_LABEL,
@@ -253,15 +253,19 @@ function clearSelection(table: { clearSelection: () => void } | null): void {
 }
 
 /**
- * 批量删除。
+ * 批量删除（走服务端 `images/batch-remove`，0.1.0）。
  *
- * 与单条删除的差别在于**汇总而非中断**：逐个 catch 后报"成功 N / 失败 M"并列出失败项。
- * 用 Promise.allSettled 而不是 all——一个 reject 会让 all 提前抛出，
- * 而其余请求还在飞，最终报出来的数字会与实际不符。
+ * 与单条删除的差别在于**汇总而非中断**：服务端逐条删、逐条汇报，
+ * 界面把 `failures` 列出来——中途报错会让用户既不知道删了几个，也不敢重试
+ * （已删的那些重试会再报一次「不存在」）。
  *
- * force 的判定逐镜像来：被容器引用的要 force，其余不用。
- * 一次性对全部传 force 的话，没被引用的镜像也会走"跳过优雅处理"的路径——
- * 后果是本来能干净停止的镜像被硬删。
+ * force 仍是**逐镜像判定**：被容器引用的要 force，其余不用。
+ * 对全部传 force 的话，没被引用的镜像也会走「跳过优雅处理」的路径——
+ * 后果是本来能干净停止的镜像被硬删。而服务端只有**一个** force 开关，
+ * 所以这里分两批发：先删不需要强制的，再用 force 删剩下的。
+ *
+ * 批量响应**不含**每条镜像解绑了哪些标签（那是单条端点的职责），
+ * 因此这里的口径就是「删没删掉」，解绑提示由刷新后的列表体现。
  */
 async function batchRemove(): Promise<void> {
   const targets = [...selected.value]
@@ -289,47 +293,43 @@ async function batchRemove(): Promise<void> {
   }
 
   batchBusy.value = true
-  const failed: string[] = []
-  const untaggedOnly: string[] = []
+
+  // 后端接受 ID / 短 ID / 仓库名 / 仓库:标签 四种形态；悬挂镜像没有标签，
+  // 只能按 ID 删——这与单条删除用的是同一套判据。
+  const referenceOf = (image: ImageSummary): string =>
+    isDangling(image.repoTags) ? image.id : primaryImageName(image.repoTags)
+
+  const failures: string[] = []
+  let done = 0
 
   try {
-    await Promise.allSettled(
-      targets.map(async (image) => {
-        try {
-          const result = await removeImage(
-            hostId.value,
-            isDangling(image.repoTags) ? image.id : primaryImageName(image.repoTags),
-            image.containerCount > 0
-          )
+    for (const force of [false, true]) {
+      const batch = targets.filter((image) => (image.containerCount > 0) === force)
+      if (batch.length === 0) continue
 
-          // 只解绑了标签、镜像本体还在——与单条删除同一口径，不能报成"删除成功"
-          if (result.deleted.length === 0 && result.untagged.length > 0) {
-            untaggedOnly.push(...result.untagged)
-          }
-        } catch {
-          failed.push(primaryImageName(image.repoTags))
-        }
-      })
-    )
+      const result = await batchRemoveImages(
+        hostId.value,
+        batch.map(referenceOf),
+        force
+      )
 
-    const done = targets.length - failed.length
-    if (failed.length > 0) {
+      done += result.succeeded
+      failures.push(...result.failures.map((failure) => failure.resourceId))
+    }
+
+    if (failures.length > 0) {
       ElMessage({
         type: 'warning',
-        message: t('image.batch.partial', { done, failed: failed.length, names: failed.join('、') }),
+        message: t('image.batch.partial', { done, failed: failures.length, names: failures.join('、') }),
         showClose: true
       })
     } else {
       ElMessage({ type: 'success', message: t('image.batch.done', { count: done }) })
     }
-
-    if (untaggedOnly.length > 0) {
-      ElMessage({
-        type: 'info',
-        message: t('image.batch.untaggedOnly', { tags: untaggedOnly.join('、') }),
-        showClose: true
-      })
-    }
+  } catch (e) {
+    // 只有入参非法（1000）与主机不可达（1301/1302）会走到这里，
+    // 它们都是**整批**失败，因此报通用错误即可：没有任何一个条目被删。
+    ElMessage({ type: 'error', message: e instanceof Error ? e.message : String(e), showClose: true })
   } finally {
     await load()
     batchBusy.value = false

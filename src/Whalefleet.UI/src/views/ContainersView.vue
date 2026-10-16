@@ -14,6 +14,7 @@ import CreateContainerDialog from '@/components/business/CreateContainerDialog.v
 import ContainerStatusBadge from '@/components/business/ContainerStatusBadge.vue'
 import { onActionRequest } from '@/composables/useActionBus'
 import {
+  batchRemoveContainers,
   listContainers,
   removeContainer,
   restartContainer,
@@ -323,6 +324,9 @@ function clearSelection(table: { clearSelection: () => void } | null): void {
  * 中断的坏处很实际：选 10 个容器删 8 个失败 2 个，用户看到的是"删了 0 个"，
  * 却不知道那 8 个其实已经删掉了——重试会再删一遍（已删的报 1401）。
  * 逐个 `catch` 后汇总，报错时明确列出失败项。
+ *
+ * 启停与重启仍是前端逐条调用：它们**幂等**，批量端点只做了删除
+ * （幂等操作发一次请求省不了几个往返，而删除是不可逆的，必须留出逐条汇报失败的空间）。
  */
 async function batchRun(
   label: string,
@@ -377,12 +381,15 @@ async function batchRestart(): Promise<void> {
 }
 
 /**
- * 批量删除。
+ * 批量删除（走服务端 `containers/batch-remove`，0.1.0）。
  *
  * 与单个删除同一条原则——不可逆，必须确认；但确认框里要说明两件单条版没说的事：
  *  1. **有多少个正在运行**（force 会跳过优雅停止，数据会丢）
  *  2. **一次性删 N 个**，让人有机会发现勾选范围不对（批量操作最常见的事故）
  * 不给"取消勾选强制"——N 个容器逐个确认强删，交互成本高到会让人闭眼点确认。
+ *
+ * 失败是**逐条汇报**的：服务端返回的 `failures` 里每一条都带容器 ID 与原因
+ * （例如运行中未 force 的 `1404`），界面把它们列出来而不是报一个笼统的「部分失败」。
  */
 async function batchRemove(): Promise<void> {
   const targets = [...selected.value]
@@ -409,9 +416,45 @@ async function batchRemove(): Promise<void> {
     return
   }
 
-  await batchRun(t('container.action.remove'), (c) =>
-    removeContainer(hostId.value, c.id, c.state === 'running')
-  )
+  batchBusy.value = true
+
+  try {
+    const result = await batchRemoveContainers(
+      hostId.value,
+      targets.map((c) => c.id),
+      // 确认框已经说明了强删后果，这里才带 force
+      running.length > 0
+    )
+
+    if (result.failures.length > 0) {
+      // 用容器名而不是 ID 报错：ID 前 12 位对用户没有意义
+      const names = result.failures
+        .map((failure) => targets.find((c) => c.id === failure.resourceId)?.name ?? failure.resourceId)
+
+      ElMessage({
+        type: 'warning',
+        message: t('container.batch.partial', {
+          action: t('container.action.remove'),
+          done: result.succeeded,
+          failed: result.failures.length,
+          names: names.join('、')
+        }),
+        showClose: true
+      })
+    } else {
+      ElMessage({
+        type: 'success',
+        message: t('container.batch.done', { action: t('container.action.remove'), count: result.succeeded })
+      })
+    }
+  } catch (e) {
+    // 只有入参非法（1000）与主机不可达（1301/1302）会走到这里，
+    // 它们都是**整批**失败，因此报通用错误即可：没有任何一个容器被删。
+    ElMessage({ type: 'error', message: e instanceof Error ? e.message : String(e), showClose: true })
+  } finally {
+    await load()
+    batchBusy.value = false
+  }
 }
 
 async function toggleIncludeStopped(): Promise<void> {
