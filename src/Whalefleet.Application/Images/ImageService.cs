@@ -1,3 +1,4 @@
+using Docker.DotNet;
 using Docker.DotNet.Models;
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
@@ -239,6 +240,94 @@ public sealed class ImageService
         var force = request.Force ?? false;
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
 
+        return await this.RemoveAsync(client, imageId, force, hostId, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 批量删除镜像（逐条汇报失败，**部分成功也算成功**）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">批量删除请求。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>汇总结果（不含每张镜像解绑了哪些标签——批量场景下逐条标签明细会让响应体失控）。</returns>
+    /// <exception cref="BusinessException">
+    /// 主机不可达（<c>1301</c>）或已停用（<c>1302</c>）；列表为空 / 超限时 <c>1000</c>。
+    /// </exception>
+    /// <remarks>
+    /// <para><b>与容器批量删除同一套骨架</b>：客户端取一次、串行、逐条收失败。
+    /// 两处的差异只有镜像的删除需要解析响应（解绑了哪些标签），
+    /// 而那个明细在批量场景下价值不大——用户能看见的只有列表刷新后的结果。</para>
+    /// <para><b>为什么仍然串行</b>：镜像删除会连带解绑标签并更新引用计数，
+    /// 并发时同一个基础镜像可能被两个条目同时处理，失败原因将无法解释。</para>
+    /// </remarks>
+    public async Task<BatchOperationResult> BatchRemoveAsync(
+        string hostId,
+        BatchRemoveImagesRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var imageIds = BatchRequest.NormalizeIds(request.ImageIds, nameof(request.ImageIds));
+        var force = request.Force ?? false;
+
+        // 放在循环外：主机不可达是整批的失败，逐条汇报「100 个都失败了」对用户毫无帮助
+        var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
+
+        var failures = new List<BatchOperationFailure>();
+
+        foreach (var imageId in imageIds)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                await this.RemoveAsync(client, imageId, force, hostId, cancellationToken).ConfigureAwait(false);
+            }
+            catch (BusinessException exception)
+            {
+                failures.Add(new BatchOperationFailure(imageId, exception.Code, exception.Message));
+            }
+        }
+
+        if (failures.Count > 0)
+        {
+            _logger.LogWarning(
+                "主机 {HostId} 批量删除镜像：成功 {Succeeded}/{Requested}，失败 {Failed} 条（强制={Force}）",
+                hostId,
+                imageIds.Count - failures.Count,
+                imageIds.Count,
+                failures.Count,
+                force);
+        }
+        else
+        {
+            _logger.LogInformation(
+                "主机 {HostId} 批量删除镜像：全部 {Count} 个成功（强制={Force}）",
+                hostId,
+                imageIds.Count,
+                force);
+        }
+
+        return new BatchOperationResult(imageIds.Count, imageIds.Count - failures.Count, failures);
+    }
+
+    /// <summary>
+    /// 用已有客户端删除单个镜像（单条与批量端点共用）。
+    /// </summary>
+    /// <param name="client">该主机的 Docker 客户端。</param>
+    /// <param name="imageId">镜像标识。</param>
+    /// <param name="force">是否强制删除。</param>
+    /// <param name="hostId">主机标识（仅用于日志）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>被解绑的标签与被删除的镜像 ID。</returns>
+    private async Task<ImageRemovedResult> RemoveAsync(
+        IDockerClient client,
+        string imageId,
+        bool force,
+        string hostId,
+        CancellationToken cancellationToken)
+    {
         var responses = await DockerErrorTranslator.ExecuteAsync(
             () => client.Images.DeleteImageAsync(
                 imageId,

@@ -231,3 +231,15 @@ public sealed record RemoveContainerRequest
     /// <summary>是否强制删除运行中的容器；省略为 <see langword="false"/>（此时守护进程会以 409 拒绝）。</summary>
     public bool? Force { get; init; }
 }
+
+/// <summary>
+/// 批量删除容器请求。
+/// </summary>
+public sealed record BatchRemoveContainersRequest
+{
+    /// <summary>要删除的容器标识列表；必填且不能为空。</summary>
+    public IReadOnlyList<string>? ContainerIds { get; init; }
+
+    /// <summary>是否强制删除运行中的容器；省略为 <see langword="false"/>（此时这些容器会以 409 失败）。</summary>
+    public bool? Force { get; init; }
+}

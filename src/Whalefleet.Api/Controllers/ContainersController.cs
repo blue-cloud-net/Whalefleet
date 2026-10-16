@@ -266,4 +266,39 @@ public sealed class ContainersController : ControllerBase
 
         return this.Ok(ApiResults.Ok());
     }
+
+    /// <summary>
+    /// 批量删除容器（**部分成功也算成功**，逐条汇报失败）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">批量删除请求（容器标识列表、是否强制）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应，<c>data</c> 为汇总结果（含失败明细）。</returns>
+    /// <response code="200">执行完毕（可能有部分失败，详见 <c>failures</c>）。</response>
+    /// <response code="400">列表为空或超限（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机不存在（<c>1300</c>）。</response>
+    /// <response code="502">主机不可达（<c>1301</c>）——整批失败，不是逐条失败。</response>
+    /// <remarks>
+    /// <b>为什么需要这条端点</b>：前端原先只能对选中的每一行各发一次请求。
+    /// 选 20 个容器就是 20 个 HTTP 往返，每个都要重新握手与鉴权，
+    /// 而服务端其实能一次把客户端准备好、顺序处理完。
+    /// </remarks>
+    [HttpPost("batch-remove")]
+    [ProducesResponseType(typeof(ApiResult<BatchOperationResult>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> BatchRemoveAsync(
+        string hostId,
+        [FromBody] BatchRemoveContainersRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _containers.BatchRemoveAsync(hostId, request, cancellationToken).ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok(result));
+    }
 }

@@ -95,3 +95,15 @@ public sealed record RemoveImageRequest
     /// <summary>是否强制删除（即便被容器引用或存在子镜像）；省略为 <see langword="false"/>。</summary>
     public bool? Force { get; init; }
 }
+
+/// <summary>
+/// 批量删除镜像请求。
+/// </summary>
+public sealed record BatchRemoveImagesRequest
+{
+    /// <summary>要删除的镜像标识列表（ID / 短 ID / 仓库名 / 仓库名:标签）；必填且不能为空。</summary>
+    public IReadOnlyList<string>? ImageIds { get; init; }
+
+    /// <summary>是否强制删除（即便被容器引用或存在子镜像）；省略为 <see langword="false"/>。</summary>
+    public bool? Force { get; init; }
+}

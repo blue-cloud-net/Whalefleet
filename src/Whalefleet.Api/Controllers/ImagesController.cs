@@ -152,4 +152,38 @@ public sealed class ImagesController : ControllerBase
 
         return this.Ok(ApiResults.Ok(removed));
     }
+
+    /// <summary>
+    /// 批量删除镜像（**部分成功也算成功**，逐条汇报失败）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">批量删除请求（镜像标识列表、是否强制）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应，<c>data</c> 为汇总结果（含失败明细）。</returns>
+    /// <response code="200">执行完毕（可能有部分失败，详见 <c>failures</c>）。</response>
+    /// <response code="400">列表为空或超限（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机不存在（<c>1300</c>）。</response>
+    /// <response code="502">主机不可达（<c>1301</c>）——整批失败，不是逐条失败。</response>
+    /// <remarks>
+    /// 与容器侧同名端点共用 <see cref="BatchOperationResult"/> 形状，
+    /// 前端的批量操作条因此可以用同一套逻辑处理两者。
+    /// </remarks>
+    [HttpPost("batch-remove")]
+    [ProducesResponseType(typeof(ApiResult<BatchOperationResult>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> BatchRemoveAsync(
+        string hostId,
+        [FromBody] BatchRemoveImagesRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _images.BatchRemoveAsync(hostId, request, cancellationToken).ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok(result));
+    }
 }

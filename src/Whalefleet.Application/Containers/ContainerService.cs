@@ -442,6 +442,94 @@ public sealed class ContainerService
         var force = request.Force ?? false;
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
 
+        await this.RemoveAsync(client, containerId, force, hostId, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 批量删除容器（逐条汇报失败，**部分成功也算成功**）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">批量删除请求。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>汇总结果。</returns>
+    /// <exception cref="BusinessException">
+    /// 主机不可达（<c>1301</c>）或已停用（<c>1302</c>）；列表为空 / 超限时 <c>1000</c>。
+    /// </exception>
+    /// <remarks>
+    /// <para><b>主机客户端只取一次</b>：<c>GetClientAsync</c> 会做可达性探测与凭据装配，
+    /// N 个容器取 N 次就是 N 次探测。而且它抛的 <c>1301</c> / <c>1302</c> 是<b>整批</b>的失败
+    /// （主机都连不上了，逐条汇报「100 个都失败了」对用户毫无帮助），因此它必须发生在循环之外。</para>
+    /// <para><b>串行而不是并行</b>：删除容器会触发清理动作（网络断开、卷解绑），
+    /// 并发删除时守护进程内部的锁会让失败原因变得不可预测；而单次删除通常在几十毫秒内完成，
+    /// 省下的那点时间远不如「失败结果能解释」值钱。</para>
+    /// </remarks>
+    public async Task<BatchOperationResult> BatchRemoveAsync(
+        string hostId,
+        BatchRemoveContainersRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var containerIds = BatchRequest.NormalizeIds(request.ContainerIds, nameof(request.ContainerIds));
+        var force = request.Force ?? false;
+        var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
+
+        var failures = new List<BatchOperationFailure>();
+
+        foreach (var containerId in containerIds)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                await this.RemoveAsync(client, containerId, force, hostId, cancellationToken).ConfigureAwait(false);
+            }
+            catch (BusinessException exception)
+            {
+                // 逐条收下：批量场景下「哪一条、为什么」比「整批失败」有用得多
+                failures.Add(new BatchOperationFailure(containerId, exception.Code, exception.Message));
+            }
+        }
+
+        if (failures.Count > 0)
+        {
+            _logger.LogWarning(
+                "主机 {HostId} 批量删除容器：成功 {Succeeded}/{Requested}，失败 {Failed} 条（强制={Force}）",
+                hostId,
+                containerIds.Count - failures.Count,
+                containerIds.Count,
+                failures.Count,
+                force);
+        }
+        else
+        {
+            _logger.LogInformation(
+                "主机 {HostId} 批量删除容器：全部 {Count} 个成功（强制={Force}）",
+                hostId,
+                containerIds.Count,
+                force);
+        }
+
+        return new BatchOperationResult(containerIds.Count, containerIds.Count - failures.Count, failures);
+    }
+
+    /// <summary>
+    /// 用已有客户端删除单个容器（单条与批量端点共用）。
+    /// </summary>
+    /// <param name="client">该主机的 Docker 客户端。</param>
+    /// <param name="containerId">容器标识。</param>
+    /// <param name="force">是否强制删除。</param>
+    /// <param name="hostId">主机标识（仅用于日志）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>表示异步操作的任务。</returns>
+    private async Task RemoveAsync(
+        IDockerClient client,
+        string containerId,
+        bool force,
+        string hostId,
+        CancellationToken cancellationToken)
+    {
         var parameters = new ContainerRemoveParameters { Force = force, RemoveVolumes = false };
 
         await DockerErrorTranslator.ExecuteAsync(
