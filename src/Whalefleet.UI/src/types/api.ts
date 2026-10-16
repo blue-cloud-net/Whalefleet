@@ -439,6 +439,36 @@ export interface ImageRemovedResult {
 }
 
 /* ==================================================================
+ * 批量操作（0.1.0，容器与镜像共用同一形状）
+ * ================================================================== */
+
+/**
+ * 批量操作里单个资源的失败详情。
+ *
+ * `code` 与单条端点抛出的错误码**完全一致**（如 `1404`），
+ * 因此界面可以复用同一套文案映射，不必为批量场景另写一张错误码表。
+ */
+export interface BatchOperationFailure {
+  /** 失败的资源标识（容器 ID / 镜像引用），与请求里给出的形式一致 */
+  resourceId: string
+  code: number
+  message: string
+}
+
+/**
+ * 批量操作的汇总结果。
+ *
+ * **部分成功也是 200**：`succeeded + failures.length` 恒等于 `requested`（服务端已去重），
+ * 而 `requested` 是**去重后**的个数——传两次同一个容器不会显示成「成功 1、失败 1」。
+ */
+export interface BatchOperationResult {
+  /** 去重后的资源个数 */
+  requested: number
+  succeeded: number
+  failures: BatchOperationFailure[]
+}
+
+/* ==================================================================
  * 主机管理（admin，对应后端 `Whalefleet.Application.Hosts`）
  * ================================================================== */
 

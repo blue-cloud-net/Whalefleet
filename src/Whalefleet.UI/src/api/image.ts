@@ -1,5 +1,6 @@
 import { request } from '@/api'
 import type {
+  BatchOperationResult,
   ImageDetail,
   ImageListResult,
   ImagePullResult,
@@ -93,5 +94,26 @@ export function removeImage(
     url: `/api/v1/hosts/${encodeURIComponent(hostId)}/images/remove`,
     method: 'post',
     data: { imageId, force }
+  })
+}
+
+/**
+ * 批量删除镜像。
+ *
+ * **部分成功也是 200**：只有「入参非法」（`1000`）与「主机不可达」（`1301`/`1302`）才是真正的错误响应，
+ * 而这两类都是**整批**失败——逐条删失败时结果在 `failures` 里，错误码与单条端点完全一致。
+ *
+ * 返回的 `requested` 是**去重后**的个数，因此界面可以直接用
+ * `succeeded + failures.length` 展示进度，不必自己先去重。
+ */
+export function batchRemoveImages(
+  hostId: string,
+  imageIds: string[],
+  force = false
+): Promise<BatchOperationResult> {
+  return request<BatchOperationResult>({
+    url: `/api/v1/hosts/${encodeURIComponent(hostId)}/images/batch-remove`,
+    method: 'post',
+    data: { imageIds, force }
   })
 }

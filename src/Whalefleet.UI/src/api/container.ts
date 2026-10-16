@@ -1,5 +1,6 @@
 import { request } from '@/api'
 import type {
+  BatchOperationResult,
   ContainerCreatedResult,
   ContainerDetail,
   ContainerListResult,
@@ -214,5 +215,26 @@ export function removeContainer(
     url: `${base(hostId)}/remove`,
     method: 'post',
     data: { containerId, force }
+  })
+}
+
+/**
+ * 批量删除容器。
+ *
+ * **部分成功也是 200**：只有「入参非法」（`1000`）与「主机不可达」（`1301`/`1302`）才是真正的错误响应，
+ * 而这两类都是**整批**失败。逐条删失败时结果在 `failures` 里，错误码与单条端点完全一致
+ * （例如运行中且未 `force` 的容器是 `1404`）。
+ *
+ * 返回的 `requested` 是**去重后**的个数——同一个容器传两次不会显示成「成功 1、失败 1」。
+ */
+export function batchRemoveContainers(
+  hostId: string,
+  containerIds: string[],
+  force = false
+): Promise<BatchOperationResult> {
+  return request<BatchOperationResult>({
+    url: `${base(hostId)}/batch-remove`,
+    method: 'post',
+    data: { containerIds, force }
   })
 }
