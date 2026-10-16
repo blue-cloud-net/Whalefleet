@@ -206,11 +206,11 @@ export function roleHandlers(scenario: () => MockScenario) {
       }
 
       // 校验必须在写入之前：非法权限名不允许留下一条「待修正」的角色
-      const permissions = normalizePermissions(body.permissions, true)
-      if (permissions === null) {
-        return HttpResponse.json(fail(ErrorCode.ValidationFailed), {
-          status: httpStatusOf(ErrorCode.ValidationFailed)
-        })
+      let permissions: string[]
+      try {
+        permissions = normalizePermissions(body.permissions, true)
+      } catch (issue) {
+        return issue as HttpResponse
       }
 
       const created: RoleSummary = {
@@ -279,11 +279,11 @@ export function roleHandlers(scenario: () => MockScenario) {
       }
 
       // 空数组是合法的（「收回这个角色的全部权限」）
-      const permissions = normalizePermissions(body.permissions, true)
-      if (permissions === null) {
-        return HttpResponse.json(fail(ErrorCode.ValidationFailed), {
-          status: httpStatusOf(ErrorCode.ValidationFailed)
-        })
+      let permissions: string[]
+      try {
+        permissions = normalizePermissions(body.permissions, true)
+      } catch (issue) {
+        return issue as HttpResponse
       }
 
       return HttpResponse.json(ok(overrideRole({ ...role, permissions })))
@@ -586,25 +586,46 @@ function hostGuidOf(hostName: string): string {
  * 顺序归一不是洁癖——数据库的 `SELECT` 不承诺排序，不归一的话同一个角色
  * 两次读出来的权限顺序可能不同，界面上的勾选框就会跟着抖。
  *
- * @returns 规范化后的权限名；**含未知名称 / 非字符串 / 空串时返回 null**（对应 1000）。
- *   空数组在 `allowEmpty` 为 `false` 时同样返回 null。
+ * @returns 规范化后的权限名。
+ * @throws 与后端 `PermissionNames.Normalize` 同一口径：
+ *   **非数组 / 空串 / 空数组（且不允许）→ `1000`**，
+ *   **非空但不在目录里的权限名 → `1514`**。
+ *
+ *   分成两个码不是讲究：客户端最容易犯的错就是拼错权限名
+ *   （`"read"` 而不是 `"host.read"`、`"ALL"`、`"7"`），给它独立码，
+ *   界面才能提示「请从权限目录里选」——见 `docs/api-spec.md`
+ *   「未知权限名一律 1514/400，且不落库」。
  */
-function normalizePermissions(raw: unknown, allowEmpty: boolean): string[] | null {
-  if (raw === undefined || raw === null) return allowEmpty ? [] : null
-  if (!Array.isArray(raw)) return null
+function normalizePermissions(raw: unknown, allowEmpty: boolean): string[] {
+  if (raw === undefined || raw === null) {
+    if (allowEmpty) return []
+    throw mockValidation()
+  }
+  if (!Array.isArray(raw)) throw mockValidation()
 
   const set = new Set<string>()
 
   for (const item of raw) {
-    if (typeof item !== 'string' || item.trim().length === 0) return null
+    if (typeof item !== 'string' || item.trim().length === 0) throw mockValidation()
 
     const name = item.trim().toLowerCase()
-    if (!isKnownPermission(name)) return null
+    if (!isKnownPermission(name)) {
+      throw HttpResponse.json(fail(ErrorCode.PermissionUnknown), {
+        status: httpStatusOf(ErrorCode.PermissionUnknown)
+      })
+    }
 
     set.add(name)
   }
 
-  if (set.size === 0 && !allowEmpty) return null
+  if (set.size === 0 && !allowEmpty) throw mockValidation()
 
   return MOCK_PERMISSION_NAMES.filter((name) => set.has(name))
+}
+
+/** `1000` 的失败响应（抛出版，让调用点统一 `catch` 后直接 return）。 */
+function mockValidation(): never {
+  throw HttpResponse.json(fail(ErrorCode.ValidationFailed), {
+    status: httpStatusOf(ErrorCode.ValidationFailed)
+  })
 }
