@@ -138,6 +138,12 @@ DDD 战术模式（聚合根 / 领域事件 / 领域服务）**已整体移除**
 
 - `types/api.ts` 必须与后端投影**逐字对应**；`ErrorCode` 常量表也在这里，
   与 `mocks/envelope.ts` 一起构成错误码的后端 5 处之外的**前端同步点**
+- **角色与权限是后端契约，不是前端清单**：权限矩阵必须遍历
+  `POST /api/v1/admin/roles/permissions` 的响应渲染，禁止在前端硬编码权限名；
+  `stores/auth.ts` 的 `isAdmin` 按权限集判定（`utils/roles.ts` 的 `ADMIN_PERMISSIONS`），
+  **不看角色名**——角色是数据，自定义角色同样能带全部权限
+- **分配请求体的字段名是 `host`（主机名）而不是 `hostId`**：JSON 里多一个后端不认识的字段
+  不会报错，只会被当成「没给 host」＝ 全局分配，症状是「勾了某台主机却生效到了所有主机」
 - 纯逻辑放 `src/utils/*.ts` 并**返回 i18n key 而非文案**（可脱离组件单测）
 - **禁止在模板里拼 i18n key**（如 `` t(`container.restartPolicy.${v}`) ``）——
   Docker 给的是 `unless-stopped`，key 是 `unlessStopped`，拼出来会显示原始 key 路径，
@@ -387,7 +393,7 @@ flowchart TD
 | [docs/roadmap.md](docs/roadmap.md) | 版本迭代与进度（**版本编号即执行顺序**；`0.0.6` 是空号） |
 | [docs/ui-guidelines.md](docs/ui-guidelines.md) | UI 布局、断点、组件分层、快捷键、主题、路由 |
 | [src/Whalefleet.UI/README.md](src/Whalefleet.UI/README.md) | 前端快速开始、**Mock 模式**（`?mock=on`，顶栏有 MOCK 角标） |
-| [CHANGELOG.md](CHANGELOG.md) | 已交付内容（0.0.1 – 0.0.14） |
+| [CHANGELOG.md](CHANGELOG.md) | 已交付内容（0.0.1 – 0.0.15）；0.1.0 的条目暂存于 `[Unreleased]` |
 
 其他规范来源（**不要抄进代码注释或 PR**）：
 
