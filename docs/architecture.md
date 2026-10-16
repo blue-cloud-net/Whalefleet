@@ -23,7 +23,7 @@
 │  │                 Service 层                          │ │
 │  │  ContainerService  ImageService  VolumeService    │ │
 │  │  NetworkService    HostService   UserService      │ │
-│  │  AuthService       PermissionService              │ │
+│  │  AuthService       RoleService                    │ │
 │  └───────┬─────────────────────────────┬──────────────┘ │
 │          │                             │                │
 │  ┌───────▼────────┐      ┌─────────────▼────────────┐ │
@@ -54,7 +54,7 @@
 >
 > **为什么是充血模型而不是 DDD 战术模式**：本项目管理的容器 / 镜像 / Volume / Network 的真相在
 > Docker 守护进程，把它们建成带聚合根与领域事件的领域模型只会得到"立刻过期的数据袋"；
-> 真正有业务不变量的是 **User / Role / ResourceGrant** 这类自有数据。因此这里采用
+> 真正有业务不变量的是 **User / Role / UserRoleAssignment** 这类自有数据。因此这里采用
 > 「实体承载行为与不变量 + 分层隔离依赖」的充血模型，不引入聚合根、领域事件与仓储派发机制。
 
 ### 项目依赖方向
@@ -178,53 +178,67 @@ dotnet list src/Whalefleet.Application/Whalefleet.Application.csproj package
 
 | 实体 | 位置 | 基类 | 业务键与唯一性 | 关键不变量 |
 |------|------|------|----------------|-----------|
-| `Role` | `Core/Users/Role.cs` | `FullAuditedEntity<Guid, Guid>` | `name`（小写文本，`COLLATE NOCASE` 部分唯一索引） | 标识自动转小写、2–32 字符、仅 `[A-Za-z0-9._-]`；**标识不可改**；内置角色不可删（`Retire` + 仓储 `WHERE is_built_in = 0` 双重保证） |
-| `User` | `Core/Users/User.cs` | `FullAuditedEntity<Guid, Guid>` | `username`（`COLLATE NOCASE` 部分唯一索引） | 去首尾空白后 3–32 字符，仅 `[A-Za-z0-9._-]`；密码哈希非空；`RoleId` 非空；**用户名不可改** |
+| `Role` | `Core/Users/Role.cs` | `FullAuditedEntity<Guid, Guid>` | `name`（小写文本，`COLLATE NOCASE` 部分唯一索引） | 标识自动转小写、2–32 字符、仅 `[A-Za-z0-9._-]`；**标识不可改**；携带权限集（`Permissions`，投影自 `role_permissions`），**内置角色的权限集不可修改**；内置角色不可删（`Retire` + 仓储 `WHERE is_built_in = 0` 双重保证） |
+| `User` | `Core/Users/User.cs` | `FullAuditedEntity<Guid, Guid>` | `username`（`COLLATE NOCASE` 部分唯一索引） | 去首尾空白后 3–32 字符，仅 `[A-Za-z0-9._-]`；密码哈希非空；**没有角色字段**——角色由 `user_role_assignments` 分配；**用户名不可改** |
 | `DockerHost` | `Core/Hosts/DockerHost.cs` | `FullAuditedEntity<Guid, Guid>` | `name`（同上） | 名称 1–64 且无控制字符、**不可改**（它是对外主机标识）；连接方式与端点形态不得矛盾；连接方式 / 端点 / 凭据必须成组更新 |
 | `HostGroup` | `Core/Hosts/HostGroup.cs` | `FullAuditedEntity<Guid, Guid>` | `name`（同上） | 名称 1–32 且无控制字符；**纯展示性**——不参与任何授权判定 |
 | `RefreshToken` | `Core/Auth/RefreshToken.cs` | `CreationAuditedEntity<Guid, Guid>` | `token_hash` 唯一 | 只存哈希（非原文）；归属用户非空；`IsActiveAt` = 未撤销且未过期 |
-| `UserHostPermission` | `Core/Permissions/` | `FullAuditedEntity<Guid, Guid>` | `(user_id, host_id)` 部分唯一索引 | 权限位不得含未定义位；`Has` 对组合位要求**全部**具备 |
-| `UserContainerPermission` | `Core/Permissions/` | `FullAuditedEntity<Guid, Guid>` | `(user_id, host_id, container_id)` | 容器标识必须与主机成对出现（容器 ID 只在单台守护进程内唯一） |
+| `UserRoleAssignment` | `Core/Permissions/UserRoleAssignment.cs` | `FullAuditedEntity<Guid, Guid>` | `(user_id, role_id, COALESCE(host_id, ''))` 部分唯一索引（`WHERE is_deleted = 0`） | 用户与角色主键非空；`host_id` 为 `NULL` 即**全局分配**，非空即仅在该主机上生效（`AppliesTo`）；撤销走软删除，因此同一组合可重新分配 |
 
-> **0.1.0 已落地 `user_host_permissions`**（建表、仓储、DI 与授权管理端点）；`user_container_permissions` 排到 0.12.0，本迭代仍只落地实体与仓储接口，不建表、不注册 DI。
+> **0.1.0 已落地权限目录、`role_permissions` 与 `user_role_assignments`**（迁移 `0006_rbac.sql`、仓储、DI
+> 与角色 / 分配管理端点）。权限目录是**静态封闭集**（`Core/Permissions/Permission.cs` 里的 `Permission` 常量与
+> `PermissionScope` 枚举），刻意不建表——「本版本有没有这个功能」是**编译期**事实，放进表里只会让运行时可配的
+> 角色逐渐偏离代码真正能强制的范围。目录分 **Global**（与具体主机无关）与 **Host**（在单台主机内有效）两种作用域；
+> `PermissionScope.Container` 为 0.5.0 预留（目录里尚无任何权限落在该作用域），本迭代只开放
+> **Global** 与 **Host** 两条分配路径。
 >
-> `permissions` 以**整数位掩码**存储（`1=Read / 2=Write / 4=Admin`，CHECK 钉在 0..7），
-> 而不是文本：`StorageTextExtensions.ToStorageText` 对 `[Flags]` 枚举会产出
-> `"read, write"` 这种逗号分隔文本，读侧再也算不出位运算。
+> 角色携带的权限子集存于 `role_permissions`（`(role_id, permission)` 复合主键），
+> 「谁在哪个范围内拥有这个角色」由 `user_role_assignments`（`host_id` 可空，`NULL` = 全局）承担。
+> 三者分立，因此「新建一个角色」不会隐式带来任何授权。
 
 **值对象**：`HostEndpoint`（端点原文，不可变、按值相等）、`HostCredentials`（认证方式 + 不透明 JSON 载荷，
 `ToString()` 只输出认证方式、**不泄漏载荷**）。
 
 **枚举归属**：`DockerHostType`、`DockerHostAuthKind` 定义在 `Core/Hosts`——它们同时是 `Core` 的实体与
 `Application` 的连接描述（`DockerHostConnection` / `IDockerClientFactory`）的取值域；放最内层可避免
-两个同名枚举并互做映射。`HostPermissions` / `ContainerPermissions` 在 `Core/Permissions`
-（标志枚举用复数命名，与 `[Flags]` 惯例一致）。
+两个同名枚举并互做映射。`Permission`（权限目录 + `PermissionScope`）与 `UserRoleAssignment` 在 `Core/Permissions`
+——它们同时被 `Core` 的实体（`Role` 的权限集）与 `Application` 的权限判定（`IPermissionChecker`）引用，
+放最内层才能让依赖方向保持单向。
 
 **角色是数据，不是枚举**（0.0.3 修订）：原 `UserRole` 枚举**已删除**，改为 `roles` 表 +
 `Core/Users/Role` 实体。理由：枚举把「系统有哪些角色」焊死在编译期，新增角色要改代码 + 发版。
 现在管理员可在运行时增删改角色，新增角色无需发版。
 枚举只保留给**封闭集合**用（如 `DockerHostType` 这类由外部协议决定、不随部署变化的值）。
 
-**角色的三个正交字段**：
+**角色的四个正交字段**：
 
 | 字段 | 作用 | 约束 |
 |------|------|------|
-| `name` + `display_name` + `description` | 面向用户展示（“运维：可操作已授权主机上的容器…”） | `name` 进 JWT claim 与 `[Authorize(Roles = …)]`，字符集受限且**不可改** |
+| `name` + `display_name` + `description` | 面向用户展示（“运维：可操作主机上的容器、镜像、数据卷与网络”） | `name` 进 JWT claim（**仅供界面展示，不参与授权判定**），字符集受限且**不可改** |
+| `Permissions`（投影自 `role_permissions`） | 角色**携带的权限集**（`domain.level` 子集） | 不得含目录之外的权限（`1514`）；**内置角色不可修改**（`Role.SetPermissions` 抛 `InvalidOperationException`，应用服务再以 `1513` 兜底） |
 | `is_built_in` | 内置角色随系统发布 | **不可删除**：`Role.Retire()` 抛 `InvalidOperationException`，仓储再以 `WHERE is_built_in = 0` 兜底（绕过实体也删不掉） |
 | `is_default` | 创建用户未指定角色时采用 | 全库**至多一个**，由 `IRoleRepository.SetDefaultAsync` 在事务内保证 |
 
-**内置角色**（迁移种入，主键固定，便于运维脚本引用）：
+**内置角色**（迁移种入，主键固定，便于运维脚本引用；**权限集随迁移固定、不可修改**）：
 
-| `name` | 可读名称 | 职责 | 默认 |
-|--------|---------|------|:---:|
-| `admin` | 管理员 | 可管理用户、主机与全部资源；`[Authorize(Roles = "admin")]` 依赖此角色 | |
-| `operator` | 运维 | 对已授权主机上的容器、镜像、数据卷与网络有操作权限 | |
-| `viewer` | 只读 | 对已授权资源仅可查看，不可修改 | |
-| `auditor` | 审计 | 只读，并可查看操作审计（审计能力排在 1.0.0 之后） | ✅ |
+| `name` | 可读名称 | 携带的权限 | 默认 |
+|--------|---------|-----------|:---:|
+| `admin` | 管理员 | 全部权限（显式存入全部权限行，另有按角色名短路兜底） | |
+| `operator` | 运维 | `host.read` + `container` / `image` / `network` / `volume` 的 `read` + `write`（主机域） | |
+| `viewer` | 只读 | `host.read` + `container` / `image` / `network` / `volume` 的 `read`（主机域） | |
+| `auditor` | 审计 | 同 `viewer`，另加 `audit.read`（审计能力排在 1.0.0 之后） | ✅ |
 
-**角色不编码资源范围**：角色只是身份标签，“某用户能碰哪些主机 / 容器”由 0.1.0 落地的可见性表与 0.12.0 的容器级权限表承担。
-因此不会出现“新建一个角色就等于新增一套权限”这种隐性授权。
-若日后需要“按角色批量授权”，应在 `user_host_permissions` 上增加角色维度，而非往角色上挂权限。
+**角色携带权限，分配携带作用域**：角色回答的是「能做什么」（一组权限 + 一个可复用的名字），
+而「在哪台主机上生效」由 `user_role_assignments`（`host_id` 可空）承担。两者分立，因此不会出现
+“新建一个角色就等于新增一套可见主机”这种隐性授权。有效权限的合成规则：
+
+- **全局分配**（`host_id IS NULL`）贡献该角色的 **Global** 权限；
+- **主机分配**贡献该角色的 **Host** 域权限，**且只在该主机上**，其 Global 权限被**忽略**——
+  否则「把 `admin` 分配到某台主机」会变成一次静默的系统级提权，这是本模型里后果最严重的一条规则；
+- 同一用户在同一主机上可持有多条分配，有效权限取**并集**。
+
+内置角色的权限集不可修改，保证了 `operator` 永远是它的名字所声称的那个角色；自定义角色则由管理员自由增删改权限。
+新增权限时老的内置角色**不自动获得**——`admin` 由角色名短路兜底，其余需靠迁移显式补行。
 
 **为什么这样继承**
 
@@ -245,7 +259,7 @@ dotnet list src/Whalefleet.Application/Whalefleet.Application.csproj package
 
 **主机分组为什么建表而不是枚举 / 配置**（0.0.13）：分组是**运行时可变的数据**（管理员随时增删改），
 枚举会把「有哪些分组」焊死在编译期，与 0.0.3 把角色从枚举改成表是同一个理由。
-它还刻意**不承担授权语义**——「某人能碰哪些主机」由 0.1.0 落地的可见性表（`user_host_permissions`）与 0.12.0 的容器级权限表回答，
+它还刻意**不承担授权语义**——「某人能碰哪些主机」由带作用域的角色分配（`user_role_assignments`）回答，
 分组只影响总览页的呈现。两者混在一起会让「把主机挪进某个分组」变成一次隐式提权。
 
 **完整实现**见 `src/Whalefleet.Core/{Users,Hosts,Auth,Permissions}/`；
@@ -295,14 +309,16 @@ protected abstract Task<bool> ExecuteUpdateAsync(DbConnection connection, TEntit
 
 ### 表结构（0.0.3 已落地）
 
-三张表的权威定义是内嵌迁移脚本
+各表的权威定义是内嵌迁移脚本
 `src/Whalefleet.Infrastructure/Persistence/Schema/Migrations/000N_*.sql`；
 本节只记录**设计要点**，不复制 DDL（避免两处漂移）。
 
 | 表 | 迁移脚本 | 要点 |
 |----|----------|------|
-| `users` | `0001_users.sql`（`0004` 重建） | 主键与审计人一律 TEXT（规范小写 Guid）；`role_id` 为指向 `roles(id)` 的**外键**（0.0.3 原为 `role` 枚举名文本）；软删除列 `is_deleted`；`ux_users_username` = `UNIQUE (username COLLATE NOCASE) WHERE is_deleted = 0`；`ix_users_role_id` |
+| `users` | `0001_users.sql`（`0004`、`0006` 重建） | 主键与审计人一律 TEXT（规范小写 Guid）；软删除列 `is_deleted`；`ux_users_username` = `UNIQUE (username COLLATE NOCASE) WHERE is_deleted = 0`；`ix_users_creation_time`。**迁移 `0006_rbac.sql` 把 `users` 重建为不含 `role_id` 的形状**（角色改由 `user_role_assignments` 承担），因此不再有 `role_id` 外键与 `ix_users_role_id` |
 | `roles` | `0004_roles.sql` | `name` 唯一（部分索引 + `COLLATE NOCASE`）；`ux_roles_default` = `UNIQUE (is_default) WHERE is_default = 1 AND is_deleted = 0`，**在数据层保证默认角色至多一个**；`is_built_in` 内置标记 |
+| `role_permissions` | `0006_rbac.sql` | 角色携带的权限集：复合主键 `(role_id, permission)`，`role_id` 为指向 `roles(id)` 的外键；`permission` 是 `domain.level` 文本，**没有指向目录表的外键**（目录是编译期事实，由 `Core/Permissions/Permission.cs` 校验）；无软删除列，覆盖式更新不做差量审计；内置角色的权限行随迁移种入（时间戳固定） |
+| `user_role_assignments` | `0006_rbac.sql` | 带作用域的角色分配：`host_id` 可空（`NULL` = 全局分配，非空为指向 `hosts(id)` 的外键）；`ux_user_role_assignments` = `UNIQUE (user_id, role_id, COALESCE(host_id, '')) WHERE is_deleted = 0`——**必须是表达式索引**，因为 SQLite 的唯一索引不去重 `NULL`，用裸列拦不住「同一全局角色被重复分配」；`ix_*_user` / `ix_*_host` 分别支撑鉴权热路径与「谁能访问这台机器」 |
 | `hosts` | `0002_hosts.sql`（`0005` 加列） | `type` = `socket`\|`tcp`（小写文本）；`endpoint` 存**规范化前**原文；`auth_kind` = `none`\|`tls`\|`basic`；`auth_config_json` 在无认证时为 NULL；`ux_hosts_name` 同 users；`group_id` 可空外键指向 `host_groups(id)`（0.0.13） |
 | `host_groups` | `0005_host_groups.sql` | 主机的展示性分组（**不是权限边界**）：`name` 唯一（部分索引 + `COLLATE NOCASE`）、`description` 可空、`sort_order` 升序；种入 `production` / `staging` / `local` 三个内置分组（固定主键） |
 | `refresh_tokens` | `0003_refresh_tokens.sql` | 无软删除列；`ux_refresh_tokens_token_hash` 唯一；`ix_*_user_id` / `ix_*_expires_at` 支撑「登出所有设备」与过期清理；**不建** `user_id → users(id)` 外键（用户是软删除的，外键带不来额外保护却会让清理脚本更复杂） |
@@ -310,11 +326,12 @@ protected abstract Task<bool> ExecuteUpdateAsync(DbConnection connection, TEntit
 **迁移机制**：`PRAGMA user_version` 记录已应用到第几版，脚本文件名前缀即目标版本（必须从 1 起**连续**编号，
 否则启动失败）；每个脚本与其版本号写入**同一事务**，因此中断只会留下"该脚本整体未应用"。
 
-**改列用重建表**（`0004_roles.sql` 为例）：SQLite 的 `ALTER TABLE` 不能改列类型 / 约束，
-因此 `users.role` → `role_id REFERENCES roles(id)` 走官方模式：
-建 `users_new` → `INSERT ... SELECT` 搬数据（用 `LEFT JOIN` + `COALESCE` 把旧枚举名映射到角色主键，
-无匹配时落到默认角色，**避免 `NOT NULL` 把整个迁移卡死**）→ `DROP TABLE users` → `RENAME` →
+**改列用重建表**（`0006_rbac.sql` 重建 `users` 为例）：SQLite 的 `ALTER TABLE` 不能删列 / 改约束，
+因此走官方模式：建 `users_new` → `INSERT ... SELECT` 搬数据 → `DROP TABLE users` → `RENAME` →
 重建索引（`DROP TABLE` 会连带删掉旧索引，必须一并补回）。
+重建前必须先把要保留的关系读进新表，并关闭 `PRAGMA foreign_keys`（否则 `DROP TABLE users`
+在外键打开时会牵连引用它的行）；顺序错了会得到 `no such column`，而 SQLite 的报错发生在
+**整份脚本解析时**，`user_version` 会停在半迁移状态。
 
 **启动顺序**：`DatabaseInitializer` 在宿主**开始监听之前**执行「迁移 → 启用 WAL → 种入默认主机」。
 初始化失败即启动失败，不会让第一个请求撞上 `no such table`。
@@ -338,7 +355,7 @@ protected abstract Task<bool> ExecuteUpdateAsync(DbConnection connection, TEntit
 
 - 接收 HTTP 请求，解析入参，调用 Service 层
 - 统一响应格式封装（`ApiResult<T>`）
-- JWT 鉴权 + `[Authorize(Roles = "admin")]` 角色检查
+- JWT 鉴权 + 按**权限**判定的授权策略（自定义 `PermissionAuthorizationHandler` 查库，不用 `[Authorize(Roles = …)]`）
 - 不包含业务逻辑
 
 ### MCP 层（0.18.0 起）
@@ -590,7 +607,7 @@ HTTP Request
 | 取值来源 | `HttpContext.GetRouteData().Values["hostId"]`，**不是**请求头（`X-Host-Id` 方案已废弃）。取到的是**库里的 `Name`**（规范形态），因此 URL 里的大小写不影响后续取值 |
 | 中间件 | `CurrentHostMiddleware`——Singleton 中间件不能构造注入 Scoped 服务，故用 `InvokeAsync(HttpContext, ICurrentHostAccessor, IDockerHostAccessor)` **方法注入**。管道注册走公开扩展 `UseCurrentHost()`（中间件本体是 internal，但接线入口公开，便于集成测试用与生产一致的顺序接线） |
 | 存在性校验 | 中间件**会解析主机**（`IDockerHostAccessor.ResolveAsync`）：未知主机在进入控制器之前就变成 `1300`/404，主机作用域端点无需各自重复校验。代价是每请求多一次按主机名的索引查询（相对后续 Docker 调用可忽略） |
-| 可见性校验 | 紧接着解析之后调用 `IResourcePermissionService.EnsureHostVisibleAsync`：无权限 → `1501`/403。挂在这里意味着**每个主机作用域端点自动受保护**，无需各自写一遍。0.1.0 起的策略是「管理员短路放行（不落授权表）/ 非管理员查 `user_host_permissions` 看是否具备 `Read` 位」，拿不准就不放行（fail-closed） |
+| 可见性校验 | 紧接着解析之后调用 `IPermissionChecker.HasPermissionAsync(userId, host.Id, Permission.HostRead)`：无权限 → `1501`/403。挂在这里意味着**每个主机作用域端点自动受保护**，无需各自写一遍。判定是**每次请求查库**（`PermissionChecker`，请求级缓存）；全局持有内置 `admin` 角色者短路放行（不查库），未认证或无分配一律拒绝（fail-closed） |
 | 管道位置 | `UseAuthentication()` 之后（可见性校验要读 `HttpContext.User`）、`MapControllers()` 之前 |
 | 缺省值 | **无**。全局作用域端点没有该路由段；主机作用域端点由路由模板保证其存在 |
 | 消费方 | Api 层控制器与后续主机作用域端点（首个在 0.0.9 的容器 API） |
@@ -617,8 +634,8 @@ public interface IDockerHostAccessor
 > 因此「解析主机」与「池化客户端」分属两层。这也让 Singleton 侧**不依赖** Scoped 仓储——不会构成捕获依赖。
 >
 > **0.0.8 起**由 Api 中间件从**路由值** `hostId` 解析「当前主机」（写入 Scoped `ICurrentHost`）；
-> **0.0.9 起**在此之上加资源可见性校验（`IResourcePermissionService`）；
-> **0.1.0 起**可见性由 `user_host_permissions` 表决定（管理员短路，非管理员查表）。
+> **0.0.9 起**在此之上加资源可见性校验；
+> **0.1.0 起**可见性由**带作用域的角色分配**决定（`IPermissionChecker` 查库判定，管理员短路）。
 > 旧 `X-Host-Id` 请求头方案已废弃。
 
 ### `IDockerClientFactory` 与 `IDockerClientPool`
@@ -795,13 +812,14 @@ public interface IDockerClientPool
 |-------|------|------|
 | `sub` | 用户主键（Guid） | 服务端识别用户（`ICurrentUser.UserId`） |
 | `unique_name` | 用户名 | 展示与日志 |
-| `role` | 角色名（如 `admin`） | `[Authorize(Roles = "admin")]` 依赖它 |
+| `role` | 角色名，**可多条**（如 `admin` / `operator`） | 仅供界面展示；**不是授权事实源** |
 | `jti` | 令牌唯一标识 | 便于日后做单 token 撤销 |
 | `exp` / `iat` / `iss` / `aud` | 标准声明 | `Jwt:Issuer` / `Jwt:Audience` 参与校验 |
 
-> **`role` 放角色名而非角色主键**：`[Authorize(Roles = …)]` 比较的是字符串。角色是**可运行时增删**的表数据，
-> 但 token 一旦签发就固定了当时的角色名——改角色需重新登录才会生效。这是刻意的：
-> 避免每次请求都回库查角色。
+> **`role` 放角色名而非角色主键，且只供展示**：带作用域的角色分配（同一人可能在 A 主机是 `operator`、
+> 在 B 主机是 `viewer`）根本装不进单个 claim。授权一律由 `IPermissionChecker` **每次请求查库**判定
+> （请求级缓存），因此**改了角色或权限立即生效**，不必等 access token 过期。
+> `role` claim 只用于渲染顶栏与菜单，并给管理员判定做一次「快速否决」（claim 说不是就不必再查库）。
 
 ### 登录失败的统一响应（防用户名枚举）
 
@@ -842,7 +860,7 @@ JWT 中间件默认在验证失败时**直接写 401 且不带响应体**。若�
 `Guid.Empty`，表示**系统操作**。
 
 0.0.4 认证落地后，由 **Api 层**的 `HttpContextCurrentUser` 接管：从 `HttpContext.User`
-的 claims 读 `sub` / `unique_name` / `role`，用 `services.Replace(...)` 覆盖占位注册。
+的 claims 读 `sub` / `unique_name` 与**全部** `role` claim（`ICurrentUser.Roles` 是数组），用 `services.Replace(...)` 覆盖占位注册。
 
 > **为什么实现在 Api 层**：它是「当前 HTTP 请求的登录用户」这一 Web 概念的适配器；
 > `Application` 只保留接口，`Infrastructure` 保留「无请求上下文」的占位实现（供启动引导与后台任务使用）。
