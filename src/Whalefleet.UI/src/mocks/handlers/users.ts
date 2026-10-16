@@ -2,6 +2,7 @@ import { http, HttpResponse, delay } from 'msw'
 import { ErrorCode, fail, httpStatusOf, ok } from '../envelope'
 import { delayFor, type MockScenario } from '../scenarios'
 import { MOCK_CURRENT_PASSWORD, MOCK_CURRENT_USERNAME, MOCK_USERS_DEFAULT } from '../data/users'
+import { MOCK_ROLES_DEFAULT } from '../data/permissions'
 import type { AdminUserSummary } from '@/types/api'
 
 /**
@@ -17,6 +18,18 @@ const removedInSession = new Set<string>()
 export function resetSessionUsers(): void {
   createdInSession.length = 0
   removedInSession.clear()
+}
+
+/**
+ * 当前生效的用户（夹具 + 会话新建 − 会话删除）。
+ *
+ * 导出给角色分配 handler 用：分配必须能指向「本次会话刚建的用户」，
+ * 否则走查「新建用户 → 给他分配角色」会在第二步得到 1201。
+ */
+export function sessionUsers(): AdminUserSummary[] {
+  return [...MOCK_USERS_DEFAULT, ...createdInSession].filter(
+    (user) => !removedInSession.has(user.id)
+  )
 }
 
 /**
@@ -47,9 +60,7 @@ export function userHandlers(scenario: () => MockScenario) {
   function usersFor(current: MockScenario): AdminUserSummary[] {
     if (current === 'empty') return []
 
-    return [...MOCK_USERS_DEFAULT, ...createdInSession].filter(
-      (user) => !removedInSession.has(user.id)
-    )
+    return sessionUsers()
   }
 
   /** 密码强度：与后端 `PasswordPolicy` 一致（≥10 字符，且含字母与数字/符号）。 */
@@ -58,6 +69,17 @@ export function userHandlers(scenario: () => MockScenario) {
     const hasDigitOrSymbol = /[0-9]|[^A-Za-z0-9]/.test(password)
 
     return password.length >= 10 && hasLetter && hasDigitOrSymbol
+  }
+
+  /**
+   * 创建时未指定角色则采用**默认角色**。
+   *
+   * 与后端一致：哪个角色是默认的由角色自身的 `isDefault` 决定（当前是 `auditor`），
+   * 而不是在客户端硬编码一个名字。找不到默认标记时回退到 `auditor`——
+   * 「新建用户不指定角色」是表单的默认路径，不能因为夹具丢了标记就变成 500。
+   */
+  function defaultRoleName(): string {
+    return MOCK_ROLES_DEFAULT.find((role) => role.isDefault)?.name ?? 'auditor'
   }
 
   return [
@@ -114,11 +136,22 @@ export function userHandlers(scenario: () => MockScenario) {
         })
       }
 
-      // role 省略时取默认角色（后端当前是 auditor）
+      // role 省略时取默认角色（与后端一样由角色的 `isDefault` 决定）
+      const roleName = role.length > 0 ? role.toLowerCase() : defaultRoleName()
+
+      // 角色必须已存在：后端会拿角色名去查表，查不到就是 1000
+      if (!MOCK_ROLES_DEFAULT.some((item) => item.name === roleName)) {
+        return HttpResponse.json(
+          fail(ErrorCode.ValidationFailed, `角色「${roleName}」不存在`),
+          { status: httpStatusOf(ErrorCode.ValidationFailed) }
+        )
+      }
+
       const created: AdminUserSummary = {
         id: `00000000-0000-0000-0000-000000000${(createdInSession.length + 90).toString(16).padStart(3, '0')}`,
         username,
-        role: role.length > 0 ? role : 'auditor',
+        // ⚠️ 是**数组**：一个用户可以同时持多个角色
+        roles: [roleName],
         creationTime: new Date().toISOString()
       }
 
@@ -148,9 +181,10 @@ export function userHandlers(scenario: () => MockScenario) {
         })
       }
 
-      // 护栏二：不能删除最后一个管理员
-      const admins = usersFor(scenario()).filter((user) => user.role === 'admin')
-      if (target.role === 'admin' && admins.length <= 1) {
+      // 护栏二：不能删除最后一个管理员（主机分配里的 admin 不构成系统管理员，
+      // 但 mock 不区分作用域，这里只按角色名判）
+      const admins = usersFor(scenario()).filter((user) => user.roles.includes('admin'))
+      if (target.roles.includes('admin') && admins.length <= 1) {
         return HttpResponse.json(
           fail(ErrorCode.ValidationFailed, '这是最后一个管理员账号，删除后将无人能管理系统'),
           { status: httpStatusOf(ErrorCode.ValidationFailed) }

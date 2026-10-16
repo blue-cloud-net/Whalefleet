@@ -77,6 +77,20 @@ export const ErrorCode = {
   HostForbidden: 1501,
   /** 无权限执行此操作 → 403 */
   OperationForbidden: 1502,
+  /** 授权记录不存在 → 404 */
+  PermissionNotFound: 1503,
+  /** 角色不存在 → 404 */
+  RoleNotFound: 1510,
+  /** 角色标识已存在 → 400 */
+  RoleNameAlreadyExists: 1511,
+  /** 该角色仍有有效分配，不能删除 → 400 */
+  RoleInUse: 1512,
+  /** 内置角色不可修改或删除 → 400 */
+  RoleProtected: 1513,
+  /** 未知的权限标识 → 400 */
+  PermissionUnknown: 1514,
+  /** 角色分配不存在 → 404 */
+  RoleAssignmentNotFound: 1515,
 
   /** 服务器内部错误 → 500 */
   InternalError: 9999
@@ -124,6 +138,14 @@ export const ERROR_HTTP_STATUS: Record<number, number> = {
   [ErrorCode.ResourceForbidden]: 403,
   [ErrorCode.HostForbidden]: 403,
   [ErrorCode.OperationForbidden]: 403,
+  [ErrorCode.PermissionNotFound]: 404,
+
+  [ErrorCode.RoleNotFound]: 404,
+  [ErrorCode.RoleNameAlreadyExists]: 400,
+  [ErrorCode.RoleInUse]: 400,
+  [ErrorCode.RoleProtected]: 400,
+  [ErrorCode.PermissionUnknown]: 400,
+  [ErrorCode.RoleAssignmentNotFound]: 404,
 
   [ErrorCode.InternalError]: 500
 }
@@ -162,6 +184,14 @@ export const ERROR_MESSAGES: Record<number, string> = {
   [ErrorCode.ResourceForbidden]: '无权限访问此资源',
   [ErrorCode.HostForbidden]: '无权限访问此主机',
   [ErrorCode.OperationForbidden]: '无权限执行此操作',
+  [ErrorCode.PermissionNotFound]: '授权不存在',
+
+  [ErrorCode.RoleNotFound]: '角色不存在',
+  [ErrorCode.RoleNameAlreadyExists]: '角色标识已存在',
+  [ErrorCode.RoleInUse]: '该角色仍有有效分配，请先撤销分配',
+  [ErrorCode.RoleProtected]: '内置角色不可修改或删除',
+  [ErrorCode.PermissionUnknown]: '未知的权限标识',
+  [ErrorCode.RoleAssignmentNotFound]: '角色分配不存在',
 
   [ErrorCode.InternalError]: '服务器内部错误'
 }

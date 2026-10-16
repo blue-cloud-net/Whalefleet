@@ -1,6 +1,7 @@
 import { http, HttpResponse, delay } from 'msw'
 import { ErrorCode, fail, httpStatusOf, ok } from '../envelope'
 import { delayFor, type MockScenario } from '../scenarios'
+import { MOCK_ROLES_DEFAULT } from '../data/permissions'
 import type { LoginResult } from '@/types/api'
 
 /**
@@ -16,7 +17,6 @@ import type { LoginResult } from '@/types/api'
 
 /** mock 用户的角色，可用 `?role=` 切换以验证 admin-only 菜单的显示与拦截。 */
 const DEFAULT_ROLE = 'admin'
-
 /** access token 有效期（秒）。前端据此安排静默刷新，与后端配置一致即可。 */
 const EXPIRES_IN = 3600
 
@@ -45,11 +45,22 @@ function roleOf(username: string, request: Request): string {
 }
 
 /**
+ * 角色 → **全局**有效权限集。
+ *
+ * 取角色夹具的权限（也就是后端迁移里种下的那份）：界面靠它决定菜单与按钮的显隐，
+ * 而 `stores/auth.ts` 的 `isAdmin` 就是「这组权限是否涵盖管理面」的判定。
+ * 认不出的角色名一律给空集——**宁可为空也不给全套**，猜错的方向永远是「权限更多」。
+ */
+function permissionsOf(roleName: string): string[] {
+  return MOCK_ROLES_DEFAULT.find((role) => role.name === roleName)?.permissions ?? []
+}
+
+/**
  * 构造一次登录成功响应，并登记新签发的 refresh token。
  *
  * 结构严格对齐 `types/api.ts` 的 `LoginResult`：
- * 用户信息嵌在 `user` 里，不是扁平的 `username` / `role`——
- * 写扁平结构会让 `auth.store` 取到 `undefined` 而难以察觉。
+ * 用户信息嵌在 `user` 里，且 `roles` 是**数组**、`permissions` 是全局权限集——
+ * 写扁平结构或单值角色会让 `auth.store` 与菜单权限判定一起失准。
  */
 function issueTokens(username: string, role: string) {
   const accessToken = nextToken('access')
@@ -59,7 +70,12 @@ function issueTokens(username: string, role: string) {
     accessToken,
     refreshToken,
     expiresIn: EXPIRES_IN,
-    user: { id: 'u-0000a1', username, role }
+    user: {
+      id: 'u-0000a1',
+      username,
+      roles: [role],
+      permissions: permissionsOf(role)
+    }
   }
   return ok(result)
 }
@@ -136,7 +152,14 @@ export function authHandlers(scenario: () => MockScenario) {
       await delay(delayFor(scenario()))
       const role = readRole(request)
       const username = role === 'viewer' ? 'viewer' : 'admin'
-      return HttpResponse.json(ok({ id: 'u-0000a1', username, role }))
+      return HttpResponse.json(
+        ok({
+          id: 'u-0000a1',
+          username,
+          roles: [role],
+          permissions: permissionsOf(role)
+        })
+      )
     })
   ]
 }
