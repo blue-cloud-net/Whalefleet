@@ -25,8 +25,20 @@ public static class PermissionNames
     /// </param>
     /// <returns>规范化后的权限集：转小写、去重、<b>按目录顺序排列</b>。</returns>
     /// <exception cref="Common.BusinessException">
-    /// 数组为空（且不允许）、含空串，或含目录之外的权限名（<c>1000</c>）。
+    /// 数组为空（且不允许）或含空串（<c>1000</c>），或含目录之外的权限名（<c>1514</c>）。
     /// </exception>
+    /// <remarks>
+    /// <para><b>空串与未知名要分开报码</b>：<c>1000</c> 是「参数本身不合法」，
+    /// <c>1514</c> 是「名字不在目录里」。客户端最容易犯的错就是拼错权限名
+    /// （<c>"read"</c> 而不是 <c>"host.read"</c>、<c>"ALL"</c>、<c>"7"</c>），
+    /// 给它独立码，界面才能提示「请从权限目录里选」——见 <c>docs/api-spec.md</c>
+    /// 「未知权限名一律 <c>1514</c>/400，且不落库」。</para>
+    /// <para>⚠️ <b>这条曾经把 <c>1514</c> 漏成 <c>1000</b></b>：错误码在
+    /// <c>ErrorCodes</c>、<c>ErrorCodeCatalog</c>、前端 <c>ErrorCode</c> 表与
+    /// <c>docs/api-spec.md</c> 四处都登记齐了，唯独抛出点还在用
+    /// <c>BusinessException.Validation</c>，于是那个专用文案永远不出现。
+    /// 「五处同步」漏的是<b>抛出点</b>这一处——它不在任何清单上。</para>
+    /// </remarks>
     public static IReadOnlyList<string> Normalize(
         IReadOnlyList<string>? permissions,
         string field,
@@ -53,8 +65,9 @@ public static class PermissionNames
 
             if (!Core.Permissions.Permission.Exists(permission))
             {
-                throw Common.BusinessException.Validation(
-                    $"{field} 含未知的权限名「{permission}」；权限目录见 GET /api/v1/admin/roles/permissions");
+                throw new Common.BusinessException(
+                    Common.ErrorCodes.PermissionUnknown,
+                    $"{field} 含未知的权限名「{permission}」；权限目录见 POST /api/v1/admin/roles/permissions");
             }
 
             normalized.Add(permission.Trim().ToLowerInvariant());
