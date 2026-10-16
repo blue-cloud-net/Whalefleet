@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { login as loginRequest, logoutSession, refreshSession } from '@/api/auth'
+import { isAdminPermissions } from '@/utils/roles'
 import type { CurrentUser, LoginResult } from '@/types/api'
 
 /**
@@ -17,7 +18,20 @@ export const useAuthStore = defineStore('auth', {
   }),
   getters: {
     isAuthenticated: (state) => Boolean(state.accessToken),
-    isAdmin: (state) => state.user?.role === 'admin'
+    /**
+     * 是否具备管理面权限。
+     *
+     * ⚠️ **不看角色名**：角色是数据，自定义角色同样可以带全部权限，
+     * 而一个被改窄了权限集的 `admin` 角色也不该继续被当作管理员。
+     * 判定依据是 `auth/me`（登录）返回的**全局有效权限集**，与后端
+     * `IPermissionChecker` 用的是同一批权限名。
+     *
+     * 这是**界面显隐依据，不是安全边界**：服务端每个端点都会再查库判一次。
+     */
+    isAdmin: (state) => isAdminPermissions(state.user?.permissions ?? []),
+    /** 是否具备某个权限（用于按权限隐藏按钮 / 菜单）。 */
+    hasPermission: (state) => (permission: string) =>
+      (state.user?.permissions ?? []).includes(permission)
   },
   actions: {
     /**

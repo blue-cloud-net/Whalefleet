@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import ChangePasswordDialog from '@/components/business/ChangePasswordDialog.vue'
 import { useAuthStore } from '@/stores/auth'
+import { roleLabelKey } from '@/utils/roles'
 
 /**
  * 顶栏用户菜单：当前用户名 + 角色标签 + 修改密码 + 登出。
@@ -18,6 +19,25 @@ const { t } = useI18n()
 const auth = useAuthStore()
 
 const changePasswordVisible = ref(false)
+
+/**
+ * 角色展示文本。
+ *
+ * 一个用户可以持多个角色，因此这里是**数组**——只显示第一个会让「他为什么能点这个」
+ * 在界面上找不到依据。内置角色走 i18n，自定义角色原样显示标识。
+ */
+const roleText = computed(() => {
+  const roles = auth.user?.roles ?? []
+  if (roles.length === 0) return t('user.role.none')
+
+  return roles
+    .map((role) => {
+      const key = roleLabelKey(role)
+
+      return key ? t(key) : role
+    })
+    .join(' · ')
+})
 
 /**
  * 登出：撤销服务端刷新令牌，然后回登录页。
@@ -66,7 +86,7 @@ async function onPasswordChanged() {
 
     <template #dropdown>
       <el-dropdown-menu>
-        <el-dropdown-item disabled>{{ auth.user?.role ?? '—' }}</el-dropdown-item>
+        <el-dropdown-item disabled>{{ roleText }}</el-dropdown-item>
         <el-dropdown-item divided @click="changePasswordVisible = true">
           {{ t('user.change.title') }}
         </el-dropdown-item>

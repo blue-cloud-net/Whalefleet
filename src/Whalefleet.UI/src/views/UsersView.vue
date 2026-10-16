@@ -8,6 +8,7 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import IconActionButton from '@/components/common/IconActionButton.vue'
 import UserFormDialog from '@/components/business/UserFormDialog.vue'
 import ResetPasswordDialog from '@/components/business/ResetPasswordDialog.vue'
+import HostAccessDialog from '@/components/business/HostAccessDialog.vue'
 import { deleteUser, listUsers } from '@/api/user'
 import { ApiRequestError } from '@/api'
 import { useAuthStore } from '@/stores/auth'
@@ -25,7 +26,9 @@ import type { AdminUserSummary } from '@/types/api'
  *    不说清楚，管理员会以为重置没生效，而对方会以为系统坏了。
  * 3. **角色按名字展示，不做白名单**：后端支持自定义角色（`roles` 是表不是枚举），
  *    前端拿内置名单当白名单会把「支持自定义角色」当场废掉。
- *    内置角色走 i18n，自定义角色原样显示。
+ *    内置角色走 i18n，自定义角色原样显示——与「角色分配」对话框里的下拉一致。
+ * 4. **角色是数组**：0.1.0 起用户与角色多对多，列表里必须把多个角色都列出来，
+ *    只显示第一个会让「他为什么能点那个」在界面上找不到依据。
  */
 const { t } = useI18n()
 const auth = useAuthStore()
@@ -41,6 +44,9 @@ const createDialogVisible = ref(false)
 const resetDialogVisible = ref(false)
 /** 待重置密码的目标用户 */
 const resetTarget = ref<AdminUserSummary | null>(null)
+/** 待分配角色的目标用户 */
+const accessTarget = ref<AdminUserSummary | null>(null)
+const accessDialogVisible = ref(false)
 
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const isEmpty = computed(() => !loading.value && error.value === null && users.value.length === 0)
@@ -63,7 +69,13 @@ async function load(): Promise<void> {
   }
 }
 
-function roleText(role: string): string {
+/**
+ * 角色展示名：内置角色走 i18n，自定义角色直接显示原值。
+ *
+ * 这里拿到的只是**角色名**（`AdminUserSummary.roles` 是字符串数组），
+ * 没有可读名称——那属于角色自身的属性，要到「角色与权限」页才看得到。
+ */
+function roleLabel(role: string): string {
   const key = roleLabelKey(role)
 
   // 自定义角色直接显示原值——它没有对应文案，硬凑一个只会更难懂
@@ -117,6 +129,18 @@ function openReset(user: AdminUserSummary): void {
   resetDialogVisible.value = true
 }
 
+/**
+ * 打开角色分配。
+ *
+ * 按钮对管理员**不禁用**：角色分配对任何人都是「给他一组带作用域的角色」，
+ * 管理员也不例外（他自己那条分配也能在这里看到）。禁用了就变成
+ * 「界面不给入口」，而实际能改的东西反而没人知道。
+ */
+function openAccess(user: AdminUserSummary): void {
+  accessTarget.value = user
+  accessDialogVisible.value = true
+}
+
 async function onCreate(): Promise<void> {
   createDialogVisible.value = false
   pageIndex.value = 0
@@ -127,6 +151,16 @@ async function goToPage(next: number): Promise<void> {
   if (next < 0 || next >= pageCount.value) return
 
   pageIndex.value = next
+  await load()
+}
+
+/**
+ * 分配改动后刷新列表。
+ *
+ * 刷的是**用户列表**：角色分配会改变这份列表里的角色列，
+ * 而不刷新就会出现「分配完了但列表显示还是旧角色」。
+ */
+async function emitSaved(): Promise<void> {
   await load()
 }
 
@@ -177,12 +211,21 @@ watch(() => auth.user?.username, load, { immediate: true })
           </template>
         </el-table-column>
 
-        <el-table-column :label="t('user.col.role')" width="180">
+        <el-table-column :label="t('user.col.roles')" width="200">
           <template #default="{ row }">
-            <div class="min-w-0">
-              <div class="text-sm">{{ roleText(row.role) }}</div>
-              <div class="font-mono text-xs text-content-faint">{{ row.role }}</div>
+            <div v-if="row.roles.length > 0" class="flex flex-wrap items-center gap-1">
+              <el-tag
+                v-for="role in row.roles"
+                :key="role"
+                size="small"
+                type="info"
+                :title="role"
+              >
+                {{ roleLabel(role) }}
+              </el-tag>
             </div>
+            <!-- 空数组是**正常状态**（新建用户到被分配角色之间），不是缺数据 -->
+            <span v-else class="text-xs text-content-muted">{{ t('user.role.none') }}</span>
           </template>
         </el-table-column>
 
@@ -192,9 +235,15 @@ watch(() => auth.user?.username, load, { immediate: true })
           </template>
         </el-table-column>
 
-        <el-table-column :label="t('container.col.actions')" width="64">
+        <el-table-column :label="t('container.col.actions')" width="112">
           <template #default="{ row }">
             <div class="flex items-center gap-0.5">
+              <IconActionButton
+                icon="i-carbon-user-role"
+                :label="t('user.action.roles')"
+                :hint="t('user.action.rolesHint')"
+                @click="openAccess(row)"
+              />
               <IconActionButton
                 icon="i-carbon-password"
                 :label="t('user.action.resetPassword')"
@@ -241,5 +290,6 @@ watch(() => auth.user?.username, load, { immediate: true })
 
     <UserFormDialog v-model="createDialogVisible" @created="onCreate" />
     <ResetPasswordDialog v-model="resetDialogVisible" :user="resetTarget" @updated="load" />
+    <HostAccessDialog v-model="accessDialogVisible" :user="accessTarget" @saved="emitSaved" />
   </div>
 </template>

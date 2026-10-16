@@ -69,6 +69,25 @@ const routes: RouteRecordRaw[] = [
           title: 'nav.users'
         }
       },
+      {
+        // 角色与权限矩阵。排在「用户管理」之后而不是之前：日常动线是
+        // 「看人 → 发现缺一个角色 → 来这里建」，把角色摆在用户前面会让
+        // 每次进管理区都先掠过一张平时不动的表。
+        //
+        // 权限矩阵必须遍历后端的权限目录渲染（见 RolesView），因此本页
+        // 与「谁能看到哪些主机」是**同一套模型**的两个视角：这里配角色能干什么，
+        // 用户页配某个人以什么角色进哪台机器。
+        path: 'roles',
+        name: 'roles',
+        component: () => import('@/views/RolesView.vue'),
+        meta: {
+          scope: 'global',
+          requiresAdmin: true,
+          group: 'manage',
+          icon: 'i-carbon-user-role',
+          title: 'nav.roles'
+        }
+      },
 
       // ===== 主机作用域（hosts/:hostId/...）=====
       {

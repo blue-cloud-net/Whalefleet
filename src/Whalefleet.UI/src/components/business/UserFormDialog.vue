@@ -3,15 +3,20 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { createUser } from '@/api/user'
-import { BUILT_IN_ROLES } from '@/utils/roles'
+import { listRoles } from '@/api/role'
+import { roleText } from '@/utils/roles'
+import type { RoleSummary } from '@/types/api'
 
 /**
  * 新建用户对话框（0.0.13）。
  *
- * ## 角色为什么是「下拉 + 自由输入」而不是纯下拉
- * 后端支持自定义角色（`roles` 表是数据不是枚举），但**没有角色列表端点**。
- * 因此下拉给出四个内置角色的快捷选项，另有一项「自定义」用于填任意角色名——
- * 纯下拉会把「支持自定义角色」这件事当场废掉，纯输入框则逼管理员背拼写。
+ * ## 角色为什么是下拉而不是自由输入
+ * `admin/roles/list` 返回**全部角色**（含管理员运行时新建的自定义角色），
+ * 因此下拉可以给真实存在的选项。早期没有角色列表端点，只能「内置名单 + 自由输入」，
+ * 结果是拼错一个名字就得到一句「角色不存在」——现在这个口子不再需要。
+ *
+ * 留空 = 用后端的**默认角色**（由角色自身的 `isDefault` 决定），
+ * 这让「不纠结角色」成为默认行为，而不是逼管理员先想清楚。
  *
  * ## 密码为什么在前端也校验一次
  * 后端才是权威（`1202` 弱口令），但让用户在提交前就看到要求，比提交后收到一个错误码更省事。
@@ -26,7 +31,7 @@ const { t } = useI18n()
 const username = ref('')
 const password = ref('')
 const roleChoice = ref('')
-const customRole = ref('')
+const roles = ref<RoleSummary[]>([])
 const submitting = ref(false)
 const errorMessage = ref<string | null>(null)
 
@@ -44,19 +49,13 @@ const usernameIssue = computed(() => {
   return /^[A-Za-z0-9._-]{3,32}$/.test(value) ? null : t('user.form.usernameInvalid')
 })
 
-/** 实际提交的角色名：选了「自定义」就用输入框的值。 */
-const effectiveRole = computed(() =>
-  roleChoice.value === '__custom__' ? customRole.value.trim() : roleChoice.value
-)
-
 const canSubmit = computed(
   () =>
     !submitting.value &&
     usernameIssue.value === null &&
     passwordIssue.value === null &&
     username.value.trim().length > 0 &&
-    password.value.length > 0 &&
-    !(roleChoice.value === '__custom__' && effectiveRole.value.length === 0)
+    password.value.length > 0
 )
 
 watch(visible, (open) => {
@@ -65,9 +64,25 @@ watch(visible, (open) => {
   username.value = ''
   password.value = ''
   roleChoice.value = ''
-  customRole.value = ''
   errorMessage.value = null
+
+  void loadRoles()
 })
+
+/**
+ * 拉角色选项。
+ *
+ * 失败时**不阻断建用户**：角色是可选字段，留空即用默认角色，
+ * 而列表拉不到只应该让选项变少，不该让「建一个用默认角色的用户」也做不成。
+ * 因此这里只清空选项、不报错。
+ */
+async function loadRoles(): Promise<void> {
+  try {
+    roles.value = await listRoles()
+  } catch {
+    roles.value = []
+  }
+}
 
 function isStrongPassword(value: string): boolean {
   return value.length >= 10 && /[A-Za-z]/.test(value) && /[0-9]|[^A-Za-z0-9]/.test(value)
@@ -83,7 +98,7 @@ async function submit(): Promise<void> {
       username: username.value.trim(),
       password: password.value,
       // 空串表示「用默认角色」——后端会取默认角色，因此这里刻意不填空值占位
-      role: effectiveRole.value.length > 0 ? effectiveRole.value : undefined
+      role: roleChoice.value.length > 0 ? roleChoice.value : undefined
     })
 
     ElMessage({ type: 'success', message: t('user.create.done', { name: created.username }) })
@@ -137,22 +152,13 @@ function close(): void {
           <!-- 空值 = 用后端默认角色：让「不纠结角色」成为默认行为 -->
           <el-option :label="t('user.form.roleDefault')" value="" />
           <el-option
-            v-for="role in BUILT_IN_ROLES"
-            :key="role"
-            :label="`${t(`role.${role}`)}（${role}）`"
-            :value="role"
+            v-for="role in roles"
+            :key="role.id"
+            :label="roleText(role, t)"
+            :value="role.name"
           />
-          <el-option :label="t('user.form.roleCustom')" value="__custom__" />
         </el-select>
-      </el-form-item>
-
-      <el-form-item v-if="roleChoice === '__custom__'" :label="t('user.form.roleName')" required>
-        <el-input
-          v-model="customRole"
-          :placeholder="t('user.form.roleNamePlaceholder')"
-          :disabled="submitting"
-        />
-        <p class="mt-1 text-xs text-content-muted">{{ t('user.form.roleNameHint') }}</p>
+        <p class="mt-1 text-xs text-content-muted">{{ t('user.form.roleHint') }}</p>
       </el-form-item>
 
       <el-alert

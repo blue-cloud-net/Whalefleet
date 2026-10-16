@@ -90,6 +90,20 @@ export const ErrorCode = {
   HostForbidden: 1501,
   /** 无权限执行此操作（缺少 write 权限） */
   OperationForbidden: 1502,
+  /** 授权记录不存在 */
+  PermissionNotFound: 1503,
+  /** 角色不存在 */
+  RoleNotFound: 1510,
+  /** 角色名已存在 */
+  RoleNameAlreadyExists: 1511,
+  /** 角色仍有分配在使用，不能删除 */
+  RoleInUse: 1512,
+  /** 内置角色不可修改（权限集或名称） */
+  RoleProtected: 1513,
+  /** 权限名不在内置目录里 */
+  PermissionUnknown: 1514,
+  /** 角色分配不存在 */
+  RoleAssignmentNotFound: 1515,
 
   // ===== 9000-9999 服务器内部错误 =====
   /** 服务器内部错误（未捕获异常） */
@@ -121,7 +135,8 @@ export interface HostCounts {
 /**
  * 主机分组。
  *
- * **是展示信息，不是权限边界**：「谁能操作哪台主机」由 0.1.0 落地的可见性表回答。
+ * **是展示信息，不是权限边界**：「谁能操作哪台主机」由 0.1.0 落地的
+ * 带作用域角色分配（`user_role_assignments`）回答。
  *
  * `name` 是管理员可改的数据（自定义分组直接展示）；三个内置分组由后端按英文标识种入
  * （`production` / `staging` / `local`），前端用 `host.group.<name>` 取 i18n 文案。
@@ -190,13 +205,26 @@ export interface CurrentUser {
   id: string
   username: string
   /**
-   * 角色名（后端 `roles` 表，内置值为 `admin` / `operator` / `viewer` / `auditor`）。
+   * 角色名列表（后端 `roles` 表）。
    *
-   * 刻意声明为 `string` 而非字面量联合：角色是**数据**不是枚举，
+   * 是**数组而非单值**：0.1.0 起一个用户可以被分配多个角色。
+   *
+   * 角色名声明为 `string` 而非字面量联合：角色是**数据**不是枚举，
    * 新增角色不应该需要改前端类型（0.0.8 起支持自定义角色）。
-   * 判断用 `=== 'admin'`（见 auth store 的 `isAdmin`），而不是穷举所有角色。
+   *
+   * ⚠️ 判断管理员**不要看这个列表里有没有 `admin`**——那只是角色名，
+   * 真正决定的是权限集合（`permissions`）。只有当某个角色的权限集包含全部
+   * 权限时，它才等价于管理员。见 auth store 的 `isAdmin`。
    */
-  role: string
+  roles: string[]
+  /**
+   * **全局**有效权限名（不含任何主机作用域的权限）。
+   *
+   * 「全局」指不受主机作用域限制的权限（user.*、role.*、host.manage、audit.read 等）；
+   * 某台主机上到底有哪些权限是按需计算的，不能一次性全塞进来——
+   * 那需要一个用户的所有主机权限联表。
+   */
+  permissions: string[]
 }
 
 /**
@@ -469,6 +497,120 @@ export interface BatchOperationResult {
 }
 
 /* ==================================================================
+ * 角色与权限（0.1.0，对应后端 `Whalefleet.Application.Permissions`）
+ * ================================================================== */
+
+/**
+ * 权限名（后端 `Whalefleet.Core.Permissions.Permission`）。
+ *
+ * 声明为 `string` 而非字面量联合：权限名是**数据**不是枚举，
+ * 后端新增权限不应该让前端编译失败。判断是否具备某个权限请用
+ * `permissions.includes(name)`，而不是相等比较。
+ */
+export type Permission = string
+
+/**
+ * 权限的作用域。
+ *
+ * 决定了「在哪个 hostId 上求值这个权限」：
+ * - `global`：与主机无关，全局分配就生效
+ * - `host`：随主机变化，同一个用户可以在 A 机是写、在 B 机只读
+ * - `container`：0.5.0 落地，当前后端尚未启用
+ */
+export type PermissionScope = 'global' | 'host' | 'container'
+
+/**
+ * 一个可授予的权限项（对应后端 `PermissionDefinition`）。
+ *
+ * 后端自带全部权限的目录，界面**直接遍历它**渲染矩阵，
+ * 不要在前端硬编码一份权限列表——那份副本必然与后端不同步。
+ */
+export interface PermissionDefinition {
+  /** 权限名，如 `container.write` */
+  name: Permission
+  /** 资源域（`host` / `container` / `image` / `network` / `volume` / `user` / `role` / `audit`） */
+  domain: string
+  /** 档位（`read` / `write` / `admin` / `manage`） */
+  level: string
+  /** 作用域 */
+  scope: PermissionScope
+}
+
+/**
+ * 角色列表项（对应后端 `RoleSummary`，字段逐字对应）。
+ *
+ * ⚠️ 后端 `list` 端点返回的是**普通数组**而不是分页信封，因此这里没有
+ * `items` / `total` / `pageIndex` / `pageSize`——角色是人工维护的个位数集合，
+ * 分页只会给每个调用点多一层要拆的壳。
+ */
+export interface RoleSummary {
+  id: string
+  name: string
+  /** 可读名称；为空时界面回退显示 `name` */
+  displayName: string | null
+  description: string | null
+  /** 内置角色：不可删除，且权限集不可修改 */
+  isBuiltIn: boolean
+  /** 新建用户时的默认角色（全库至多一个） */
+  isDefault: boolean
+  /** 权限名列表（有序，由弱到强；顺序由后端权限目录决定） */
+  permissions: Permission[]
+  /** 当前**有效**分配数（全局 + 主机）；非 0 时不允许删除角色 */
+  assignmentCount: number
+}
+
+/**
+ * 一条角色分配（对应后端 `RoleAssignmentSummary`，字段逐字对应）。
+ *
+ * 带 `username` / `role` / `hostName` 而不只是主键：
+ * 管理界面要回答的是「**谁**以**什么角色**管**哪台机器**」，
+ * 三个名字比三个 GUID 有用得多。
+ */
+export interface RoleAssignmentSummary {
+  id: string
+  userId: string
+  username: string
+  roleId: string
+  /** 角色标识（后端字段名就是 `role`，不是 `roleName`） */
+  role: string
+  /** 角色可读名称；未设置时为 null，界面回退显示 `role` */
+  roleDisplayName: string | null
+  /** `null` = 全局分配（对所有主机生效，但只贡献角色的全局权限） */
+  hostId: string | null
+  /** `hostId` 对应的主机名；全局分配为 null */
+  hostName: string | null
+  lastModificationTime: string | null
+}
+
+/**
+ * 角色定位条件（对应后端 `RoleSelectorRequest`）。
+ *
+ * `roleId` 与 `role` **至少给一个**：给主键是「从列表里选中一行」的场景，
+ * 给名字是「已知角色标识」的场景——后者不必先查一遍 GUID。
+ */
+export interface RoleSelectorRequest {
+  roleId?: string
+  role?: string
+}
+
+/**
+ * 分配角色的请求体（对应后端 `AssignRoleRequest`）。
+ *
+ * `host` **省略或为 null 即全局分配**；它只在用户视角的端点里出现——
+ * 主机视角的作用域固定在 URL 上，请求体里带 host 只会多一层可能写错的表达。
+ */
+export interface AssignRoleRequest extends RoleSelectorRequest {
+  userId?: string
+  host?: string | null
+}
+
+/** 撤销角色分配的请求体（对应后端 `RevokeRoleAssignmentRequest`）。 */
+export interface RevokeRoleAssignmentRequest extends RoleSelectorRequest {
+  userId?: string
+  host?: string | null
+}
+
+/* ==================================================================
  * 主机管理（admin，对应后端 `Whalefleet.Application.Hosts`）
  * ================================================================== */
 
@@ -551,13 +693,13 @@ export interface TestHostPayload {
 /**
  * 用户列表项。
  *
- * `role` 是**角色名**（数据，不是枚举）：后端支持自定义角色，因此这里声明为 `string`，
- * 界面直接展示名字，不做白名单校验。
+ * `roles` 是**角色名数组**：0.1.0 起用户与角色是多对多，
+ * 一个用户可以同时有多个角色。
  */
 export interface AdminUserSummary {
   id: string
   username: string
-  role: string
+  roles: string[]
   /** 创建时间（ISO 8601） */
   creationTime: string
 }
@@ -576,7 +718,8 @@ export interface UserListResult {
 /**
  * 主机分组。
  *
- * **是展示信息，不是权限边界**：「谁能操作哪台主机」由 0.1.0 落地的可见性表回答。
+ * **是展示信息，不是权限边界**：「谁能操作哪台主机」由 0.1.0 落地的
+ * 带作用域角色分配（`user_role_assignments`）回答。
  *
  * `name` 是管理员输入的数据（自定义分组直接展示）；内置的三个分组由后端种入固定名
  * （`production` / `staging` / `local`），前端用 `host.group.<name>` 取 i18n 文案，
