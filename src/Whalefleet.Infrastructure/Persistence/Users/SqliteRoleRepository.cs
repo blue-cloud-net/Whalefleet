@@ -61,6 +61,31 @@ internal sealed class SqliteRoleRepository : RepositoryBase<Role, Guid>, IRoleRe
         WHERE {SoftDeleteFilter}
         """;
 
+    // 批量按主键查询：分配列表补齐展示字段用。IN 子句走主键索引。
+    private static readonly string _selectByIdsSql = $"""
+        SELECT {_columns}
+        FROM roles
+        WHERE id IN @Ids AND {SoftDeleteFilter}
+        """;
+
+    private static readonly string _selectPermissionsSql = """
+        SELECT permission
+        FROM role_permissions
+        WHERE role_id = @RoleId
+        ORDER BY permission
+        """;
+
+    private static readonly string _deletePermissionsSql = """
+        DELETE FROM role_permissions
+        WHERE role_id = @RoleId
+        """;
+
+    private static readonly string _insertPermissionSql = """
+        INSERT INTO role_permissions (role_id, permission, creation_time, creator_id,
+                                      last_modification_time, last_modifier_id)
+        VALUES (@RoleId, @Permission, @CreationTime, @CreatorId, @LastModificationTime, @LastModifierId)
+        """;
+
     private static readonly string _insertSql = $"""
         INSERT INTO roles ({_columns})
         VALUES (@Id, @Name, @DisplayName, @Description, @IsBuiltIn, @IsDefault,
@@ -136,6 +161,114 @@ internal sealed class SqliteRoleRepository : RepositoryBase<Role, Guid>, IRoleRe
                 new { Name = name.Trim().ToLowerInvariant() },
                 cancellationToken: cancellationToken))
             .ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<Role>> QueryListByIdsAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        await using var connection = await this.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        var rows = await connection.QueryAsync<Role>(
+            new CommandDefinition(
+                _selectByIdsSql,
+                new { Ids = ids.Select(id => id.ToStorageText()).ToArray() },
+                cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        return rows.AsList();
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<string>> GetPermissionsAsync(
+        Guid roleId,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await this.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        var rows = await connection.QueryAsync<string>(
+            new CommandDefinition(
+                _selectPermissionsSql,
+                new { RoleId = roleId.ToStorageText() },
+                cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        return rows.AsList();
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> ReplacePermissionsAsync(
+        Guid roleId,
+        IReadOnlyList<string> permissions,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(permissions);
+
+        await using var connection = await this.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await connection
+            .BeginTransactionAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        // 先确认目标存在且未删除：给一个不存在的角色「清空权限」不应该被当成成功，
+        // 否则调用方会以为自己改到了某个实际生效的角色上。
+        await using (var existsCommand = connection.CreateCommand())
+        {
+            existsCommand.Transaction = transaction;
+            existsCommand.CommandText = "SELECT COUNT(1) FROM roles WHERE id = @Id AND is_deleted = 0";
+            AddParameter(existsCommand, "@Id", roleId.ToStorageText());
+
+            var exists = Convert.ToInt64(
+                await existsCommand.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false),
+                CultureInfo.InvariantCulture);
+
+            if (exists == 0)
+            {
+                await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                return false;
+            }
+        }
+
+        await connection.ExecuteAsync(
+            new CommandDefinition(
+                _deletePermissionsSql,
+                new { RoleId = roleId.ToStorageText() },
+                transaction: transaction,
+                cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        var now = UtcNow;
+        var operatorId = CurrentUserId.ToStorageText();
+
+        foreach (var permission in permissions)
+        {
+            await connection.ExecuteAsync(
+                new CommandDefinition(
+                    _insertPermissionSql,
+                    new
+                    {
+                        RoleId = roleId.ToStorageText(),
+                        Permission = permission,
+                        CreationTime = now,
+                        CreatorId = operatorId,
+                        LastModificationTime = (DateTime?)null,
+                        LastModifierId = operatorId,
+                    },
+                    transaction: transaction,
+                    cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+        return true;
     }
 
     /// <inheritdoc />
@@ -294,7 +427,22 @@ internal sealed class SqliteRoleRepository : RepositoryBase<Role, Guid>, IRoleRe
                 cancellationToken: cancellationToken))
             .ConfigureAwait(false);
 
-        return affected == 1;
+        if (affected != 1)
+        {
+            return false;
+        }
+
+        // 权限行一并清掉：留下它们会让「角色名可再次使用」时新角色继承上一任的权限，
+        // 那是一次不经意的提权。role_permissions 没有外键到 roles 的级联，
+        // 因此这里必须显式删。
+        await connection.ExecuteAsync(
+            new CommandDefinition(
+                _deletePermissionsSql,
+                new { RoleId = role.Id.ToStorageText() },
+                cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        return true;
     }
 
     private static object ToParameters(Role role) => new

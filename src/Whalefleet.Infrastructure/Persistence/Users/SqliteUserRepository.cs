@@ -21,7 +21,7 @@ namespace Whalefleet.Infrastructure.Persistence.Users;
 internal sealed class SqliteUserRepository : RepositoryBase<User, Guid>, IUserRepository
 {
     private const string _columns =
-        "id, username, password_hash, role_id, creation_time, creator_id, "
+        "id, username, password_hash, creation_time, creator_id, "
         + "last_modification_time, last_modifier_id, is_deleted, deletion_time, deleter_id";
 
     private static readonly string _selectByIdSql = $"""
@@ -34,6 +34,12 @@ internal sealed class SqliteUserRepository : RepositoryBase<User, Guid>, IUserRe
         SELECT {_columns}
         FROM users
         WHERE username = @Username COLLATE NOCASE AND {SoftDeleteFilter}
+        """;
+
+    private static readonly string _selectByIdsSql = $"""
+        SELECT {_columns}
+        FROM users
+        WHERE id IN @Ids AND {SoftDeleteFilter}
         """;
 
     private static readonly string _existsByUsernameSql = $"""
@@ -64,15 +70,9 @@ internal sealed class SqliteUserRepository : RepositoryBase<User, Guid>, IUserRe
         WHERE {SoftDeleteFilter}
         """;
 
-    private static readonly string _countByRoleIdSql = $"""
-        SELECT COUNT(1)
-        FROM users
-        WHERE role_id = @RoleId AND {SoftDeleteFilter}
-        """;
-
     private static readonly string _insertSql = $"""
         INSERT INTO users ({_columns})
-        VALUES (@Id, @Username, @PasswordHash, @RoleId, @CreationTime, @CreatorId,
+        VALUES (@Id, @Username, @PasswordHash, @CreationTime, @CreatorId,
                 @LastModificationTime, @LastModifierId, @IsDeleted, @DeletionTime, @DeleterId)
         """;
 
@@ -80,7 +80,6 @@ internal sealed class SqliteUserRepository : RepositoryBase<User, Guid>, IUserRe
         UPDATE users
         SET username = @Username,
             password_hash = @PasswordHash,
-            role_id = @RoleId,
             last_modification_time = @LastModificationTime,
             last_modifier_id = @LastModifierId,
             is_deleted = @IsDeleted,
@@ -127,6 +126,31 @@ internal sealed class SqliteUserRepository : RepositoryBase<User, Guid>, IUserRe
         return await connection.QuerySingleOrDefaultAsync<User>(
             new CommandDefinition(_selectByUsernameSql, new { Username = username.Trim() }, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<User>> QueryListByIdsAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        await using var connection = Connections.Create();
+        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        var rows = await connection.QueryAsync<User>(
+            new CommandDefinition(
+                _selectByIdsSql,
+                new { Ids = ids.Select(id => id.ToStorageText()).ToArray() },
+                cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        return rows.AsList();
     }
 
     /// <inheritdoc />
@@ -179,22 +203,6 @@ internal sealed class SqliteUserRepository : RepositoryBase<User, Guid>, IUserRe
     }
 
     /// <inheritdoc />
-    public async Task<int> CountByRoleIdAsync(Guid roleId, CancellationToken cancellationToken = default)
-    {
-        await using var connection = Connections.Create();
-        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-
-        var count = await connection.ExecuteScalarAsync<long>(
-            new CommandDefinition(
-                _countByRoleIdSql,
-                new { RoleId = roleId.ToStorageText() },
-                cancellationToken: cancellationToken))
-            .ConfigureAwait(false);
-
-        return checked((int)count);
-    }
-
-    /// <inheritdoc />
     protected override Task<int> ExecuteInsertAsync(
         System.Data.Common.DbConnection connection,
         User user,
@@ -223,7 +231,6 @@ internal sealed class SqliteUserRepository : RepositoryBase<User, Guid>, IUserRe
         Id = user.Id.ToStorageText(),
         user.Username,
         user.PasswordHash,
-        RoleId = user.RoleId.ToStorageText(),
         user.CreationTime,
         CreatorId = user.CreatorId.ToStorageText(),
         user.LastModificationTime,

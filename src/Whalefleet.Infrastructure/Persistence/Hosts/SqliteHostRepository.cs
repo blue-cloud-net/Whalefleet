@@ -41,6 +41,12 @@ internal sealed class SqliteHostRepository : RepositoryBase<DockerHost, Guid>, I
         WHERE name = @Name COLLATE NOCASE AND {SoftDeleteFilter}
         """;
 
+    private static readonly string _selectByIdsSql = $"""
+        SELECT {_columns}
+        FROM hosts
+        WHERE id IN @Ids AND {SoftDeleteFilter}
+        """;
+
     private static readonly string _queryAllSql = $"""
         SELECT {_columns}
         FROM hosts
@@ -127,6 +133,31 @@ internal sealed class SqliteHostRepository : RepositoryBase<DockerHost, Guid>, I
         return await connection.QuerySingleOrDefaultAsync<DockerHost>(
             new CommandDefinition(_selectByNameSql, new { Name = name.Trim() }, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<DockerHost>> QueryListByIdsAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        await using var connection = Connections.Create();
+        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        var rows = await connection.QueryAsync<DockerHost>(
+            new CommandDefinition(
+                _selectByIdsSql,
+                new { Ids = ids.Select(id => id.ToStorageText()).ToArray() },
+                cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        return rows.AsList();
     }
 
     /// <inheritdoc />

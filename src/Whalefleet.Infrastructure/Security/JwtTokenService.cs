@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using Whalefleet.Application.Abstractions;
@@ -44,12 +45,35 @@ internal sealed class JwtTokenService : ITokenService
     }
 
     /// <inheritdoc />
-    public AccessToken CreateAccessToken(Guid userId, string username, string roleName, DateTime utcNow)
+    public AccessToken CreateAccessToken(
+        Guid userId,
+        string username,
+        IReadOnlyList<string> roleNames,
+        DateTime utcNow)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(username);
-        ArgumentException.ThrowIfNullOrWhiteSpace(roleName);
+        ArgumentNullException.ThrowIfNull(roleNames);
 
         var expiresAt = utcNow.Add(_options.AccessTokenLifetime);
+
+        // 多角色签成多个同名的 claim（而不是一个数组 claim）：
+        // JwtSecurityTokenHandler 会把同名 claim 依次写进数组元素，
+        // 读侧用 FindAll 拿回全部。而数组 claim 需要额外的 claim-mapping 配置，
+        // 且部分第三方验证库对它的处理不一致——多值 claim 在 JWT 里就是数组，不值得为它绕路。
+        //
+        // ⚠️ 必须走 Subject（ClaimsIdentity）而不是 descriptor.Claims：
+        // 后者的类型是 IDictionary<string, object>，**同一个键只能有一个值**，
+        // 于是 `claims[Role] = name` 每轮都在覆盖前一角色，最终令牌里只剩最后一个。
+        // 症状极隐蔽：单角色用户一切正常，只有真正持有多角色的人才发现授权范围不对。
+        var identity = new ClaimsIdentity(string.Empty, JwtClaimNames.UniqueName, JwtClaimNames.Role);
+        identity.AddClaim(new Claim(JwtClaimNames.Subject, userId.ToString("D")));
+        identity.AddClaim(new Claim(JwtClaimNames.UniqueName, username));
+        identity.AddClaim(new Claim(JwtClaimNames.Jti, Guid.NewGuid().ToString("N")));
+
+        foreach (var roleName in roleNames.Where(name => !String.IsNullOrWhiteSpace(name)))
+        {
+            identity.AddClaim(new Claim(JwtClaimNames.Role, roleName));
+        }
 
         var descriptor = new SecurityTokenDescriptor
         {
@@ -61,13 +85,7 @@ internal sealed class JwtTokenService : ITokenService
 
             // 刻意不设 NotBefore：客户端与服务端的时钟若相差几秒，
             // nbf 会让"刚登录成功就拿到的令牌"立刻被判定为无效。
-            Claims = new Dictionary<string, object>(StringComparer.Ordinal)
-            {
-                [JwtClaimNames.Subject] = userId.ToString("D"),
-                [JwtClaimNames.UniqueName] = username,
-                [JwtClaimNames.Jti] = Guid.NewGuid().ToString("N"),
-                [JwtClaimNames.Role] = roleName,
-            },
+            Subject = identity,
         };
 
         return new AccessToken(_handler.CreateToken(descriptor), expiresAt);
