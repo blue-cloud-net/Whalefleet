@@ -87,6 +87,13 @@ services:
     #    direct 模式必须不写（见该 service 的注释）。
     container_name: whalefleet
     restart: unless-stopped
+    # ⚠️ 必须显式等 socket-proxy：应用启动时会立刻解析 hosts 表并探活，
+    #    而 Default 主机指向 tcp://socket-proxy:2375。缺这一行时，
+    #    docker compose up 会按任意顺序启动，应用先跑 → DNS 解析不到 socket-proxy
+    #    → 首启探活报 1301，看起来像「socket-proxy 配错了」。
+    #    （只等容器**启动**，不等**就绪**——应用本身有重试，那才是真正管用的那一层。）
+    depends_on:
+      - socket-proxy
     ports:
       - "8080:8080"
     volumes:
