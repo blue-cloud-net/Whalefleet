@@ -171,6 +171,12 @@
 | `1502` | 403 | 无权限执行此操作（write 权限缺失） | 0.12.0 |
 | `1503` | 404 | 授权记录不存在 | 0.1.0 |
 | `1504` | 403 | MCP 写工具未启用（`Mcp:AllowWrite=false`） | 0.18.0 |
+| `1510` | 404 | 角色不存在 | 0.1.0 |
+| `1511` | 400 | 角色标识已被占用 | 0.1.0 |
+| `1512` | 400 | 角色仍有有效分配，拒绝删除 | 0.1.0 |
+| `1513` | 400 | 内置角色受保护，不可修改或删除 | 0.1.0 |
+| `1514` | 400 | 未知权限标识（不在权限目录中） | 0.1.0 |
+| `1515` | 404 | 角色分配不存在 | 0.1.0 |
 | `9999` | 500 | 服务器内部错误 | 0.0.2 |
 
 > 各代码段保留充足空间，0.9.0 起按需分配更细的错误码（已启用 `1600-1699` 审计、`1700-1799` 告警）。
@@ -225,7 +231,7 @@ mock 的 HTTP 状态码**逐条拄自后端代码**（`ErrorCodeCatalog.Classify
 
 ### 未认证 / 无权限的响应形态（0.0.4 起）
 
-需要认证的端点（`[Authorize]` / `[Authorize(Roles = …)]`）在鉴权失败时，**同样返回统一的 `ApiResult`**，
+需要认证的端点（`[Authorize]` / 按**权限**判定的授权策略）在鉴权失败时，**同样返回统一的 `ApiResult`**，
 而不是框架默认的「空 401 响应体」——否则客户端无法区分「该跳登录页」还是「该先静默刷新」
 （0.0.5 的 401 → refresh 重发依赖这一区分）：
 
@@ -233,7 +239,7 @@ mock 的 HTTP 状态码**逐条拄自后端代码**（`ErrorCodeCatalog.Classify
 |------|:---:|------|
 | 未携带 Token / 签名或格式错误 / issuer 或 audience 不符 | 401 | `1100` |
 | **Token 已过期**（签名与结构都对，只是过了 `exp`） | 401 | `1101` |
-| 已认证但角色不足（`[Authorize(Roles = …)]` 不通过） | 403 | `1500` |
+| 已认证但**权限不足**（授权策略不通过） | 403 | `1500` |
 
 > 除「已过期」外的签名/格式失败一律归入 `1100` 而不细分原因，避免把内部失败细节泄漏给客户端。
 > 过期判定带 **30 秒时钟容差**，以免客户端与服务端时钟轻微不一致时把刚签发的令牌判为无效。
@@ -271,7 +277,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 操作 | 路径 | 阶段 | 说明 |
 |------|------|------|------|
 | 登录 | `POST /api/v1/auth/login` | 0.0.4 | 返回 accessToken + refreshToken |
-| 当前用户 | `POST /api/v1/auth/me` | 0.0.4 | 需认证；返回当前登录用户摘要。前端刷新页面时用它校验持久化的 token 是否**仍然有效**（签名、过期、角色以服务端为准），比前端自行解码 JWT 更可靠 |
+| 当前用户 | `POST /api/v1/auth/me` | 0.0.4 | 需认证；返回当前登录用户摘要（`roles` + **全局**有效权限集 `permissions`）。前端刷新页面时用它校验持久化的 token 是否**仍然有效**（签名、过期、角色与权限以服务端为准），比前端自行解码 JWT 更可靠 |
 | 刷新 Token | `POST /api/v1/auth/refresh` | 0.0.5 | 用 refreshToken 换新 accessToken |
 | 登出 | `POST /api/v1/auth/logout` | 0.0.5 | 撤销当前 refreshToken |
 | 终端短时 Token | `POST /api/v1/auth/terminal-token` | 0.8.0 | 返回 5 分钟过期的 terminalToken，仅用于 WebSocket `/ws/hosts/{hostId}/containers/exec` |
@@ -294,7 +300,12 @@ POST /api/v1/hosts/{hostId}/containers/list
     "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "refreshToken": "VmFkaUQxMjM0NTY3ODkw...",
     "expiresIn": 900,
-    "user": { "id": "...", "username": "admin", "role": "admin" }
+    "user": {
+      "id": "…uuid…",
+      "username": "admin",
+      "roles": ["admin"],                    // 角色名数组；未被分配角色时是空数组
+      "permissions": ["host.read", "host.admin", "container.read", "…"]   // **全局**有效权限集
+    }
   }
 }
 ```
@@ -307,9 +318,18 @@ POST /api/v1/hosts/{hostId}/containers/list
   "success": true,
   "code": 0,
   "message": "ok",
-  "data": { "id": "...", "username": "admin", "role": "admin" }
+  "data": {
+    "id": "…uuid…",
+    "username": "admin",
+    "roles": ["admin"],
+    "permissions": ["host.read", "host.admin", "container.read", "…"]
+  }
 }
 ```
+
+> **返回的 `permissions` 是「全局」有效权限集**，主机级权限不在这里——它随主机而变，
+> 由主机列表接口按需带回；`roles` 为角色名数组（新建用户到被分配角色之间是空数组，属正常状态）。
+> **⚠️ 这份数据只供界面显隐，不是安全边界**：服务端一律按权限目录查库判定（见「资源权限管理」）。
 
 > **为何是 `POST` 而非 `GET`**：本 API 全量用 `POST`（见「请求风格约定」），
 > `GET /healthz` 是唯一的基础设施例外。为了一个只读查询破例会让「哪些端点用哪种方法」失去唯一规则。
@@ -327,7 +347,12 @@ POST /api/v1/hosts/{hostId}/containers/list
     "accessToken": "…",
     "refreshToken": "…",
     "expiresIn": 900,
-    "user": { "id": "...", "username": "admin", "role": "admin" }
+    "user": {
+      "id": "…uuid…",
+      "username": "admin",
+      "roles": ["admin"],
+      "permissions": ["host.read", "host.admin", "container.read", "…"]
+    }
   }
 }
 ```
@@ -349,7 +374,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 刷新成功 | 旧令牌立即撤销，并用 `replaced_by_token_hash` 指向新令牌；同时签发新 refresh | 新 access + 新 refresh |
 | **已被轮换的旧令牌再次使用** | 判定为**重放**（该令牌很可能已泄漏）→ **撤销该用户的全部刷新令牌** | `1102` / 401 |
 | 已登出的令牌再次使用 | 仅拒绝（不牵连其他会话） | `1102` / 401 |
-| 令牌未知 / 已过期 / 用户已被删除 / 角色缺失 | 拒绝，且**不**签发新令牌 | `1102` / 401 |
+| 令牌未知 / 已过期 / 用户已被删除 | 拒绝，且**不**签发新令牌 | `1102` / 401 |
 | 请求体缺 `refreshToken` | 参数校验失败 | `1000` / 400 |
 | `logout` 重复调用 | 幂等成功 | `200` |
 
@@ -440,7 +465,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 
 | 操作 | 路径 | 角色 | 说明 |
 |------|------|------|------|
-| 可见主机列表 | `POST /api/v1/hosts/list` | 任意已登录 | 返回**当前用户可见**的主机（含 `status`）；admin 调用时返回全部，非 admin 返回 `user_host_permissions` 里被授权的主机 |
+| 可见主机列表 | `POST /api/v1/hosts/list` | 任意已登录 | 返回**当前用户可见**的主机（含 `status`）；全局持有内置 `admin` 角色者返回全部，其余按**带作用域的角色分配**过滤（判定标准是是否具备 `host.read`） |
 | 单台概览 | `POST /api/v1/hosts/{hostId}/overview` | 任意已登录 | 返回单台主机的 `version` / `counts` / `startedAt`；失败形态 `1300`/404、`1501`/403 |
 
 **两个端点共用同一个响应形状**（列表里取不到的字段为 `null`，对应界面上的「—」占位）：
@@ -483,14 +508,14 @@ POST /api/v1/hosts/{hostId}/containers/list
 > **主机离线不是错误**：概览对离线 / 已停用主机返回 `200` + `status: "offline"` + 空字段，
 > 而不是 `502`——界面要把离线显示成一个状态，不是一个错误页。只有「主机本身不存在」才是 `1300`/404。
 >
-> **非管理员只看到被授权的主机**（0.1.0 起）：过滤由 `IResourcePermissionService` 一次查库完成
-> （数据来自 `user_host_permissions`，判定标准是是否具备 `Read` 位）。
+> **非管理员只看到被授权的主机**（0.1.0 起）：过滤由 `IPermissionChecker.FilterVisibleHostsAsync`
+> 一次查库完成（数据来自带作用域的角色分配，判定标准是是否具备 `host.read`）。
 > 没被授权时返回**空数组**而不是 403——列表接口一报错，前端的主机选择器整块就红了，
 > 而它本该显示「暂无可用主机」。
 > 单台概览则走 403/`1501`（那是明确的一次越权访问）。
 >
-> **管理员不受这条限制**：`ResourcePermissionService` 对管理员短路放行且**不查库**——
-> 管理员的语义本就是「全部可见」，为它插 N 条授权行意味着每加一个管理员就要同步维护 N 条数据，
+> **管理员不受这条限制**：全局持有内置 `admin` 角色者由 `PermissionChecker` 短路放行且**不查库**——
+> 管理员的语义本就是「全部可见」，为它插 N 条分配行意味着每加一个管理员就要同步维护 N 条数据，
 > 而一旦漏同步，那个管理员就莫名看不见某台机器，比「表里没有他的记录」更难排查。
 
 > **为什么要与 `admin/hosts/list` 分开**：总览页与侧栏主机选择器对**所有角色**可见，
@@ -1003,49 +1028,131 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 登录 | `POST /api/v1/registry/login` | 0.4.0 | Body: `{ name, url, username, password }`（凭据加密存储） |
 | 删除 | `POST /api/v1/registry/remove` | 0.4.0 | Body: `{ registryId }` |
 
-### 资源权限管理（0.1.0 主机可见性 / 0.12.0 容器粒度）
+### 资源权限管理（0.1.0 角色与作用域分配 / 0.12.0 容器粒度）
 
-| 操作 | 路径 | 角色 | 说明 |
+授权模型是**带作用域的 User → Role → Permission**：权限是**静态封闭目录**（`domain.level`，不建表），
+角色**携带一组权限**（`role_permissions`），而**分配**（`user_role_assignments`）决定「谁在哪个范围内拥有这个角色」。
+因此同一用户可以在 A 主机是 `operator`、在 B 主机只读。
+
+**三组端点**分别回答三个不同的问题：
+
+| 分组 | 路径 | 权限 | 说明 |
 |------|------|------|------|
-| 列表 | `POST /api/v1/admin/hosts/{hostId}/permissions/list` | admin | Body: `{ userId? }` |
-| 授权 | `POST /api/v1/admin/hosts/{hostId}/permissions/grant` | admin | Body: `{ userId, permissions: ["read", "write", "admin"] }` |
-| 撤销 | `POST /api/v1/admin/hosts/{hostId}/permissions/revoke` | admin | Body: `{ userId, permissions? }` |
+| 角色 CRUD | `POST /api/v1/admin/roles/{list,permissions,create,update,set-permissions,set-default,remove}` | `role.read`（只读） / `role.write`（改状态） | 角色定义与权限矩阵 |
+| 主机视角 | `POST /api/v1/admin/hosts/{hostId}/roles/{list,assign,revoke}` | `role.read` / `role.write` | **谁能访问这台机器** |
+| 用户视角 | `POST /api/v1/admin/users/{userId}/roles/{list,assign,revoke}` | `role.read` / `role.write` | **这个人拥有什么**（含全局分配） |
 
-**0.1.0 已实现**，容器粒度（`user_container_permissions`）排 0.12.0，因此
-`grant` / `revoke` 的请求体**不含** `containerIds`。
-
-响应形状（`list` 的每一项、`grant` 的返回值同形状）：
+**请求 / 响应形态**：
 
 ```jsonc
+// POST /api/v1/admin/roles/list
+// Request
+{ "customOnly": false }          // 只返回自定义角色（排除内置角色）时置 true
+// Response.data —— 数组，每项：
 {
-  "userId": "…uuid…",
-  "username": "ops-zhang",      // 冗余自用户表：界面要显示人名，不该自己再查一次
-  "role": "operator",
-  "permissions": ["read", "write"],   // 由弱到强固定排序
-  "lastModificationTime": "2026-10-10T06:12:00Z"   // 从未变更过为 null
+  "id": "…uuid…",
+  "name": "operator",
+  "displayName": "运维",
+  "description": "可操作主机上的容器、镜像、数据卷与网络",
+  "isBuiltIn": true,             // 内置角色的权限集不可修改
+  "isDefault": false,
+  "permissions": ["host.read", "container.read", "container.write", "…"],   // 按目录顺序
+  "assignmentCount": 3           // 当前有效分配数；界面据此提示「仍在使用」
 }
+
+// POST /api/v1/admin/roles/permissions    —— 权限目录（权限矩阵的列定义）；无请求体
+// Response.data —— 数组，每项：
+{ "name": "container.write", "domain": "container", "level": "write", "scope": "host" }
+
+// POST /api/v1/admin/roles/create
+// Request
+{ "name": "ops-zhang", "displayName": "张工", "description": "…", "permissions": ["host.read", "container.write"] }
+// POST /api/v1/admin/roles/update          —— 只改可读信息，标识与权限不在此端点
+// Request
+{ "roleId": "…uuid…", "displayName": "张工", "description": "…" }        // 定位也可用 "role": "ops-zhang"
+// POST /api/v1/admin/roles/set-permissions —— 覆盖式，允许空数组
+// Request
+{ "role": "ops-zhang", "permissions": ["host.read", "container.read"] }
+// POST /api/v1/admin/roles/set-default
+// Request
+{ "role": "auditor" }
+// POST /api/v1/admin/roles/remove
+// Request
+{ "role": "ops-zhang" }
+// Response.data —— 前四者返回单个角色（形状同 `list` 的每一项）；`remove` 为无数据接口
+
+// POST /api/v1/admin/hosts/{hostId}/roles/list    —— 本主机上的分配（**不含全局分配**）
+// Request
+{ "userId": "…uuid…" }           // 省略即列出该主机上的全部分配
+// POST /api/v1/admin/users/{userId}/roles/list     —— 该用户的全部分配，无请求体
+// Response.data —— 两者同形状的数组，每项：
+{
+  "id": "…uuid…",
+  "userId": "…uuid…",
+  "username": "ops-zhang",       // 冗余自用户表：界面要显示人名，不该自己再查一次
+  "roleId": "…uuid…",
+  "role": "operator",
+  "roleDisplayName": "运维",
+  "hostId": "…uuid…",            // null = 全局分配
+  "hostName": "prod-01",         // null = 全局分配（主机名才是对外标识）
+  "lastModificationTime": null   // 从未变更过为 null
+}
+
+// POST /api/v1/admin/hosts/{hostId}/roles/assign   —— 作用域由**路径**决定
+// Request
+{ "userId": "…uuid…", "role": "operator" }         // roleId 亦可
+// POST /api/v1/admin/users/{userId}/roles/assign    —— 作用域由**请求体**决定
+// Request
+{ "role": "operator", "host": "prod-01" }          // 省略 host 即**全局分配**
+// Response.data —— 单条分配（形状同上）
+
+// POST /api/v1/admin/hosts/{hostId}/roles/revoke   —— 作用域由**路径**决定
+// Request
+{ "userId": "…uuid…", "role": "operator" }
+// POST /api/v1/admin/users/{userId}/roles/revoke    —— 省略 host 即撤销全局分配
+// Request
+{ "role": "operator", "host": "prod-01" }
+// Response：无数据接口（不含 data 字段）
 ```
 
-> **`hostId` 是主机名**（与 `admin/hosts/{hostId}/update` 一致）；授权表里的 `host_id`
-> 是 `hosts.id`（Guid），转换在服务端完成。这样前端不必为了调授权接口先查一遍主机的 Guid。
+> **主机视角的 `{hostId}` 是主机名**（与 `admin/hosts/{hostId}/update` 一致）；用户视角的 `{userId}` 是
+> **用户主键（GUID）**——主机名是对外标识，用户没有「名字进 URL」的诉求。分配表里的 `host_id` 是
+> `hosts.id`（Guid），转换在服务端完成，前端不必为了调分配接口先查一遍主机的 Guid。
 >
-> **管理员自己不出现在 `list` 结果里**：管理员的可见性来自角色短路，不落授权表。
-> 这个列表回答的正是「谁因为显式授权而能看到这台机器」——而管理员本来就能看到全部。
+> **主机分配只带来该角色的 Host 域权限，其 Global 权限被忽略**：否则「把 `admin` 分配到某台主机」
+> 就会变成一次静默的系统级提权。**全局分配**（`host_id IS NULL`）才贡献该角色的 Global 权限。
+> 默认角色（`isDefault`）在创建用户时用于建立一条**全局分配**。
 >
-> **`grant` 是覆盖而不是叠加**：再次提交把该用户在主机上的权限改成提交的内容。
-> 实体只提供 `UpdatePermissions`（覆盖式）而没有 `AddPermission`，就是为了让这个决定只有一处。
+> **为什么分成两个视角而不是一个带可空 `hostId` 的端点**：它们回答的是两个不同问题——
+> 「谁能访问这台机器」与「这个人拥有什么」。而且只有用户视角能表达「在**所有**主机上都怎样」：
+> 把作用域做成请求体里一个可空字段会让同一个端点有两种语义，而「省略」与「填空」的区别在 JSON 里极易出错。
 >
-> **蕴含关系由服务端展开，前端不需要推导**：授 `write` 自动带上 `read`，授 `admin` 展开成全部三项；
-> 撤销则反向传导——撤 `admin` 保留读写，撤 `read` 连 `write` 一起去掉。
-> 留一个「能改但看不见」的授权既不合逻辑，也让权限复查无法解释。
+> **主机视角的 `list` 不含全局分配**：它对所有主机生效，无法归属到某一台。界面要表达「这些人因为
+> 全局分配也能访问这台机器」需要另查一次用户视角的列表——刻意不做隐式合并，因为那会让管理员无法区分
+> 「专门给这台机器开的人」与「本来就什么都能看到的人」，而两者的运维含义完全不同。
 >
-> **未知权限名一律 `1000`/400，且不落库**：解析发生在写库之前，非法输入不允许留下
-> 「待修正」的授权。校验用白名单而非 `Enum.TryParse`——后者还会接受 `"7"`、`"read, write"` 这类
-> 客户端绝不该发的东西，而猜错的方向永远是「权限更多」。
+> **分配是幂等 upsert**：同一 `(用户, 角色, 作用域)` 组合重复提交返回**同一条**记录，不换主键——
+> 否则界面刷新后会看到一条 id 不同的「新」记录。撤销走**软删除**（保留「谁在什么时候撤的」这条事实），
+> 因此同一组合可以重新分配；撤销一条并不存在的分配 → `1515`/404。
 >
-> **`revoke` 省略 `permissions` 即全部撤销**（软删除，保留授权历史）。
-> 对**从未存在**的授权撤销 → `1503`/404（后端读的是当前有效行）；
-> 对**本来就没有**的那一项撤销 → `200`（目标状态已达成，不该报错）。
+> **内置角色受保护**：`set-permissions` 与 `remove` 对内置角色（`isBuiltIn`）返回 `1513`/400。
+> 一个能被清空权限集的 `operator` 已经不是它的名字所声称的那个角色；更现实的风险是管理员把 `admin`
+> 改窄后把自己锁在门外，只能改库恢复。
+>
+> **删除仍在使用的角色 → `1512`/400，不级联撤销**：级联会悄悄收回没人要求收回的访问权。
+> 报这个错是把决定权交还管理员——先看谁在用，再逐个撤销，最后才删角色。只数**有效**分配，
+> 已撤销的行不该让角色永远删不掉。
+>
+> **未知权限名一律 `1514`/400，且不落库**：校验发生在写库之前，非法输入不允许留下「待修正」的角色。
+> 校验用权限目录白名单而非解析字符串——目录外的标识（`"read"`、`"ALL"`、`"7"`）一律拒绝，
+> 而猜错的方向永远是「权限更多」。
+>
+> **`set-permissions` 是覆盖而不是叠加**，允许空数组（「收回这个角色的全部权限」是合法操作）。
+> 实体只有 `SetPermissions`（覆盖式）而没有 `AddPermission`，就是为了让这个决定只有一处。
+>
+> **权限目录刻意做成独立端点**：它是**编译期事实**，同一页面的每次刷新都拿到同一份，
+> 让客户端缓存它比每次拉角色列表时顺带返回更省。
+
 
 ---
 
