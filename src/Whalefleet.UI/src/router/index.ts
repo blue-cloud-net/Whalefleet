@@ -40,12 +40,6 @@ const routes: RouteRecordRaw[] = [
         meta: { scope: 'global', icon: 'i-carbon-dashboard', title: 'nav.overview' }
       },
       {
-        path: 'settings',
-        name: 'settings',
-        component: () => import('@/views/SettingsView.vue'),
-        meta: { scope: 'global', icon: 'i-carbon-settings-adjust', title: 'nav.settings' }
-      },
-      {
         path: 'hosts',
         name: 'hosts',
         component: () => import('@/views/HostsView.vue'),
@@ -86,6 +80,25 @@ const routes: RouteRecordRaw[] = [
           group: 'manage',
           icon: 'i-carbon-user-role',
           title: 'nav.roles'
+        }
+      },
+      {
+        // 全局设置：**声明在管理组之后**，侧边栏才会把它渲染成管理区下面独立的一组。
+        // 菜单顺序直接取路由表声明顺序（见 SidebarNav.navItems），所以「排在下面」
+        // 靠的是这里的位置，而不是额外的排序字段。
+        //
+        // 它与「管理」是两类东西：管理组是**多用户部署下的运维操作**（改主机、分人、
+        // 配角色，面向管理员且整组对非 admin 隐藏），设置是**这台实例自己的外观与偏好**。
+        // 混在一组会让非 admin 看不到任何分组标题（整组被过滤掉），
+        // 而 admin 看到的最后一个分组标题也会名不副实。
+        path: 'settings',
+        name: 'settings',
+        component: () => import('@/views/SettingsView.vue'),
+        meta: {
+          scope: 'global',
+          group: 'settings',
+          icon: 'i-carbon-settings-adjust',
+          title: 'nav.settings'
         }
       },
 

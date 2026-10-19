@@ -368,6 +368,7 @@
   "nav.containers": "Containers",
   "nav.events": "Events",
   "nav.groupManage": "Manage",
+  "nav.groupSettings": "Settings",
   "nav.hostDashboard": "Dashboard",
   "nav.hosts": "Hosts",
   "nav.images": "Images",

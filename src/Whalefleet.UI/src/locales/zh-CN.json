@@ -368,6 +368,7 @@
   "nav.containers": "容器",
   "nav.events": "事件",
   "nav.groupManage": "管理",
+  "nav.groupSettings": "设置",
   "nav.hostDashboard": "概览",
   "nav.hosts": "主机管理",
   "nav.images": "镜像",

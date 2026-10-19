@@ -69,8 +69,44 @@ const navItems = computed<NavItem[]>(() => {
     }))
 })
 
-/** 是否需要插入「管理」分组标题（仅全局作用域有分组） */
+/** 是否需要插入分组标题（仅全局作用域有分组） */
 const withGroupLabels = computed(() => !isHostScope.value)
+
+/**
+ * 分组标题的文案与图标。
+ *
+ * 此前这里是写死的「管理」+ 一个齿轮图标，`startsGroup` 只回答「是不是组首」，
+ * 于是任何新增分组都会顶着「管理」这个标题——把「设置」单独分组时立刻露馅。
+ * 改成查表后，新增分组只需在这里加一行。
+ *
+ * ## 图标怎么选
+ *
+ * **齿轮给「设置」而不是「管理」**：齿轮是「调参数」的通用符号，
+ * 而「设置」组里恰好就一项外观与偏好，齿轮放在它头上是字面意义的对应。
+ * 「管理」组则是主机 / 用户 / 角色权限三件「对系统动手」的操作，
+ * 用 `tools`（扳手 + 螺丝刀）表达这一层意思。
+ *
+ * 早先给管理组试过 `tree-view`（想呼应「用户 × 角色 × 作用域」的层级结构），
+ * 但那是**从代码结构推出来的语义**：用户看到一棵树未必联想到「管理」。
+ * 分组图标要的是用户一眼能懂的日常意象，不是模型结构的精确写照。
+ *
+ * **避开 `i-carbon-user-access`**：它语义上很像，但它与组内「角色与权限」的
+ * `i-carbon-user-role` 只差一个词，两行叠在一起读起来像同一件事。
+ *
+ * ⚠️ 图标名必须在 Carbon 里真实存在，`pnpm dev` 会在启动时逐个校验
+ * （`uno.config.ts` 的 safelist 断言）。`i-carbon-tune` / `i-carbon-slider` /
+ * `i-carbon-admin` / `i-carbon-manage` 都不存在，别再凭直觉写 ——
+ * 查：`node -e "const i=require('@iconify-json/carbon/icons.json');console.log('tools' in i.icons)"`。
+ */
+const GROUP_META: Record<string, { labelKey: string; icon: string }> = {
+  manage: { labelKey: 'nav.groupManage', icon: 'i-carbon-tools' },
+  settings: { labelKey: 'nav.groupSettings', icon: 'i-carbon-settings' }
+}
+
+/** 分组标题：未登记的分组不给标题（宁可不分组，也不要顶着别的组的名字） */
+function groupMeta(group?: string) {
+  return group ? GROUP_META[group] : undefined
+}
 
 /** 分组标题是否出现在当前位置（逐项判断，避免整表重算） */
 function startsGroup(index: number): boolean {
@@ -159,13 +195,13 @@ function goHostDashboard() {
   </template>
 
   <template v-for="(item, index) in navItems" :key="item.name">
-    <!-- 全局作用域的管理分组标题 -->
+    <!-- 全局作用域的分组标题（文案与图标按分组取，未登记的分组不显示标题） -->
     <div
-      v-if="startsGroup(index) && !collapsed"
+      v-if="startsGroup(index) && !collapsed && groupMeta(item.group)"
       class="flex items-center gap-1.5 px-3 pt-5 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-content-faint"
     >
-      <span class="i-carbon-settings text-xs" />
-      {{ t('nav.groupManage') }}
+      <span class="text-xs shrink-0" :class="groupMeta(item.group)?.icon" aria-hidden="true" />
+      {{ t(groupMeta(item.group)?.labelKey ?? '') }}
     </div>
 
     <button
