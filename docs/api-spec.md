@@ -125,6 +125,7 @@
 | `1500-1599` | **资源权限**——无权限访问此主机 / 容器 / 资源等 |
 | `1600-1699` | **操作审计**——审计查询、导出等（0.9.0 起） |
 | `1700-1799` | **告警与通知**——告警规则、通知渠道等（0.11.0 起） |
+| `1800-1899` | **Registry 与镜像构建 / 推送**——Registry 配置、凭据、构建与推送错误（0.4.0 起） |
 | `9000-9999` | **服务器内部错误**——未捕获异常、数据库错误等 |
 
 ### 当前已分配的错误码
@@ -177,6 +178,14 @@
 | `1513` | 400 | 内置角色受保护，不可修改或删除 | 0.1.0 |
 | `1514` | 400 | 未知权限标识（不在权限目录中） | 0.1.0 |
 | `1515` | 404 | 角色分配不存在 | 0.1.0 |
+| `1800` | 404 | Registry 配置不存在 | 0.4.0 |
+| `1801` | 400 | Registry 别名已被占用 | 0.4.0 |
+| `1802` | 400 | Registry 服务地址已被占用 | 0.4.0 |
+| `1803` | 400 | 未登记该地址的 Registry 凭据 | 0.4.0 |
+| `1804` | 400 | Registry 拒绝了该凭据 | 0.4.0 |
+| `1805` | 502 | Registry 不可达 | 0.4.0 |
+| `1806` | 500 | 镜像构建失败 | 0.4.0 |
+| `1807` | 500 | 镜像推送失败 | 0.4.0 |
 | `9999` | 500 | 服务器内部错误 | 0.0.2 |
 
 > 各代码段保留充足空间，0.9.0 起按需分配更细的错误码（已启用 `1600-1699` 审计、`1700-1799` 告警）。
@@ -860,8 +869,8 @@ POST /api/v1/hosts/{hostId}/containers/list
 | **批量删除** | `POST /api/v1/hosts/{hostId}/images/batch-remove` | **0.1.0** | Body: `{ imageIds: string[], force? }`；响应为汇总结果，**部分成功也是 200**（容器侧同形状） |
 | 获取详情 | `POST /api/v1/hosts/{hostId}/images/inspect` | 0.0.10 | Body: `{ imageId }` |
 | **打标签** | `POST /api/v1/hosts/{hostId}/images/tag` | **0.3.0** | Body: `{ imageId, repository, tag? }` |
-| **构建镜像** | `POST /api/v1/hosts/{hostId}/images/build` | 0.4.0 | multipart: Dockerfile + context tar；通过 SignalR 临时频道推送进度（0.7.0 起） |
-| **Push 镜像** | `POST /api/v1/hosts/{hostId}/images/push` | 0.4.0 | Body: `{ imageId, registryId }` |
+| **构建镜像** | `POST /api/v1/hosts/{hostId}/images/build` | **0.4.0** | `multipart/form-data`：文件字段 `context`（tar 包，**必须带 filename**）+ 表单字段 `tag` / `dockerfile` / `buildArgs` / `labels` / `target` / `platform` / `noCache`；本版一次性返回（进度推送随 0.7.0 改 SignalR） |
+| **Push 镜像** | `POST /api/v1/hosts/{hostId}/images/push` | **0.4.0** | Body: `{ image, registryId?, platform? }`；`registryId` 省略时按镜像引用里的地址段自动匹配已登记的 Registry |
 | **清理** | `POST /api/v1/hosts/{hostId}/images/prune` | **0.6.0** | Body: `{ danglingOnly? }`；返回回收量；**不是** `system/prune` |
 
 #### 查询端点的请求 / 响应形态（0.0.10 已实现）
@@ -982,6 +991,86 @@ POST /api/v1/hosts/{hostId}/containers/list
 >
 > **`search` 按仓库名 / 标签模糊匹配**（不区分大小写）：在本地过滤，不走 Docker 的 `filters` 参数，
 > 因为那是精确匹配且需要按字段拼 JSON；镜像多了之后它只作用于已拉全量的内存切片，成本可忽略。
+
+#### 构建与推送的请求 / 响应形态（0.4.0 已实现）
+
+```jsonc
+// POST /api/v1/hosts/local/images/build
+// Content-Type: multipart/form-data
+//
+// 文件字段：context —— 构建上下文 tar 包
+//   ⚠️ 必须带 filename（如 curl -F "context=@context.tar"）：
+//      ASP.NET Core 靠 Content-Disposition 里的 filename 判断这一段是「文件」还是「普通表单字段」。
+//      不带 filename 时 tar 会被当成普通字段，而服务端报「context 字段是必填的」。
+//
+// 表单字段：
+//   tag        —— 构建产物的镜像引用（必填），如 myapp:v1
+//   dockerfile —— tar 包内的 Dockerfile 路径；省略为 Dockerfile
+//   buildArgs  —— 构建参数（ARG），以 JSON 对象的**字符串**传入：{"VERSION":"1.0"}
+//   labels     —— 镜像标签（LABEL），同上
+//   target     —— 多阶段构建的目标阶段（--target）
+//   platform   —— 目标平台，如 linux/amd64
+//   noCache    —— 是否不使用构建缓存
+//
+// Response.data
+{
+  "imageId": "sha256:3f2c…",
+  "reference": "myapp:v1",
+  "size": 187654321,
+  "repoTags": ["myapp:v1"],
+  "buildLog": ["Step 1/2 : FROM scratch", "Step 2/2 : COPY payload.txt /payload.txt", …]
+}
+```
+
+> **构建上下文只收已打包的 tar**：本版<b>不</b>接受多文件上传后由服务端打包——
+> 那要在服务端实现一套 tar 写入器并配套路径穿越防护（tar 条目名可含 `../`），
+> 而收益仅是界面少一步。用户 `tar -cf context.tar .` 一次比界面上的文件选择器更快。
+>
+> **构建失败只能从进度流里读出来**：与拉取同理，Docker 构建失败时 HTTP 层仍是 200，
+> 错误只在进度消息里。因此服务端必须检查进度流——不检查就会把「Dockerfile 语法错」
+> 报成「构建成功但什么也没产出」。
+> 但**请求阶段就失败**的情况（Dockerfile 不存在、语法错到无法解析、基础镜像拉不动）
+> 由 SDK 抛异常，此时翻译成 `1806`/500 而不是 `1402`——
+> 「构建失败」比「Docker API 调用失败」有用得多，后者会让人怀疑后端挂了。
+>
+> **构建日志回带在响应里**（`buildLog`，最多 500 行，只保留最后 500 行）：
+> 构建失败时 Docker 只给一行 `returned a non-zero code: 1`，真正的原因在上面几百行里。
+> 日志进响应而不是只进服务端日志，是因为排错的现场在用户手里。
+>
+> **`buildArgs` / `labels` 用 JSON 字符串传**而不是「同名字段重复出现」：
+> 后者还要处理同名多值到底取哪个。
+
+```jsonc
+// POST /api/v1/hosts/local/images/push
+// Request
+{ "image": "harbor.local:5000/myapp:v1", "registryId": null, "platform": null }
+// Response.data
+{
+  "imageId": "sha256:3f2c…",
+  "reference": "harbor.local:5000/myapp:v1",
+  "registryServerAddress": "harbor.local:5000",   // 实际推到了哪里
+  "authenticated": false,                          // 本次推送是否带了凭据
+  "pushLog": ["…"]
+}
+```
+
+> **推镜像必须带标签**：悬挂镜像（`<none>:<none>`）没有可推的名字，
+> 因此提前报 `1000`/400，而不是让守护进程回一句看不懂的 `refusing to push unqualified name`。
+>
+> **Registry 凭据怎么选**：显式给了 `registryId` 就用它（配置不存在报 `1800`/404）；
+> 否则从镜像引用里切出地址段（`harbor.local:5000/app:v1` → `harbor.local:5000`）自动匹配。
+> 两者都找不到就<b>匿名推</b>——公开仓库本来就不需要凭据，而对着私有仓库匿名推，
+> 报错会由守护进程给出（`1807`/500）。
+>
+> **地址段的判据与 Docker 一致**：只有「第一段含 <code>.</code> 或 <code>:</code>，
+> 或整段等于 <code>localhost</code>」才算 Registry 前缀。
+> 否则官方镜像的命名空间（`org/app`）会被误当成 Registry 主机——
+> 推镜像会因此去连一个不存在的主机。
+>
+> **`authenticated` 让人能分辨**「用的是我配的凭据」与「这仓库压根不需要凭据」。
+> 前者说明凭据配置生效了，后者说明可能配错地址了。
+>
+> **推送不影响本地镜像**：推成功后本地标签仍在。
 
 ---
 
@@ -1104,11 +1193,59 @@ POST /api/v1/hosts/{hostId}/containers/list
 
 ### Registry 管理（0.4.0）
 
+> **路径为 `/api/v1/admin/registries/*`**（全局作用域，与主机无关）。
+> 鉴权：读用 `registry.read`，写用 `registry.write`。
+> ⚠️ 旧的草案写法（`/api/v1/registry/list`）**未采用**——它与本项目「管理面端点一律在
+> `/api/v1/admin/` 下」的既有约定不一致（见 `admin/roles`、`admin/hosts`）。
+
 | 操作 | 路径 | 阶段 | 说明 |
 |------|------|------|------|
-| 获取列表 | `POST /api/v1/registry/list` | 0.4.0 | — |
-| 登录 | `POST /api/v1/registry/login` | 0.4.0 | Body: `{ name, url, username, password }`（凭据加密存储） |
-| 删除 | `POST /api/v1/registry/remove` | 0.4.0 | Body: `{ registryId }` |
+| 获取列表 | `POST /api/v1/admin/registries/list` | 0.4.0 | Body: `{ search? }`（按别名 / 地址模糊过滤）；**响应不含任何口令信息** |
+| 新增 | `POST /api/v1/admin/registries/add` | 0.4.0 | Body: `{ name, serverAddress, username?, password?, description? }`；口令加密后落库 |
+| 删除 | `POST /api/v1/admin/registries/remove` | 0.4.0 | Body: `{ id }`；软删除，同名 / 同址可再次使用 |
+| 测试连通性 | `POST /api/v1/admin/registries/test` | 0.4.0 | Body: `{ id? , serverAddress?, username?, password? }`；给了 `id` 则用已保存的凭据（自动解密） |
+
+```jsonc
+// POST /api/v1/admin/registries/list
+// Response.data
+[
+  {
+    "id": "3f2c…",
+    "name": "内网 Harbor",
+    "serverAddress": "harbor.local:5000",   // 规范化后：去协议、去路径、转小写
+    "username": "deploy-bot",
+    "hasCredentials": true,                 // 只有「有没有」，没有「是什么」
+    "description": "CI 用",
+    "createdAt": "2026-01-02T03:04:05+00:00",
+    "lastModifiedAt": null
+  }
+]
+```
+
+> **响应里绝不含口令，也不含密文**：连密文都不能给——抓到一次响应就等于拿到一把通用钥匙。
+> 界面要改口令时<b>重新输入</b>，不做「留空表示不修改」那套（那要求服务端能保留旧值，
+> 同样得把旧值读出来）。
+>
+> **口令在库里是密文**：AES-GCM（随机 nonce，每次加密结果不同），密钥在数据卷下的
+> `registry.key`（0600），与 JWT 密钥分开存——「泄漏 JWT 密钥」不等于「能解出口令」。
+> ⚠️ 恢复备份时**必须一并带上 `registry.key`**，否则已保存的口令全部无法解密
+> （表现为「认证失败」，但根因是密钥没了）。
+>
+> **地址规范化**：`https://Harbor.Local:5000/v2/` → `harbor.local:5000`。
+> 同一地址的各种写法必须收敛到<b>同一个</b>值——它同时用于存库、按地址查配置、
+> 拼镜像引用与传给 Docker 的 <c>AuthConfig.ServerAddress</c>，
+> 四处不一致会让守护进程拿 A 处的地址去请求 B 处的仓库（报出来的是权限错误而不是地址错误）。
+>
+> **别名与地址各占一个部分唯一索引**（`WHERE is_deleted = 0`）：
+> 同名会让管理界面出现两条分不清的记录；<b>同址更危险</b>——它会让「推镜像时用哪条凭据」
+> 变成随机行为。
+>
+> **`test` 用 `registry.write` 而不是 `registry.read`**：测试传的是<b>凭据</b>，
+> 能用凭据意味着能读出它。把这道门开给只读角色等于让对方把口令送到任意地址上去
+> （把地址改成自己的服务器就能截走）。
+>
+> **不可达与认证被拒是不同错误码**：`1805`/502（该查网络与防火墙）与 `1804`/400（该重填口令）。
+> 归成同一个码的话，用户只能靠猜。
 
 ### 资源权限管理（0.1.0 角色与作用域分配 / 0.12.0 容器粒度）
 

@@ -184,6 +184,7 @@ dotnet list src/Whalefleet.Application/Whalefleet.Application.csproj package
 | `HostGroup` | `Core/Hosts/HostGroup.cs` | `FullAuditedEntity<Guid, Guid>` | `name`（同上） | 名称 1–32 且无控制字符；**纯展示性**——不参与任何授权判定 |
 | `RefreshToken` | `Core/Auth/RefreshToken.cs` | `CreationAuditedEntity<Guid, Guid>` | `token_hash` 唯一 | 只存哈希（非原文）；归属用户非空；`IsActiveAt` = 未撤销且未过期 |
 | `UserRoleAssignment` | `Core/Permissions/UserRoleAssignment.cs` | `FullAuditedEntity<Guid, Guid>` | `(user_id, role_id, COALESCE(host_id, ''))` 部分唯一索引（`WHERE is_deleted = 0`） | 用户与角色主键非空；`host_id` 为 `NULL` 即**全局分配**，非空即仅在该主机上生效（`AppliesTo`）；撤销走软删除，因此同一组合可重新分配 |
+| `RegistryCredential` | `Core/Registries/RegistryCredential.cs` | `FullAuditedEntity<Guid, Guid>` | 别名与服务地址各占一个部分唯一索引（`WHERE is_deleted = 0`） | **只存口令密文**（实体里永远没有明文）；账号与口令必须成对；地址经 `RegistryServerAddress` 规范化 |
 
 > **0.1.0 已落地权限目录、`role_permissions` 与 `user_role_assignments`**（迁移 `0006_rbac.sql`、仓储、DI
 > 与角色 / 分配管理端点）。权限目录是**静态封闭集**（`Core/Permissions/Permission.cs` 里的 `Permission` 常量与
@@ -197,7 +198,16 @@ dotnet list src/Whalefleet.Application/Whalefleet.Application.csproj package
 > 三者分立，因此「新建一个角色」不会隐式带来任何授权。
 
 **值对象**：`HostEndpoint`（端点原文，不可变、按值相等）、`HostCredentials`（认证方式 + 不透明 JSON 载荷，
-`ToString()` 只输出认证方式、**不泄漏载荷**）。
+`ToString()` 只输出认证方式、**不泄漏载荷**）、`RegistryServerAddress`（Registry 地址的规范化形态）。
+
+> **`RegistryServerAddress` 为什么是值对象**（0.4.0）：同一个地址会出现在**四个**地方——
+> 存库的 `server_address` 列、推镜像时拼出的镜像引用、传给 Docker 的
+> `AuthConfig.ServerAddress`、以及按地址查配置时的查询条件。
+> 四处必须**逐字一致**，否则守护进程会拿 A 处的地址去请求 B 处的仓库，
+> 报出来的是权限错误而不是地址错误。规范化只发生在一个地方，这就不可能漂移。
+> 规范化做什么：去协议前缀、去路径、转小写、拆出主机与端口；
+> **刻意不**补协议、不补 <code>/v2/</code>——Docker 要的就是裸的 <code>host:port</code>。
+> IPv6 必须加方括号（<code>[::1]:5000</code>），与 Docker 的要求一致。
 
 **枚举归属**：`DockerHostType`、`DockerHostAuthKind` 定义在 `Core/Hosts`——它们同时是 `Core` 的实体与
 `Application` 的连接描述（`DockerHostConnection` / `IDockerClientFactory`）的取值域；放最内层可避免
@@ -227,6 +237,13 @@ dotnet list src/Whalefleet.Application/Whalefleet.Application.csproj package
 | `operator` | 运维 | `host.read` + `container` / `image` / `network` / `volume` 的 `read` + `write`（主机域） | |
 | `viewer` | 只读 | `host.read` + `container` / `image` / `network` / `volume` 的 `read`（主机域） | |
 | `auditor` | 审计 | 同 `viewer`，另加 `audit.read`（审计能力排在 1.0.0 之后） | ✅ |
+
+> **0.4.0 新增两个 Global 权限**：`registry.read` / `registry.write`。
+> 它们**只给 admin**——Registry 配置与主机无关（同一个 Harbor，推到哪台机器都用它），
+> 因此是全局权限；而把它们给 `operator` / `viewer` / `auditor` 等于把
+> 「管理私有仓库凭据」下放给主机级运维，那是一次静默提权。
+> 内置角色的权限集被锁死，因此新增权限必须**改迁移**（`0007_registries.sql`）
+> 而不是运行时补——这正是「权限目录是编译期事实」这一设计的代价与好处。
 
 **角色携带权限，分配携带作用域**：角色回答的是「能做什么」（一组权限 + 一个可复用的名字），
 而「在哪台主机上生效」由 `user_role_assignments`（`host_id` 可空）承担。两者分立，因此不会出现
