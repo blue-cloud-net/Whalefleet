@@ -31,6 +31,10 @@
     <!-- 健康检查（0.0.15）：Infrastructure 注册 SqliteHealthCheck，Api 侧 /healthz 消费。
          选它而非 Abstractions：只有本包提供 AddCheck(name)，而命名是 /healthz 能查到该检查项的前提。 -->
     <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.12" />
+    <!-- IHttpClientFactory（0.4.0）：Registry 连通性探测需要发 HTTPS 请求。
+         选它而非自建 HttpClient：连接池与 DNS 刷新都由工厂托管，
+         否则长时间运行的实例会因 DNS 变更而持续连到旧地址。 -->
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.12" />
     <!-- ============ Serilog（日志） ============ -->
     <PackageVersion Include="Serilog" Version="4.4.0" />
     <PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />
