@@ -34,7 +34,7 @@
 # 而容器内 app 用户是 10001。jwt.key 是 0600，于是 app 读不到它 → 启动直接失败：
 #   Permission denied / unable to open database file
 # 恢复后必须改回属主（或直接在容器内 cp，容器内 cp 会落到 app 用户）：
-#   docker exec -u 0 whalefleet chown 10001:10001 /app/data/jwt.key /app/data/whalefleet.db
+#   docker exec -u 0 whalefleet chown 10001:10001 /app/data/jwt.key /app/data/registry.key /app/data/whalefleet.db
 #
 # ## 用法
 #   # 容器内执行（推荐：镜像已含 sqlite3）
@@ -64,6 +64,11 @@ BACKUP_DIR="${WHALEFLEET_BACKUP_DIR:-/app/data/backups}"
 # JWT 签名密钥。它与数据库同目录，但**不是**数据库文件，因此不能靠 .backup 带出。
 # 路径由 DB_PATH 推导，保证两者永远在同一目录。
 JWT_SECRET_PATH="${WHALEFLEET_JWT_SECRET:-$(dirname "${DB_PATH}")/jwt.key}"
+# Registry 口令加密密钥（0.4.0）。与 jwt.key 同理：它与数据库同目录，
+# 但**不是**数据库文件，因此不能靠 .backup 带出。
+# ⚠️ 漏掉它的后果：已保存的 Registry 口令全部无法解密（表现为「认证失败」，
+#    但根因是密钥没了）。
+REGISTRY_KEY_PATH="${WHALEFLEET_REGISTRY_KEY:-$(dirname "${DB_PATH}")/registry.key}"
 # 保留最近多少份。备份的意义在于「出事后手边有东西」，
 # 留 14 份 ≈ 两周的每日备份；再多通常只是占满磁盘。
 KEEP="${WHALEFLEET_BACKUP_KEEP:-14}"
@@ -136,6 +141,21 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Registry 口令加密密钥（0.4.0）
+# ---------------------------------------------------------------------------
+# 与 jwt.key 同理，但丢失的后果不同：jwt.key 丢了 = 全员被登出（且有报错），
+# registry.key 丢了 = 已保存的 Registry 口令无法解密（表现为「认证失败」，
+# 很容易被误当成「口令写错了」而反复重填）。因此它同样必须随备份一起带走。
+if [[ -f "${REGISTRY_KEY_PATH}" ]]; then
+  cp -p "${REGISTRY_KEY_PATH}" "${BACKUP_FILE}.registry.key"
+  chmod 600 "${BACKUP_FILE}.registry.key"
+  log "已备份 Registry 加密密钥 ${BACKUP_FILE}.registry.key"
+else
+  # 尚未配置过任何 Registry 时本就没有该文件，不是错误。
+  log "未找到 ${REGISTRY_KEY_PATH}，跳过（尚未配置 Registry 时本就没有该文件）"
+fi
+
+# ---------------------------------------------------------------------------
 # 轮转清理
 # ---------------------------------------------------------------------------
 # 用「按文件名排序」而非 mtime：文件名含时间戳，排序结果与时间一致，
@@ -146,6 +166,7 @@ for (( i=KEEP; i<${#OLD[@]}; i++ )); do
   rm -f "${OLD[i]}"
   # 密钥副本与数据库快照同名对应，必须一起清，否则会残留一批无主密钥。
   rm -f "${OLD[i]}.jwt.key"
+  rm -f "${OLD[i]}.registry.key"
   REMOVED=$((REMOVED + 1))
 done
 [[ ${REMOVED} -gt 0 ]] && log "已清理 ${REMOVED} 份旧备份（保留最近 ${KEEP} 份）"
