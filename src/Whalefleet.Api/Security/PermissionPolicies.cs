@@ -28,6 +28,12 @@ public static class PermissionPolicies
     /// <summary>新增 / 删除 / 分组主机（<c>host.manage</c>）。</summary>
     public const string HostsManage = "perm.host.manage";
 
+    /// <summary>查看 Registry 配置（<c>registry.read</c>；<b>不含口令</b>）。</summary>
+    public const string RegistriesRead = "perm.registry.read";
+
+    /// <summary>增删改 Registry 配置与凭据（<c>registry.write</c>）。</summary>
+    public const string RegistriesWrite = "perm.registry.write";
+
     /// <summary>查看操作审计（<c>audit.read</c>；审计能力排在 1.0.0 之后）。</summary>
     public const string AuditRead = "perm.audit.read";
 }

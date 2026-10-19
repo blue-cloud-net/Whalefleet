@@ -2,6 +2,7 @@ using Whalefleet.Application.Common;
 using Whalefleet.Application.Images;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Http.Features;
 
 namespace Whalefleet.Api.Controllers;
 
@@ -22,17 +23,21 @@ namespace Whalefleet.Api.Controllers;
 public sealed class ImagesController : ControllerBase
 {
     private readonly ImageService _images;
+    private readonly ImageBuildPushService _buildPush;
 
     /// <summary>
     /// 初始化镜像控制器。
     /// </summary>
     /// <param name="images">镜像用例。</param>
-    /// <exception cref="ArgumentNullException"><paramref name="images"/> 为 <see langword="null"/>。</exception>
-    public ImagesController(ImageService images)
+    /// <param name="buildPush">镜像构建与推送用例（0.4.0）。</param>
+    /// <exception cref="ArgumentNullException">任一参数为 <see langword="null"/>。</exception>
+    public ImagesController(ImageService images, ImageBuildPushService buildPush)
     {
         ArgumentNullException.ThrowIfNull(images);
+        ArgumentNullException.ThrowIfNull(buildPush);
 
         _images = images;
+        _buildPush = buildPush;
     }
 
     /// <summary>
@@ -183,6 +188,95 @@ public sealed class ImagesController : ControllerBase
         CancellationToken cancellationToken)
     {
         var result = await _images.BatchRemoveAsync(hostId, request, cancellationToken).ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok(result));
+    }
+
+    /// <summary>
+    /// 从上传的构建上下文构建镜像（<b>multipart/form-data</b>，一次性等待完成）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="context">构建上下文 tar 包（<c>tar -cf context.tar .</c> 的产物）。</param>
+    /// <param name="request">构建参数（标签、Dockerfile 路径、构建参数等）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应，<c>data</c> 为镜像 ID、引用、大小与构建日志。</returns>
+    /// <response code="200">构建成功。</response>
+    /// <response code="400">字段非法（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机不存在（<c>1300</c>）。</response>
+    /// <response code="413">构建上下文超过上限。</response>
+    /// <response code="500">构建失败（<c>1806</c>，消息与 <c>buildLog</c> 带守护进程给的原因）。</response>
+    /// <response code="502">主机不可达（<c>1301</c>）。</response>
+    /// <remarks>
+    /// <para><b>为什么是 multipart 而不是 JSON</b>：构建上下文是二进制 tar，
+    /// JSON 装不下。表单里的其余字段仍走 <c>[FromForm]</c> 绑定，
+    /// 前端用 <c>FormData</c> 一次提交即可。</para>
+    /// <para><b>大小上限</b>：<c>FormOptions.MultipartBodyLengthLimit</c> 默认 128 MB，
+    /// 本端点刻意<b>不</b>调高——「上传一个 1 GB 的构建上下文」在浏览器场景里几乎总是误操作，
+    /// 而守护进程侧的长构建另有时限问题（见 roadmap 的 SignalR 计划）。</para>
+    /// </remarks>
+    [HttpPost("build")]
+    [Consumes("multipart/form-data")]
+    [ProducesResponseType(typeof(ApiResult<ImageBuildResult>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status500InternalServerError)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> BuildAsync(
+        string hostId,
+        IFormFile context,
+        [FromForm] BuildImageForm request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(request);
+
+        await using var stream = context.OpenReadStream();
+
+        var result = await _buildPush.BuildAsync(
+            hostId,
+            request.ToRequest(context.Length, stream),
+            cancellationToken).ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok(result));
+    }
+
+    /// <summary>
+    /// 把本地镜像推送到 Registry。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">推送请求（镜像标识、可选 Registry 配置主键）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应，<c>data</c> 为推送结果（含目标地址与是否带凭据）。</returns>
+    /// <response code="200">推送成功。</response>
+    /// <response code="400">
+    /// 镜像标识为空或无标签（<c>1000</c>），或 Registry 凭据被拒（<c>1804</c>）。
+    /// </response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机（<c>1300</c>）、镜像（<c>1401</c>）或 Registry 配置（<c>1800</c>）不存在。</response>
+    /// <response code="500">推送失败（<c>1807</c>，消息与 <c>pushLog</c> 带守护进程给的原因）。</response>
+    /// <response code="502">主机不可达（<c>1301</c>）。</response>
+    /// <remarks>
+    /// <b>与 build 一样一次性返回</b>：实时进度推送随 0.7.0 的 SignalR 一起改。
+    /// </remarks>
+    [HttpPost("push")]
+    [ProducesResponseType(typeof(ApiResult<ImagePushResult>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status500InternalServerError)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> PushAsync(
+        string hostId,
+        [FromBody] PushImageRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _buildPush.PushAsync(hostId, request, cancellationToken).ConfigureAwait(false);
 
         return this.Ok(ApiResults.Ok(result));
     }

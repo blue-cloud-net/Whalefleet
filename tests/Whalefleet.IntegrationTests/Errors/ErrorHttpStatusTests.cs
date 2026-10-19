@@ -63,6 +63,15 @@ public class ErrorHttpStatusTests
         [ErrorCodes.PermissionUnknown] = 400,
         [ErrorCodes.RoleAssignmentNotFound] = 404,
 
+        [ErrorCodes.RegistryNotFound] = 404,
+        [ErrorCodes.RegistryNameAlreadyExists] = 400,
+        [ErrorCodes.RegistryAddressAlreadyExists] = 400,
+        [ErrorCodes.RegistryCredentialMissing] = 400,
+        [ErrorCodes.RegistryAuthFailed] = 400,
+        [ErrorCodes.RegistryUnreachable] = 502,
+        [ErrorCodes.ImageBuildFailed] = 500,
+        [ErrorCodes.ImagePushFailed] = 500,
+
         [ErrorCodes.InternalError] = 500,
     };
 
