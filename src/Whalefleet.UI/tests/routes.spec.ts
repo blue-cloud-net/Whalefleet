@@ -47,6 +47,19 @@ describe('路由表', () => {
     expect(settings?.meta?.scope).toBe('global')
   })
 
+  it('settings 自成一组，且不是 admin 限定项', () => {
+    const settings = children().find((r) => r.name === 'settings')
+    expect(settings?.meta?.group).toBe('settings')
+    // 非 admin 也得能改外观与偏好 —— 这一项若标了 requiresAdmin，
+    // 普通用户看到的侧边栏将只剩「总览」，且没有任何分组标题。
+    expect(settings?.meta?.requiresAdmin).toBeUndefined()
+  })
+
+  it('settings 声明在管理组之后（侧边栏顺序直接取路由表声明顺序）', () => {
+    const names = children().filter((r) => r.meta?.scope !== 'host').map((r) => r.name)
+    expect(names.indexOf('settings')).toBeGreaterThan(names.indexOf('roles'))
+  })
+
   it('主机作用域：7 个资源路由均为 scope=host 且路径带 :hostId', () => {
     const hostRoutes = [
       'host-status',
