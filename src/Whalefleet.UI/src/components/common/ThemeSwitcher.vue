@@ -1,75 +1,47 @@
 <script setup lang="ts">
-import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTheme } from '@/composables/useTheme'
-import type { ThemeColor, ThemeMode } from '@/stores/theme'
+import { themeModeIcon, nextThemeMode } from '@/utils/theme-mode'
+
+/**
+ * 顶栏主题切换：**只管明暗**，单按钮轮转（亮色 → 暗色 → 跟随系统）。
+ *
+ * **为什么不是下拉**：早先它是个下拉（开菜单 → 看三个图标 → 点一个 → 关菜单），
+ * 而顶栏控件的实际用法是「我想快速翻一下明暗」——轮转把四步压成一步。
+ * 真正需要精确指定的人走设置页，那里是单选按钮组（`SettingsView`）。
+ *
+ * **为什么主题色（蓝/绿/紫）从顶栏移除**：品牌色是产品级决定，不该让每个用户在顶栏随手改。
+ * 主题色本身没有删 —— 设置页与登录页仍可调，这里只是不再重复入口。
+ *
+ * 图标表达的是**当前**模式，不是「下一个会变成什么」：后者会让用户在切换之后
+ * 才发现自己的预期错了（点了太阳结果变月亮，图标早就在告诉他「点了变暗」）。
+ * i18n key 同样按当前模式渲染（鼠标悬停看到的是「暗色」而不是「跟随系统」）。
+ * 轮转逻辑放在 `utils/theme-mode.ts`（纯函数，可单测），本文件只管渲染与点击。
+ */
 
 const { t } = useI18n()
-const { mode, color, setMode, setColor } = useTheme()
+const { mode, setMode } = useTheme()
 
-const MODES: { value: ThemeMode; icon: string }[] = [
-  { value: 'light', icon: 'i-carbon-sun' },
-  { value: 'dark', icon: 'i-carbon-moon' },
-  { value: 'system', icon: 'i-carbon-asleep' }
-]
-
-const COLORS: { value: ThemeColor; dot: string }[] = [
-  { value: 'blue', dot: 'bg-[rgb(64_158_255)]' },
-  { value: 'green', dot: 'bg-[rgb(46_156_86)]' },
-  { value: 'purple', dot: 'bg-[rgb(122_64_184)]' }
-]
-
-const modeIcon = computed(() => MODES.find((m) => m.value === mode.value)?.icon ?? 'i-carbon-sun')
-const activeDot = computed(() => COLORS.find((c) => c.value === color.value)?.dot ?? COLORS[0].dot)
+function cycle() {
+  setMode(nextThemeMode(mode.value))
+}
 </script>
 
 <template>
-  <div class="flex items-center gap-0.5">
-    <!-- 模式切换 -->
-    <el-dropdown trigger="click">
-      <el-button text class="!px-2" :title="t('theme.mode')" :aria-label="t('theme.mode')">
-        <span class="text-lg" :class="modeIcon" />
-      </el-button>
-      <template #dropdown>
-        <el-dropdown-menu>
-          <el-dropdown-item
-            v-for="m in MODES"
-            :key="m.value"
-            :class="{ 'text-brand-600 dark:text-brand-400 font-medium': m.value === mode }"
-            @click="setMode(m.value)"
-          >
-            <span class="flex items-center gap-2.5">
-              <span class="text-base" :class="m.icon" />
-              <span>{{ t(`theme.mode.${m.value}`) }}</span>
-              <span v-if="m.value === mode" class="i-carbon-checkmark text-sm ml-auto text-brand-500" />
-            </span>
-          </el-dropdown-item>
-        </el-dropdown-menu>
-      </template>
-    </el-dropdown>
-
-    <!-- 主题色 -->
-    <el-dropdown trigger="click">
-      <el-button text class="!px-2" :title="t('theme.color')" :aria-label="t('theme.color')">
-        <span
-          class="w-4 h-4 rounded-full ring-2 ring-offset-2 ring-offset-surface-card transition-all duration-200"
-          :class="[activeDot, `ring-current/25`]"
-        />
-      </el-button>
-      <template #dropdown>
-        <el-dropdown-menu>
-          <el-dropdown-item v-for="c in COLORS" :key="c.value" @click="setColor(c.value)">
-            <span class="flex items-center gap-2.5">
-              <span class="w-3.5 h-3.5 rounded-full shrink-0" :class="c.dot" />
-              <span>{{ t(`theme.color.${c.value}`) }}</span>
-              <span
-                v-if="c.value === color"
-                class="i-carbon-checkmark text-sm ml-auto text-brand-500"
-              />
-            </span>
-          </el-dropdown-item>
-        </el-dropdown-menu>
-      </template>
-    </el-dropdown>
-  </div>
+  <!--
+    方形图标按钮：显式给 `w-8 h-8` 而不是只写 `text`。
+    `el-button text` 靠自身 padding 撑开，图标元素多宽按钮就多宽（这里会成一个偏方的胖块），
+    而顶栏里它左右紧挨着主机选择器与用户头像 —— 宽度不齐时这一排控件的视觉节奏会被打乱。
+    `rounded-md` 与相邻的 HostSelector / UserMenu 按钮一致，悬停底色才对得上。
+  -->
+  <el-tooltip :content="t(`theme.mode.${mode}`)" placement="bottom">
+    <el-button
+      text
+      class="!w-8 !h-8 !p-0 rounded-md"
+      :aria-label="t('theme.mode')"
+      @click="cycle"
+    >
+      <span class="text-lg leading-none" :class="themeModeIcon(mode)" />
+    </el-button>
+  </el-tooltip>
 </template>
