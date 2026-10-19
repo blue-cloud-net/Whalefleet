@@ -4,8 +4,10 @@ using Whalefleet.Application.Containers;
 using Whalefleet.Application.HostGroups;
 using Whalefleet.Application.Hosts;
 using Whalefleet.Application.Images;
+using Whalefleet.Application.Networks;
 using Whalefleet.Application.Permissions;
 using Whalefleet.Application.Users;
+using Whalefleet.Application.Volumes;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -62,6 +64,13 @@ public static class ApplicationServiceCollectionExtensions
 
         // 角色分配用例（0.1.0）。Scoped：依赖 Scoped 的分配 / 角色 / 用户 / 主机仓储。
         services.AddScoped<RoleAssignmentService>();
+
+        // 数据卷用例（0.2.0）。Scoped：与镜像同构，只依赖 Scoped 的主机访问器，
+        // Docker 客户端本身的复用由 Singleton 的客户端池负责。
+        services.AddScoped<VolumeService>();
+
+        // 网络用例（0.2.0）。Scoped：同上。
+        services.AddScoped<NetworkService>();
 
         return services;
     }
