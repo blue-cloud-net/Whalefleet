@@ -185,6 +185,12 @@ DDD 战术模式（聚合根 / 领域事件 / 领域服务）**已整体移除**
 | 23 | **`.dockerignore` 里的 `**/data` 会吃掉前端源码** | `src/Whalefleet.UI/src/mocks/data/` 是 mock 场景源码，被排除后构建以 `Could not resolve "./data/hosts"` 收场，且**无任何提示指向 .dockerignore**。运行期数据目录只能写 `/data`（仅仓库根） |
 | 24 | **`jwt.key` 必须随数据库一起备份** | 恢复备份时若漏掉它，程序会生成新密钥 → 旧令牌全废、所有在线用户被静默登出，**无任何报错**。`scripts/backup.sh` 已把密钥拷成 `<备份名>.db.jwt.key`；修改该脚本时别把这个附带拷贝漏了 |
 | 25 | **密码永不进日志** | 自动生成的初始管理员密码只写在 `/app/data/initial-admin.txt`。日志会被采集器上报到集中式系统，打印密码等于把它扩散出去。`AdminBootstrapperTests` 有一条用例专门拦这个 |
+| 26 | **`Volumes.RemoveAsync` 会忽略 `force` 参数** | `Docker.DotNet.Enhanced` 4.3.3 实测：两次调用的 HTTP 请求行完全一样（查询串里**没有** `?force=`），而守护进程带该参数时返回 204 而非 404。透传等于没传——`VolumeService` 的幂等语义只能自己实现（先 inspect，不存在就当已删；**只吞 404**，否则主机不可达会被静默当成「删干净了」） |
+| 27 | **卷的 `force` 删不掉被引用的卷** | 只要还有容器挂着该卷，守护进程就拒绝，带不带 `force` 都一样（容器运行或已停止都一样）。`force` 唯一的作用是让「卷不存在」变成成功。把字段文档写成「强制删除」会让人以为能删、点了却没反应 |
+| 28 | **`GET /networks` 不返回 `Containers`**，只有 `/networks/{id}` 返回 | 列表里的「容器数」只能恒为 0。宁可不给这个字段——界面上「0 个容器」会被读成「这个网络没在用」，而它可能正承载着几十个容器 |
+| 29 | **网络 ID 没有 `sha256:` 前缀**（镜像 ID 才有） | `/networks` 返回裸的 64 位十六进制。照搬镜像的剥前缀逻辑会得到一个错 ID，表现为 404，且极难联想到是前缀问题 |
+| 30 | **Docker 26 把内置网络 `null` 改名成 `none`** | 保护名单两个都要收，旧守护进程上才拦得住。测试的 `InlineData` 只列本机真实存在的，否则拿到的是 404 而不是要验的 1404 |
+| 31 | **未启动的容器不出现在 `GET /networks/{id}` 的 `Containers` 里** | `docker create` 后、`docker start` 前是 0 个。exec 同理要求容器**运行中**（对已创建的容器回 409）。写集成测试时漏掉 start，会看到一个与被测行为无关的「0 个容器」 |
 
 > **Dapper 物化能力（已核实，勿再沿用旧判断）**：Dapper **可以**物化「非公开构造 + 非公开 setter」
 > 的充血实体，用 `skipVisibility` 动态方法。**不需要** Row DTO，**不需要** `InternalsVisibleTo`。

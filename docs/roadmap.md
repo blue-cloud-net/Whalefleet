@@ -76,7 +76,7 @@
 |------|------|:---:|------|
 | `0.0.1` – `0.0.15` | 项目骨架到部署底座 | ✅ | 15 个迭代全部完成，交付内容见 CHANGELOG |
 | `0.1.0` | 授权基座与 MVP 收口 | 🚧 | 授权重写为带作用域的 User → Role → Permission（进行中）；批量删除 / socket-proxy / 反代示例已完成 |
-| `0.2.0` | Volume 与 Network | ⬜ | 两类资源的 CRUD + 详情 |
+| `0.2.0` | Volume 与 Network | ✅ | 两类资源的 CRUD + 详情；列表不分页（归 0.16.0） |
 | `0.3.0` | 容器与镜像基础操作 | ⬜ | rename / update / duplicate、镜像 tag、高级创建参数、运行时挂卷 |
 | `0.4.0` | 镜像构建与私有 Registry | ⬜ | 构建 + 凭据存储 + login + push |
 | `0.5.0` | Compose / Stack 基础功能 | ⬜ | 列表 / 部署 / 更新 / 停止 / 删除 / 服务列表 |
@@ -184,17 +184,40 @@
 
 ---
 
-### 0.2.0 ⬜ — Volume 与 Network
+### 0.2.0 ✅ — Volume 与 Network
 
 **目标**：把 Docker 主要资源类型管理补齐。
 
-- Volume API：`POST /api/v1/hosts/{hostId}/volumes/{list,create,remove,batch-remove,inspect}`
-- Network API：`POST /api/v1/hosts/{hostId}/networks/{list,create,remove,inspect}`
-- 前端：两个侧边栏占位页转正（列表 / 创建 / 详情）
-- 容器创建表单接入卷与网络选择
+- ✅ **Volume API**：`POST /api/v1/hosts/{hostId}/volumes/{list,create,remove,batch-remove,inspect}`
+- ✅ **Network API**：`POST /api/v1/hosts/{hostId}/networks/{list,create,remove,inspect}`
+- ✅ 前端：两个侧边栏占位页转正（列表 / 创建 / 详情）
+- ✅ 容器创建表单接入卷与网络选择
 
 **验收**：创建具名卷并挂进容器后能读到内容；创建自定义网络并把容器接入；
 两个占位页不再是预告文案。
+
+**落地记录**：
+
+1. **列表不分页**（与容器 / 镜像不同）：单台主机上的卷与网络数量少、条目也小，
+   而分页与筛选是四类资源**统一**的改动（`0.16.0`）。提前做一半只会让接口返工，
+   前端也要为一套半成品接口适配两次。
+2. **卷的 `force` 不是「强制删除」**（实测）：只要还有容器挂着该卷，
+   守护进程就拒绝，**带不带 `force` 都一样**。`force` 唯一的作用是让
+   「卷不存在」变成成功（幂等）。因此二次确认里说的是「先删掉使用它的容器」，
+   而不是提供���个按了也没用的开关。
+3. **`Docker.DotNet.Enhanced` 的 `Volumes.RemoveAsync` 会忽略 `force` 参数**——
+   实测两次调用的 HTTP 请求行完全一样（查询串里没有 `?force=`），
+   而守护进程在带该参数时返回 204 而非 404。幂等语义只能在应用层自己实现。
+4. **网络列表没有「容器数」**：Docker 的 `GET /networks` 不返回 `Containers`，
+   只有详情接口返回。补一个恒为 0 的字段会把正在用的网络显示成「0 个容器」，
+   因此服务端与 mock 都不给这个字段。
+5. **内置网络是 `bridge` / `host` / `none`**：Docker 26 把 `null` 改名成 `none`，
+   保护名单两个都收，旧守护进程上才拦得住。
+6. **网段格式校验在本层挡**：守护进程对格式错误回 400，经翻译层归成 `1402`/500——
+   「自己填的网段打错一个字符」会显示成服务端故障。在本层挡下则是 `1000`/400，
+   且界面能把提示落到对应输入框。
+7. **同名建卷成功 / 同名建网 409**：方向相反，是 Docker 本身的差异。
+   mock 与集成测试都把这对差异钉死，避免后端改动时被「统一」掉。
 
 > **资源级 prune 不在本迭代**，归 `0.6.0`（批量操作与资源清理）——本迭代只交付「增删查改」。
 
