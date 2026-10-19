@@ -92,6 +92,23 @@ export const ErrorCode = {
   /** 角色分配不存在 → 404 */
   RoleAssignmentNotFound: 1515,
 
+  /** Registry 配置不存在 → 404 */
+  RegistryNotFound: 1800,
+  /** Registry 别名已被占用 → 400 */
+  RegistryNameAlreadyExists: 1801,
+  /** Registry 服务地址已被占用 → 400 */
+  RegistryAddressAlreadyExists: 1802,
+  /** 未登记该地址的 Registry 凭据 → 400 */
+  RegistryCredentialMissing: 1803,
+  /** Registry 拒绝了该凭据 → 400 */
+  RegistryAuthFailed: 1804,
+  /** Registry 不可达 → 502 */
+  RegistryUnreachable: 1805,
+  /** 镜像构建失败 → 500 */
+  ImageBuildFailed: 1806,
+  /** 镜像推送失败 → 500 */
+  ImagePushFailed: 1807,
+
   /** 服务器内部错误 → 500 */
   InternalError: 9999
 } as const
@@ -147,6 +164,15 @@ export const ERROR_HTTP_STATUS: Record<number, number> = {
   [ErrorCode.PermissionUnknown]: 400,
   [ErrorCode.RoleAssignmentNotFound]: 404,
 
+  [ErrorCode.RegistryNotFound]: 404,
+  [ErrorCode.RegistryNameAlreadyExists]: 400,
+  [ErrorCode.RegistryAddressAlreadyExists]: 400,
+  [ErrorCode.RegistryCredentialMissing]: 400,
+  [ErrorCode.RegistryAuthFailed]: 400,
+  [ErrorCode.RegistryUnreachable]: 502,
+  [ErrorCode.ImageBuildFailed]: 500,
+  [ErrorCode.ImagePushFailed]: 500,
+
   [ErrorCode.InternalError]: 500
 }
 
@@ -192,6 +218,15 @@ export const ERROR_MESSAGES: Record<number, string> = {
   [ErrorCode.RoleProtected]: '内置角色不可修改或删除',
   [ErrorCode.PermissionUnknown]: '未知的权限标识',
   [ErrorCode.RoleAssignmentNotFound]: '角色分配不存在',
+
+  [ErrorCode.RegistryNotFound]: 'Registry 配置不存在',
+  [ErrorCode.RegistryNameAlreadyExists]: 'Registry 别名已被占用',
+  [ErrorCode.RegistryAddressAlreadyExists]: 'Registry 地址已被占用',
+  [ErrorCode.RegistryCredentialMissing]: '未登记该地址的 Registry 凭据',
+  [ErrorCode.RegistryAuthFailed]: 'Registry 拒绝了该凭据',
+  [ErrorCode.RegistryUnreachable]: 'Registry 不可达',
+  [ErrorCode.ImageBuildFailed]: '镜像构建失败',
+  [ErrorCode.ImagePushFailed]: '镜像推送失败',
 
   [ErrorCode.InternalError]: '服务器内部错误'
 }

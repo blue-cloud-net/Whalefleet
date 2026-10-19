@@ -105,6 +105,24 @@ export const ErrorCode = {
   /** 角色分配不存在 */
   RoleAssignmentNotFound: 1515,
 
+  // ===== 1800-1899 Registry 与镜像构建 / 推送 =====
+  /** Registry 配置不存在 */
+  RegistryNotFound: 1800,
+  /** Registry 别名已被占用 */
+  RegistryNameAlreadyExists: 1801,
+  /** Registry 服务地址已被占用 */
+  RegistryAddressAlreadyExists: 1802,
+  /** 未登记该地址的 Registry 凭据 */
+  RegistryCredentialMissing: 1803,
+  /** Registry 拒绝了该凭据 */
+  RegistryAuthFailed: 1804,
+  /** Registry 不可达 */
+  RegistryUnreachable: 1805,
+  /** 镜像构建失败 */
+  ImageBuildFailed: 1806,
+  /** 镜像推送失败 */
+  ImagePushFailed: 1807,
+
   // ===== 9000-9999 服务器内部错误 =====
   /** 服务器内部错误（未捕获异常） */
   InternalError: 9999
