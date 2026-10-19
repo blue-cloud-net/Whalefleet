@@ -497,6 +497,124 @@ export interface BatchOperationResult {
 }
 
 /* ==================================================================
+ * 数据卷与网络（0.2.0）
+ * ================================================================== */
+
+/**
+ * 数据卷列表项（对应后端 `VolumeSummary`）。
+ *
+ * ⚠️ **`size` 与 `refCount` 可能是 0，且 0 不代表「空卷」**——这两个值来自守护进程的
+ * `UsageData`，只在 Docker API 1.42+ 的列表接口里出现。老守护进程根本不返回该字段，
+ * 反序列化后同样是 0。界面应把 0 显示成「—」而不是「0 B」。
+ */
+export interface VolumeSummary {
+  name: string
+  driver: string
+  /** 宿主机挂载路径；仅 `local` 驱动有值 */
+  mountpoint: string
+  scope: string
+  /** ISO 8601；守护进程未提供时为 `null` */
+  created: string | null
+  /** 字节；守护进程未提供用量时为 0（含义不明，见上） */
+  size: number
+  /** 引用它的容器数；守护进程未提供时为 0（含义不明，见上） */
+  refCount: number
+  labels: Record<string, string>
+}
+
+/**
+ * 数据卷列表结果。
+ *
+ * ⚠️ **`warnings` 必须单独处理**：守护进程会在响应里给出「某卷的驱动没装」之类的告警。
+ * 只看 `items` 会让这些告警静默丢失，用户看到的列表就是「少了几个卷」却不知道为什么。
+ */
+export interface VolumeListResult {
+  items: VolumeSummary[]
+  warnings: string[]
+}
+
+/**
+ * 数据卷详情（对应后端 `VolumeDetail`）。
+ *
+ * ⚠️ **刻意没有 `size` / `refCount`**：inspect 响应里没有用量信息（那来自列表接口），
+ * 后端不会塞两个恒为 0 的字段进来伪造精度。详情页要显示用量得回到列表数据。
+ */
+export interface VolumeDetail {
+  name: string
+  driver: string
+  mountpoint: string
+  scope: string
+  created: string | null
+  /** 驱动选项（如 `local` 的 `device` / `o=bind`）；详情页的主要价值所在 */
+  options: Record<string, string>
+  labels: Record<string, string>
+}
+
+/**
+ * 网络列表项（对应后端 `NetworkSummary`）。
+ *
+ * ⚠️ **没有「容器数」字段，这是刻意的**：Docker 的列表接口不返回 `Containers`
+ * （只有详情接口返回，已实测），补一个进去必然恒为 0，
+ * 而界面上「0 个容器」会被读成「这个网络没在用」——可能正相反。
+ * 真实的接入情况请打开详情看 `containers`。
+ */
+export interface NetworkSummary {
+  /** 裸的 64 位十六进制，**不带 `sha256:` 前缀**（镜像 ID 才有前缀） */
+  id: string
+  name: string
+  driver: string
+  scope: string
+  /** 是否可被 `docker run --network` 单独接入 */
+  attachable: boolean
+  /** 是否为内部网络（容器之间才能互通） */
+  internal: boolean
+  /** CIDR；自定义驱动（如 `macvlan`）可能为空数组 */
+  subnets: string[]
+  /** 与 `subnets` 一一对应；守护进程未分配时该位置为空串 */
+  gateways: string[]
+  labels: Record<string, string>
+}
+
+export interface NetworkListResult {
+  items: NetworkSummary[]
+}
+
+/** 网络详情（对应后端 `NetworkDetail`）。 */
+export interface NetworkDetail {
+  id: string
+  name: string
+  driver: string
+  scope: string
+  attachable: boolean
+  internal: boolean
+  enableIPv4: boolean
+  enableIPv6: boolean
+  ipam: NetworkIpam[]
+  /** 已接入的容器端点（含各自 IP）——判断「谁在用这个网络」的唯一权威数据 */
+  containers: NetworkContainerEndpoint[]
+  options: Record<string, string>
+  labels: Record<string, string>
+}
+
+/** 网络的单个 IPAM 地址池；三项都可能为空。 */
+export interface NetworkIpam {
+  subnet: string | null
+  gateway: string | null
+  /** 动态分配范围；未指定时为 `null`（不是空串） */
+  ipRange: string | null
+}
+
+/** 已接入某网络的容器端点。 */
+export interface NetworkContainerEndpoint {
+  id: string
+  name: string
+  macAddress: string | null
+  /** 含前缀长度，如 `172.18.0.2/16` */
+  ipv4Address: string | null
+  ipv6Address: string | null
+}
+
+/* ==================================================================
  * 角色与权限（0.1.0，对应后端 `Whalefleet.Application.Permissions`）
  * ================================================================== */
 

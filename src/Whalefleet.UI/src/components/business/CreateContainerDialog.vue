@@ -10,6 +10,8 @@ import {
 import EnvVarEditor from '@/components/business/EnvVarEditor.vue'
 import PortMappingEditor from '@/components/business/PortMappingEditor.vue'
 import VolumeMountEditor from '@/components/business/VolumeMountEditor.vue'
+import { listNetworks } from '@/api/network'
+import type { NetworkSummary } from '@/types/api'
 import {
   formatEnvEntry,
   toPortPayload,
@@ -91,6 +93,16 @@ const workingDir = ref('')
 const tty = ref(false)
 const stdinOpen = ref(false)
 
+/**
+ * 主机上现有的网络（0.2.0），用于把「网络名」从手打变成选。
+ *
+ * ⚠️ **加载失败不能阻断创建**：拉列表只是一个便利功能，
+ * 用户仍然可以手打网络名（包括本项目没列出来的模式名，如 `container:xxx`）。
+ * 因此这里静默失败并把下拉留空——而不是弹一个错误让整个对话框用不了。
+ */
+const networks = ref<NetworkSummary[]>([])
+const networksLoading = ref(false)
+
 /** 本对话框自己校验的字段级错误：key 是字段名，value 是错误 key（交由 t() 取文案）。 */
 const fieldErrors = ref<Record<string, string>>({})
 
@@ -128,8 +140,31 @@ function reset(): void {
 
 // 每次打开都清空上一次的残留：否则用户上次填到一半关掉，下次打开会看到一堆他不想要的值。
 watch(visible, (open) => {
-  if (open) reset()
+  if (open) {
+    reset()
+    void loadNetworks()
+  }
 })
+
+/**
+ * 拉取主机上的网络，供「网络」下拉选择。
+ *
+ * ⚠️ **失败一律静默**：拉列表只是便利，用户仍可手打网络名
+ * （`host` / `none` / `container:xxx` 等本项目未必列得全）。
+ * 弹一个错误会让整个创建对话框用不了——为一个可选项不值得。
+ */
+async function loadNetworks(): Promise<void> {
+  if (props.hostId.length === 0) return
+
+  networksLoading.value = true
+  try {
+    networks.value = (await listNetworks(props.hostId)).items
+  } catch {
+    networks.value = []
+  } finally {
+    networksLoading.value = false
+  }
+}
 
 /** 容器名的合法性规则与后端一致（见其 `RequireContainerName`）。 */
 function validateName(value: string): boolean {
@@ -277,14 +312,43 @@ function splitArgs(text: string): string[] {
       </el-form-item>
 
       <el-form-item :label="t('container.create.volumes')">
-        <VolumeMountEditor v-model="volumeEntries" v-model:error-line="volumeError" />
+        <VolumeMountEditor
+          v-model="volumeEntries"
+          v-model:error-line="volumeError"
+          :host-id="hostId"
+        />
       </el-form-item>
 
       <el-collapse>
         <el-collapse-item :title="t('container.create.basic')" name="basic">
           <div class="grid gap-x-4 sm:grid-cols-2">
             <el-form-item :label="t('container.create.network')">
-              <el-input v-model="network" clearable />
+              <!--
+                `el-select` + `allow-create`：既有下拉可选，也允许手打模式名
+                （`container:xxx`、`host`、`none` 等本项目不一定列得全）。
+                只给下拉会挡住合法输入，只给输入框则要用户去别处查名字。
+              -->
+              <el-select
+                v-model="network"
+                filterable
+                allow-create
+                default-first-option
+                clearable
+                :loading="networksLoading"
+                class="w-full"
+                :placeholder="t('container.create.networkPlaceholder')"
+              >
+                <el-option value="" :label="t('container.create.networkDefault')" />
+                <el-option
+                  v-for="item in networks"
+                  :key="item.id"
+                  :value="item.name"
+                  :label="item.name"
+                >
+                  <span class="font-mono text-xs">{{ item.name }}</span>
+                  <span class="ml-2 text-xs text-content-faint">{{ item.driver }}</span>
+                </el-option>
+              </el-select>
             </el-form-item>
             <el-form-item :label="t('container.create.hostname')">
               <el-input v-model="hostname" clearable />

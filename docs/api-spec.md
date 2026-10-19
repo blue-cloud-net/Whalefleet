@@ -990,10 +990,38 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 操作 | 路径 | 说明 |
 |------|------|------|
 | 获取列表 | `POST /api/v1/hosts/{hostId}/volumes/list` | 无 Body |
-| 创建 | `POST /api/v1/hosts/{hostId}/volumes/create` | Body: `{ name, driver?, driverOpts?, labels? }` |
+| 创建 | `POST /api/v1/hosts/{hostId}/volumes/create` | Body: `{ name, driver?, driverOptions?, labels? }` |
 | 删除 | `POST /api/v1/hosts/{hostId}/volumes/remove` | Body: `{ name, force? }` |
-| **批量删除** | `POST /api/v1/hosts/{hostId}/volumes/batch-remove` | Body: `{ names: [...] }` |
+| **批量删除** | `POST /api/v1/hosts/{hostId}/volumes/batch-remove` | Body: `{ names: [...], force? }` |
 | 获取详情 | `POST /api/v1/hosts/{hostId}/volumes/inspect` | Body: `{ name }` |
+
+> **列表与批量删除不分页**（0.2.0）：单台主机上的卷数量少、条目也小，而分页与筛选是
+> 四类资源**统一**的改动（`0.16.0`），提前做一半只会让接口返工。
+> 批量删除与容器 / 镜像同口径：**部分成功也返回 200**，`failures` 逐条带 ID 与错误码。
+>
+> **`force` 不是「强制删除」**（实测，勿照字面理解）：
+> 只要还有容器挂着这个卷，守护进程就拒绝删除，**带不带 `force` 都一样**（`1404`/409），
+> 容器在运行或已停止都一样，必须先删掉容器。`force` 唯一的作用是让「卷不存在」变成成功
+> （幂等），便于批量重试。因此本字段的语义是「忽略不存在」而非「强行删掉」。
+
+```jsonc
+// POST /api/v1/hosts/{hostId}/volumes/list —— Response.data
+{
+  "items": [
+    {
+      "name": "nginx-html",              // 按名字标识，没有 ID
+      "driver": "local",
+      "mountpoint": "/var/lib/docker/volumes/nginx-html/_data",
+      "scope": "local",
+      "created": "2026-09-20T06:30:00Z", // 守护进程未提供时为 null
+      "size": 3221225472,                 // ⚠️ 0 表示「守护进程没给」，不等于空卷
+      "refCount": 1,
+      "labels": { "app": "nginx" }
+    }
+  ],
+  "warnings": []                         // 恒为数组：守护进程会用它说「某卷驱动没装」
+}
+```
 
 ---
 
@@ -1005,6 +1033,60 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 创建 | `POST /api/v1/hosts/{hostId}/networks/create` | Body: `{ name, driver?, subnet?, gateway?, ipRange?, attachable?, labels? }` |
 | 删除 | `POST /api/v1/hosts/{hostId}/networks/remove` | Body: `{ networkId }` |
 | 获取详情 | `POST /api/v1/hosts/{hostId}/networks/inspect` | Body: `{ networkId }` |
+
+> **列表不分页**（理由同卷）。**没有 `force`**：Docker 的删除网络接口不提供该参数，
+> 有容器接入必然 `1404`/409，内置网络同样。内置网络为 `bridge` / `host` / `none`
+> （Docker 26 之前叫 `null`），服务端提前拦下以给出可翻译的错误码分支。
+>
+> **网络 ID 不带 `sha256:` 前缀**（镜像 ID 才有）：`/networks` 返回裸的 64 位十六进制。
+> 照搬镜像的剥前缀逻辑会得到一个错 ID，表现为 404。
+>
+> **列表项**刻意没有「容器数」：Docker 的 `GET /networks`（列表）**不返回** `Containers`，
+> 只有 `GET /networks/{id}`（详情）返回。补一个恒为 0 的字段会让界面把正在用的网络
+> 显示成「0 个容器」，因此宁可不给。真实的接入情况看详情的 `containers`。
+>
+> **创建失败有两类**：字段格式不对 → `1000`/400（在本层挡下，否则会落成 `1402`/500，
+> 让「自己填的网段打错一个字符」显示成服务端故障）；同名或子网重叠 → `1404`/409，
+> 且**消息里保留守护进程给的原因文本**，据此能区分该改名字还是改子网。
+
+```jsonc
+// POST /api/v1/hosts/{hostId}/networks/list —— Response.data
+{
+  "items": [
+    {
+      "id": "741c9b41…",                 // 裸 64 位十六进制，无 sha256: 前缀
+      "name": "bridge",
+      "driver": "bridge",
+      "scope": "local",
+      "attachable": false,
+      "internal": false,
+      "subnets": ["172.17.0.0/16"],      // 自定义驱动（macvlan）可能为空数组
+      "gateways": ["172.17.0.1"],
+      "labels": {}
+    }
+  ]
+}
+
+// POST /api/v1/hosts/{hostId}/networks/inspect —— Response.data（节选）
+{
+  "name": "app-internal",
+  "enableIPv4": true,
+  "enableIPv6": false,
+  "ipam": [{ "subnet": "172.20.0.0/16", "gateway": "172.20.0.1", "ipRange": null }],
+  "containers": [                       // 只有详情才有——判断「谁在用」的唯一权威数据
+    {
+      "id": "e1f2a3b4…",
+      "name": "order-api",
+      "macAddress": "02:42:ac:14:00:02",
+      "ipv4Address": "172.20.0.2/16",    // 含前缀长度
+      "ipv6Address": null
+    }
+  ]
+}
+```
+
+> **创建 IPv6 网络时自动打开 `enableIPv6`**：填了 IPv6 网段却不勾选，
+> 守护进程会建出一个「有 IPv6 地址池却不通」的网，而界面上看不出任何异常。
 
 ---
 

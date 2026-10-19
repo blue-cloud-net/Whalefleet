@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { listVolumes } from '@/api/volume'
 import {
   formatVolumeMount,
   isValidContainerPath,
@@ -9,7 +10,7 @@ import {
 } from '@/utils/container-input'
 
 /**
- * 挂载编辑器（0.0.14）。
+ * 挂载编辑器（0.0.14；0.2.0 接入卷名选择）。
  *
  * ## 最重要的一条：容器内路径必须绝对
  * Docker 把相对路径按 **daemon 的工作目录** 解析，而这个目录随启动方式变化
@@ -28,7 +29,34 @@ const model = defineModel<VolumeMount[]>({ required: true })
 /** 出错的行号；导出给父级用于拦截提交（理由见 `EnvVarEditor` 的同名注释）。 */
 const errorLine = defineModel<number | null>('errorLine', { required: true })
 
+const props = defineProps<{
+  /** 主机标识（主机名）；用于拉取现有卷名做补全 */
+  hostId?: string
+}>()
+
 const { t } = useI18n()
+
+/**
+ * 主机上现有的卷名（0.2.0）。
+ *
+ * **只为补全，不做校验**：拉列表失败时静默降级成「只能手打」，
+ * 不阻断创建容器。把它做成必填前置条件等于让一个便利功能决定表单能不能用。
+ */
+const knownVolumes = ref<string[]>([])
+
+watch(
+  () => [props.hostId, model.value.length] as const,
+  async ([hostId]) => {
+    if (!hostId) return
+
+    try {
+      knownVolumes.value = (await listVolumes(hostId)).items.map((item) => item.name)
+    } catch {
+      knownVolumes.value = []
+    }
+  },
+  { immediate: true }
+)
 
 /** 草稿：文本框的权威来源（理由见 `EnvVarEditor` 的同名变量注释）。 */
 const draft = ref(model.value.map(formatVolumeMount).join('\n'))
@@ -90,7 +118,23 @@ function removeRow(index: number): void {
               v-model="row.source"
               :placeholder="t('container.editor.mountSource')"
               class="flex-1 font-mono"
-            />
+            >
+              <!--
+                补全主机上**已存在**的卷名，但不限制手打：
+                多数时候用户要挂的是刚由 `docker compose` 建出来的卷，
+                打错一个字母的后果是 Docker 默默按 bind 处理挂了个空目录。
+              -->
+              <template v-if="knownVolumes.length > 0" #prepend>
+                <el-select
+                  :model-value="''"
+                  class="!w-36"
+                  :placeholder="t('volume.pickExisting')"
+                  @change="(value: string) => { if (value) row.source = value }"
+                >
+                  <el-option v-for="name in knownVolumes" :key="name" :value="name" :label="name" />
+                </el-select>
+              </template>
+            </el-input>
 
             <el-input
               v-model="row.destination"

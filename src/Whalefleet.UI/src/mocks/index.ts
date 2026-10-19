@@ -5,6 +5,7 @@ import { containerHandlers } from './handlers/containers'
 import { hostHandlers } from './handlers/hosts'
 import { imageHandlers } from './handlers/images'
 import { roleHandlers } from './handlers/permissions'
+import { resourceHandlers } from './handlers/resources'
 import { userHandlers } from './handlers/users'
 import { resolveScenario, type MockScenario } from './scenarios'
 
@@ -44,6 +45,7 @@ export const handlers = [
   ...hostHandlers(() => currentScenario),
   ...containerHandlers(() => currentScenario),
   ...imageHandlers(() => currentScenario),
+  ...resourceHandlers(() => currentScenario),
   ...userHandlers(() => currentScenario),
   ...roleHandlers(() => currentScenario)
 ]
@@ -52,8 +54,9 @@ export const handlers = [
  * 未被 handler 覆盖的请求。
  *
  * 一律 `bypass`（放行到真实后端）而不是 `error`：
- * mock 只覆盖认证 / 主机 / 容器 / 镜像 / 用户 / 角色与授权六个域，允许「认证走真后端 + 其余走 mock」
- * 的混合调试，也避免新增后端端点时前端被 mock 挡住而误判。
+ * mock 只覆盖认证 / 主机 / 容器 / 镜像 / 数据卷 / 网络 / 用户 / 角色与授权这些域，
+ * 允许「认证走真后端 + 其余走 mock」的混合调试，
+ * 也避免新增后端端点时前端被 mock 挡住而误判。
  */
 export const onUnhandledRequest = 'bypass' as const
 

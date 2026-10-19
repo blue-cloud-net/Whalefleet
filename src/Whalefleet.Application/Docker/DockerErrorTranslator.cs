@@ -99,6 +99,35 @@ public static class DockerErrorTranslator
     }
 
     /// <summary>
+    /// 把一个<b>已捕获</b>的 Docker 异常翻译成业务错误。
+    /// </summary>
+    /// <param name="exception">SDK 抛出的异常。</param>
+    /// <param name="resourceDescription">资源描述。</param>
+    /// <returns>对应的业务错误。</returns>
+    /// <exception cref="BusinessException">
+    /// 输入本身就是 <see cref="BusinessException"/> 时原样重抛。
+    /// </exception>
+    /// <remarks>
+    /// <para><b>什么时候需要它</b>：<see cref="ExecuteAsync{T}(Func{Task{T}}, string, CancellationToken)"/>
+    /// 已经能在异常冒到调用方之前翻译好，但某些错误需要在翻译<b>之前</b>先看一眼原始异常。
+    /// 典型是 Docker 用 <c>403</c> 表达「同名网络已存在」「子网与现有网络重叠」——
+    /// 这两条都是用户改一下输入就能解决的，落到兜底的 1402/500 会让它们看起来像服务端故障。
+    /// 调用方自己 <c>catch</c> 之后把原始异常交给本方法，其余异常仍走同一张映射表。</para>
+    /// <para><b>调用方必须先自己处理掉调用方取消</b>：
+    /// <see cref="OperationCanceledException"/> 在这里会被翻译成 <c>1403</c>，
+    /// 而用户主动取消（关页面、请求中止）不该产生这个错误码。</para>
+    /// </remarks>
+    public static BusinessException TranslateException(Exception exception, string resourceDescription)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        ArgumentException.ThrowIfNullOrWhiteSpace(resourceDescription);
+
+        return exception is BusinessException businessException
+            ? businessException
+            : Translate(exception, resourceDescription);
+    }
+
+    /// <summary>
     /// 单个异常的翻译规则（纯函数，便于直接测）。
     /// </summary>
     /// <param name="exception">SDK 抛出的异常。</param>
