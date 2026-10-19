@@ -127,3 +127,46 @@ public sealed record ImagePullResult(
 /// 两者都是空数组是合法结果（只解绑引用、未删掉镜像本体）。
 /// </remarks>
 public sealed record ImageRemovedResult(IReadOnlyList<string> Untagged, IReadOnlyList<string> Deleted);
+
+/// <summary>
+/// 构建镜像的结果。
+/// </summary>
+/// <param name="ImageId">构建产物的镜像完整 ID。</param>
+/// <param name="Reference">完整的镜像引用（<c>仓库:标签</c>）。</param>
+/// <param name="Size">镜像大小（字节）。</param>
+/// <param name="RepoTags">构建后镜像上的全部标签。</param>
+/// <param name="BuildLog">构建输出日志（守护进程逐行吐出的文本）。</param>
+/// <remarks>
+/// <para><b>为什么要回带构建日志</b>：构建失败时 Docker 只在进度流里给一行
+/// <c>returned a non-zero code: 1</c>，真正的原因（<c>COPY failed: no such file</c>）
+/// 在它上面几百行里。没有日志的话，用户只能看到「构建失败」四个字。
+/// 日志进响应而不是只进服务端日志，是因为排错的现场在用户手里。</para>
+/// <para><b>日志有长度上限</b>：见服务端对单次构建保留的行数。
+/// 几百 MB 的 <c>apt-get</c> 输出会撑爆响应体。</para>
+/// </remarks>
+public sealed record ImageBuildResult(
+    string ImageId,
+    string Reference,
+    long Size,
+    IReadOnlyList<string> RepoTags,
+    IReadOnlyList<string> BuildLog);
+
+/// <summary>
+/// 推送镜像的结果。
+/// </summary>
+/// <param name="ImageId">被推送镜像的完整 ID。</param>
+/// <param name="Reference">推送时使用的完整镜像引用。</param>
+/// <param name="RegistryServerAddress">实际推送到哪个 Registry（<c>host</c> 或 <c>host:port</c>）。</param>
+/// <param name="Authenticated">本次推送是否带了凭据。</param>
+/// <param name="PushLog">推送输出日志。</param>
+/// <remarks>
+/// <b>为什么要回带 <c>Authenticated</c></b>：匿名推送也能成功（公开仓库），
+/// 而用户看到「推送成功」时无法区分「用的是我配的凭据」还是「这个仓库压根不需要凭据」。
+/// 前者说明凭据配置生效了，后者说明可能配错地址了。</para>
+/// </remarks>
+public sealed record ImagePushResult(
+    string ImageId,
+    string Reference,
+    string RegistryServerAddress,
+    bool Authenticated,
+    IReadOnlyList<string> PushLog);

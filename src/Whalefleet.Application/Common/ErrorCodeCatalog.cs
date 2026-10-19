@@ -67,6 +67,15 @@ public static class ErrorCodeCatalog
             [ErrorCodes.PermissionUnknown] = (ErrorCategory.Validation, "未知的权限标识"),
             [ErrorCodes.RoleAssignmentNotFound] = (ErrorCategory.NotFound, "角色分配不存在"),
 
+            [ErrorCodes.RegistryNotFound] = (ErrorCategory.NotFound, "Registry 配置不存在"),
+            [ErrorCodes.RegistryNameAlreadyExists] = (ErrorCategory.Validation, "Registry 别名已被占用"),
+            [ErrorCodes.RegistryAddressAlreadyExists] = (ErrorCategory.Validation, "Registry 地址已被占用"),
+            [ErrorCodes.RegistryCredentialMissing] = (ErrorCategory.Validation, "未登记该地址的 Registry 凭据"),
+            [ErrorCodes.RegistryAuthFailed] = (ErrorCategory.Validation, "Registry 拒绝了该凭据"),
+            [ErrorCodes.RegistryUnreachable] = (ErrorCategory.UpstreamFailure, "Registry 不可达"),
+            [ErrorCodes.ImageBuildFailed] = (ErrorCategory.Internal, "镜像构建失败"),
+            [ErrorCodes.ImagePushFailed] = (ErrorCategory.Internal, "镜像推送失败"),
+
             [ErrorCodes.InternalError] = (ErrorCategory.Internal, "服务器内部错误"),
         }.ToFrozenDictionary();
 

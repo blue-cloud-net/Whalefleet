@@ -17,13 +17,16 @@ namespace Whalefleet.Application.Images;
 /// 只等 <c>await CreateImageAsync(...)</c> 返回的话，后一类会被报成「成功但什么也没拉到」，
 /// 那比报错难查得多。因此 <c>PullCollector</c> 把进度消息当作<b>必须检查的数据源</b>，
 /// 而不只是日志素材。</para>
-/// <para><b>主机校验不在这里</b>：主机是否存在（<c>1300</c>）与可见性（<c>1501</c>）由
+/// <para><b>主机校验不在这里</b>：主机不存在（<c>1300</c>）与可见性（<c>1501</c>）由
 /// Api 层的 <c>CurrentHostMiddleware</c> 在进入本服务前完成。</para>
 /// <para><b>外部响应按可空处理</b>：SDK 模型把很多字段声明为非空，但它们的值来自另一个进程的 JSON。
 /// 缺字段时抛 <see cref="NullReferenceException"/> 会被兜底成 <c>9999</c>/500，而这明明是「对端数据不全」，
 /// 因此所有映射都按可空写，缺失就退化成空值而不是崩掉。</para>
 /// <para><b>日志纪律</b>：只记主机标识、镜像引用与条数，<b>不</b>记镜像的 <c>ENV</c> / <c>LABEL</c>
 /// （构建参数里常有令牌与密码——记进来等于把凭据写进日志文件）。</para>
+/// <para><b>构建与推送在 <see cref="ImageBuildPushService"/></b>：本类只管「主机上已有的镜像」，
+/// 而 build / push 要额外处理构建上下文流与 Registry 凭据，拆开是为了本类的依赖
+/// 保持在两个（主机访问器 + 日志）而不膨胀到五个。</para>
 /// </remarks>
 public sealed class ImageService
 {
@@ -477,7 +480,11 @@ public sealed class ImageService
     /// <param name="imageId">请求里的镜像标识。</param>
     /// <returns>去空白后的镜像标识。</returns>
     /// <exception cref="BusinessException">为空时抛 <c>1000</c>。</exception>
-    private static string RequireImageId(string? imageId) =>
+    /// <remarks>
+    /// 声明为 <c>internal</c> 而非 <c>private</c>：<see cref="ImageBuildPushService"/> 校验构建标签时
+    /// 走的是同一套规则，两处各写一份必然漂移。
+    /// </remarks>
+    internal static string RequireImageId(string? imageId) =>
         string.IsNullOrWhiteSpace(imageId)
             ? throw new BusinessException(ErrorCodes.ValidationFailed, "imageId 不能为空")
             : imageId.Trim();
@@ -551,8 +558,11 @@ public sealed class ImageService
     /// Docker 用 <c>&lt;none&gt;</c> 占位表示「这个镜像没有标签」（构建中间层就是这种）。
     /// 原样返回会让界面上出现一行叫「&lt;none&gt;:&lt;none&gt;」的镜像；过滤后它只是空列表，
     /// 界面可以显示成「&lt;none&gt;」并仍允许按 ID 操作。
+    /// <br/>
+    /// 声明为 <c>internal</c>：<see cref="ImageBuildPushService"/> 在推送前也用它过滤掉
+    /// <c>&lt;none&gt;</c> 占位标签，否则会把「悬挂镜像」误判成「有标签」。
     /// </remarks>
-    private static IReadOnlyList<string> MapReferences(IList<string>? references) =>
+    internal static IReadOnlyList<string> MapReferences(IList<string>? references) =>
         references is null
             ? []
             : [.. references
