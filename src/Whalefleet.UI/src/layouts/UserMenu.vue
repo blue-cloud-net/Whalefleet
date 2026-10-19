@@ -10,8 +10,10 @@ import { roleLabelKey } from '@/utils/roles'
 /**
  * 顶栏用户菜单：当前用户名 + 角色标签 + 修改密码 + 登出。
  *
- * 主题与语言仍留在顶栏的独立控件里（它们切换频繁，藏进下拉多一层点击）；
- * **修改密码**放这里——它是账号级操作，一年用不了几次，正适合收进下拉。
+ * **这里只有账号级操作**。外观设置（主题模式 / 主题色）与语言都不在这里：
+ * - 主题模式留在顶栏的 `ThemeSwitcher`（亮/暗是夜间值班真正常用的）
+ * - 主题色与语言分别去了设置页与登录页
+ * 本菜单里的东西一年也点不了几次，且都是「关于这个账号」的 —— 正好收进下拉。
  */
 
 const router = useRouter()
@@ -87,9 +89,11 @@ async function onPasswordChanged() {
     <template #dropdown>
       <el-dropdown-menu>
         <el-dropdown-item disabled>{{ roleText }}</el-dropdown-item>
+
         <el-dropdown-item divided @click="changePasswordVisible = true">
           {{ t('user.change.title') }}
         </el-dropdown-item>
+
         <el-dropdown-item divided @click="onLogout">
           {{ t('auth.logout') }}
         </el-dropdown-item>

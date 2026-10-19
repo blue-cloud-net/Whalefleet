@@ -5,7 +5,6 @@ import { useI18n } from 'vue-i18n'
 import { useTheme } from '@/composables/useTheme'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { requestCreateContainer, requestPullImage } from '@/composables/useActionBus'
-import { setLocale, type AppLocale } from '@/locales'
 import { shouldUseMock } from '@/mocks/switch'
 import AppBreadcrumb from '@/layouts/AppBreadcrumb.vue'
 import AppSidebar from '@/layouts/AppSidebar.vue'
@@ -13,7 +12,6 @@ import UserMenu from '@/layouts/UserMenu.vue'
 import CommandPalette from '@/components/common/CommandPalette.vue'
 import ShortcutHelpDialog from '@/components/common/ShortcutHelpDialog.vue'
 import ThemeSwitcher from '@/components/common/ThemeSwitcher.vue'
-import LangSwitcher from '@/components/common/LangSwitcher.vue'
 import MockBadge from '@/components/common/MockBadge.vue'
 import HostSelector from '@/components/business/HostSelector.vue'
 
@@ -22,11 +20,16 @@ import HostSelector from '@/components/business/HostSelector.vue'
  *
  * 三块各自是独立组件（都在 `layouts/` 下）：顶栏里的面包屑与用户菜单、侧边栏及其菜单内容
  * 自成一体。本文件只负责把它们摆到位置，并处理布局级状态（移动端抽屉开关、内容宽度）。
+ *
+ * **顶栏的「值不值得放在这里」判据**：功能切换得越频繁越该留在视线内（主题 / 侧栏折叠 /
+ * 主机切换），一年用几次的一律收进用户菜单（改密、语言、主题色）。
+ * 早期版本把语言 + 主题模式 + 主题色三个控件并排挂在右侧，顶栏右半边读起来像一排图标；
+ * 现在右侧只留「主机切换 + 用户头像」两件真正需要反复点的东西。
  */
 
 const route = useRoute()
 const router = useRouter()
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const { sidebarCollapsed, toggleSidebar } = useTheme()
 
 /** 移动端抽屉开关（顶栏的菜单按钮打开，由侧边栏组件消费） */
@@ -115,94 +118,136 @@ watch(
 function goOverview() {
   router.push({ name: 'overview' })
 }
-
-function switchLocale(next: AppLocale) {
-  setLocale(next)
-}
 </script>
 
 <template>
   <div class="min-h-screen flex flex-col bg-surface-page">
-    <!-- ===== 顶栏 64px：毛玻璃 + 细下边线，滚动时内容从下方穿过 ===== -->
+    <!--
+      ===== 顶栏 64px：毛玻璃 + 细下边线，滚动时内容从下方穿过 =====
+
+      布局用 **左中右三列网格**（`1fr auto 1fr`）而不是「左 + flex-1 撑开 + 右」。
+      命令面板是全站唯一的全局搜索入口，把它放在正中，两侧内容再多也不会把它挤偏；
+      `auto` 列的宽度由按钮自身决定，两侧 `1fr` 等宽 → 中列始终落在视觉中线。
+      `overflow-hidden` 是必要的：面包屑是 `whitespace-nowrap` 的，长主机名
+      不裁剪的话会顶开中列，「居中」在那一刻就失效了。
+    -->
     <header
-      class="h-16 flex items-center gap-1 sm:gap-2 px-3 sm:px-4 shrink-0 sticky top-0 z-20 bg-surface-card/80 backdrop-blur-md backdrop-saturate-150 border-b border-line-subtle"
+      class="h-16 shrink-0 sticky top-0 z-20 grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 sm:px-4 bg-surface-card/80 backdrop-blur-md backdrop-saturate-150 border-b border-line-subtle"
     >
-      <!--
-        左侧品牌区：折叠按钮 / 汉堡 / Logo / 标题 合成一组。
-        早先折叠按钮独自占在最左、与 Logo 之间隔了空隙，视觉上像一个无主的图标；
-        把它们收进同一组并去掉组内间隙后，这一区读起来才是一个整体。
-      -->
-      <div class="flex items-center gap-0.5 shrink-0">
-        <!-- 移动端：打开侧边栏抽屉 -->
-        <el-button text class="lg:!hidden" :aria-label="t('common.menu')" @click="drawerOpen = true">
-          <span class="i-carbon-menu text-xl" />
-        </el-button>
+      <!-- 左列：品牌区 + 面包屑 -->
+      <div class="flex items-center gap-2 min-w-0 overflow-hidden">
+        <!--
+          品牌区：折叠按钮 / 汉堡 / Logo / 标题 合成一组。
 
-        <!-- 侧栏折叠/展开：图标表达「点击后将发生的动作」 -->
-        <!-- 折叠时显示 open(← 面板向左展开)，展开时显示 close(→ 面板向右收起) -->
-        <el-button
-          text
-          class="!hidden lg:!inline-flex"
-          :aria-label="t('common.sidebar')"
-          @click="toggleSidebar"
-        >
-          <span
-            class="text-xl transition-transform duration-200"
-            :class="sidebarCollapsed ? 'i-carbon-side-panel-open' : 'i-carbon-side-panel-close'"
-          />
-        </el-button>
-
-        <!-- Logo / 标题（点击回全局总览） -->
-        <button
-          class="flex items-center gap-2 min-w-0 group rounded-md px-1.5 py-1 -ml-1 transition-colors hover:bg-surface-hover"
-          @click="goOverview"
-        >
-          <span
-            class="i-carbon-cube text-2xl text-brand-500 shrink-0 transition-transform duration-300 group-hover:scale-110"
-          />
-          <span
-            class="font-semibold tracking-tight text-content-strong transition-colors group-hover:text-brand-600 dark:group-hover:text-brand-400 app-truncate"
+          **组内用 `gap-3`（12px）而不是 `gap-2`**：这个 12px 不是随手挑的，而是为了
+          让面包屑前那道竖线正好落在**侧边栏的右边框**上，形成一条贯穿顶栏与侧栏的直线。
+          实测坐标（侧边栏展开 = `w-50` = 200px）：
+            折叠按钮 16–48 → `gap-2` 时竖线在 196px，差 4px 对不齐；
+            改成 `gap-3` 后 Logo 整体右移 4px，竖线正好落在 200px。
+          产品名 `app.title` 中英文都是 `Whalefleet`（定长），所以这条对齐不会被 i18n 撑歪。
+          ⚠️ 若日后产品名改长或侧边栏宽度调整，这里要重新量一次——这条竖线没有约束在代码里。
+        -->
+        <div class="flex items-center gap-2.5 shrink-0">
+          <!-- 移动端：打开侧边栏抽屉 -->
+          <el-button
+            text
+            class="lg:!hidden !w-8 !h-8 !p-0 rounded-md"
+            :aria-label="t('common.menu')"
+            @click="drawerOpen = true"
           >
-            {{ t('app.title') }}
-          </span>
-        </button>
+            <span class="i-carbon-menu text-xl leading-none" />
+          </el-button>
+
+          <!-- 侧栏折叠/展开：图标表达「点击后将发生的动作」 -->
+          <!-- 折叠时显示 open(← 面板向左展开)，展开时显示 close(→ 面板向右收起) -->
+          <!--
+            `!ml-0` 是必需的，不是微调：Element Plus 有 `.el-button + .el-button { margin-left: 12px }`，
+            而上一行的汉堡按钮在桌面端是 `display: none` —— **`display:none` 不会让 `+` 选择器失效**，
+            它仍在 DOM 里、仍是前一个兄弟，于是折叠按钮白拿 12px 左边距（实测 left=28，
+            比顶栏 16px 内边距还右 12px）。不抵消它，按钮就永远对不齐顶栏左缘。
+            用 `!ml-0` 而不是负边距：负值会连移动端的汉堡按钮一起拽走。
+          -->
+          <el-button
+            text
+            class="!hidden lg:!inline-flex !w-8 !h-8 !p-0 !ml-0 rounded-md"
+            :aria-label="t('common.sidebar')"
+            @click="toggleSidebar"
+          >
+            <span
+              class="text-xl leading-none transition-transform duration-200"
+              :class="sidebarCollapsed ? 'i-carbon-side-panel-open' : 'i-carbon-side-panel-close'"
+            />
+          </el-button>
+
+          <!-- Logo / 标题（点击回全局总览） -->
+          <!--
+            `-ml-1` 已去掉：它原本用来抵消自身 `px-1.5` 的内边距，让立方体贴齐顶栏左缘，
+            但折叠按钮改成 32×32 方形后，这个负边距会啃掉组内间距——
+            实测两个按钮的盒子重叠了 2px（折叠 28–60 / Logo 58–190），
+            看上去就是「折叠按钮紧贴产品图标」。改由组内 `gap-2` 负责间距。
+          -->
+          <button
+            class="flex items-center gap-2 min-w-0 group rounded-md px-1.5 py-1 transition-colors hover:bg-surface-hover"
+            @click="goOverview"
+          >
+            <span
+              class="i-carbon-cube text-2xl text-brand-500 shrink-0 transition-transform duration-300 group-hover:scale-110"
+            />
+            <span
+              class="font-semibold tracking-tight text-content-strong transition-colors group-hover:text-brand-600 dark:group-hover:text-brand-400 app-truncate"
+            >
+              {{ t('app.title') }}
+            </span>
+          </button>
+        </div>
+
+        <!-- 面包屑：与品牌区之间用竖线分隔，弱化处理不抢主标题 -->
+        <span
+          class="hidden sm:flex items-center pl-3 border-l border-line-subtle min-w-0 overflow-hidden"
+        >
+          <AppBreadcrumb />
+        </span>
       </div>
 
-      <!-- 面包屑：与品牌区之间用竖线分隔，弱化处理不抢主标题 -->
-      <span
-        class="hidden sm:flex items-center pl-3 ml-2 border-l border-line-subtle min-w-0"
-      >
-        <AppBreadcrumb />
-      </span>
-
-      <div class="flex-1" />
-
-      <!-- mock 开启时显眼的角标：避免「前端在打假数据却以为是真后端」 -->
-      <MockBadge v-if="mockEnabled" />
-
       <!--
-        命令面板入口。刻意在顶栏留一个可见按钮而不只靠 Ctrl+K：
+        中列：命令面板入口。刻意在顶栏留一个可见按钮而不只靠 Ctrl+K：
         快捷键是「已经知道的人才会用」的功能，首次用户没有任何路径发现它。
         按钮上的 ⌘K / Ctrl K 提示同时起到「教学」作用。
+        放在正中还有个副作用上的好处——它是全站唯一与「当前在哪台机器」无关的操作，
+        居中让它读起来像一个全局搜索框，而不是某个页面的工具条按钮。
+
+        `w-64 sm:w-80 xl:w-96` 而不是定宽：定宽在窄屏会挤掉两侧控件，
+        而搜索框「宽一点更好用」——这是唯一一个值得多占地方的地方。
       -->
       <button
-        class="hidden sm:flex items-center gap-2 rounded-md border border-line-subtle bg-surface-sunken px-2.5 py-1.5 text-xs text-content-faint hover:bg-surface-hover hover:border-line-strong transition-colors"
+        class="hidden sm:flex items-center gap-2 w-64 xl:w-96 rounded-md border border-line-subtle bg-surface-sunken px-3 py-1.5 text-xs text-content-faint hover:bg-surface-hover hover:border-line-strong transition-colors"
         :aria-label="t('command.placeholder')"
         @click="paletteVisible = true"
       >
-        <span class="i-carbon-search" />
-        <span>{{ t('command.trigger') }}</span>
-        <kbd class="app-kbd">{{ isMac ? '⌘K' : 'Ctrl K' }}</kbd>
+        <span class="i-carbon-search shrink-0" />
+        <span class="app-truncate">{{ t('command.trigger') }}</span>
+        <kbd class="app-kbd ml-auto shrink-0">{{ isMac ? '⌘K' : 'Ctrl K' }}</kbd>
       </button>
 
-      <!-- 主机选择：主机作用域显示当前主机，全局作用域显示「选择主机」占位 -->
-      <div class="hidden md:flex items-center gap-1">
-        <HostSelector />
-      </div>
+      <!--
+        右列：主机选择 + 主题切换 + 用户菜单。
+        主机选择与主题按钮相邻——两者都是「全局偏好 / 当前上下文」类控件，
+        而左侧只回答「我认得这个站、我在这台机器的哪个页面」，不混入会被频繁切换的项。
+        靠外的是主机：它比主题更常被点到（换机器看的东西和换明暗不在一个频率上）。
+      -->
+      <div class="flex items-center justify-end gap-1 min-w-0">
+        <!-- mock 开启时显眼的角标：避免「前端在打假数据却以为是真后端」 -->
+        <MockBadge v-if="mockEnabled" />
 
-      <LangSwitcher :model-value="locale as AppLocale" @update:model-value="switchLocale" />
-      <ThemeSwitcher />
-      <UserMenu />
+        <!-- 主机选择：主机作用域显示当前主机，全局作用域显示「选择主机」占位 -->
+        <div class="hidden md:flex items-center gap-1 min-w-0">
+          <HostSelector />
+        </div>
+
+        <ThemeSwitcher />
+
+        <UserMenu />
+      </div>
     </header>
 
     <div class="flex flex-1 min-h-0">

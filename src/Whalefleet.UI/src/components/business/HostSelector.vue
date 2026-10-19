@@ -45,7 +45,15 @@ function onSelect(command: string) {
 
 <template>
   <el-dropdown trigger="click" @command="onSelect">
-    <el-button text class="!px-2 !py-1.5 rounded-md hover:bg-surface-hover transition-colors">
+    <!--
+      `gap-1.5` 是刻意加的：状态点只有 6px，紧贴主机名时读起来像名字的偏旁，
+      一旦截断（`max-w-28`）点与「…」还会粘在一起。这里给三者
+      「状态点 / 名称 / 展开箭头」各自留出呼吸空间。
+    -->
+    <el-button
+      text
+      class="!px-2 !py-1.5 rounded-md gap-1.5 hover:bg-surface-hover transition-colors"
+    >
       <template v-if="currentHost">
         <StatusDot :status="currentHost.status" size="sm" />
         <span class="text-xs font-medium text-content-body max-w-28 app-truncate">
