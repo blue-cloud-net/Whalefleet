@@ -1,4 +1,6 @@
 import type { HostGroup, HostOverview } from '@/types/api'
+import { MOCK_CONTAINERS_DEFAULT } from './containers'
+import { MOCK_IMAGES_DEFAULT } from './images'
 
 /**
  * mock 用主机数据（**从 `stores/host.ts` 迁出**）。
@@ -99,15 +101,32 @@ export const MOCK_HOSTS_DEFAULT: HostOverview[] = [
   }
 ]
 
-/** `counts` 场景：带真实资源计数，用于验证 4 个磁贴的「有值」形态。 */
+/**
+ * `counts` 场景：带真实资源计数，用于验证 4 个磁贴的「有值」形态。
+ *
+ * 容器 / 镜像计数**由夹具长度算出**而不是手写：主机卡片上的「容器 12」
+ * 和容器列表里实际列出来的条数对不上，是那种会被当成前端 bug 报上来的幽灵问题——
+ * 磁贴与列表读的是同一个 mock 数据源，就该由它自己回答。
+ * 卷与网络暂时没有 mock 端点，仍是手写值（0.0.x 里它们还不是列表页）。
+ */
 export const MOCK_HOSTS_WITH_COUNTS: HostOverview[] = [
   {
     ...MOCK_HOSTS_DEFAULT[0],
-    counts: { containers: 12, images: 34, volumes: 5, networks: 4 }
+    counts: {
+      containers: MOCK_CONTAINERS_DEFAULT.length,
+      images: MOCK_IMAGES_DEFAULT.length,
+      volumes: 5,
+      networks: 4
+    }
   },
   {
     ...MOCK_HOSTS_DEFAULT[1],
-    counts: { containers: 28, images: 96, volumes: 11, networks: 7 }
+    counts: {
+      containers: MOCK_CONTAINERS_DEFAULT.length,
+      images: MOCK_IMAGES_DEFAULT.length,
+      volumes: 11,
+      networks: 7
+    }
   },
   {
     // 离线主机的 counts 刻意缺失：离线时后端拿不到实时数据

@@ -18,6 +18,8 @@ import { resetSessionHosts } from '../src/mocks/handlers/hosts'
 import { resetSessionImages } from '../src/mocks/handlers/images'
 import { resetSessionRoles } from '../src/mocks/handlers/permissions'
 import { resetSessionUsers } from '../src/mocks/handlers/users'
+import { MOCK_CONTAINERS_DEFAULT } from '../src/mocks/data/containers'
+import { MOCK_IMAGES_DEFAULT } from '../src/mocks/data/images'
 import type { HostOverview } from '../src/types/api'
 
 /**
@@ -261,7 +263,11 @@ describe('场景切换', () => {
   it('counts 场景带出资源计数（供 4 个磁贴的有值形态走查）', async () => {
     setMockScenario('counts')
     const overview = await post('/api/v1/hosts/local/overview')
-    expect((overview.json.data as HostOverview).counts?.containers).toBe(12)
+    // 断言「磁贴上的数字 = 容器列表的实际条数」这个**关系**，而不是某个具体数字：
+    // 磁贴和列表读同一份 mock 数据源，写死数值只会在数据集扩容时变成假失败。
+    const counts = (overview.json.data as HostOverview).counts
+    expect(counts?.containers).toBe(MOCK_CONTAINERS_DEFAULT.length)
+    expect(counts?.images).toBe(MOCK_IMAGES_DEFAULT.length)
   })
 })
 /**
@@ -287,14 +293,20 @@ describe('容器端点', () => {
   })
 
   it('all=false 只列运行中的容器', async () => {
-    const all = await post('/api/v1/hosts/local/containers/list', { all: true })
-    const runningOnly = await post('/api/v1/hosts/local/containers/list', { all: false })
+    const all = await post('/api/v1/hosts/local/containers/list', { all: true, pageSize: 100 })
+    const runningOnly = await post('/api/v1/hosts/local/containers/list', {
+      all: false,
+      pageSize: 100
+    })
 
-    const allData = all.json.data as { items: { state: string }[] }
-    const runningData = runningOnly.json.data as { items: { state: string }[] }
+    const allData = all.json.data as { items: { state: string }[]; total: number }
+    const runningData = runningOnly.json.data as { items: { state: string }[]; total: number }
 
-    expect(allData.items.length).toBeGreaterThan(runningData.items.length)
+    // 比 total 而不是 items.length：列表超过一页后 items.length 恒等于 pageSize，
+    // 两个数字永远相等，这条断言就再也测不出东西了。
+    expect(allData.total).toBeGreaterThan(runningData.total)
     expect(runningData.items.every((item) => item.state === 'running')).toBe(true)
+    expect(runningData.total).toBeGreaterThan(0)
   })
 
   /** 排序契约：复刻后端 `ContainerService.Sort`，规则与镜像列表同构。 */
@@ -398,6 +410,31 @@ describe('容器端点', () => {
     expect(json.code).toBe(ErrorCode.DockerResourceNotFound)
   })
 
+  /**
+   * 夹具的一致性守卫（不是端点契约，而是**夹具之间**的自洽）。
+   *
+   * 列表里每一行都必须能被 inspect 查到详情。数据集扩容后这条极易破：
+   * 长尾条目只加进 `MOCK_*_DEFAULT`（列表）而忘了加进 `MOCK_*_DETAILS`（详情），
+   * 症状是「列表渲染得好好的，点进去却报资源不存在」——看起来像前端的 bug，
+   * 实际上只是 mock 自己漏了一条。逐条点页面根本发现不了。
+   */
+  it('每一条列表项都能 inspect 到详情（夹具自洽守卫）', async () => {
+    const containers = await post('/api/v1/hosts/local/containers/list', {
+      all: true,
+      pageSize: 100
+    })
+    const items = (containers.json.data as { items: { id: string; name: string }[] }).items
+    expect(items.length).toBeGreaterThan(0)
+
+    for (const item of items) {
+      const { status, json } = await post('/api/v1/hosts/local/containers/inspect', {
+        containerId: item.id
+      })
+      expect(status, `容器 ${item.name} 在列表里但 inspect 不到`).toBe(200)
+      expect(json.success).toBe(true)
+    }
+  })
+
   it('empty 场景下列表为空数组而不是报错', async () => {
     setMockScenario('empty')
 
@@ -466,9 +503,13 @@ describe('镜像端点', () => {
       pageSize: 100
     })
 
-    const a = (asc.json.data as { items: { id: string }[] }).items.map((item) => item.id)
-    const d = (desc.json.data as { items: { id: string }[] }).items.map((item) => item.id)
+    const a = (asc.json.data as { items: { size: number }[] }).items.map((item) => item.size)
+    const d = (desc.json.data as { items: { size: number }[] }).items.map((item) => item.size)
 
+    // 比 **size** 而不是 id：后端 ImageService.Sort 的 id 兜底键**不随方向翻转**
+    // （`descending` 只作用在主键上），所以只要有两个镜像体积相同，
+    // 两个方向的 id 序列就不是互为倒序的——那是后端的既定行为，不是缺陷。
+    // 主键序列仍然必须互为倒序。
     expect(d).toEqual([...a].reverse())
   })
 
@@ -579,7 +620,9 @@ describe('镜像端点', () => {
     const reference = (pulled.json.data as { reference: string }).reference
     expect(reference).toBe('busybox:1.36')
 
-    const list = await post('/api/v1/hosts/local/images/list', {})
+    // pageSize 100：新拉的镜像追加到列表末尾，列表超过一页时默认的 20 条里看不到它。
+    // 真实后端也是这样（按创建时间降序，新拉的排最后），mock 不假装把它插到第一页。
+    const list = await post('/api/v1/hosts/local/images/list', { pageSize: 100 })
     const items = (list.json.data as { items: { repoTags: string[] }[] }).items
     expect(items.some((item) => item.repoTags.includes('busybox:1.36'))).toBe(true)
   })
@@ -591,6 +634,40 @@ describe('镜像端点', () => {
 
     expect(status).toBe(404)
     expect(json.code).toBe(ErrorCode.DockerResourceNotFound)
+  })
+
+  /** 镜像侧的夹具自洽守卫，理由同容器那条。 */
+  it('每一条列表项都能 inspect 到详情（夹具自洽守卫）', async () => {
+    const images = await post('/api/v1/hosts/local/images/list', { pageSize: 100 })
+    const items = (images.json.data as { items: { id: string; repoTags: string[] }[] }).items
+    expect(items.length).toBeGreaterThan(0)
+
+    for (const item of items) {
+      const { status, json } = await post('/api/v1/hosts/local/images/inspect', {
+        imageId: item.id
+      })
+      expect(status, `镜像 ${item.repoTags[0] ?? '<none>'} 在列表里但 inspect 不到`).toBe(200)
+      expect(json.success).toBe(true)
+    }
+  })
+
+  /**
+   * 列表项与详情必须说同一件事。
+   *
+   * `ContainerSummary.state` 与 `ContainerDetail.state.status` 是同一条信息的两个投影，
+   * 夹具一旦分两份手写就会漂移，症状是「列表显示运行中、点进去却是已停止」——
+   * 界面上完全看不出哪个是真的，比直接报错难查得多。
+   */
+  it('列表的 state 与详情的 status 逐条一致', async () => {
+    const list = await post('/api/v1/hosts/local/containers/list', { all: true, pageSize: 100 })
+    const items = (list.json.data as { items: { id: string; name: string; state: string }[] }).items
+
+    for (const item of items) {
+      const { json } = await post('/api/v1/hosts/local/containers/inspect', { containerId: item.id })
+      const detail = json.data as { state: { status: string } }
+
+      expect(detail.state.status, `容器 ${item.name} 的列表与详情状态不一致`).toBe(item.state)
+    }
   })
 
   it('empty 场景下镜像列表为空数组而不是报错', async () => {
@@ -649,7 +726,9 @@ describe('用户管理端点', () => {
     // 省略 role 时取**默认角色**（由角色自身的 isDefault 决定，当前为 auditor）
     expect((created.json.data as { roles: string[] }).roles).toEqual(['auditor'])
 
-    const list = await post('/api/v1/admin/users/list', {})
+    // pageSize 100：新账号是追加到列表末尾的，列表超过一页时只看默认 20 条会看不到它。
+    // 这正是真实后端的行为（新建的人排在最后），mock 不假装把他插到第一页。
+    const list = await post('/api/v1/admin/users/list', { pageSize: 100 })
     expect(
       (list.json.data as { items: { username: string }[] }).items.some(
         (user) => user.username === 'deploy-bot'
@@ -658,7 +737,8 @@ describe('用户管理端点', () => {
   })
 
   it('删除当前登录账号 → 1000 / 400（后端护栏）', async () => {
-    const list = await post('/api/v1/admin/users/list', {})
+    // pageSize 100：按用户名找的人必须在**全量**里找，默认 20 条会漏掉排在前一页之后的账号
+    const list = await post('/api/v1/admin/users/list', { pageSize: 100 })
     const self = (list.json.data as { items: { id: string; username: string }[] }).items.find(
       (user) => user.username === 'admin'
     )
@@ -671,7 +751,9 @@ describe('用户管理端点', () => {
 
   it('删除最后一个管理员 → 1000 / 400', async () => {
     // 先把唯一的管理员之外没有其他 admin，因此删它必然命中「最后一个管理员」
-    const list = await post('/api/v1/admin/users/list', {})
+    // ⚠️ 必须 pageSize 100：否则「只有一个管理员」这条断言会被分页悄悄放过
+    // （真出现第二个管理员且排在第一页之后，用例照样绿）。
+    const list = await post('/api/v1/admin/users/list', { pageSize: 100 })
     const admins = (
       list.json.data as { items: { id: string; roles: string[] }[] }
     ).items.filter((user) => user.roles.includes('admin'))
@@ -1156,11 +1238,20 @@ describe('角色与权限目录端点（0.1.0）', () => {
   })
 
   it('自定义角色在分配撤销后可以删除', async () => {
-    // deployer 夹具里正被 deployer-bot 全局持有 → 先撤销再删
-    await post('/api/v1/admin/users/00000000-0000-0000-0000-0000000000b4/roles/revoke', {
-      roleId: DEPLOYER_ROLE,
-      host: null
-    })
+    // deployer 夹具里有多个人全局持有 → 必须**逐个撤销全部持有者**才能删掉角色。
+    // 只撤一个就删，走到的仍是 1512（仍有分配）那条分支，本用例就白写了。
+    const users = await post('/api/v1/admin/users/list', { pageSize: 100 })
+    const holders = (users.json.data as { items: { id: string; roles: string[] }[] }).items.filter(
+      (user) => user.roles.includes('deployer')
+    )
+    expect(holders.length).toBeGreaterThan(1)
+
+    for (const holder of holders) {
+      await post(`/api/v1/admin/users/${holder.id}/roles/revoke`, {
+        roleId: DEPLOYER_ROLE,
+        host: null
+      })
+    }
 
     const { status } = await post('/api/v1/admin/roles/remove', { roleId: DEPLOYER_ROLE })
     expect(status).toBe(200)

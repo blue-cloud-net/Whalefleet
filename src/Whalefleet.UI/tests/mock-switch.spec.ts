@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import { isMockRuntimeEnabled, shouldUseMock } from '../src/mocks/switch'
 import { resolveScenario, MOCK_SCENARIOS, hostsFor } from '../src/mocks/scenarios'
+import { MOCK_CONTAINERS_DEFAULT } from '../src/mocks/data/containers'
 
 /**
  * mock 开关与场景解析。
@@ -83,7 +84,10 @@ describe('hostsFor', () => {
   })
 
   it('counts 场景带出资源计数', () => {
-    expect(hostsFor('counts').find((h) => h.id === 'local')?.counts?.containers).toBe(12)
+    // 与 `mock-contract` 的同名用例互为镜像：这里断言「有值」，那边断言「与列表一致」
+    const counts = hostsFor('counts').find((h) => h.id === 'local')?.counts
+    expect(counts?.containers).toBe(MOCK_CONTAINERS_DEFAULT.length)
+    expect(counts?.containers).toBeGreaterThan(0)
   })
 
   it('disabled 场景含一台 enabled=false 的主机（用于 1302 分支）', () => {
