@@ -11,6 +11,8 @@ import IconActionButton from '@/components/common/IconActionButton.vue'
 import ListPagination from '@/components/common/ListPagination.vue'
 import BatchActionBar from '@/components/common/BatchActionBar.vue'
 import PullImageDialog from '@/components/business/PullImageDialog.vue'
+import BuildImageDialog from '@/components/business/BuildImageDialog.vue'
+import PushImageDialog from '@/components/business/PushImageDialog.vue'
 import ImageSize from '@/components/business/ImageSize.vue'
 import { onActionRequest } from '@/composables/useActionBus'
 import { batchRemoveImages, listImages, removeImage, type ImageSortField } from '@/api/image'
@@ -57,6 +59,16 @@ const error = ref<string | null>(null)
 /** 正在删除的镜像 id：让对应按钮转圈，而不是整页转圈 */
 const busyIds = ref<Set<string>>(new Set())
 const pullDialogVisible = ref(false)
+const buildDialogVisible = ref(false)
+
+/**
+ * 推送目标。
+ *
+ * 用**行对象**而不是 id：推送对话框要展示复制后的标签列表与「只推第一个」的提示，
+ * 而那正是列表行里已有的数据。拿 id 再回查一次只会多一个能和列表不同步的副本。
+ */
+const pushTarget = ref<ImageSummary | null>(null)
+const pushDialogVisible = ref(false)
 
 /** 当前排序列；`null` = 不排序，后端保持守护进程返回顺序（创建时间降序） */
 const sortField = ref<ImageSortField | null>(null)
@@ -342,6 +354,22 @@ async function onPulled(): Promise<void> {
   await load()
 }
 
+/** 构建完成后重新拉列表：新镜像可能在**当前页之外**，所以回到第一页。 */
+async function onBuilt(): Promise<void> {
+  pageIndex.value = 0
+  await load()
+}
+
+function openPush(image: ImageSummary): void {
+  pushTarget.value = image
+  pushDialogVisible.value = true
+}
+
+/** 推送不改变本地镜像，列表理论上不变；仍刷新一次以拉齐「推送后 digest 变化」这类情况。 */
+async function onPushed(): Promise<void> {
+  await load()
+}
+
 function openInspect(image: ImageSummary): void {
   // 传**原始** id：路由负责段内编码，`route.params.id` 读回来时已解码。
   // 自己再 `encodeURIComponent` 一次会被路由二次编码（`sha256:` → `sha256%253A`），
@@ -378,6 +406,9 @@ watch(
     >
       <template #actions>
         <el-button :loading="loading" @click="load">{{ t('common.refresh') }}</el-button>
+        <!-- 构建与拉取并列：两者都是「往这台主机上加一个镜像」，
+             只是来源不同（本地 tar / 远程仓库）。 -->
+        <el-button @click="buildDialogVisible = true">{{ t('image.action.build') }}</el-button>
         <el-button type="primary" @click="pullDialogVisible = true">
           {{ t('image.action.pull') }}
         </el-button>
@@ -492,14 +523,21 @@ watch(
           </el-table-column>
 
           <!-- 与容器列表共用 IconActionButton：图标按钮 + tooltip 文字标签。
-             `gap-0` + 64px 定宽：两个 24px 按钮 = 48px，gap-0.5 时是 50px。 -->
-          <el-table-column :label="t('container.col.actions')" width="64">
+             `gap-0` + 88px 定宽：三个 24px 按钮 = 72px，加两处 gap-0.5 是 76px。
+             悬挂镜像没有标签，推不了（后端回 1000），因此那一行只有两个按钮。 -->
+          <el-table-column :label="t('container.col.actions')" width="88">
             <template #default="{ row }">
               <div class="flex items-center">
                 <IconActionButton
                   icon="i-carbon-document-view"
                   :label="t('container.action.detail')"
                   @click="openInspect(row)"
+                />
+                <IconActionButton
+                  v-if="!isDangling(row.repoTags)"
+                  icon="i-carbon-container-image-push"
+                  :label="t('image.action.push')"
+                  @click="openPush(row)"
                 />
                 <IconActionButton
                   icon="i-carbon-trash-can"
@@ -535,6 +573,15 @@ watch(
     </SectionCard>
 
     <PullImageDialog v-model="pullDialogVisible" :host-id="hostId" @pulled="onPulled" />
+
+    <BuildImageDialog v-model="buildDialogVisible" :host-id="hostId" @built="onBuilt" />
+
+    <PushImageDialog
+      v-model="pushDialogVisible"
+      :host-id="hostId"
+      :image="pushTarget"
+      @pushed="onPushed"
+    />
 
     <p class="mt-3 text-xs text-content-faint">
       {{ t('image.dangling.note', { label: DANGLING_IMAGE_LABEL }) }}

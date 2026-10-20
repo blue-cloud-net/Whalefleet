@@ -484,6 +484,42 @@ export interface ImageRemovedResult {
   deleted: string[]
 }
 
+/**
+ * 镜像构建的结果（0.4.0）。
+ *
+ * ⚠️ `buildLog` **必须展示**：构建失败时守护进程只给一行
+ * `returned a non-zero code: 1`，真正的原因（`COPY failed: no such file`）
+ * 在它上面几百行里。后端保留**最后** 500 行并随响应带回，排错的现场在用户手里。
+ */
+export interface ImageBuildResult {
+  imageId: string
+  /** 构建产物的完整引用，如 `myapp:v1` */
+  reference: string
+  size: number
+  repoTags: string[]
+  /** 构建输出（最多 500 行，失败时含 `ERROR:` 行） */
+  buildLog: string[]
+}
+
+/**
+ * 推送镜像的结果（0.4.0）。
+ *
+ * ⚠️ `authenticated` 是**关键信息**：匿名推送同样能成功（公开仓库）。
+ * 只看「推送成功」无法区分「用的是我配的凭据」与「这个仓库压根不要凭据」——
+ * 后者往往意味着地址配错了（推到了一个意外的公开仓库）。
+ */
+export interface ImagePushResult {
+  imageId: string
+  /** 推送时使用的完整引用 */
+  reference: string
+  /** 实际推到的 Registry 地址（`host` 或 `host:port`） */
+  registryServerAddress: string
+  /** 本次是否带了凭据 */
+  authenticated: boolean
+  /** 推送输出 */
+  pushLog: string[]
+}
+
 /* ==================================================================
  * 私有 Registry 配置（对应后端 `Whalefleet.Application.Registries`，0.4.0）
  * ================================================================== */
