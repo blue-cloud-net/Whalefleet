@@ -27,18 +27,24 @@ const currentHost = computed(
 )
 
 /**
- * 实时指标占位。
+ * 实时指标磁贴。
  *
- * 四项都是「等 SignalR 推送才有数」，因此统一用虚线框 + 占位符，
- * 与实心磁贴区分开——避免以后接上真数据时用户以为是两套不同的卡片。
+ * **宿主机级 CPU / 内存 / 网络是「不支持」而不是「还没做」**：Docker Engine API
+ * 没有宿主机级指标端点——`/info` 只给 `NCPU` / `MemTotal` 这样的静态上限，
+ * `docker stats` 只针对容器。用容器聚合值冒充会让同一页出现两套口径，比不给更糟。
+ * 容器级指标在容器列表与详情页。
+ *
+ * 磁盘用量走 `system/df`，排在 0.6.0，因此仍是虚线占位。
  */
-const metrics = computed<{ label: string; icon: string }[]>(() => [
-  { label: t('status.cpu'), icon: 'i-carbon-meter' },
-  // 早先误写成 `i-carbon-meter--alt`（双连字符），Carbon 里只有 `meter-alt`。
-  { label: t('status.memory'), icon: 'i-carbon-meter-alt' },
-  { label: t('status.network'), icon: 'i-carbon-network-4' },
-  { label: t('status.disk'), icon: 'i-carbon-data-volume' }
-])
+const metrics = computed<{ label: string; icon: string; supported: boolean }[]>(
+  () => [
+    { label: t('status.cpu'), icon: 'i-carbon-meter', supported: false },
+    // 早先误写成 `i-carbon-meter--alt`（双连字符），Carbon 里只有 `meter-alt`。
+    { label: t('status.memory'), icon: 'i-carbon-meter-alt', supported: false },
+    { label: t('status.network'), icon: 'i-carbon-network-4', supported: false },
+    { label: t('status.disk'), icon: 'i-carbon-data-volume', supported: true }
+  ]
+)
 
 function goEvents() {
   router.push({ name: 'host-events', params: { hostId: hostId.value } })
@@ -54,7 +60,7 @@ function goEvents() {
       narrow
     />
 
-    <!-- 实时指标：SignalR 就绪前占位 -->
+    <!-- 实时指标：宿主机级 CPU / 内存 / 网络**不支持**；磁盘待 0.6.0 的 system/df -->
     <SectionCard :title="t('status.realtime')" :description="t('status.realtimeHint')">
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div
@@ -64,7 +70,12 @@ function goEvents() {
         >
           <span class="text-xl text-content-faint" :class="m.icon" aria-hidden="true" />
           <div class="mt-2 text-xs text-content-muted">{{ m.label }}</div>
-          <div class="mt-1 text-2xl font-semibold leading-none text-content-faint app-tabular">—</div>
+          <div
+            class="mt-1 font-semibold leading-none app-tabular"
+            :class="m.supported ? 'text-2xl text-content-faint' : 'text-sm text-content-faint'"
+          >
+            {{ m.supported ? '—' : t('status.unsupported') }}
+          </div>
         </div>
       </div>
     </SectionCard>
