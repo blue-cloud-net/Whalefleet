@@ -28,16 +28,17 @@
 # ---------- 参数 ----------
 ARG DOTNET_SDK_VERSION=10.0
 ARG DOTNET_RUNTIME_VERSION=10.0
-ARG NODE_VERSION=22-alpine
+ARG NODE_VERSION=26-alpine
 
 # ---------- 阶段 1：构建前端 ----------
 FROM node:${NODE_VERSION} AS ui
 WORKDIR /ui
 
-# pnpm 的版本来自 packageManager 字段，用 corepack 激活可避免「本机装的
-# pnpm 版本」与「锁文件期望的版本」不一致导致的解析漂移。
+# Node 25 起官方镜像不再内置 corepack，`corepack enable` 会报 not found。
+# 改用 npm 安装 pnpm。
 COPY src/Whalefleet.UI/package.json src/Whalefleet.UI/pnpm-lock.yaml src/Whalefleet.UI/pnpm-workspace.yaml ./
-RUN corepack enable && pnpm install --frozen-lockfile
+RUN npm install -g pnpm \
+    && pnpm install --frozen-lockfile
 
 # 先拷贝其余源码再构建：package.json 很少变，这样绝大多数构建都能命中
 # 「依赖安装」层的缓存——否则每次改一个 .vue 都要重装几百 MB 的依赖。

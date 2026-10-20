@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Whalefleet 前端 — Vue 3 + TypeScript + UnoCSS + Element Plus",
+  "packageManager": "pnpm@12.11.2",
   "engines": {
     "node": ">=20.0.0",
     "pnpm": ">=9.0.0"
