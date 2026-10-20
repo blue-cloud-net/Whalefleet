@@ -190,7 +190,7 @@ dotnet list src/Whalefleet.Application/Whalefleet.Application.csproj package
 > 与角色 / 分配管理端点）。权限目录是**静态封闭集**（`Core/Permissions/Permission.cs` 里的 `Permission` 常量与
 > `PermissionScope` 枚举），刻意不建表——「本版本有没有这个功能」是**编译期**事实，放进表里只会让运行时可配的
 > 角色逐渐偏离代码真正能强制的范围。目录分 **Global**（与具体主机无关）与 **Host**（在单台主机内有效）两种作用域；
-> `PermissionScope.Container` 为 0.5.0 预留（目录里尚无任何权限落在该作用域），本迭代只开放
+> `PermissionScope.Container` 为 0.12.0 预留（目录里尚无任何权限落在该作用域），本迭代只开放
 > **Global** 与 **Host** 两条分配路径。
 >
 > 角色携带的权限子集存于 `role_permissions`（`(role_id, permission)` 复合主键），
@@ -388,7 +388,7 @@ protected abstract Task<bool> ExecuteUpdateAsync(DbConnection connection, TEntit
 **审计写入点（0.9.0 起）**：审计由**应用服务层统一埋点**，不在 Controller 逐个写；
 中间件兜底记录未被业务捕获的 4xx / 5xx，WebSocket（exec）会话由会话管理器在关闭时写入。
 
-### SignalR Hub 层（0.7.0 起）
+### SignalR Hub 层（0.5.0 起）
 
 | Hub | 职责 |
 |-----|------|
@@ -898,7 +898,7 @@ JWT 中间件默认在验证失败时**直接写 401 且不带响应体**。若�
 > **为什么提前到 0.0.4**：0.0.4 的验收标准是「curl 登录成功」，但此时还没有任何创建用户的入口
 > （用户管理 API 在 0.0.8 且是 admin 专用），存在鸡生蛋问题。
 
-### SignalR Hub 鉴权（0.7.0）
+### SignalR Hub 鉴权（0.5.0）
 
 WebSocket 不支持自定义 Header，JWT 通过 `?access_token=...` 查询参数传递：
 
@@ -1031,9 +1031,9 @@ src/Whalefleet.UI/src/
 | 场景 | 方式 |
 |------|------|
 | 普通数据请求 | HTTP POST（axios），RPC 风格路径 |
-| 实时日志（0.7.0） | SignalR WebSocket，`ContainerLogHub` |
-| 实时监控（0.7.0） | SignalR WebSocket，`ContainerStatsHub` |
-| 页面内通知（0.7.0） | SignalR WebSocket，`NotificationHub` |
+| 实时日志（0.5.0） | SignalR WebSocket，`ContainerLogHub` |
+| 实时监控（0.5.0） | SignalR WebSocket，`ContainerStatsHub` |
+| 页面内通知（0.5.0） | SignalR WebSocket，`NotificationHub` |
 | 容器终端（0.8.0） | 原生 WebSocket `/ws/hosts/{hostId}/containers/exec` + terminal token |
 | AI 接入（0.18.0） | Streamable HTTP `/mcp`（JSON-RPC 2.0，不入 `ApiResult` 信封） |
 

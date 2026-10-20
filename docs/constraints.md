@@ -440,6 +440,10 @@ dotnet Whalefleet.Api.dll --urls http://0.0.0.0:8080
 
 ### 监控数据
 
+- **宿主机级实时 CPU / 内存 / 网络 / 负载不做**：Docker Engine API 没有宿主机级指标端点
+  （`/info` 只给 `NCPU` / `MemTotal` 这样的静态上限，`docker stats` 只针对容器）。
+  用容器聚合值冒充宿主机指标会让同一页面出现两套口径，比不给更糟
+- 主机级实时指标需目标主机上的 Agent，属 1.0.0 之后（见 [backlog.md](./backlog.md)）
 - 实时推送（SignalR），**不持久化历史指标**（v1.0 范围）
 
 ### 镜像构建
@@ -455,13 +459,14 @@ dotnet Whalefleet.Api.dll --urls http://0.0.0.0:8080
 
 ### 容器 stats
 
-- 0.7.0 仅 SignalR 实时流
+- 0.5.0 仅 SignalR 实时流
 - **不做一次性 stats API**（`POST /api/v1/hosts/{hostId}/containers/stats` 单次查询）
 
 ### Prune / 清理
 
-- **v1.0 不做**（运维刚需但推迟）
-- 不在 0.x 范围
+- **资源级 prune 在 0.7.0 交付**：镜像 / 卷两个资源级清理
+- **一键全清（`system/prune`，一次清四类）不做**——把「删多少」的决定权完全交给
+  守护进程，而本项目的界面强调「先看到再确认」
 
 ### 公开 demo
 

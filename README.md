@@ -20,16 +20,16 @@
 
 ## ✨ Features
 
-- 🐳 **Full container lifecycle**: create / start / stop / restart / rename / duplicate / remove / logs / inspect (0.0.9); bulk remove from 0.1.0; **bulk start / stop and resource-level prune** (0.6.0); **export / import / commit** (0.14.0)
-- 🖼 **Image management**: pull / remove / inspect / tag (0.0.10+); bulk remove from 0.1.0; **Dockerfile build + private registries** (0.4.0); **save / load** and **update detection** (0.14.0 / 0.16.0)
+- 🐳 **Full container lifecycle**: create / start / stop / restart / rename / duplicate / remove / logs / inspect (0.0.9); bulk remove from 0.1.0; **bulk start / stop and resource-level prune** (0.7.0); **export / import / commit** (0.14.0)
+- 🖼 **Image management**: pull / remove / inspect / tag (0.0.10+); bulk remove from 0.1.0; **Dockerfile build + private repositories** (0.4.0); **save / load** and **update detection** (0.14.0 / 0.16.0)
 - 💾 **Complete Volume / Network CRUD** (0.2.0)
-- 🖥 **Multi-host management**: local socket + remote TCP (optional TLS / Basic auth), switchable from the top bar (from 0.0.8); **groups + tags, with group-scoped batch operations and disk usage** (0.10.0)
+- 🖥 **Multi-host management**: local socket + remote TCP (optional TLS / Basic auth), switchable from the top bar (from 0.0.8); **groups + tags and disk usage** (0.6.0); **group-scoped batch operations** (0.7.0)
 - 🔐 **Authentication from day one**: JWT + refresh token + Argon2id password hashing + login rate limiting (from 0.0.4); **audit log** (0.9.0)
 - 👥 **Four built-in roles** (admin / operator / viewer / auditor) + host visibility (0.0.8, assignment from 0.1.0); **container-level RBAC** (0.12.0); **teams with bulk granting** (0.13.0)
-- 🔔 **Real-time push** (0.7.0): SignalR live log streams / CPU, memory, and network metrics / container anomaly notifications
+- 🔔 **Real-time push** (0.5.0): SignalR live log streams / container CPU, memory, and network metrics / container anomaly notifications; **health checks, restart counts, and inline metric columns** (0.6.0)
 - 🚨 **Alerting rules** (0.11.0): three severity levels with configurable thresholds, cooldowns, and webhook / email channels
 - 💻 **Web terminal** (0.8.0): xterm.js + a dedicated short-lived terminal token
-- 📦 **Docker Compose / Stack management** (0.5.0), with **resource webhooks and `.env` variables** (0.15.0)
+- 📦 **Docker Compose / Stack management** (0.10.0), with **resource webhooks and `.env` variables** (0.15.0)
 - 🤖 **MCP server** (0.18.0): expose Docker management to AI clients (VS Code Copilot, Claude Desktop) — read-only by default, with environment-variable redaction
 - 🎨 **Modern UI**: UnoCSS + Element Plus + command palette (Ctrl+K) + global shortcuts + light/dark themes + three accent colors
 
