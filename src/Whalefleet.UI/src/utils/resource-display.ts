@@ -13,27 +13,28 @@ export const BUILT_IN_NETWORK_NAMES: readonly string[] = ['bridge', 'host', 'non
 /**
  * 数据卷的用量是否可以展示。
  *
- * ⚠️ **`size` 为 0 不代表空卷**：这两个值来自守护进程的 `UsageData`，
- * 只在 Docker API 1.42+ 的列表接口里出现；老守护进程根本不返回该字段，
- * 反序列化后同样是 0。两种 0 无法区分，因此界面一律显示「—」而不是「0 B」——
- * 谎报一个精确的数字比留空更糟。
+ * ⚠️ **`null` 才是「不知道」，`0` 是确切的答案**：用量来自守护进程的
+ * `GET /system/df`（`GET /volumes` 不返回 `UsageData`）。查询失败或驱动不报用量时
+ * 后端给 `null`，界面显示「—」；空卷则是真正的 `0`，应当显示成「0 B」。
+ * 把 `0` 也当成「不知道」会把一个真实结论谎报成缺失。
  */
 export function hasVolumeUsage(volume: Pick<VolumeSummary, 'size'>): boolean {
-  return volume.size > 0
+  return volume.size !== null
 }
 
 /**
  * 数据卷的引用数是否可以展示。
  *
- * 与 <see cref="hasVolumeUsage"/> 同源：`refCount` 同样可能因字段缺失而是 0。
+ * 与 <see cref="hasVolumeUsage"/> 同源：`refCount` 同样用 `null` 表示「不知道」，
+ * `0` 表示「确实没有任何容器引用」。
  */
 export function hasVolumeRefCount(volume: Pick<VolumeSummary, 'refCount'>): boolean {
-  return volume.refCount > 0
+  return volume.refCount !== null
 }
 
-/** 数据卷是否仍被容器引用（决定删除前的提示文案）。 */
+/** 数据卷是否仍被容器引用（决定删除前的提示文案）。`null`（未知）不算被引用。 */
 export function isVolumeInUse(volume: Pick<VolumeSummary, 'refCount'>): boolean {
-  return volume.refCount > 0
+  return (volume.refCount ?? 0) > 0
 }
 
 /**

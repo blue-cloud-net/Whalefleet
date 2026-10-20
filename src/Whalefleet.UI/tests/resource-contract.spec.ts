@@ -26,9 +26,10 @@ import type {
  * 1. **同名建卷成功 / 同名建网 409**——方向相反，照抄任一边都会错一条。
  * 2. **卷的 `force` 删不掉被引用的卷**——只有「卷不存在」时才变成功。
  * 3. **网络没有 `force`**，且内置网络禁删。
- * 4. **`size` / `refCount` 为 0** 与 **列表没有 `containerCount`**——
- *    mock 若补上这两个字段，前端就会写出后端永远不会给的数据。
+ * 4. **`size` / `refCount` 用 `null` 表示「不知道」**、`0` 是确切的答案，以及
+ *    **列表没有 `containerCount`**——mock 若补上这个字段，前端就会写出后端永远不会给的数据。
  * 5. **网段格式非法 → 1000**（不是 1402/500）。
+ * 6. **列表分页**：`pageSize` 夹紧到 [1, 100]、`pageIndex` 负数按 0、回显夹紧后的值。
  */
 /** MSW 的处理器路径不含主机名，发请求时必须给绝对地址（同 `mock-contract.spec.ts`）。 */
 const BASE = 'http://localhost:5173'
@@ -64,23 +65,46 @@ describe('数据卷 mock 契约', () => {
     expect(body.data.items.length).toBeGreaterThan(0)
   })
 
-  it('用量缺失时给 0 而不是省略字段', async () => {
+  it('用量缺失给 null（而不是省略字段或 0）', async () => {
     const body = await readJson<{ data: VolumeListResult }>(await post('/volumes/list', {}))
 
-    // 前端靠 `size === 0` 显示「—」。若 mock 省略字段，JSON 里没有这个键，
+    // 前端靠 `size === null` 显示「—」。若 mock 省略字段，JSON 里没有这个键，
     // 反序列化也会得到 undefined，判断分支就与真实后端不一致了。
-    const withoutUsage = body.data.items.find((item) => item.size === 0)
+    const withoutUsage = body.data.items.find((item) => item.size === null)
     expect(withoutUsage, '夹具里应有一条用量缺失的卷').toBeDefined()
 
-    // 两个字段恒为数值（0 而非 undefined）——refCount 与 size 相互独立：
-    // 「不知道多大」和「没人引用」是两回事，不能互相推导
-    expect(typeof withoutUsage?.size).toBe('number')
-    expect(typeof withoutUsage?.refCount).toBe('number')
+    // `null` 与 `undefined` 是两回事：前者是后端明确给的「不知道」
+    expect(withoutUsage?.refCount).toBeNull()
 
-    // 而「没有任何容器引用」的卷 refCount 确实是 0
-    const unused = body.data.items.find((item) => item.name === 'build-cache')
-    expect(unused?.refCount).toBe(0)
-    expect(unused?.size).toBeGreaterThan(0)
+    // 空卷的 0 是确切答案：界面要如实显示「0 B」而不是「—」
+    const emptyButUnused = body.data.items.find((item) => item.name === 'build-cache')
+    expect(emptyButUnused?.refCount).toBe(0)
+    expect(emptyButUnused?.size).toBeGreaterThan(0)
+  })
+
+  it('列表分页按后端口径切片并回显夹紧后的值', async () => {
+    const body = await readJson<{ data: VolumeListResult }>(
+      await post('/volumes/list', { pageIndex: 1, pageSize: 2 })
+    )
+
+    // 夹具共 4 条：第 2 页只剩 2 条，total 仍是 4
+    expect(body.data.total).toBe(4)
+    expect(body.data.pageIndex).toBe(1)
+    expect(body.data.pageSize).toBe(2)
+    expect(body.data.items).toHaveLength(2)
+
+    // `pageSize` 超上限必须被夹紧（与后端 Math.Clamp 一致），否则界面算页数会错
+    const capped = await readJson<{ data: VolumeListResult }>(
+      await post('/volumes/list', { pageIndex: 0, pageSize: 5000 })
+    )
+    expect(capped.data.pageSize).toBe(100)
+
+    // 负数页码按 0 处理
+    const negative = await readJson<{ data: VolumeListResult }>(
+      await post('/volumes/list', { pageIndex: -3, pageSize: 2 })
+    )
+    expect(negative.data.pageIndex).toBe(0)
+    expect(negative.data.items).toHaveLength(2)
   })
 
   it('同名创建返回已存在的那一个而非报错', async () => {

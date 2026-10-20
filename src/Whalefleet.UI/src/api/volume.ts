@@ -13,12 +13,20 @@ import type { BatchOperationResult, VolumeDetail, VolumeListResult, VolumeSummar
  * - **逐条**（`1401` 卷不存在 / `1404` 仍被引用）：进 `failures`，**整体仍是 200**。
  */
 
-/** 数据卷列表（不分页——理由见后端 `VolumeListResult`）。 */
-export function listVolumes(hostId: string): Promise<VolumeListResult> {
+/**
+ * 数据卷列表（服务端内存分页，口径与容器 / 镜像一致）。
+ *
+ * 省略分页参数时后端按「第 0 页、每页 20 条」处理；`pageSize` 超过 100 会被**夹紧**，
+ * 回显的 `pageIndex` / `pageSize` 是夹紧后的实际取值。
+ */
+export function listVolumes(
+  hostId: string,
+  params: { pageIndex?: number; pageSize?: number } = {}
+): Promise<VolumeListResult> {
   return request<VolumeListResult>({
     url: `/api/v1/hosts/${encodeURIComponent(hostId)}/volumes/list`,
     method: 'post',
-    data: {}
+    data: params
   })
 }
 

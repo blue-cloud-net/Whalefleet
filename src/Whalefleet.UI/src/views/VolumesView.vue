@@ -8,6 +8,7 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import SectionCard from '@/components/common/SectionCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import IconActionButton from '@/components/common/IconActionButton.vue'
+import ListPagination from '@/components/common/ListPagination.vue'
 import ImageSize from '@/components/business/ImageSize.vue'
 import BatchActionBar from '@/components/common/BatchActionBar.vue'
 import {
@@ -25,22 +26,32 @@ import {
   isVolumeInUse
 } from '@/utils/resource-display'
 import { formatDateTime } from '@/utils/datetime'
+import { PAGE_SIZE_ALL, resolvePageSize, usePreferencesStore } from '@/stores/preferences'
 import type { BatchOperationFailure, VolumeDetail, VolumeSummary } from '@/types/api'
 
 /**
- * 数据卷列表页（0.2.0）。
+ * 数据卷列表页（0.2.0，分页于 0.14.x 补齐）。
  *
  * ## 三处与镜像页刻意不同
- * 1. **不分页**：单台主机上的卷数量少、条目也小（理由见后端 `VolumeListResult`）。
- *    分页与筛选是四类资源**统一**的改动，归 `0.16.0`。
+ * 1. **分页与容器 / 镜像同一套口径**：服务端内存切片，`pageIndex` 从 0 开始，
+ *    每页条数来自用户偏好、上限 100（超出由后端夹紧并回显）。
  * 2. **按名字操作，没有 ID**：数据卷用名字标识。别照搬镜像那套 ID 解析。
- * 3. **`size` / `refCount` 为 0 显示「—」**：这两个字段可能因守护进程老旧而缺失，
- *    0 与「真的是 0」无法区分（见 `hasVolumeUsage`）。
+ * 3. **`size` / `refCount` 为 `null` 显示「—」，为 `0` 如实显示**：这两个字段可能
+ *    因守护进程不报用量而缺失（`null`），但 `0` 是一个确切的答案（见 `hasVolumeUsage`）。
  */
 const { t } = useI18n()
 const route = useRoute()
 
 const volumes = ref<VolumeSummary[]>([])
+const total = ref(0)
+const pageIndex = ref(0)
+/**
+ * 每页条数来自用户偏好（设置页可改），`PAGE_SIZE_ALL`（0）表示「全部」。
+ *
+ * 类型是 `number` 而不是 store 的 `PageSize` 联合：后端回显的 `result.pageSize`
+ * 是任意 number，写回时需要接住它。「全部」靠与 `PAGE_SIZE_ALL` 相等来判断，不靠类型。
+ */
+const pageSize = ref<number>(usePreferencesStore().pageSize)
 const warnings = ref<string[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -67,6 +78,30 @@ const detailBusy = ref(false)
 const hostId = computed(() => String(route.params.hostId ?? ''))
 
 const isEmpty = computed(() => !loading.value && error.value === null && volumes.value.length === 0)
+
+/**
+ * 总页数。
+ *
+ * 必须用 `resolvePageSize` 而不是直接 `total / pageSize`：
+ * `pageSize` 可能是 `PAGE_SIZE_ALL`（0，除以它得 Infinity），也可能被上限夹紧。
+ * 与分页组件口径不一致会出现「分页条显示了第 2 页按钮，但 goToPage 拦下它」——按钮点不动。
+ */
+const pageCount = computed(() =>
+  Math.max(1, Math.ceil(total.value / resolvePageSize(pageSize.value, total.value)))
+)
+
+/**
+ * 列表查询参数。
+ *
+ * ⚠️ 「全部」必须在这里换算成真实条数再发出去：0 传出去会被后端
+ * `Math.Clamp(pageSize, 1, 100)` 夹成 1，用户选了「全部」却只看到一行。
+ */
+function listParams() {
+  return {
+    pageIndex: pageIndex.value,
+    pageSize: resolvePageSize(pageSize.value, total.value)
+  }
+}
 
 /**
  * 创建表单的校验规则。
@@ -96,9 +131,23 @@ async function load(): Promise<void> {
 
   loading.value = true
   try {
-    const result = await listVolumes(hostId.value)
+    const result = await listVolumes(hostId.value, listParams())
+
+    // 删光当前页（如把最后一页的最后一个卷删了）时自动回退一页：
+    // 否则用户会停在一片空白上，且「共 N 个」与空表同时显示，很容易被读成「全删完了」。
+    if (result.items.length === 0 && result.pageIndex > 0 && result.total > 0) {
+      pageIndex.value = result.pageIndex - 1
+      await load()
+      return
+    }
 
     volumes.value = result.items
+    total.value = result.total
+    // ⚠️ 以**服务端回显**的页码 / 页数为准：请求写 pageSize=5000 时后端会夹到 100，
+    // 拿请求里的值去算「还有没有下一页」会得出错误结论。
+    pageIndex.value = result.pageIndex
+    // 「全部」不回写：回显的是换算后的真实条数（如 57），写回去就把「全部」降级成「57 条/页」。
+    if (pageSize.value !== PAGE_SIZE_ALL) pageSize.value = result.pageSize
 
     // ⚠️ 必须回带 warnings：守护进程会用它说「某个卷的驱动没装」。
     // 丢掉的话用户只看到列表少了几个卷，却不知道为什么。
@@ -109,6 +158,25 @@ async function load(): Promise<void> {
   } finally {
     loading.value = false
   }
+}
+
+async function goToPage(next: number): Promise<void> {
+  if (next < 0 || next >= pageCount.value) return
+
+  pageIndex.value = next
+  await load()
+}
+
+/**
+ * 换每页条数。
+ *
+ * ⚠️ 这里**只更新本地状态、不发请求**：`ListPagination` 在改页大小时会同时抛
+ * `update:pageSize` 与 `update:pageIndex`(0)，两个事件各接一个处理器。
+ * 若这里也 load()，一次改页大小就会打两遍请求。真正的查询统一由 `goToPage(0)` 触发。
+ */
+function onPageSizeChange(size: number): void {
+  usePreferencesStore().setPageSize(size)
+  pageSize.value = size
 }
 
 function openCreate(): void {
@@ -183,7 +251,7 @@ async function removeOne(volume: VolumeSummary): Promise<void> {
           ? h(
               'span',
               { class: 'text-status-warn text-xs' },
-              t('volume.remove.confirm.inUse', { count: volume.refCount })
+              t('volume.remove.confirm.inUse', { count: volume.refCount ?? 0 })
             )
           : null
       ]),
@@ -321,6 +389,8 @@ watch(
     error.value = null
     // 换主机等于换了一批完全不同的行：不清选择的话，批量删除会作用到上一台主机的卷上
     selected.value = []
+    // 页码也必须归零：停在上一台主机的第 3 页，换过去很可能是一片空白
+    pageIndex.value = 0
     void load()
   },
   { immediate: true }
@@ -344,7 +414,7 @@ watch(
     <SectionCard density="flush">
       <template #actions>
         <span class="text-xs text-content-muted">
-          {{ t('volume.total', { total: volumes.length }) }}
+          {{ t('volume.total', { total }) }}
         </span>
       </template>
 
@@ -414,7 +484,7 @@ watch(
 
           <el-table-column :label="t('volume.col.size')" width="130">
             <template #default="{ row }">
-              <!-- 0 不代表空卷：字段可能缺失，显示「—」而不是「0 B」 -->
+              <!-- null 才是「不知道」：显示「—」而不是「0 B」；真实的 0 照常显示 -->
               <ImageSize v-if="hasVolumeUsage(row)" :size="row.size" />
               <span v-else class="text-content-faint">—</span>
             </template>
@@ -452,6 +522,16 @@ watch(
             </template>
           </el-table-column>
         </el-table>
+
+        <!-- 分页条始终显示：翻到最后一页删光后仍能回到上一页，而不是对着一片空白猜。 -->
+        <ListPagination
+          :total="total"
+          :page-index="pageIndex"
+          :page-size="pageSize"
+          :disabled="loading"
+          @update:page-index="goToPage"
+          @update:page-size="onPageSizeChange"
+        />
       </template>
     </SectionCard>
 

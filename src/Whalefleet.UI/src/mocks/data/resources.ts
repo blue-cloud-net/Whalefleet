@@ -4,8 +4,8 @@ import type { NetworkDetail, NetworkSummary, VolumeDetail, VolumeSummary } from 
  * mock 用数据卷数据。
  *
  * 刻意覆盖三种形态，否则界面的分支走查不到：
- * 1. **`size` / `refCount` 为 0**（`db-data`）——验证界面把 0 显示成「—」而不是「0 B」，
- *    对应老守护进程不返回 `UsageData` 的情况。
+ * 1. **用量为 `null`**（`nfs-shared`）——守护进程（或第三方驱动）不报用量，
+ *    界面必须显示「—」；而真正的 `0`（`db-data`）应如实显示成「0 B」。
  * 2. **有引用的卷**（`refCount > 0`）——验证二次确认提示「先删掉使用它的容器」。
  * 3. **非 `local` 驱动**（`nfs-shared`）——验证驱动与挂载路径不是硬编码展示。
  */
@@ -23,7 +23,7 @@ export const MOCK_VOLUMES_DEFAULT: VolumeSummary[] = [
     labels: { app: 'nginx' }
   },
   {
-    // 用量数据缺失 → 后端给 0。界面必须显示「—」。
+    // 占用确实是 0（空卷），但仍有 2 个容器引用——两个字段相互独立
     name: 'db-data',
     driver: 'local',
     mountpoint: '/var/lib/docker/volumes/db-data/_data',
@@ -34,14 +34,14 @@ export const MOCK_VOLUMES_DEFAULT: VolumeSummary[] = [
     labels: {}
   },
   {
-    // 第三方驱动：挂载路径与选项都不是 `local` 那套
+    // 第三方驱动不报用量 → 后端给 null。界面必须显示「—」，而不是「0 B」
     name: 'nfs-shared',
     driver: 'nfs',
     mountpoint: '/mnt/nfs/shared',
     scope: 'global',
     created: null,
-    size: 0,
-    refCount: 0,
+    size: null,
+    refCount: null,
     labels: { env: 'staging' }
   },
   {

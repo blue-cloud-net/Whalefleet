@@ -7,6 +7,7 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import SectionCard from '@/components/common/SectionCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import IconActionButton from '@/components/common/IconActionButton.vue'
+import ListPagination from '@/components/common/ListPagination.vue'
 import { createNetwork, inspectNetwork, listNetworks, removeNetwork } from '@/api/network'
 import { ApiRequestError } from '@/api'
 import {
@@ -17,13 +18,15 @@ import {
   isValidSubnet,
   networkSubnetLabel
 } from '@/utils/resource-display'
+import { PAGE_SIZE_ALL, resolvePageSize, usePreferencesStore } from '@/stores/preferences'
 import type { NetworkDetail, NetworkSummary } from '@/types/api'
 
 /**
- * 网络列表页（0.2.0）。
+ * 网络列表页（0.2.0，分页于 0.14.x 补齐）。
  *
- * ## 四处与镜像页刻意不同
- * 1. **不分页**（理由与数据卷一致，分页归 `0.16.0`）。
+ * ## 三处与镜像页刻意不同
+ * 1. **分页与容器 / 镜像同一套口径**：服务端内存切片，`pageIndex` 从 0 开始，
+ *    每页条数来自用户偏好、上限 100（超出由后端夹紧并回显）。
  * 2. **没有「容器数」列**：Docker 的列表接口不返回 `Containers`，只有详情接口返回。
  *    补一个恒为 0 的列会把正在用的网络显示成「0 个容器」——
  *    真实接入情况在详情抽屉里，那才是权威数据。
@@ -35,6 +38,15 @@ const { t } = useI18n()
 const route = useRoute()
 
 const networks = ref<NetworkSummary[]>([])
+const total = ref(0)
+const pageIndex = ref(0)
+/**
+ * 每页条数来自用户偏好（设置页可改），`PAGE_SIZE_ALL`（0）表示「全部」。
+ *
+ * 类型是 `number` 而不是 store 的 `PageSize` 联合：后端回显的 `result.pageSize`
+ * 是任意 number，写回时需要接住它。「全部」靠与 `PAGE_SIZE_ALL` 相等来判断。
+ */
+const pageSize = ref<number>(usePreferencesStore().pageSize)
 const loading = ref(false)
 const error = ref<string | null>(null)
 const busyNames = ref<Set<string>>(new Set())
@@ -54,6 +66,29 @@ const detailBusy = ref(false)
 const hostId = computed(() => String(route.params.hostId ?? ''))
 
 const isEmpty = computed(() => !loading.value && error.value === null && networks.value.length === 0)
+
+/**
+ * 总页数。
+ *
+ * 必须用 `resolvePageSize` 而不是直接 `total / pageSize`：
+ * `pageSize` 可能是 `PAGE_SIZE_ALL`（0，除以它得 Infinity），也可能被上限夹紧。
+ */
+const pageCount = computed(() =>
+  Math.max(1, Math.ceil(total.value / resolvePageSize(pageSize.value, total.value)))
+)
+
+/**
+ * 列表查询参数。
+ *
+ * ⚠️ 「全部」必须在这里换算成真实条数再发出去：0 传出去会被后端
+ * `Math.Clamp(pageSize, 1, 100)` 夹成 1，用户选了「全部」却只看到一行。
+ */
+function listParams() {
+  return {
+    pageIndex: pageIndex.value,
+    pageSize: resolvePageSize(pageSize.value, total.value)
+  }
+}
 
 /**
  * 创建表单的校验规则。
@@ -106,15 +141,47 @@ async function load(): Promise<void> {
 
   loading.value = true
   try {
-    const result = await listNetworks(hostId.value)
+    const result = await listNetworks(hostId.value, listParams())
+
+    // 删光当前页（如把最后一页的最后一个网络删了）时自动回退一页：
+    // 否则用户会停在一片空白上，且「共 N 个」与空表同时显示。
+    if (result.items.length === 0 && result.pageIndex > 0 && result.total > 0) {
+      pageIndex.value = result.pageIndex - 1
+      await load()
+      return
+    }
 
     networks.value = result.items
+    total.value = result.total
+    // ⚠️ 以**服务端回显**的页码 / 页数为准：请求写 pageSize=5000 时后端会夹到 100。
+    pageIndex.value = result.pageIndex
+    // 「全部」不回写：回显的是换算后的真实条数，写回去就把「全部」降级成了具体页大小。
+    if (pageSize.value !== PAGE_SIZE_ALL) pageSize.value = result.pageSize
     error.value = null
   } catch (e) {
     error.value = e instanceof ApiRequestError ? e.message : t('network.loadFailed')
   } finally {
     loading.value = false
   }
+}
+
+async function goToPage(next: number): Promise<void> {
+  if (next < 0 || next >= pageCount.value) return
+
+  pageIndex.value = next
+  await load()
+}
+
+/**
+ * 换每页条数。
+ *
+ * ⚠️ 这里**只更新本地状态、不发请求**：`ListPagination` 在改页大小时会同时抛
+ * `update:pageSize` 与 `update:pageIndex`(0)，两个事件各接一个处理器。
+ * 若这里也 load()，一次改页大小就会打两遍请求。真正的查询统一由 `goToPage(0)` 触发。
+ */
+function onPageSizeChange(size: number): void {
+  usePreferencesStore().setPageSize(size)
+  pageSize.value = size
 }
 
 function openCreate(): void {
@@ -222,6 +289,8 @@ watch(
   () => route.params.hostId,
   () => {
     error.value = null
+    // 换主机必须回到第 0 页：停在上一台主机的第 3 页，换过去很可能是一片空白
+    pageIndex.value = 0
     void load()
   },
   { immediate: true }
@@ -245,7 +314,7 @@ watch(
     <SectionCard density="flush">
       <template #actions>
         <span class="text-xs text-content-muted">
-          {{ t('network.total', { total: networks.length }) }}
+          {{ t('network.total', { total }) }}
         </span>
       </template>
 
@@ -261,12 +330,12 @@ watch(
         :description="t('network.emptyHint')"
       />
 
-      <el-table
-        v-else
-        v-loading="loading"
-        :data="networks"
-        :row-key="(row: NetworkSummary) => row.id"
-      >
+      <template v-else>
+        <el-table
+          v-loading="loading"
+          :data="networks"
+          :row-key="(row: NetworkSummary) => row.id"
+        >
         <el-table-column :label="t('network.col.name')" min-width="220">
           <template #default="{ row }">
             <!-- 名称即详情入口，用 `<button>` 才可 Tab / 可读屏 -->
@@ -332,7 +401,18 @@ watch(
             />
           </template>
         </el-table-column>
-      </el-table>
+        </el-table>
+
+        <!-- 分页条始终显示：翻到后面的页删光条目后仍能回到上一页，而不是对着一片空白猜。 -->
+        <ListPagination
+          :total="total"
+          :page-index="pageIndex"
+          :page-size="pageSize"
+          :disabled="loading"
+          @update:page-index="goToPage"
+          @update:page-size="onPageSizeChange"
+        />
+      </template>
     </SectionCard>
 
     <!-- 创建对话框 -->

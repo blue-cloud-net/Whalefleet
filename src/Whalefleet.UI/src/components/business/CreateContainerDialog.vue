@@ -209,13 +209,16 @@ watch(visible, (open) => {
  * ⚠️ **失败一律静默**：拉列表只是便利，用户仍可手打网络名
  * （`host` / `none` / `container:xxx` 等本项目未必列得全）。
  * 弹一个错误会让整个创建对话框用不了——为一个可选项不值得。
+ *
+ * ⚠️ **必须显式要最大页**：列表接口默认每页 20 条，网络多的主机上
+ * 下拉框会悄悄只剩前 20 个，用户会以为某个网络「不存在」。
  */
 async function loadNetworks(): Promise<void> {
   if (props.hostId.length === 0) return
 
   networksLoading.value = true
   try {
-    networks.value = (await listNetworks(props.hostId)).items
+    networks.value = (await listNetworks(props.hostId, { pageSize: 100 })).items
   } catch {
     networks.value = []
   } finally {

@@ -9,16 +9,21 @@ import type { NetworkDetail, NetworkListResult, NetworkSummary } from '@/types/a
  */
 
 /**
- * 网络列表（不分页——理由见后端 `NetworkListResult`）。
+ * 网络列表（服务端内存分页，口径与容器 / 镜像一致）。
  *
  * ⚠️ 列表项**没有容器数**：Docker 的列表接口不返回 `Containers`（只有详情接口返回）。
  * 「这个网络上有几个容器」要打开详情看，别在列表上编一个 0 出来。
+ *
+ * 省略分页参数时后端按「第 0 页、每页 20 条」处理；`pageSize` 超过 100 会被**夹紧**。
  */
-export function listNetworks(hostId: string): Promise<NetworkListResult> {
+export function listNetworks(
+  hostId: string,
+  params: { pageIndex?: number; pageSize?: number } = {}
+): Promise<NetworkListResult> {
   return request<NetworkListResult>({
     url: `/api/v1/hosts/${encodeURIComponent(hostId)}/networks/list`,
     method: 'post',
-    data: {}
+    data: params
   })
 }
 

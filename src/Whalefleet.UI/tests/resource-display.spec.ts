@@ -43,24 +43,30 @@ function network(patch: Partial<NetworkSummary> = {}): NetworkSummary {
 }
 
 describe('数据卷用量展示', () => {
-  it('size 为 0 时不展示（字段可能缺失，不等于空卷）', () => {
-    // 守护进程不返回 UsageData 时反序列化同样是 0，
-    // 与「真的是 0」无法区分 → 一律不展示
-    expect(hasVolumeUsage(volume({ size: 0 }))).toBe(false)
+  it('size 为 null 时不展示（守护进程没给用量）', () => {
+    // null 才是「不知道」，界面显示「—」
+    expect(hasVolumeUsage(volume({ size: null }))).toBe(false)
+  })
+
+  it('size 为 0 时照常展示（空卷是一个确切的答案）', () => {
+    // 用量来自 GET /system/df，0 是真实结果而不是「字段缺失」
+    expect(hasVolumeUsage(volume({ size: 0 }))).toBe(true)
   })
 
   it('size 为正时展示', () => {
     expect(hasVolumeUsage(volume({ size: 1024 }))).toBe(true)
   })
 
-  it('refCount 为 0 时不展示', () => {
-    expect(hasVolumeRefCount(volume({ refCount: 0 }))).toBe(false)
+  it('refCount 为 null 时不展示，为 0 时展示', () => {
+    expect(hasVolumeRefCount(volume({ refCount: null }))).toBe(false)
+    expect(hasVolumeRefCount(volume({ refCount: 0 }))).toBe(true)
     expect(hasVolumeRefCount(volume({ refCount: 2 }))).toBe(true)
   })
 
-  it('refCount > 0 即视为被引用', () => {
+  it('refCount > 0 即视为被引用；null（未知）不算', () => {
     expect(isVolumeInUse(volume({ refCount: 1 }))).toBe(true)
     expect(isVolumeInUse(volume({ refCount: 0 }))).toBe(false)
+    expect(isVolumeInUse(volume({ refCount: null }))).toBe(false)
   })
 })
 

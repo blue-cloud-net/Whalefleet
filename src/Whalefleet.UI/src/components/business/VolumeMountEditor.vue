@@ -41,6 +41,9 @@ const { t } = useI18n()
  *
  * **只为补全，不做校验**：拉列表失败时静默降级成「只能手打」，
  * 不阻断创建容器。把它做成必填前置条件等于让一个便利功能决定表单能不能用。
+ *
+ * ⚠️ **必须显式要最大页**：列表接口默认每页 20 条，卷多的主机上
+ * 补全候选会悄悄缺一大截（本机实测就有 200+ 个匿名卷）。
  */
 const knownVolumes = ref<string[]>([])
 
@@ -50,7 +53,9 @@ watch(
     if (!hostId) return
 
     try {
-      knownVolumes.value = (await listVolumes(hostId)).items.map((item) => item.name)
+      knownVolumes.value = (await listVolumes(hostId, { pageSize: 100 })).items.map(
+        (item) => item.name
+      )
     } catch {
       knownVolumes.value = []
     }

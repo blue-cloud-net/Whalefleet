@@ -51,16 +51,18 @@ export function resetSessionResources(): void {
  * 数据卷与网络端点 mock（0.2.0）。
  *
  * ## 复刻了后端的哪些「容易被忽略的语义」
- * 1. **`size` / `refCount` 为 0 不等于空卷**——老守护进程不返回 `UsageData`，
- *    mock 里给了两条 0 的夹具，界面若显示成「0 B」就会与真实后端一样误导人。
+ * 1. **`size` / `refCount` 为 `null` 才是「不知道」**——守护进程不报用量时后端给 `null`，
+ *    而真正的 `0`（空卷 / 没人引用）应如实显示。两者混为一谈会把真实结论谎报成缺失。
  * 2. **`warnings` 恒为数组**：少了它前端模板直接报错。
- * 3. **同名创建卷不报错**（返回已存在的那一个），但**同名创建网络报 1404/409**。
+ * 3. **列表分页**：`pageSize` 默认 20、夹紧到 [1, 100]，`pageIndex` 负数按 0；
+ *    回显的 `pageIndex` / `pageSize` 是夹紧后的值。
+ * 4. **同名创建卷不报错**（返回已存在的那一个），但**同名创建网络报 1404/409**。
  *    这两条方向相反，是 Docker 本身的差异，照抄任一边都会让另一条测不到。
- * 4. **卷的 `force` 删不掉被引用的卷**：`refCount > 0` 时带不带 force 都 1404；
+ * 5. **卷的 `force` 删不掉被引用的卷**：`refCount > 0` 时带不带 force 都 1404；
  *    只有「卷不存在」时 force 才让它变成成功（幂等）。
- * 5. **网络没有 force**：有容器接入 → 1404；内置网络 → 1404（消息点名是哪个）。
- * 6. **网段格式非法 → 1000**（缺前缀长度、前缀越界、地址不合法）。
- * 7. **列表里的网络没有 `containerCount` 字段**：Docker 的列表接口不返回 `Containers`。
+ * 6. **网络没有 force**：有容器接入 → 1404；内置网络 → 1404（消息点名是哪个）。
+ * 7. **网段格式非法 → 1000**（缺前缀长度、前缀越界、地址不合法）。
+ * 8. **列表里的网络没有 `containerCount` 字段**：Docker 的列表接口不返回 `Containers`。
  */
 export function resourceHandlers(scenario: () => MockScenario) {
   async function readBody(request: Request): Promise<Record<string, unknown>> {
@@ -68,6 +70,29 @@ export function resourceHandlers(scenario: () => MockScenario) {
       return (await request.json()) as Record<string, unknown>
     } catch {
       return {}
+    }
+  }
+
+  /**
+   * 与后端一致的分页口径（`ContainerService` / `VolumeService` / `NetworkService` 同参数）。
+   *
+   * ⚠️ 必须在 mock 里真的切片：只把 `total` 填上、`items` 仍返回全量的话，
+   * 前端「只渲染当前页」的分支永远测不到。
+   */
+  function paginate<T>(items: T[], body: Record<string, unknown>) {
+    const rawIndex = Number(body.pageIndex ?? 0)
+    const rawSize = Number(body.pageSize ?? 20)
+    const pageIndex = Math.max(Number.isFinite(rawIndex) ? Math.trunc(rawIndex) : 0, 0)
+    const pageSize = Math.min(
+      Math.max(Number.isFinite(rawSize) ? Math.trunc(rawSize) : 20, 1),
+      100
+    )
+
+    return {
+      items: items.slice(pageIndex * pageSize, pageIndex * pageSize + pageSize),
+      total: items.length,
+      pageIndex,
+      pageSize
     }
   }
 
@@ -129,7 +154,7 @@ export function resourceHandlers(scenario: () => MockScenario) {
   return [
     /* ==================== 数据卷 ==================== */
 
-    http.post('*/api/v1/hosts/:hostId/volumes/list', async () => {
+    http.post('*/api/v1/hosts/:hostId/volumes/list', async ({ request }) => {
       await delay(delayFor(scenario()))
 
       if (scenario() === 'error') {
@@ -138,9 +163,11 @@ export function resourceHandlers(scenario: () => MockScenario) {
         })
       }
 
+      const body = await readBody(request)
+
       return HttpResponse.json(
         ok({
-          items: volumesFor(scenario()),
+          ...paginate(volumesFor(scenario()), body),
           // 恒为数组：守护进程没给告警时也要有这个键，否则模板遍历 undefined 会崩
           warnings: []
         })
@@ -189,7 +216,7 @@ export function resourceHandlers(scenario: () => MockScenario) {
         mountpoint: `/var/lib/docker/volumes/${name}/_data`,
         scope: 'local',
         created: new Date().toISOString(),
-        // 新建的卷还没有用量——正好复刻「0 不代表空卷」这条
+        // 新建的卷还没有数据、也没有容器挂着——真实守护进程的 df 会给 0/0
         size: 0,
         refCount: 0,
         labels: (body.labels as Record<string, string>) ?? {}
@@ -225,11 +252,11 @@ export function resourceHandlers(scenario: () => MockScenario) {
       }
 
       // ⚠️ 被引用时**带 force 也删不掉**（实测如此）：必须先删掉使用它的容器。
-      if (existing.refCount > 0) {
+      if ((existing.refCount ?? 0) > 0) {
         return HttpResponse.json(
           fail(
             ErrorCode.DockerResourceConflict,
-            `数据卷 ${name} 仍被 ${existing.refCount} 个容器引用，先删除它们`
+            `数据卷 ${name} 仍被 ${existing.refCount ?? 0} 个容器引用，先删除它们`
           ),
           { status: httpStatusOf(ErrorCode.DockerResourceConflict) }
         )
@@ -283,11 +310,11 @@ export function resourceHandlers(scenario: () => MockScenario) {
           continue
         }
 
-        if (existing.refCount > 0) {
+        if ((existing.refCount ?? 0) > 0) {
           failures.push({
             resourceId: name,
             code: ErrorCode.DockerResourceConflict,
-            message: `数据卷 ${name} 仍被 ${existing.refCount} 个容器引用`
+            message: `数据卷 ${name} 仍被 ${existing.refCount ?? 0} 个容器引用`
           })
 
           continue
@@ -304,7 +331,7 @@ export function resourceHandlers(scenario: () => MockScenario) {
 
     /* ==================== 网络 ==================== */
 
-    http.post('*/api/v1/hosts/:hostId/networks/list', async () => {
+    http.post('*/api/v1/hosts/:hostId/networks/list', async ({ request }) => {
       await delay(delayFor(scenario()))
 
       if (scenario() === 'error') {
@@ -313,9 +340,11 @@ export function resourceHandlers(scenario: () => MockScenario) {
         })
       }
 
+      const body = await readBody(request)
+
       // ⚠️ items 里**没有** containerCount：Docker 的列表接口不返回 Containers，
       // 后端不会补一个恒为 0 的字段。mock 同样不给。
-      return HttpResponse.json(ok({ items: networksFor(scenario()) }))
+      return HttpResponse.json(ok(paginate(networksFor(scenario()), body)))
     }),
 
     http.post('*/api/v1/hosts/:hostId/networks/inspect', async ({ request }) => {

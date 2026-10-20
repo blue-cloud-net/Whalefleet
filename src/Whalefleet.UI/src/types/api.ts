@@ -658,9 +658,10 @@ export interface BatchOperationResult {
 /**
  * 数据卷列表项（对应后端 `VolumeSummary`）。
  *
- * ⚠️ **`size` 与 `refCount` 可能是 0，且 0 不代表「空卷」**——这两个值来自守护进程的
- * `UsageData`，只在 Docker API 1.42+ 的列表接口里出现。老守护进程根本不返回该字段，
- * 反序列化后同样是 0。界面应把 0 显示成「—」而不是「0 B」。
+ * ⚠️ **`size` / `refCount` 为 `null` 表示「不知道」，`0` 是一个确切的答案**。
+ * 用量来自守护进程的 `GET /system/df`（**不是**列表接口——`GET /volumes` 的每一项里
+ * 没有 `UsageData`）。查询失败或驱动不报用量时后端给 `null`，界面显示「—」；
+ * 空卷 / 没人引用则是真正的 `0`，应当如实显示成「0 B」/「0」。
  */
 export interface VolumeSummary {
   name: string
@@ -670,21 +671,30 @@ export interface VolumeSummary {
   scope: string
   /** ISO 8601；守护进程未提供时为 `null` */
   created: string | null
-  /** 字节；守护进程未提供用量时为 0（含义不明，见上） */
-  size: number
-  /** 引用它的容器数；守护进程未提供时为 0（含义不明，见上） */
-  refCount: number
+  /** 字节；`null` = 守护进程没给用量（含义不明），`0` = 确实是空的 */
+  size: number | null
+  /** 引用它的容器数；`null` = 守护进程没给，`0` = 确实没人引用 */
+  refCount: number | null
   labels: Record<string, string>
 }
 
 /**
- * 数据卷列表结果。
+ * 数据卷列表结果（服务端内存分页，口径与容器 / 镜像一致）。
  *
  * ⚠️ **`warnings` 必须单独处理**：守护进程会在响应里给出「某卷的驱动没装」之类的告警。
  * 只看 `items` 会让这些告警静默丢失，用户看到的列表就是「少了几个卷」却不知道为什么。
+ *
+ * ⚠️ **`total` 不能用 `items.length` 代替**：那样只在「只有一页」时正确，
+ * 翻页后页脚会显示成「共 20 个」。
  */
 export interface VolumeListResult {
   items: VolumeSummary[]
+  /** 分页前的总条数 */
+  total: number
+  /** 服务端实际使用的页码（从 0 开始） */
+  pageIndex: number
+  /** 服务端实际使用的每页条数（**已夹紧**：请求 5000 会回 100） */
+  pageSize: number
   warnings: string[]
 }
 
@@ -732,6 +742,12 @@ export interface NetworkSummary {
 
 export interface NetworkListResult {
   items: NetworkSummary[]
+  /** 分页前的总条数（不能用 `items.length` 代替，翻页后它会变成页大小） */
+  total: number
+  /** 服务端实际使用的页码（从 0 开始） */
+  pageIndex: number
+  /** 服务端实际使用的每页条数（**已夹紧**：请求 5000 会回 100） */
+  pageSize: number
 }
 
 /** 网络详情（对应后端 `NetworkDetail`）。 */
