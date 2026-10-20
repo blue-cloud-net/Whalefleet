@@ -1387,16 +1387,24 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
 
 | 操作 | 路径 | 说明 |
 |------|------|------|
-| 获取列表 | `POST /api/v1/hosts/{hostId}/volumes/list` | 无 Body |
+| 获取列表 | `POST /api/v1/hosts/{hostId}/volumes/list` | Body: `{ pageIndex?, pageSize? }`；分页在服务端**内存**完成（Docker 无分页参数），`pageSize` 默认 20 / 上限 100 |
 | 创建 | `POST /api/v1/hosts/{hostId}/volumes/create` | Body: `{ name, driver?, driverOptions?, labels? }` |
 | 删除 | `POST /api/v1/hosts/{hostId}/volumes/remove` | Body: `{ name, force? }` |
-| **清理** | `POST /api/v1/hosts/{hostId}/volumes/prune` | Body: `{ dryRun? }`；返回**将删除的清单**与回收量。`dryRun=true` 时只列不删 |
 | **批量删除** | `POST /api/v1/hosts/{hostId}/volumes/batch-remove` | Body: `{ names: [...], force? }` |
+| **清理** | `POST /api/v1/hosts/{hostId}/volumes/prune` | Body: `{ dryRun? }`；返回**将删除的清单**与回收量。`dryRun=true` 时只列不删 |
 | 获取详情 | `POST /api/v1/hosts/{hostId}/volumes/inspect` | Body: `{ name }` |
 
-> **列表与批量删除不分页**（0.2.0）：单台主机上的卷数量少、条目也小，而分页与筛选是
-> 四类资源**统一**的改动（`0.16.0`），提前做一半只会让接口返工。
+> **列表分页与容器 / 镜像同一套口径**：响应 `{ items, total, pageIndex, pageSize, warnings }`，
+> 其中 `pageIndex` / `pageSize` 是夹紧后的**实际**取值（`pageIndex` 负数按 0、`pageSize` 上限 100）。
+> 批量删除本身不分页。
 > 批量删除与容器 / 镜像同口径：**部分成功也返回 200**，`failures` 逐条带 ID 与错误码。
+>
+> **占用（`size`）与引用数（`refCount`）来自 `GET /system/df`，不是列表接口**（实测）：
+> `GET /volumes` 返回的每一项里**没有** `UsageData`，照它取值永远是 0。
+> 服务端另发一次 `GET /system/df?type=volume` 并按卷名合并（`type=volume` 不能省——
+> 否则守护进程会顺带统计镜像层，慢好几秒）。
+> 两个字段是**可空**的：`null` 表示「守护进程没给用量」（老版本守护进程、第三方驱动、
+> 或用量查询失败），界面显示「—」；`0` 是确切答案（空卷 / 没人引用），如实显示。
 >
 > **`force` 不是「强制删除」**（实测，勿照字面理解）：
 > 只要还有容器挂着这个卷，守护进程就拒绝删除，**带不带 `force` 都一样**（`1404`/409），
@@ -1413,12 +1421,15 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
       "mountpoint": "/var/lib/docker/volumes/nginx-html/_data",
       "scope": "local",
       "created": "2026-09-20T06:30:00Z", // 守护进程未提供时为 null
-      "size": 3221225472,                 // ⚠️ 0 表示「守护进程没给」，不等于空卷
-      "refCount": 1,
+      "size": 3221225472,                 // ⚠️ null = 守护进程没给用量；0 = 确实是空的
+      "refCount": 1,                      // ⚠️ 同上：null ≠ 0
       "labels": { "app": "nginx" }
     }
   ],
-  "warnings": []                         // 恒为数组：守护进程会用它说「某卷驱动没装」
+  "total": 1,                             // 分页前总条数（界面不要用 items.length 顶替）
+  "pageIndex": 0,                         // 服务端实际使用的页码（夹紧后）
+  "pageSize": 20,                         // 服务端实际使用的每页条数（夹紧后）
+  "warnings": []                          // 恒为数组：守护进程会用它说「某卷驱动没装」
 }
 ```
 
@@ -1428,14 +1439,15 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
 
 | 操作 | 路径 | 说明 |
 |------|------|------|
-| 获取列表 | `POST /api/v1/hosts/{hostId}/networks/list` | 无 Body |
+| 获取列表 | `POST /api/v1/hosts/{hostId}/networks/list` | Body: `{ pageIndex?, pageSize? }`；分页在服务端**内存**完成，`pageSize` 默认 20 / 上限 100 |
 | 创建 | `POST /api/v1/hosts/{hostId}/networks/create` | Body: `{ name, driver?, subnet?, gateway?, ipRange?, attachable?, labels? }` |
+| 删除 | `POST /api/v1/hosts/{hostId}/networks/remove` | Body: `{ networkId }` |
 | **接入网络** | `POST /api/v1/hosts/{hostId}/networks/connect` | Body: `{ containerId, networkId }`；容器已接入时**幂等返回成功** |
 | **断开网络** | `POST /api/v1/hosts/{hostId}/networks/disconnect` | Body: `{ containerId, networkId, force? }`；容器未接入时**幂等返回成功** |
-| 删除 | `POST /api/v1/hosts/{hostId}/networks/remove` | Body: `{ networkId }` |
 | 获取详情 | `POST /api/v1/hosts/{hostId}/networks/inspect` | Body: `{ networkId }` |
 
-> **列表不分页**（理由同卷）。**没有 `force`**：Docker 的删除网络接口不提供该参数，
+> **列表分页**（与卷同口径）：响应 `{ items, total, pageIndex, pageSize }`。
+> **没有 `force`**：Docker 的删除网络接口不提供该参数，
 > 有容器接入必然 `1404`/409，内置网络同样。内置网络为 `bridge` / `host` / `none`
 > （Docker 26 之前叫 `null`），服务端提前拦下以给出可翻译的错误码分支。
 >
@@ -1464,7 +1476,10 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
       "subnets": ["172.17.0.0/16"],      // 自定义驱动（macvlan）可能为空数组
       "gateways": ["172.17.0.1"],
       "labels": {}
-    }
+   ,
+  "total": 1,                             // 分页前总条数
+  "pageIndex": 0,
+  "pageSize": 20 }
   ]
 }
 
