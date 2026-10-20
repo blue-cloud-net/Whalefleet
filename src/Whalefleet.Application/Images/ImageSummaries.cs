@@ -127,3 +127,19 @@ public sealed record ImagePullResult(
 /// 两者都是空数组是合法结果（只解绑引用、未删掉镜像本体）。
 /// </remarks>
 public sealed record ImageRemovedResult(IReadOnlyList<string> Untagged, IReadOnlyList<string> Deleted);
+
+/// <summary>
+/// 打标签的结果。
+/// </summary>
+/// <param name="ImageId">镜像 ID（<b>与源镜像同一个</b>，打标签不产生新镜像）。</param>
+/// <param name="Reference">新建的完整引用（<c>仓库:标签</c>）。</param>
+/// <param name="RepoTags">该镜像 ID 上的全部标签。</param>
+/// <remarks>
+/// <b>为什么回带 <c>ImageId</c> 与 <c>RepoTags</c></b>：打标签后的关键事实是
+/// 「新标签指向的还是同一个镜像 ID」。前端要靠它把行更新成「同一镜像的另一个标签」，
+/// 而不是「多了一行镜像」——后者会让用户以为磁盘占用翻倍。
+/// </remarks>
+public sealed record ImageTaggedResult(
+    string ImageId,
+    string Reference,
+    IReadOnlyList<string> RepoTags);
