@@ -632,15 +632,123 @@ POST /api/v1/hosts/{hostId}/containers/list
 
 | 操作 | 路径 | 阶段 | 说明 |
 |------|------|------|------|
-| **创建容器** | `POST /api/v1/hosts/{hostId}/containers/create` | 0.0.9 | Body: `{ image, name?, cmd?, entrypoint?, env?, labels?, ports?, volumes?, restartPolicy?, autoRemove?, network?, hostname?, workingDir?, tty?, stdinOpen? }`（**精选子集**，非全部 `CreateContainerParameters` 字段，理由见下文） |
+| **创建容器** | `POST /api/v1/hosts/{hostId}/containers/create` | 0.0.9 | Body: `{ image, name?, cmd?, entrypoint?, env?, labels?, ports?, volumes?, restartPolicy?, autoRemove?, network?, hostname?, workingDir?, tty?, stdinOpen? }`（**精选子集**，非全部 `CreateContainerParameters` 字段，理由见下文）。**0.3.0** 新增高级参数 `user?`、`capAdd?`、`capDrop?`、`healthCheck?`、`devices?`、`sysctls?`、`ulimits?`、`logDriver?`、`memoryLimitBytes?`、`nanoCpus?`（见下） |
 | 获取列表 | `POST /api/v1/hosts/{hostId}/containers/list` | 0.0.9 | Body: `{ all?, pageIndex?, pageSize?, sortBy?, sortDir? }`；分页在服务端**内存**完成（Docker 无分页参数），`pageSize` 上限 100 |
 | 启动 | `POST /api/v1/hosts/{hostId}/containers/start` | 0.0.9 | Body: `{ containerId }` |
 | 停止 | `POST /api/v1/hosts/{hostId}/containers/stop` | 0.0.9 | Body: `{ containerId, waitSeconds? }`；`waitSeconds` 取值 0–300（默认 10，与 Docker 一致） |
 | 重启 | `POST /api/v1/hosts/{hostId}/containers/restart` | 0.0.9 | Body: `{ containerId }` |
 | 删除 | `POST /api/v1/hosts/{hostId}/containers/remove` | 0.0.9 | Body: `{ containerId, force? }`；不带 `force` 删运行中的容器返回 `1404`/409 |
 | **批量删除** | `POST /api/v1/hosts/{hostId}/containers/batch-remove` | **0.1.0** | Body: `{ containerIds: string[], force? }`；响应为汇总结果，**部分成功也是 200**（见下） |
+| **重命名** | `POST /api/v1/hosts/{hostId}/containers/rename` | **0.3.0** | Body: `{ containerId, name }`；名称规则同 `create`（字母/数字开头，其后含 `_ . -`）；名称已被占用返回 `1404`/409 |
+| **热更新** | `POST /api/v1/hosts/{hostId}/containers/update` | **0.3.0** | Body: `{ containerId, restartPolicy?, memoryLimitBytes?, nanoCpus? }`；**只开放真能热改的字段**，镜像/端口/环境变量/挂载/网络**不支持**。省略 = 保持当前值，**传 0 是非法**（见下） |
+| **复制** | `POST /api/v1/hosts/{hostId}/containers/duplicate` | **0.3.0** | Body: `{ containerId, name?, start? }`；默认名「原名 + `-copy`」，被占用时自动递增 `-2`/`-3`。**原容器不受影响**（不停止、不改名、不删除） |
+| **追加挂载** | `POST /api/v1/hosts/{hostId}/containers/add-volumes` | **0.3.0** | Body: `{ containerId, volumes, start? }`；⚠️ **会重建容器**，容器 ID 会变。`start` 省略时**沿用原容器的运行状态** |
 | 获取日志 | `POST /api/v1/hosts/{hostId}/containers/logs` | 0.0.9 | Body: `{ containerId, tail?, since?, timestamps?, includeStderr? }`；`tail` 取值 0–10000，省略表示全部；**不支持** `follow` |
 | 获取详情 | `POST /api/v1/hosts/{hostId}/containers/inspect` | 0.0.9 | Body: `{ containerId }` |
+
+#### 高级创建参数（0.3.0 已实现）
+
+界面按「常用 / 高级」两级折叠。高级参数与普通参数在服务端**没有任何处理差异**——
+Docker 的创建接口只有一个，差别只在界面上，因此不是两套端点。
+
+```jsonc
+{
+  "image": "nginx:latest",                  // 必填
+  "name": "app",                            // 常用
+
+  // —— 以下为 0.3.0 新增的「高级」组 ——
+  "user": "1000:1000",
+  "capAdd": ["NET_ADMIN"],
+  "capDrop": ["ALL"],                       // 与 capAdd 同项 → 1000
+  "healthCheck": {
+    "test": ["CMD-SHELL", "curl -f http://localhost/ || exit 1"],
+    "intervalSeconds": 30,                  // 至少 1 秒
+    "timeoutSeconds": 5,
+    "startPeriodSeconds": 10,
+    "retries": 3                            // 至少 1；0 的含义是「永不判定失败」→ 1000
+  },
+  "devices": [{ "hostPath": "/dev/snd", "containerPath": "/dev/snd", "permissions": "rwm" }],
+  "sysctls": { "net.core.somaxconn": "1024" },
+  "ulimits": [{ "name": "nofile", "soft": 1024, "hard": 4096 }],  // 软/硬缺一时互相补齐
+  "logDriver": { "type": "json-file", "options": { "max-size": "10m" } },
+  "memoryLimitBytes": 536870912,           // 下限 6 MiB（见下）；创建时 0 = 不限制
+  "nanoCpus": 1500000000                    // 10^9 = 1 核，上限 1024 核
+}
+```
+
+> **`healthCheck.test` 是数组而不是字符串**：Docker 有三种形态（`CMD-SHELL` / `CMD` / `NONE`），
+> 而它们在 API 上是同一个字段的不同写法。压成字符串就得靠分隔符再解析回来，
+> 而命令里本身带引号与空格——解析规则与 Docker 不一致时，症状是「配置看着对但没生效」。
+>
+> **`test: ["NONE"]` 表示关闭检查，且不能再带其他字段**：Docker 见到 `NONE` 就关闭检查，
+> 此时再给 interval / retries 是没有意义的组合，放行会让用户以为自己配了宽限期而实际一条都不会执行。
+>
+> **`logDriver.type` 的存在性无法在本层校验**：驱动名是守护进程插件注册表里的字符串
+> （`journald` 需要 systemd、`syslog` 需要 rsyslog）。传了本机没有的驱动时，
+> 守护进程会在**启动容器时**才失败。本层只做非空校验，其余如实交给守护进程。
+>
+> **列表项里的空串是错误而不是「跳过」**：`capAdd: ["", "NET_ADMIN"]` 里的空串几乎总是
+> 前端把一个空输入框也提交了；静默跳过会让用户以为「我勾的那项生效了」，
+> 而真正的问题（多了一个空输入框）永远不会被发现。
+>
+> **`memoryLimitBytes` 下限是 6 MiB**（`6291456`）：Docker 把它从历史上的 4 MiB 提上来了，
+> 实测 `6291455` 会被拒。取**两者中更严的 6 MiB**，对新旧两种守护进程都成立。
+
+#### 热更新（`update`）的能力边界（0.3.0 已实现）
+
+| 字段 | 省略时 | 合法值 | 备注 |
+|------|--------|--------|------|
+| `restartPolicy` | 保持当前值 | `no` / `always` / `on-failure` / `unless-stopped` | — |
+| `memoryLimitBytes` | 保持当前值 | ≥ 6 MiB | **`0` 是非法的**（见下） |
+| `nanoCpus` | 保持当前值 | (0, 1024×10⁹] | **`0` 是非法的**（见下） |
+
+> ⚠️ **`0` 不等于「取消限制」，而是会被拒绝（`1000`）**。实测 `docker update --memory=0`
+> **返回 200，而容器上的限制根本没变**——守护进程对 update 的处理是「字段非 0 才应用」，
+> 于是 `0` 与「不传这个字段」走同一条路。放行 `0` 会让用户看到「保存成功」
+> 而容器仍跑在旧限制下，那正是这类限制本该避免的后果。要真的取消限制只能重建容器。
+>
+> **先 inspect 再 update**：Docker 的 update 对「未传的字段」在不同 API 版本上行为不一致
+> （老版本会把未传的数值字段一并写回默认值）。服务端先取当前值、把未修改的字段按当前值回填，
+> 再回带**更新后实际生效**的值——前端拿到的永远是真实结果，而不是它请求的值。
+>
+> **响应 `data` 是更新后的值**：`{ containerId, restartPolicy, memoryLimitBytes, nanoCpus }`。
+> 未设限时后两项为 `null`（不是 0）。
+>
+> **镜像、端口、环境变量、挂载、网络不在本端点能力范围内**：Docker 不支持热改它们，
+> 改了就得重建容器。界面上不应给这些字段「保存」按钮。
+
+#### 复制与追加挂载的响应形态（0.3.0 已实现）
+
+两者共用 `ContainerRecreatedResult`：
+
+```jsonc
+{
+  "containerId": "…",              // 新容器的 ID
+  "name": "app",                   // 新容器名
+  "replacedContainerId": null,     // ⚠️ 追加挂载时指向**被让位的旧容器**；复制时为 null
+  "running": false,
+  "warnings": [],
+  "recreated": true                // 复制为 false（原容器毫发无损）；追加挂载恒为 true
+}
+```
+
+> **追加挂载本质是重建，容器 ID 一定变**：Docker 没有「给已存在容器加挂载」的接口。
+> 界面**必须**把这一点写在二次确认里。
+>
+> **旧容器让位而不是删除**：重建要用回原来的名字，而旧容器占着这个名字。
+> 服务端把旧容器**改名**成 `whalefleet-replaced-<短ID>`，而不是删掉——
+> 删除不可逆，而重建失败时我们需要它还在。新建成功后旧容器以让位名**保留在列表里**，
+> 用户确认新容器没问题后自己删；`replacedContainerId` 让前端能指到它，
+> 否则界面上会出现一个来历不明的容器而没人敢删。
+>
+> **失败回滚**：重建失败时把旧容器改回原名并恢复它原本的运行状态，
+> 然后把**原始异常**原样抛出——回滚本身失败只记日志，否则会让真正的失败原因消失。
+>
+> **追加是追加不是覆盖**：请求里给的是「要新增的挂载」，原有挂载全部保留；
+> 同一目标路径重复挂载 → `1000`（几乎总是配置错了）。
+>
+> **`start` 省略时沿用原容器的运行状态**而不是「总是启动」：
+> 对一个本来就没运行的容器擅自启动它，是用户没要求的副作用。
 
 #### 批量删除的响应形态（0.1.0 已实现）
 
@@ -803,7 +911,17 @@ POST /api/v1/hosts/{hostId}/containers/list
   "restartPolicy": "unless-stopped",           // no / always / on-failure / unless-stopped
   "autoRemove": false,
   "network": "bridge",
-  "hostname": "web-1", "workingDir": "/app", "tty": false, "stdinOpen": false
+  "hostname": "web-1", "workingDir": "/app", "tty": false, "stdinOpen": false,
+
+  // —— 0.3.0 高级参数（界面按「常用 / 高级」两级折叠）——
+  "user": "1000:1000",
+  "capAdd": ["NET_ADMIN"], "capDrop": ["ALL"],
+  "healthCheck": { "test": ["CMD-SHELL", "curl -f http://localhost/ || exit 1"], "intervalSeconds": 30, "retries": 3 },
+  "devices": [{ "hostPath": "/dev/snd", "permissions": "rwm" }],
+  "sysctls": { "net.core.somaxconn": "1024" },
+  "ulimits": [{ "name": "nofile", "soft": 1024, "hard": 4096 }],
+  "logDriver": { "type": "json-file", "options": { "max-size": "10m" } },
+  "memoryLimitBytes": 536870912, "nanoCpus": 1500000000
 }
 // Response.data
 {
@@ -825,6 +943,60 @@ POST /api/v1/hosts/{hostId}/containers/list
 // Response
 { "success": true, "code": 0, "message": "操作成功" }   // 这四个端点无 data 字段
 ```
+
+```jsonc
+// 0.3.0：rename / update / duplicate / add-volumes
+
+// rename  →  { containerId, name }
+// Response.data
+{ "containerId": "3f2c…", "name": "web-1-renamed" }
+
+// update  →  { containerId, restartPolicy?, memoryLimitBytes?, nanoCpus? }
+// Response.data（**更新后实际生效**的值，未设限的项为 null）
+{ "containerId": "3f2c…", "restartPolicy": "unless-stopped", "memoryLimitBytes": 536870912, "nanoCpus": null }
+
+// duplicate → { containerId, name?, start? }
+// add-volumes → { containerId, volumes, start? }
+// Response.data（两者共用）
+{
+  "containerId": "9a8b…",              // 新容器
+  "name": "web-1",
+  "replacedContainerId": null,         // add-volumes 时指向被让位的旧容器
+  "running": false,
+  "warnings": [],
+  "recreated": true
+}
+```
+
+> **`update` 的 `0` 被拒绝而不是当「取消限制」**：实测 `docker update --memory=0` **返回 200
+> 而限制没变**（守护进程对 update 是「字段非 0 才应用」，`0` 与「不传」同义）。
+> 放行 `0` 会让用户看到「保存成功」而容器仍跑在旧限制下。要取消限制只能重建。
+>
+> **`add-volumes` 是重建，容器 ID 一定变**，旧容器被**改名**成 `whalefleet-replaced-<短ID>`
+> 而非删除；重建失败时自动改回原名并恢复原运行状态。界面**必须**在二次确认里写明这一点。
+
+```jsonc
+// 0.3.0：images/tag
+// Request
+{ "imageId": "nginx:latest", "repository": "registry.example.com/team/app", "tag": "v1.2.3" }
+// Response.data
+{
+  "imageId": "sha256:…",              // ⚠️ 与源镜像**同一个** ID：tag 不复制镜像
+  "reference": "registry.example.com/team/app:v1.2.3",
+  "repoTags": ["nginx:latest", "registry.example.com/team/app:v1.2.3"]
+}
+```
+
+> **`tag` 不复制镜像**：只是给同一个镜像 ID 再加一个引用，磁盘占用不变。
+> 界面应把行更新成「同一镜像的另一个标签」而不是「多了一行镜像」——
+> 后者会让用户以为副本可以随便删（删掉最后一个标签时镜像确实会消失）。
+>
+> **`repository` 不得含标签**：用户很容易照着「源镜像」那一栏把 `nginx:1.27` 整个粘进来。
+> 本服务在本地拒掉（`1000`）并说清该改哪个字段，而不是拼成 `nginx:1.27:alpine`——
+> 那会打到一个谁都没要求过的镜像上。
+>
+> **`tag` 省略或空串都取 `latest`**（与 `pull` 端点一致）。
+> 「同一个概念在两个端点上有两种含义」比「悄悄给默认值」更难排查。
 
 > **为什么 `create` 只映射精选字段而不是全部 `CreateContainerParameters`**：那个模型有上百个字段
 > （`Ulimits` / `DeviceRequests` / `BlkioWeightDevice` / `Sysctls` …），其中绝大多数在运维面板里
@@ -858,6 +1030,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 拉取 | `POST /api/v1/hosts/{hostId}/images/pull` | 0.0.10 | Body: `{ image, tag?, platform? }`；0.0.10 一次性返回结果，0.7.0 改 SignalR 实时进度 |
 | 删除 | `POST /api/v1/hosts/{hostId}/images/remove` | 0.0.10 | Body: `{ imageId, force? }`；被容器占用的镜像返回 `1404`/409 |
 | **批量删除** | `POST /api/v1/hosts/{hostId}/images/batch-remove` | **0.1.0** | Body: `{ imageIds: string[], force? }`；响应为汇总结果，**部分成功也是 200**（容器侧同形状） |
+| **打标签** | `POST /api/v1/hosts/{hostId}/images/tag` | **0.3.0** | Body: `{ imageId, repository, tag? }`；对应 `docker tag`。`repository` **不得含标签**（否则 `1000`），`tag` 省略或空串取 `latest` |
 | 获取详情 | `POST /api/v1/hosts/{hostId}/images/inspect` | 0.0.10 | Body: `{ imageId }` |
 | **打标签** | `POST /api/v1/hosts/{hostId}/images/tag` | **0.3.0** | Body: `{ imageId, repository, tag? }` |
 | **构建镜像** | `POST /api/v1/hosts/{hostId}/images/build` | 0.4.0 | multipart: Dockerfile + context tar；通过 SignalR 临时频道推送进度（0.7.0 起） |

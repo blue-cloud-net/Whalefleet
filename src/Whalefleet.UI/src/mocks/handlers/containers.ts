@@ -30,6 +30,36 @@ const createdInSession = new Map<string, CreatedContainer>()
  */
 const removedInSession = new Set<string>()
 
+/**
+ * 本次会话里被**重命名**的容器：`原 id → 新名字`。
+ *
+ * ⚠️ 为什么用「覆盖表」而不是直接改夹具：夹具是模块级常量，
+ * 改了它就意味着「跑一次走查后夹具变了」——下一轮看到的状态与初始态不一致，
+ * 平行跑测试时还会互相污染（和 `applyStateChange` 同一个理由）。
+ *
+ * 对追加挂载（重建）同样适用：旧容器被让位改名成 `whalefleet-replaced-*`，
+ * 而它的 **id 不变**——这正是「让位而不是删除」在 mock 里的可观察形态。
+ */
+const renamedInSession = new Map<string, string>()
+
+/**
+ * 本次会话里被**热更新**过的容器，只记录本次改了的字段。
+ *
+ * 未出现在这里的字段表示「没改过」，读取时回落到夹具原值——
+ * 这正是后端「先 inspect 再按当前值回填」语义在 mock 里的对应物：
+ * 不记的话 mock 会把「只改重启策略」表现成「内存上限也被清空了」，
+ * 而真实后端不会那样。
+ */
+const updatedInSession = new Map<string, ContainerUpdateOverride>()
+
+/** 热更新覆盖项：未列出的字段保持原值。 */
+interface ContainerUpdateOverride {
+  restartPolicy?: string
+  /** `null` = 取消限制（后端把它投影成 null），与「没改」是两种不同的状态 */
+  memoryLimitBytes?: number | null
+  nanoCpus?: number | null
+}
+
 /** 本次会话新建的容器：详情 + 列表项需要的端口映射（`ContainerDetail` 里没有端口字段）。 */
 interface CreatedContainer {
   detail: ContainerDetail
@@ -40,6 +70,53 @@ interface CreatedContainer {
 export function resetSessionContainers(): void {
   createdInSession.clear()
   removedInSession.clear()
+  renamedInSession.clear()
+  updatedInSession.clear()
+}
+
+/** 取容器当前的名字（应用本会话的重命名覆盖）。 */
+function currentName(containerId: string, fallback: string): string {
+  return renamedInSession.get(containerId) ?? fallback
+}
+
+/**
+ * 把本会话的重命名覆盖应用到列表项上。
+ *
+ * 只有名字可改：<see cref="ContainerSummary"/> 不含 hostConfig 字段，
+ * 所以热更新的结果只能从详情看到（列表上本来也不显示内存 / CPU 限制）。
+ */
+function applyOverrides(item: ContainerSummary): ContainerSummary {
+  const name = currentName(item.id, item.name)
+
+  return name === item.name ? item : { ...item, name }
+}
+
+/**
+ * 把本会话的重命名与热更新覆盖应用到详情上。
+ *
+ * ⚠️ `update` 的回显语义靠这里成立：后端在更新前先 inspect、把未改字段按当前值回填，
+ * 因此详情里的 `memoryLimitBytes` 是**更新后**的值，而不是 0。
+ */
+function applyDetailOverrides(detail: ContainerDetail): ContainerDetail {
+  const name = currentName(detail.id, detail.name)
+  const override = updatedInSession.get(detail.id)
+
+  if (name === detail.name && !override) return detail
+
+  return {
+    ...detail,
+    name,
+    hostConfig: {
+      ...detail.hostConfig,
+      restartPolicy: override?.restartPolicy ?? detail.hostConfig.restartPolicy,
+      memoryLimitBytes:
+        override?.memoryLimitBytes === undefined
+          ? detail.hostConfig.memoryLimitBytes
+          : override.memoryLimitBytes,
+      nanoCpus:
+        override?.nanoCpus === undefined ? detail.hostConfig.nanoCpus : override.nanoCpus
+    }
+  }
 }
 
 /**
@@ -75,7 +152,7 @@ export function containerHandlers(scenario: () => MockScenario) {
     return [
       ...MOCK_CONTAINERS_DEFAULT.filter((item) => !removedInSession.has(item.id)),
       ...[...createdInSession.values()].map((item) => toSummary(item))
-    ]
+    ].map(applyOverrides)
   }
 
   /** 全部可查详情的容器（夹具 + 会话新建，已删除的除外）。 */
@@ -85,13 +162,47 @@ export function containerHandlers(scenario: () => MockScenario) {
     return [
       ...MOCK_CONTAINER_DETAILS.filter((item) => !removedInSession.has(item.id)),
       ...[...createdInSession.values()].map((item) => item.detail)
-    ]
+    ].map(applyDetailOverrides)
+  }
+
+  /**
+   * 按名字查容器（复制时要避让重名、重命名要判占用）。
+   *
+   * ⚠️ 必须比的是**当前**名字而不是夹具里的原名：让位改名之后旧容器的名字已经变了，
+   * 用原名比会让「它现在叫什么」与「这个名字有没有被占」对不上。
+   */
+  function findByName(current: MockScenario, name: string): ContainerSummary | undefined {
+    return containersFor(current).find((item) => item.name === name)
+  }
+
+  /**
+   * 在 `-copy` / `-copy-2` / `-copy-3` … 里找一个没被占用的名字。
+   *
+   * ⚠️ 必须避让而不是直接失败：复制最常见的用法就是「连点两次」，
+   * 第二次拿到 409 会让人以为系统有问题。
+   */
+  function freeName(current: MockScenario, baseName: string): string {
+    if (!findByName(current, baseName)) return baseName
+
+    for (let attempt = 2; attempt <= 10; attempt += 1) {
+      const candidate = `${baseName}-${attempt}`
+      if (!findByName(current, candidate)) return candidate
+    }
+
+    return `${baseName}-${Date.now()}`
+  }
+
+  /** 取容器的端口映射（详情里没有端口字段，复制 / 重建都要带上它）。 */
+  function portsOf(current: MockScenario, containerId: string): ContainerSummary['ports'] {
+    return containersFor(current).find((item) => item.id === containerId)?.ports ?? []
   }
 
   /** 标记删除：会话新建的从会话态移除，夹具的进已删除集合（两种来源都要真的从列表里消失）。 */
   function markRemoved(containerId: string): void {
     createdInSession.delete(containerId)
     removedInSession.add(containerId)
+    renamedInSession.delete(containerId)
+    updatedInSession.delete(containerId)
   }
 
   async function readBody(request: Request): Promise<Record<string, unknown>> {
@@ -362,8 +473,347 @@ export function containerHandlers(scenario: () => MockScenario) {
       return HttpResponse.json(
         ok({ requested: requested.length, succeeded, failures })
       )
+    }),
+
+    http.post('*/api/v1/hosts/:hostId/containers/rename', async ({ request }) => {
+      await delay(delayFor(scenario()))
+
+      const body = await readBody(request)
+      const containerId = String(body.containerId ?? '').trim()
+      const name = String(body.name ?? '').trim()
+      const current = scenario()
+
+      if (containerId.length === 0 || name.length === 0) {
+        return HttpResponse.json(fail(ErrorCode.ValidationFailed), {
+          status: httpStatusOf(ErrorCode.ValidationFailed)
+        })
+      }
+
+      // 名称规则与创建/复制一致（后端 RequireContainerName）。
+      // ⚠️ 这条必须复刻：非法名称在真机上返回 1000，而「名字随便填」的前端
+      // 在 mock 下永远走不到那个分支。
+      if (!CONTAINER_NAME_PATTERN.test(name)) {
+        return HttpResponse.json(
+          fail(ErrorCode.ValidationFailed, '容器名只能包含字母、数字与 _ . -，且必须以字母或数字开头'),
+          { status: httpStatusOf(ErrorCode.ValidationFailed) }
+        )
+      }
+
+      const container = containersFor(current).find((item) => item.id === containerId)
+
+      if (!container) {
+        return HttpResponse.json(fail(ErrorCode.DockerResourceNotFound), {
+          status: httpStatusOf(ErrorCode.DockerResourceNotFound)
+        })
+      }
+
+      // 名字已被占用 → 1404/409（不是 1000）：改一下就能成功，属「换个名字」而不是「参数错了」
+      if (findByName(current, name)) {
+        return HttpResponse.json(
+          fail(ErrorCode.DockerResourceConflict, `容器名「${name}」已被占用`),
+          { status: httpStatusOf(ErrorCode.DockerResourceConflict) }
+        )
+      }
+
+      renamedInSession.set(containerId, name)
+
+      return HttpResponse.json(ok({ containerId, name }))
+    }),
+
+    http.post('*/api/v1/hosts/:hostId/containers/update', async ({ request }) => {
+      await delay(delayFor(scenario()))
+
+      const body = await readBody(request)
+      const containerId = String(body.containerId ?? '').trim()
+
+      if (containerId.length === 0) {
+        return HttpResponse.json(fail(ErrorCode.ValidationFailed), {
+          status: httpStatusOf(ErrorCode.ValidationFailed)
+        })
+      }
+
+      const restartPolicy = body.restartPolicy
+      const memoryLimitBytes = body.memoryLimitBytes
+      const nanoCpus = body.nanoCpus
+
+      // 全省略等于什么都不改 → 1000（真机也返回 1000）。
+      // 不模拟它的话，「三个字段都没填就点保存」在 mock 下会显示成功。
+      if (
+        restartPolicy === undefined &&
+        memoryLimitBytes === undefined &&
+        nanoCpus === undefined
+      ) {
+        return HttpResponse.json(
+          fail(
+            ErrorCode.ValidationFailed,
+            'restartPolicy / memoryLimitBytes / nanoCpus 至少要给一个（全省略等同于什么都不改）'
+          ),
+          { status: httpStatusOf(ErrorCode.ValidationFailed) }
+        )
+      }
+
+      const valid = validateUpdate({ restartPolicy, memoryLimitBytes, nanoCpus })
+
+      if (valid !== null) {
+        return HttpResponse.json(fail(ErrorCode.ValidationFailed, valid), {
+          status: httpStatusOf(ErrorCode.ValidationFailed)
+        })
+      }
+
+      const detail = detailsFor(scenario()).find((item) => item.id === containerId)
+
+      if (!detail) {
+        return HttpResponse.json(fail(ErrorCode.DockerResourceNotFound), {
+          status: httpStatusOf(ErrorCode.DockerResourceNotFound)
+        })
+      }
+
+      const current = updatedInSession.get(containerId) ?? {}
+
+      updatedInSession.set(containerId, {
+        restartPolicy: (restartPolicy as string) ?? current.restartPolicy,
+        // ⚠️ 只有**显式传了 0** 才写 null（取消限制）；没传就保持原值。
+        // 这正是后端「先 inspect 再按当前值回填」的语义在 mock 里的对应物。
+        memoryLimitBytes:
+          memoryLimitBytes === undefined
+            ? current.memoryLimitBytes
+            : memoryLimitBytes === 0
+              ? null
+              : (memoryLimitBytes as number),
+        nanoCpus:
+          nanoCpus === undefined
+            ? current.nanoCpus
+            : nanoCpus === 0
+              ? null
+              : (nanoCpus as number)
+      })
+
+      // 回带**更新后实际生效**的值（未传的字段保持当前值），与后端一致
+      const applied = applyDetailOverrides(detail)
+
+      return HttpResponse.json(
+        ok({
+          containerId,
+          restartPolicy: applied.hostConfig.restartPolicy,
+          memoryLimitBytes: applied.hostConfig.memoryLimitBytes,
+          nanoCpus: applied.hostConfig.nanoCpus
+        })
+      )
+    }),
+
+    http.post('*/api/v1/hosts/:hostId/containers/duplicate', async ({ request }) => {
+      await delay(delayFor(scenario()))
+
+      const current = scenario()
+      const body = await readBody(request)
+      const containerId = String(body.containerId ?? '').trim()
+
+      const source = detailsFor(current).find((item) => item.id === containerId)
+
+      if (!source) {
+        return HttpResponse.json(fail(ErrorCode.DockerResourceNotFound), {
+          status: httpStatusOf(ErrorCode.DockerResourceNotFound)
+        })
+      }
+
+      const requested = String(body.name ?? '').trim()
+      const baseName = requested.length > 0 ? requested : `${source.name}-copy`
+
+      if (!CONTAINER_NAME_PATTERN.test(baseName)) {
+        return HttpResponse.json(
+          fail(ErrorCode.ValidationFailed, '容器名只能包含字母、数字与 _ . -，且必须以字母或数字开头'),
+          { status: httpStatusOf(ErrorCode.ValidationFailed) }
+        )
+      }
+
+      // 连点两次必须都能成功：默认名被占用时自动递增 -2 / -3
+      const name = freeName(current, baseName)
+      const copyId = `d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3${createdInSession.size}`
+
+      createdInSession.set(copyId, {
+        detail: { ...structuredClone(source), id: copyId, name },
+        ports: portsOf(current, containerId)
+      })
+
+      if (body.start === true) {
+        applyStateChange(copyId, 'start')
+      }
+
+      // ⚠️ recreated=false：复制是「多了一个容器」，**原容器毫发无损**。
+      // 前端据此把提示写成「已复制」，而不是「已替换」。
+      return HttpResponse.json(
+        ok({ containerId: copyId, name, replacedContainerId: null, running: body.start === true, warnings: [], recreated: false })
+      )
+    }),
+
+    http.post('*/api/v1/hosts/:hostId/containers/add-volumes', async ({ request }) => {
+      await delay(delayFor(scenario()))
+
+      const current = scenario()
+      const body = await readBody(request)
+      const containerId = String(body.containerId ?? '').trim()
+      const volumes = Array.isArray(body.volumes) ? body.volumes : []
+
+      if (containerId.length === 0) {
+        return HttpResponse.json(fail(ErrorCode.ValidationFailed), {
+          status: httpStatusOf(ErrorCode.ValidationFailed)
+        })
+      }
+
+      // 空列表意味着「重建了容器却什么也没加」——一次没有任何收益的重建
+      if (volumes.length === 0) {
+        return HttpResponse.json(
+          fail(ErrorCode.ValidationFailed, 'volumes 不能为空（要追加的挂载不能为空列表）'),
+          { status: httpStatusOf(ErrorCode.ValidationFailed) }
+        )
+      }
+
+      const source = detailsFor(current).find((item) => item.id === containerId)
+
+      if (!source) {
+        return HttpResponse.json(fail(ErrorCode.DockerResourceNotFound), {
+          status: httpStatusOf(ErrorCode.DockerResourceNotFound)
+        })
+      }
+
+      const added: Array<{ source: string; destination: string; readOnly?: boolean }> = []
+
+      for (const item of volumes) {
+        const entry = item as { source?: unknown; destination?: unknown; readOnly?: unknown }
+        const from = String(entry.source ?? '').trim()
+        const to = String(entry.destination ?? '').trim()
+
+        if (from.length === 0 || to.length === 0) {
+          return HttpResponse.json(
+            fail(ErrorCode.ValidationFailed, 'volumes[].source 与 volumes[].destination 都不能为空'),
+            { status: httpStatusOf(ErrorCode.ValidationFailed) }
+          )
+        }
+
+        // 同一目标路径挂两次 → 1000。这种请求几乎总是配置错了（后端同样提前拒掉），
+        // 而它的表现是「重建失败」，界面上看不出是哪里重了。
+        if (source.mounts.some((mount) => mount.destination === to)) {
+          return HttpResponse.json(
+            fail(
+              ErrorCode.ValidationFailed,
+              `容器 ${source.name} 已经挂载了 ${to}；追加挂载不允许重复同一目标路径（要替换请先删掉原挂载）`
+            ),
+            { status: httpStatusOf(ErrorCode.ValidationFailed) }
+          )
+        }
+
+        added.push({ source: from, destination: to, readOnly: entry.readOnly === true })
+      }
+
+      // ===== 重建：旧容器让位（改名保留）→ 新容器用原名建出来 =====
+      // ⚠️ 顺序不能反：先让位才能用回原名，反过来会撞「名字被占用」。
+      // 让位名带旧 ID 的前 12 位 —— 连续重建同一容器时，用户要能分辨「哪一代被换掉了」。
+      const parkedName = `whalefleet-replaced-${containerId.slice(0, 12)}`
+
+      renamedInSession.set(containerId, parkedName)
+
+      const newId = `f0e1d2c3b4a5968778695a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1${createdInSession.size}`
+
+      createdInSession.set(newId, {
+        detail: {
+          ...structuredClone(source),
+          id: newId,
+          name: source.name,
+          mounts: [
+            ...source.mounts,
+            ...added.map((volume) => ({
+              type: 'bind',
+              source: volume.source,
+              destination: volume.destination,
+              readWrite: volume.readOnly !== true
+            }))
+          ]
+        },
+        ports: portsOf(current, containerId)
+      })
+
+      // start 省略时**沿用原容器的运行状态**——不擅自启动一个本来没运行的容器
+      const start = typeof body.start === 'boolean' ? body.start : source.state.running
+
+      if (start) {
+        applyStateChange(newId, 'start')
+      }
+
+      // recreated=true 且 replacedContainerId 指向旧容器：
+      // 界面上那个「来历不明的容器」就是它，必须显式提示用户可以删。
+      return HttpResponse.json(
+        ok({ containerId: newId, name: source.name, replacedContainerId: containerId, running: start, warnings: [], recreated: true })
+      )
     })
   ]
+}
+
+/** 容器名是否合法（与后端 `RequireContainerName` 同规则）。 */
+const CONTAINER_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/
+
+/** 重启策略的合法取值（与后端 `BuildRestartPolicy` 一致）。 */
+const RESTART_POLICIES = new Set(['no', 'always', 'on-failure', 'unless-stopped'])
+
+/** 内存下限：6 MiB（守护进程硬性下限，实测 6291455 被拒）。 */
+const MIN_MEMORY_LIMIT_BYTES = 6 * 1024 * 1024
+
+/** CPU 配额上限：1024 核 × 10⁹。 */
+const MAX_NANO_CPUS = 1024 * 1_000_000_000
+
+/**
+ * 校验热更新请求体，返回**具体**的失败原因（`null` 表示通过）。
+ *
+ * ⚠️ 三条最容易漏的规则都在这里，各对应一个真机上「返回成功但没生效」或「报错指错地方」：
+ * 1. `0` 被拒——Docker 的 update 对 0 是「返回成功但不变」；
+ * 2. 内存下限 6 MiB——低于它守护进程在创建时就回 400；
+ * 3. CPU 上限——「把毫核当十亿分之一核」传 2e9 是常见错值。
+ */
+function validateUpdate(body: {
+  restartPolicy?: unknown
+  memoryLimitBytes?: unknown
+  nanoCpus?: unknown
+}): string | null {
+  if (body.restartPolicy !== undefined) {
+    const policy = String(body.restartPolicy)
+
+    if (!RESTART_POLICIES.has(policy)) {
+      return `restartPolicy「${policy}」非法，只能是 no / always / on-failure / unless-stopped`
+    }
+  }
+
+  if (body.memoryLimitBytes !== undefined) {
+    const memory = Number(body.memoryLimitBytes)
+
+    if (!Number.isInteger(memory) || memory < 0) {
+      return 'memoryLimitBytes 必须是非负整数'
+    }
+
+    if (memory === 0) {
+      return 'memoryLimitBytes 不能为 0：Docker 的热更新把 0 当作「未指定」（会返回成功但不生效）。要取消内存上限必须重建容器'
+    }
+
+    if (memory < MIN_MEMORY_LIMIT_BYTES) {
+      return `memoryLimitBytes 至少为 ${MIN_MEMORY_LIMIT_BYTES} 字节（6 MiB，Docker 守护进程的硬性下限），当前 ${memory}`
+    }
+  }
+
+  if (body.nanoCpus !== undefined) {
+    const cpus = Number(body.nanoCpus)
+
+    if (!Number.isInteger(cpus) || cpus < 0) {
+      return 'nanoCpus 必须是非负整数'
+    }
+
+    if (cpus === 0) {
+      return 'nanoCpus 不能为 0：Docker 的热更新把 0 当作「未指定」（会返回成功但不生效）。要取消 CPU 限制必须重建容器'
+    }
+
+    if (cpus > MAX_NANO_CPUS) {
+      return `nanoCpus 最多 ${MAX_NANO_CPUS}（1024 核 × 10⁹），当前 ${cpus}`
+    }
+  }
+
+  return null
 }
 
 /**

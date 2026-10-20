@@ -278,6 +278,12 @@ export default defineConfig({
     'i-carbon-play', 'i-carbon-stop', 'i-carbon-restart', 'i-carbon-document-view',
     'i-carbon-password',
     'i-carbon-side-panel-open', 'i-carbon-side-panel-close',
-    'i-carbon-locked', 'i-carbon-chart-line', 'i-carbon-calendar'
+    'i-carbon-locked', 'i-carbon-chart-line', 'i-carbon-calendar',
+    // 0.3.0 容器基础操作与镜像打标签。
+    // ⚠️ `text-align-left`（重命名）与 `edit`（编辑）是两回事：前者读作「改名」，
+    // 后者在别处已用于「编辑表单」，两处共用会让用户以为点的是同一个功能。
+    // `overflow-menu-horizontal` 是「更多操作」下拉的触发器，动态字符串，必须 safelist。
+    'i-carbon-text-align-left', 'i-carbon-add-alt',
+    'i-carbon-overflow-menu-horizontal', 'i-carbon-tag'
   ])
 })

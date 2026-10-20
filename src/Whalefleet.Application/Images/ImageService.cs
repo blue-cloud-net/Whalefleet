@@ -472,7 +472,86 @@ public sealed class ImageService
         string.CompareOrdinal(x ?? string.Empty, y ?? string.Empty);
 
     /// <summary>
-    /// 镜像标识必填校验。
+    /// 给镜像打标签（对应 <c>docker tag</c>）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">打标签请求（源镜像、目标仓库、目标标签）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>镜像 ID、新引用与该镜像上的全部标签。</returns>
+    /// <exception cref="BusinessException">
+    /// 字段为空（<c>1000</c>）、源镜像不存在（<c>1401</c>）、
+    /// 主机不可达（<c>1301</c>）或 Docker 调用失败（<c>1402</c>）。
+    /// </exception>
+    /// <remarks>
+    /// <para><b>tag 不复制镜像</b>：只是给同一个镜像 ID 再加一个引用，因此磁盘占用不变。
+    /// 反过来说，删掉新标签时镜像本体仍在（只要还有别的标签指向它）——
+    /// 这一点会随 <see cref="ImageRemovedResult"/> 一起返回给前端。</para>
+    /// <para><b>为什么要 inspect 一次</b>：<c>TagImageAsync</c> 没有返回值（只回 201），
+    /// 而调用方需要知道「新标签确实落在哪个镜像 ID 上」才能刷新列表。</para>
+    /// </remarks>
+    public async Task<ImageTaggedResult> TagAsync(
+        string hostId,
+        TagImageRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var imageId = RequireImageId(request.ImageId);
+
+        // 目标仓库必须**不含标签**：Docker 的 API 要的就是纯仓库名，
+        // 而用户很可能照着「源镜像」那一栏把 nginx:1.27 整个粘了进来。
+        // 与 create 里的处理一致——本地拒掉并说清该改哪个字段，比拼成 nginx:1.27:alpine 好。
+        var repository = RequireImageId(request.Repository);
+
+        if (HasTag(repository))
+        {
+            throw BusinessException.Validation(
+                $"repository 不能包含标签（当前 {repository}）。请只填仓库名，标签放到 tag 字段");
+        }
+
+        var tag = RequireTag(request.Tag);
+
+        var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
+
+        // 先 inspect 一次确认源镜像在：直接打标签时守护进程对不存在的镜像只回一句
+        // 「No such image」，经翻译器会落到兜底的 1402/500——
+        // 而「镜像没拉过」是可预期状态，应当是 1401。
+        var source = await DockerErrorTranslator.ExecuteAsync(
+            () => client.Images.InspectImageAsync(imageId, cancellationToken),
+            $"镜像 {imageId}",
+            cancellationToken).ConfigureAwait(false);
+
+        var parameters = new ImageTagParameters { RepositoryName = repository, Tag = tag };
+
+        await DockerErrorTranslator.ExecuteAsync(
+            () => client.Images.TagImageAsync(imageId, parameters, cancellationToken),
+            $"镜像 {imageId}",
+            cancellationToken).ConfigureAwait(false);
+
+        var reference = $"{repository}:{tag}";
+
+        // 再 inspect 一次拿标签全貌：打标签之后那个镜像 ID 上的引用集合变了，
+        // 而前端要把行更新成「同一镜像的另一个标签」，需要拿到完整的标签列表。
+        var tagged = await DockerErrorTranslator.ExecuteAsync(
+            () => client.Images.InspectImageAsync(reference, cancellationToken),
+            $"镜像 {reference}",
+            cancellationToken).ConfigureAwait(false);
+
+        var repoTags = MapReferences(tagged.RepoTags);
+
+        _logger.LogInformation(
+            "主机 {HostId} 给镜像 {ImageId} 打标签 {Reference}（该镜像现有 {TagCount} 个标签）",
+            hostId,
+            source.ID,
+            reference,
+            repoTags.Count);
+
+        return new ImageTaggedResult(source.ID, reference, repoTags);
+    }
+
+    /// <summary>
+    /// 校验镜像标识必填。
     /// </summary>
     /// <param name="imageId">请求里的镜像标识。</param>
     /// <returns>去空白后的镜像标识。</returns>
@@ -481,6 +560,50 @@ public sealed class ImageService
         string.IsNullOrWhiteSpace(imageId)
             ? throw new BusinessException(ErrorCodes.ValidationFailed, "imageId 不能为空")
             : imageId.Trim();
+
+    /// <summary>
+    /// 校验并归一化目标标签。
+    /// </summary>
+    /// <param name="tag">请求里的标签。</param>
+    /// <returns>去空白后的标签；省略时为 <c>latest</c>。</returns>
+    /// <exception cref="BusinessException">
+    /// 标签含 Docker 不允许的字符（<c>1000</c>）。
+    /// </exception>
+    /// <remarks>
+    /// <b>空串与省略一样取 <c>latest</c></b>：与 <c>pull</c> 端点保持一致。
+    /// 「同一个概念在两个端点上有两种含义」比「悄悄给默认值」更难排查——
+    /// 前者至少是稳定的，而前端传空串往往是因为用户把输入框清空了，
+    /// 这与「没填过」无法区分。
+    /// <br/>
+    /// <b>字符集来自 Docker 的标签文法</b>：首字符必须是字母或下划线，
+    /// 其后可以是字母、数字、下划线、点与连字符，最大 128 字符。
+    /// 斜杠是<b>不允许</b>的——路径分隔属于仓库名部分，写进 tag 会被守护进程拒绝，
+    /// 而那句报错完全看不出是哪个字符的问题。
+    /// </remarks>
+    private static string RequireTag(string? tag)
+    {
+        if (string.IsNullOrWhiteSpace(tag))
+        {
+            return DefaultTag;
+        }
+
+        var trimmed = tag.Trim();
+
+        var isValid = (char.IsAsciiLetter(trimmed[0]) || trimmed[0] == '_')
+            && trimmed.Length <= MaxTagLength
+            && trimmed.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '.' or '-');
+
+        return isValid
+            ? trimmed
+            : throw BusinessException.Validation(
+                $"tag「{trimmed}」非法：必须以字母或下划线开头，其后只能是字母、数字与 _ . -，且不超过 {MaxTagLength} 个字符（斜杠属于仓库名，不能写在 tag 里）");
+    }
+
+    /// <summary>标签默认值：省略时等同 <c>docker tag … :latest</c>。</summary>
+    private const string DefaultTag = "latest";
+
+    /// <summary>标签长度上限（Docker 的文法上限）。</summary>
+    private const int MaxTagLength = 128;
 
     /// <summary>
     /// 把「仓库名 + 标签」解析成完整的镜像引用。

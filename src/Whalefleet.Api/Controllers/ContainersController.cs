@@ -301,4 +301,135 @@ public sealed class ContainersController : ControllerBase
 
         return this.Ok(ApiResults.Ok(result));
     }
+
+    /// <summary>
+    /// 重命名容器。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">重命名请求（容器标识、新名称）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应，<c>data</c> 为容器 ID 与新名称。</returns>
+    /// <response code="200">重命名成功。</response>
+    /// <response code="400">容器标识为空或名称非法（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机（<c>1300</c>）或容器（<c>1401</c>）不存在。</response>
+    /// <response code="409">新名称已被占用（<c>1404</c>）。</response>
+    [HttpPost("rename")]
+    [ProducesResponseType(typeof(ApiResult<ContainerRenamedResult>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> RenameAsync(
+        string hostId,
+        [FromBody] RenameContainerRequest request,
+        CancellationToken cancellationToken)
+    {
+        var renamed = await _containers.RenameAsync(hostId, request, cancellationToken).ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok(renamed));
+    }
+
+    /// <summary>
+    /// 热更新容器的重启策略与资源限制（**只支持守护进程真能热改的字段**）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">更新请求。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应，<c>data</c> 为<b>更新后</b>实际生效的值。</returns>
+    /// <response code="200">更新成功。</response>
+    /// <response code="400">容器标识为空、全省略或字段非法（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机（<c>1300</c>）或容器（<c>1401</c>）不存在。</response>
+    /// <remarks>
+    /// 镜像、端口、环境变量、挂载、网络**不在本端点能力范围内**——Docker 不支持热改它们，
+    /// 改了就得重建容器。返回的是更新后的真实值，前端据此刷新而不是按请求值回显。
+    /// </remarks>
+    [HttpPost("update")]
+    [ProducesResponseType(typeof(ApiResult<ContainerUpdatedResult>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UpdateAsync(
+        string hostId,
+        [FromBody] UpdateContainerRequest request,
+        CancellationToken cancellationToken)
+    {
+        var updated = await _containers.UpdateAsync(hostId, request, cancellationToken).ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok(updated));
+    }
+
+    /// <summary>
+    /// 复制容器：按原容器配置新建一个兄弟容器（**原容器不受影响**）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">复制请求（源容器、新名称、是否启动）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应，<c>data</c> 为新容器 ID、名称与提示。</returns>
+    /// <response code="200">复制成功（原容器保持原状）。</response>
+    /// <response code="400">容器标识为空或名称非法（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机（<c>1300</c>）或源容器（<c>1401</c>）不存在。</response>
+    /// <response code="409">名称持续冲突（<c>1404</c>）。</response>
+    /// <remarks>
+    /// 默认名是「原名 + <c>-copy</c>」，被占用时自动追加 <c>-2</c> / <c>-3</c>，
+    /// 因此连点两次不会失败。原容器不会被停止、改名或删除。
+    /// </remarks>
+    [HttpPost("duplicate")]
+    [ProducesResponseType(typeof(ApiResult<ContainerRecreatedResult>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> DuplicateAsync(
+        string hostId,
+        [FromBody] DuplicateContainerRequest request,
+        CancellationToken cancellationToken)
+    {
+        var duplicated = await _containers.DuplicateAsync(hostId, request, cancellationToken).ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok(duplicated));
+    }
+
+    /// <summary>
+    /// 为已存在容器追加挂载（⚠️ <b>会重建容器</b>，容器 ID 会变）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">追加挂载请求。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应，<c>data</c> 为新容器 ID、被让位的旧容器 ID 与运行状态。</returns>
+    /// <response code="200">重建成功；<c>replacedContainerId</c> 指向保留着的旧容器。</response>
+    /// <response code="400">容器标识为空、挂载为空或目标路径重复（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机（<c>1300</c>）或容器（<c>1401</c>）不存在。</response>
+    /// <response code="409">无法为旧容器找到空闲的让位名（<c>1404</c>）。</response>
+    /// <remarks>
+    /// <b>界面必须把「会重建容器」写在二次确认里</b>：Docker 没有给运行中容器加挂载的接口，
+    /// 只能重建。旧容器不会被删除，而是改名成 <c>whalefleet-replaced-*</c> 保留——
+    /// 那是回滚的后手，用户确认新容器没问题后可以自己删。
+    /// </remarks>
+    [HttpPost("add-volumes")]
+    [ProducesResponseType(typeof(ApiResult<ContainerRecreatedResult>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> AddVolumesAsync(
+        string hostId,
+        [FromBody] AddContainerVolumesRequest request,
+        CancellationToken cancellationToken)
+    {
+        var recreated = await _containers.AddVolumesAsync(hostId, request, cancellationToken).ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok(recreated));
+    }
 }

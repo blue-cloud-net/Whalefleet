@@ -384,6 +384,52 @@ export interface ContainerCreatedResult {
 }
 
 /* ==================================================================
+ * 容器基础操作（0.3.0）
+ * ================================================================== */
+
+/** 重命名结果（回带新名，省掉一次 inspect）。 */
+export interface ContainerRenamedResult {
+  containerId: string
+  name: string
+}
+
+/**
+ * 热更新结果——**回带更新后实际生效的值**，不是请求里写的值。
+ *
+ * ⚠️ 后端在更新前先 inspect 一次、把未改的字段按当前值回填，再回带最终结果。
+ * 因此这里永远可以拿它刷新界面，而不必自己猜「没传的字段是什么值」。
+ *
+ * `memoryLimitBytes` / `nanoCpus` 为 `null` 表示**未限制**（不是 0）。
+ */
+export interface ContainerUpdatedResult {
+  containerId: string
+  /** `no` / `always` / `on-failure` / `unless-stopped` */
+  restartPolicy: string
+  memoryLimitBytes: number | null
+  nanoCpus: number | null
+}
+
+/**
+ * 重建结果（复制与追加挂载共用）。
+ *
+ * ⚠️ **`recreated` 是界面必须看的字段**：
+ * - `false`（复制）：原容器毫发无损，提示语应是「已复制出新容器」。
+ * - `true`（追加挂载）：**容器被重建了**，ID 会变，旧容器被让位保留。
+ *
+ * `replacedContainerId` 非空时，界面上那个「来历不明的容器」就是它——
+ * 应当显式提示用户「可以删除」，否则没人敢动它。
+ */
+export interface ContainerRecreatedResult {
+  containerId: string
+  name: string
+  /** 被让位（改名保留）的旧容器 ID；复制场景为 null */
+  replacedContainerId: string | null
+  running: boolean
+  warnings: string[]
+  recreated: boolean
+}
+
+/* ==================================================================
  * 镜像（对应后端 `Whalefleet.Application.Images`，0.0.10 已实现）
  * ================================================================== */
 
@@ -464,6 +510,21 @@ export interface ImagePullResult {
 export interface ImageRemovedResult {
   untagged: string[]
   deleted: string[]
+}
+
+/**
+ * 打标签的结果。
+ *
+ * ⚠️ **`imageId` 与源镜像是同一个 ID**——`docker tag` 不复制镜像，只是加一个引用。
+ * 因此界面应把这一行更新成「同一镜像的另一个标签」，而**不是**新增一行镜像：
+ * 后者会让用户以为副本可以随便删（删掉最后一个标签时镜像确实会消失）。
+ */
+export interface ImageTaggedResult {
+  imageId: string
+  /** 新建的完整引用，如 `registry.example.com/team/app:v1.2.3` */
+  reference: string
+  /** 该镜像 ID 上的全部标签（打标签后已变化） */
+  repoTags: string[]
 }
 
 /* ==================================================================

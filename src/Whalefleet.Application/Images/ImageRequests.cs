@@ -107,3 +107,25 @@ public sealed record BatchRemoveImagesRequest
     /// <summary>是否强制删除（即便被容器引用或存在子镜像）；省略为 <see langword="false"/>。</summary>
     public bool? Force { get; init; }
 }
+
+/// <summary>
+/// 给镜像打标签请求（对应 <c>docker tag</c>）。
+/// </summary>
+/// <remarks>
+/// <para><b>tag 不复制镜像</b>：它只是给<b>同一个镜像 ID</b> 再加一个引用。
+/// 因此「删掉这个标签」与「删掉这个镜像」是两件事——前者只解绑，后者在没有其他引用时才会删掉本体。
+/// 这一点在界面上必须写清楚，否则用户会以为打标签是「复制了一份」，
+/// 删副本时把本体一起删掉。</para>
+/// </remarks>
+public sealed record TagImageRequest
+{
+    /// <summary>源镜像标识（镜像 ID / 短 ID / 仓库名 / 仓库名:标签）；必填。</summary>
+    public string? ImageId { get; init; }
+
+    /// <summary>目标仓库名（如 <c>registry.example.com/team/app</c>）；必填。</summary>
+    /// <remarks>不带标签——标签由 <see cref="Tag"/> 单独给，避免 <c>nginx:1.27:alpine</c> 那类拼接歧义。</remarks>
+    public string? Repository { get; init; }
+
+    /// <summary>目标标签（如 <c>v1.2.3</c> / <c>latest</c>）；省略时取 <c>latest</c>。</summary>
+    public string? Tag { get; init; }
+}

@@ -89,6 +89,19 @@ public class BusinessException : Exception
         new(ErrorCodes.OperationTimeout, message);
 
     /// <summary>
+    /// 构造资源状态冲突异常。
+    /// </summary>
+    /// <remarks>
+    /// 用于「请求本身合法，但资源当前状态不允许」：删除运行中的容器、
+    /// 容器名已被占用、镜像被引用等。这类错误与 <see cref="Validation"/>
+    /// 的区别是<b>改请求没用</b>——得先改变资源的状态（先停容器、先换个名字）。
+    /// </remarks>
+    /// <param name="message">错误消息。</param>
+    /// <returns>错误码为 <see cref="ErrorCodes.DockerResourceConflict"/> 的业务异常。</returns>
+    public static BusinessException Conflict(string message) =>
+        new(ErrorCodes.DockerResourceConflict, message);
+
+    /// <summary>
     /// 构造主机连通性失败异常。
     /// </summary>
     /// <param name="message">错误消息。</param>

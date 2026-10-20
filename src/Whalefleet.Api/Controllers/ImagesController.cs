@@ -186,4 +186,37 @@ public sealed class ImagesController : ControllerBase
 
         return this.Ok(ApiResults.Ok(result));
     }
+
+    /// <summary>
+    /// 给镜像打标签（对应 <c>docker tag</c>）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">打标签请求（源镜像、目标仓库、目标标签）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应，<c>data</c> 为镜像 ID、新引用与全部标签。</returns>
+    /// <response code="200">打标签成功。</response>
+    /// <response code="400">字段为空、标签非法或仓库名里含标签（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机（<c>1300</c>）或源镜像（<c>1401</c>）不存在。</response>
+    /// <remarks>
+    /// <b>tag 不复制镜像</b>：新标签指向的是<b>同一个镜像 ID</b>，磁盘占用不变。
+    /// 界面应把行更新成「同一镜像的另一个标签」，而不是「多了一行镜像」——
+    /// 后者会让用户以为副本可以随便删（删掉最后一个标签时镜像确实会消失）。
+    /// </remarks>
+    [HttpPost("tag")]
+    [ProducesResponseType(typeof(ApiResult<ImageTaggedResult>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> TagAsync(
+        string hostId,
+        [FromBody] TagImageRequest request,
+        CancellationToken cancellationToken)
+    {
+        var tagged = await _images.TagAsync(hostId, request, cancellationToken).ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok(tagged));
+    }
 }

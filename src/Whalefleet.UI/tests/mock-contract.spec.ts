@@ -1450,3 +1450,398 @@ describe('角色分配端点（0.1.0）', () => {
     expect(json.code).toBe(ErrorCode.RoleNotFound)
   })
 })
+
+/* ==================================================================
+ * 0.3.0：容器基础操作与镜像打标签
+ *
+ * 这些用例的价值全在「mock 复刻了哪些**容易被忽略**的语义」——
+ * 与 0.1.0 那批批量端点的用例同源。不复刻的话，
+ * 对应的界面分支在 mock 模式下永远走不到，而走查时看不出问题，
+ * 到真机上才发现交互是错的。
+ * ================================================================== */
+
+describe('容器重命名（0.3.0）', () => {
+  const CONTAINER = MOCK_CONTAINERS_DEFAULT[0].id
+
+  it('重命名后详情能读到新名字', async () => {
+    const renamed = await post('/api/v1/hosts/local/containers/rename', {
+      containerId: CONTAINER,
+      name: 'renamed-by-test'
+    })
+
+    expect(renamed.status).toBe(200)
+    expect((renamed.json.data as { name: string }).name).toBe('renamed-by-test')
+
+    const detail = await post('/api/v1/hosts/local/containers/inspect', { containerId: CONTAINER })
+    expect((detail.json.data as { name: string }).name).toBe('renamed-by-test')
+
+    const list = await post('/api/v1/hosts/local/containers/list', { all: true })
+    const items = (list.json.data as { items: Array<{ id: string; name: string }> }).items
+    expect(items.find((item) => item.id === CONTAINER)?.name).toBe('renamed-by-test')
+  })
+
+  it('非法名称 → 1000 / 400（规则与创建一致）', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/containers/rename', {
+      containerId: CONTAINER,
+      name: '-不能以横杠开头'
+    })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.ValidationFailed)
+  })
+
+  it('名称已被占用 → 1404 / 409（不是 1000）', async () => {
+    const other = MOCK_CONTAINERS_DEFAULT[1]
+
+    const { status, json } = await post('/api/v1/hosts/local/containers/rename', {
+      containerId: CONTAINER,
+      name: other.name
+    })
+
+    // 409 而不是 400：改一下名字就能成功，属「换个名字」而不是「参数错了」
+    expect(status).toBe(409)
+    expect(json.code).toBe(ErrorCode.DockerResourceConflict)
+  })
+
+  it('容器不存在 → 1401 / 404', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/containers/rename', {
+      containerId: 'no-such-container',
+      name: 'whatever'
+    })
+
+    expect(status).toBe(404)
+    expect(json.code).toBe(ErrorCode.DockerResourceNotFound)
+  })
+})
+
+describe('容器热更新（0.3.0）', () => {
+  const CONTAINER = MOCK_CONTAINERS_DEFAULT[0].id
+
+  it('三个字段全省略 → 1000（那等于什么都不改）', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/containers/update', {
+      containerId: CONTAINER
+    })
+
+    // 不模拟它的话，「什么都没填就点保存」在 mock 下会显示成功
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.ValidationFailed)
+  })
+
+  it('memoryLimitBytes 为 0 → 1000（Docker 会返回成功但不生效）', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/containers/update', {
+      containerId: CONTAINER,
+      memoryLimitBytes: 0
+    })
+
+    // 实测 `docker update --memory=0` 返回 200 而限制没变。
+    // 放行 0 等于给用户一个「保存成功却什么也没做」的控件。
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.ValidationFailed)
+  })
+
+  it('nanoCpus 为 0 → 1000（同上）', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/containers/update', {
+      containerId: CONTAINER,
+      nanoCpus: 0
+    })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.ValidationFailed)
+  })
+
+  it('内存低于 6 MiB → 1000（守护进程硬性下限）', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/containers/update', {
+      containerId: CONTAINER,
+      memoryLimitBytes: 1024
+    })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.ValidationFailed)
+  })
+
+  it('非法重启策略 → 1000', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/containers/update', {
+      containerId: CONTAINER,
+      restartPolicy: 'sometimes'
+    })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.ValidationFailed)
+  })
+
+  it('回带更新后实际生效的值', async () => {
+    const updated = await post('/api/v1/hosts/local/containers/update', {
+      containerId: CONTAINER,
+      restartPolicy: 'unless-stopped',
+      memoryLimitBytes: 64 * 1024 * 1024
+    })
+
+    expect(updated.status).toBe(200)
+
+    const data = updated.json.data as {
+      restartPolicy: string
+      memoryLimitBytes: number | null
+      nanoCpus: number | null
+    }
+
+    expect(data.restartPolicy).toBe('unless-stopped')
+    expect(data.memoryLimitBytes).toBe(64 * 1024 * 1024)
+  })
+
+  it('只改重启策略时内存上限保持不变（回归防线）', async () => {
+    const first = MOCK_CONTAINERS_DEFAULT[2].id
+
+    await post('/api/v1/hosts/local/containers/update', {
+      containerId: first,
+      memoryLimitBytes: 64 * 1024 * 1024
+    })
+
+    const second = await post('/api/v1/hosts/local/containers/update', {
+      containerId: first,
+      restartPolicy: 'always'
+    })
+
+    // Docker 的 update 对「未传字段」的处理随版本变化（老版本写回 0）；
+    // 后端先 inspect 再按当前值回填，mock 必须复刻这一点。
+    expect((second.json.data as { memoryLimitBytes: number | null }).memoryLimitBytes).toBe(
+      64 * 1024 * 1024
+    )
+  })
+})
+
+describe('容器复制（0.3.0）', () => {
+  const CONTAINER = MOCK_CONTAINERS_DEFAULT[0].id
+
+  it('默认名是「原名 + -copy」，且 recreated 为 false', async () => {
+    const created = await post('/api/v1/hosts/local/containers/duplicate', {
+      containerId: CONTAINER
+    })
+
+    expect(created.status).toBe(200)
+
+    const data = created.json.data as {
+      name: string
+      replacedContainerId: string | null
+      recreated: boolean
+    }
+
+    expect(data.name).toBe(`${MOCK_CONTAINERS_DEFAULT[0].name}-copy`)
+    // ⚠️ 复制不是重建：原容器毫发无损，界面据此把提示写成「已复制」
+    expect(data.recreated).toBe(false)
+    expect(data.replacedContainerId).toBeNull()
+  })
+
+  it('连点两次不失败（名字自动递增 -2）', async () => {
+    const source = MOCK_CONTAINERS_DEFAULT[1].id
+    const baseName = `${MOCK_CONTAINERS_DEFAULT[1].name}-copy`
+
+    await post('/api/v1/hosts/local/containers/duplicate', { containerId: source })
+
+    const second = await post('/api/v1/hosts/local/containers/duplicate', {
+      containerId: source
+    })
+
+    // 不避让的话第二次会拿到 409，而连点两次是复制最常见的用法
+    expect(second.status).toBe(200)
+    expect((second.json.data as { name: string }).name).toBe(`${baseName}-2`)
+  })
+
+  it('原容器仍然存在', async () => {
+    const created = await post('/api/v1/hosts/local/containers/duplicate', {
+      containerId: CONTAINER
+    })
+    const copyId = (created.json.data as { containerId: string }).containerId
+
+    const original = await post('/api/v1/hosts/local/containers/inspect', { containerId: CONTAINER })
+    const copy = await post('/api/v1/hosts/local/containers/inspect', { containerId: copyId })
+
+    expect(original.status).toBe(200)
+    expect(copy.status).toBe(200)
+    expect((original.json.data as { id: string }).id).not.toBe(
+      (copy.json.data as { id: string }).id
+    )
+  })
+
+  it('容器不存在 → 1401 / 404', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/containers/duplicate', {
+      containerId: 'no-such-container'
+    })
+
+    expect(status).toBe(404)
+    expect(json.code).toBe(ErrorCode.DockerResourceNotFound)
+  })
+})
+
+describe('容器追加挂载（0.3.0）', () => {
+  it('重建后 ID 改变，且回带被让位的旧容器', async () => {
+    const source = MOCK_CONTAINERS_DEFAULT[0].id
+
+    const recreated = await post('/api/v1/hosts/local/containers/add-volumes', {
+      containerId: source,
+      volumes: [{ source: '/tmp', destination: '/mnt/extra' }],
+      start: false
+    })
+
+    expect(recreated.status).toBe(200)
+
+    const data = recreated.json.data as {
+      containerId: string
+      replacedContainerId: string | null
+      recreated: boolean
+      running: boolean
+    }
+
+    // ⚠️ recreated=true 且 ID 变化：这是「会重建」的可观察证据
+    expect(data.recreated).toBe(true)
+    expect(data.containerId).not.toBe(source)
+    expect(data.replacedContainerId).toBe(source)
+    expect(data.running).toBe(false)
+  })
+
+  it('新容器多出该挂载，旧容器改名保留', async () => {
+    const source = MOCK_CONTAINERS_DEFAULT[1].id
+
+    const recreated = await post('/api/v1/hosts/local/containers/add-volumes', {
+      containerId: source,
+      volumes: [{ source: '/tmp', destination: '/mnt/added' }],
+      start: false
+    })
+
+    const newId = (recreated.json.data as { containerId: string }).containerId
+
+    const detail = await post('/api/v1/hosts/local/containers/inspect', { containerId: newId })
+    const mounts = (detail.json.data as { mounts: Array<{ destination: string }> }).mounts
+    expect(mounts.map((mount) => mount.destination)).toContain('/mnt/added')
+
+    // 旧容器仍在但改了名——那是回滚的后手，界面必须提示用户可以删
+    const parked = await post('/api/v1/hosts/local/containers/inspect', { containerId: source })
+    expect((parked.json.data as { name: string }).name).toContain('whalefleet-replaced-')
+  })
+
+  it('start 省略时沿用原容器的运行状态', async () => {
+    const running = MOCK_CONTAINERS_DEFAULT.find((item) => item.state === 'running')!
+
+    const recreated = await post('/api/v1/hosts/local/containers/add-volumes', {
+      containerId: running.id,
+      volumes: [{ source: '/tmp', destination: '/mnt/keep-state' }]
+    })
+
+    // 原本在运行 → 重建后仍在运行；擅自启动一个本来没运行的容器是用户没要求的副作用
+    expect((recreated.json.data as { running: boolean }).running).toBe(true)
+  })
+
+  it('挂载列表为空 → 1000（一次没有任何收益的重建）', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/containers/add-volumes', {
+      containerId: MOCK_CONTAINERS_DEFAULT[0].id,
+      volumes: []
+    })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.ValidationFailed)
+  })
+
+  it('挂载项缺目标路径 → 1000', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/containers/add-volumes', {
+      containerId: MOCK_CONTAINERS_DEFAULT[0].id,
+      volumes: [{ source: '/tmp' }]
+    })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.ValidationFailed)
+  })
+})
+
+describe('镜像打标签（0.3.0）', () => {
+  const IMAGE = MOCK_IMAGES_DEFAULT.find((image) => image.repoTags.length > 0)!
+
+  it('新标签与源标签同属一个镜像 ID（tag 不复制镜像）', async () => {
+    const tagged = await post('/api/v1/hosts/local/images/tag', {
+      imageId: IMAGE.id,
+      repository: 'whalefleet-test/tag',
+      tag: 'v1'
+    })
+
+    expect(tagged.status).toBe(200)
+
+    const data = tagged.json.data as { imageId: string; reference: string; repoTags: string[] }
+
+    // ⚠️ 核心语义：tag 只是加一个引用，磁盘占用不变。
+    // 界面据此把行更新成「同一镜像的另一个标签」而不是「多了一行镜像」。
+    expect(data.imageId).toBe(IMAGE.id)
+    expect(data.reference).toBe('whalefleet-test/tag:v1')
+    expect(data.repoTags).toContain('whalefleet-test/tag:v1')
+
+    const before = MOCK_IMAGES_DEFAULT.filter((image) => image.id === IMAGE.id).length
+    const list = await post('/api/v1/hosts/local/images/list', {})
+    const after = (list.json.data as { items: Array<{ id: string }> }).items.filter(
+      (image) => image.id === IMAGE.id
+    ).length
+
+    // 镜像**条数**没变：多标签属于同一个镜像
+    expect(after).toBe(before)
+  })
+
+  it('列表与详情的标签一致（两处不能对不上）', async () => {
+    const reference = 'whalefleet-test/consistent:v2'
+
+    await post('/api/v1/hosts/local/images/tag', {
+      imageId: IMAGE.id,
+      repository: 'whalefleet-test/consistent',
+      tag: 'v2'
+    })
+
+    const detail = await post('/api/v1/hosts/local/images/inspect', { imageId: IMAGE.id })
+    expect((detail.json.data as { repoTags: string[] }).repoTags).toContain(reference)
+
+    const list = await post('/api/v1/hosts/local/images/list', {})
+    const items = (list.json.data as { items: Array<{ id: string; repoTags: string[] }> }).items
+    expect(items.find((image) => image.id === IMAGE.id)?.repoTags).toContain(reference)
+  })
+
+  it('repository 含标签 → 1000（而不是拼成 nginx:1.27:alpine）', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/images/tag', {
+      imageId: IMAGE.id,
+      repository: 'nginx:1.27',
+      tag: 'alpine'
+    })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.ValidationFailed)
+  })
+
+  it('标签非法 → 1000（数字开头 / 含斜杠 / 含冒号）', async () => {
+    for (const tag of ['1.27', 'team/app', 'a:b']) {
+      const { status, json } = await post('/api/v1/hosts/local/images/tag', {
+        imageId: IMAGE.id,
+        repository: 'whalefleet-test/bad',
+        tag
+      })
+
+      expect(status).toBe(400)
+      expect(json.code).toBe(ErrorCode.ValidationFailed)
+    }
+  })
+
+  it('tag 省略或空串都取 latest（与 pull 端点一致）', async () => {
+    for (const tag of [undefined, '']) {
+      const tagged = await post('/api/v1/hosts/local/images/tag', {
+        imageId: IMAGE.id,
+        repository: 'whalefleet-test',
+        tag
+      })
+
+      expect((tagged.json.data as { reference: string }).reference).toBe('whalefleet-test:latest')
+    }
+  })
+
+  it('镜像不存在 → 1401 / 404', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/images/tag', {
+      imageId: 'no-such-image-0123456789',
+      repository: 'whalefleet-test/tag',
+      tag: 'v1'
+    })
+
+    expect(status).toBe(404)
+    expect(json.code).toBe(ErrorCode.DockerResourceNotFound)
+  })
+})
