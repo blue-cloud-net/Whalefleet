@@ -61,6 +61,13 @@ const navItems = computed<NavItem[]>(() => {
     .filter((r) => typeof r.meta?.title === 'string')
     .filter((r) => (r.meta?.scope ?? 'global') === scope)
     .filter((r) => !r.meta?.requiresAdmin || auth.isAdmin)
+    // 权限型入口：列表要跟着**权限**走，否则没权限的人点进去会被守卫弹回总览——
+    // 一个点了就跳走的菜单项比不显示更让人困惑。
+    .filter((r) => {
+      const required = r.meta?.requiresPermission
+
+      return typeof required !== 'string' || auth.hasPermission(required)
+    })
     .map((r) => ({
       name: r.name as string,
       title: r.meta?.title as string,

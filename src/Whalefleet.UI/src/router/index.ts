@@ -14,6 +14,11 @@ import { useHostStore } from '@/stores/host'
  * 路由元信息约定：
  *   - requiresAuth (默认 true)：未登录跳 /login?redirect=...
  *   - requiresAdmin：admin 限定，非 admin 跳总览
+ *   - requiresPermission：指定权限限定（如 `registry.read`）。
+ *     ⚠️ **与 requiresAdmin 不是一回事**：`requiresAdmin` 判的是「管理面三项权限」
+ *     （`ADMIN_PERMISSIONS`），而 Registry 的入口由后端 `registry.read` 单独把守。
+ *     自定义角色可以只带 registry 这两项而不带管理面权限——用 requiresAdmin
+ *     会把它挡在门外，而后端明明允许它进来。
  *   - showInSidebar (默认 true)：侧边栏是否展示
  *   - scope (默认 'global')：侧边栏按作用域切换菜单
  *   - icon / title：侧边栏展示用
@@ -80,6 +85,24 @@ const routes: RouteRecordRaw[] = [
           group: 'manage',
           icon: 'i-carbon-user-role',
           title: 'nav.roles'
+        }
+      },
+      {
+        // 私有 Registry 配置。排在管理组**末尾**：管理组的前三项是「人」的动线
+        // （看主机 → 看人 → 发现缺角色再建角色），Registry 是纯基础设施配置，
+        // 平时一配就不动，插在中间会把日常动线打断。
+        //
+        // ⚠️ 用 `requiresPermission` 而不是 `requiresAdmin`：后端这道门是
+        // `registry.read`，自定义角色可能只带它。
+        path: 'registries',
+        name: 'registries',
+        component: () => import('@/views/RegistriesView.vue'),
+        meta: {
+          scope: 'global',
+          requiresPermission: 'registry.read',
+          group: 'manage',
+          icon: 'i-carbon-container-registry',
+          title: 'nav.registries'
         }
       },
       {
@@ -221,6 +244,8 @@ router.beforeEach(async (to) => {
   const host = useHostStore()
   const requiresAuth = to.meta.requiresAuth !== false
   const requiresAdmin = to.meta.requiresAdmin === true
+  const requiresPermission =
+    typeof to.meta.requiresPermission === 'string' ? to.meta.requiresPermission : null
   const isHostScope = to.meta.scope === 'host' || typeof to.params.hostId === 'string'
 
   if (requiresAuth && !auth.isAuthenticated) {
@@ -252,6 +277,12 @@ router.beforeEach(async (to) => {
   }
 
   if (requiresAdmin && !auth.isAdmin) {
+    return { name: 'overview' }
+  }
+
+  // 权限型入口：与 requiresAdmin 并列而非合并——两者判的是不同的权限集，
+  // 合并会让「带 registry.read 但不带 user.write」的用户被挡在自己的页外。
+  if (requiresPermission !== null && !auth.hasPermission(requiresPermission)) {
     return { name: 'overview' }
   }
 

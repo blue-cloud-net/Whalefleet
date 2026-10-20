@@ -485,6 +485,46 @@ export interface ImageRemovedResult {
 }
 
 /* ==================================================================
+ * 私有 Registry 配置（对应后端 `Whalefleet.Application.Registries`，0.4.0）
+ * ================================================================== */
+
+/**
+ * Registry 配置的列表项。
+ *
+ * ⚠️ **响应里既没有口令，也没有口令密文**（连密文都能当钥匙用）。
+ * 界面要改口令时只能重新输入——所以本版**没有「编辑」功能**，
+ * 改口令 = 删掉重加（后端也只有 `add` / `remove` / `test`）。
+ *
+ * `hasCredentials` 回答的是「这条配置带不带账号」，不是「口令是什么」。
+ */
+export interface RegistrySummary {
+  id: string
+  /** 别名（管理员可读的名字），全表唯一 */
+  name: string
+  /** 规范化后的服务地址（`host` 或 `host:port`，无 scheme、无尾斜杠） */
+  serverAddress: string
+  /** 登录账号；匿名配置为空串 */
+  username: string
+  hasCredentials: boolean
+  description: string | null
+  createdAt: string
+  lastModifiedAt: string | null
+}
+
+/**
+ * Registry 连通性测试的结果。
+ *
+ * **`reachable` 与 `authenticated` 是两个独立的布尔值**，不能压成一个：
+ * Registry 的三种常见状态「网络不通」「连得上但没给凭据」「连得上且凭据有效」
+ * 需要三种不同的处置建议（查网络 / 补凭据 / 无需动作）。
+ */
+export interface RegistryTestResult {
+  reachable: boolean
+  authenticated: boolean
+  message: string
+}
+
+/* ==================================================================
  * 批量操作（0.1.0，容器与镜像共用同一形状）
  * ================================================================== */
 

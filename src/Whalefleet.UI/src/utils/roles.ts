@@ -84,6 +84,8 @@ const PERMISSION_LABEL_KEYS: Record<string, string> = {
   'role.read': 'permission.role.read',
   'role.write': 'permission.role.write',
   'host.manage': 'permission.host.manage',
+  'registry.read': 'permission.registry.read',
+  'registry.write': 'permission.registry.write',
   'audit.read': 'permission.audit.read'
 }
 
@@ -101,6 +103,7 @@ const DOMAIN_LABEL_KEYS: Record<string, string> = {
   volume: 'permission.domain.volume',
   user: 'permission.domain.user',
   role: 'permission.domain.role',
+  registry: 'permission.domain.registry',
   audit: 'permission.domain.audit'
 }
 
