@@ -27,7 +27,7 @@ namespace Whalefleet.Application.Containers;
 /// <para><b>日志纪律</b>：只记主机标识、容器标识与条数，<b>不</b>记日志内容与环境变量
 /// （命令输出里常有密码、Token——记进来等于把凭据写进日志文件）。</para>
 /// </remarks>
-public sealed class ContainerService
+public sealed partial class ContainerService
 {
     /// <summary>列表默认每页条数。</summary>
     private const int DefaultPageSize = 20;
@@ -594,6 +594,7 @@ public sealed class ContainerService
     private static CreateContainerParameters BuildCreateParameters(CreateContainerRequest request)
     {
         var (exposedPorts, portBindings) = BuildPorts(request.Ports);
+        var (capAdd, capDrop) = AdvancedCreateOptions.BuildCapabilities(request.CapAdd, request.CapDrop);
 
         return new CreateContainerParameters
         {
@@ -609,7 +610,11 @@ public sealed class ContainerService
             Hostname = request.Hostname,
             Tty = request.Tty ?? false,
             OpenStdin = request.StdinOpen ?? false,
+            // 空串会被守护进程当成「显式指定空用户」，而不是「用镜像里的 USER」，
+            // 因此这里把空串一并归一成 null。
+            User = string.IsNullOrWhiteSpace(request.User) ? null : request.User.Trim(),
             ExposedPorts = exposedPorts,
+            Healthcheck = AdvancedCreateOptions.BuildHealthCheck(request.HealthCheck),
             HostConfig = new HostConfig
             {
                 AutoRemove = request.AutoRemove ?? false,
@@ -617,6 +622,16 @@ public sealed class ContainerService
                 Binds = RequireVolumes(request.Volumes),
                 PortBindings = portBindings,
                 RestartPolicy = BuildRestartPolicy(request.RestartPolicy),
+                CapAdd = capAdd,
+                CapDrop = capDrop,
+                Devices = AdvancedCreateOptions.BuildDevices(request.Devices),
+                Sysctls = AdvancedCreateOptions.BuildSysctls(request.Sysctls),
+                Ulimits = AdvancedCreateOptions.BuildUlimits(request.Ulimits),
+                LogConfig = AdvancedCreateOptions.BuildLogDriver(request.LogDriver),
+                // 0 表示「不限制」，而把 0 显式传给守护进程与不传是等价的，
+                // 因此这里直接写值（不限定为 null）——inspect 回读时统一投影成 null。
+                Memory = AdvancedCreateOptions.RequireMemoryLimit(request.MemoryLimitBytes) ?? 0,
+                NanoCPUs = AdvancedCreateOptions.RequireNanoCpus(request.NanoCpus) ?? 0,
             },
         };
     }
