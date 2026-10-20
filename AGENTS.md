@@ -191,6 +191,9 @@ DDD 战术模式（聚合根 / 领域事件 / 领域服务）**已整体移除**
 | 29 | **网络 ID 没有 `sha256:` 前缀**（镜像 ID 才有） | `/networks` 返回裸的 64 位十六进制。照搬镜像的剥前缀逻辑会得到一个错 ID，表现为 404，且极难联想到是前缀问题 |
 | 30 | **Docker 26 把内置网络 `null` 改名成 `none`** | 保护名单两个都要收，旧守护进程上才拦得住。测试的 `InlineData` 只列本机真实存在的，否则拿到的是 404 而不是要验的 1404 |
 | 31 | **未启动的容器不出现在 `GET /networks/{id}` 的 `Containers` 里** | `docker create` 后、`docker start` 前是 0 个。exec 同理要求容器**运行中**（对已创建的容器回 409）。写集成测试时漏掉 start，会看到一个与被测行为无关的「0 个容器」 |
+| 32 | **`.gitignore` 的 `**/data/` 会吃掉 `src/Whalefleet.UI/src/mocks/data/`** | 那是 mock 场景**源码**。与陷阱 23（`.dockerignore`）同根不同文件。**已跟踪文件不受 ignore 影响**，所以从既有文件完全看不出异常——症状是**新增**一个 mock 夹具后 `git status` 里根本没有它，且无任何报错。只列举运行期会写出 `data/` 的位置：`/data`、`src/*/data/`、`tests/*/data/`；新增 mock 夹具后用 `git check-ignore -v <file>` 应无输出 |
+| 33 | **vue-i18n 把消息正文里的 `{` 当占位符编译** | `JSON 对象，如 {"VERSION":"1.0"}` 会在首次渲染到时抛 `Message compilation error: Invalid token in placeholder`。词条文件是合法 JSON、中英 key 集合一致、`pnpm build` 也全过，只有真正渲染到那一句才炸（常藏在默认折叠区）。字面花括号必须转义成 `{'{'}` / `{'}'}`（各**五个**字符，少一个收尾的 `}` 会变成 `Unterminated closing brace`）。`i18n.spec.ts` 有守卫：用真实 i18n 实例把每条词条两种语言各 `t()` 一次 |
+| 34 | **组件渲染错误只有 mount 才暴露** | 模板引用了 `<script setup>` 没导出的函数 → Vue 只 console 告警，该段渲染成空白、退出码 0（即陷阱 14）。`tests/render-smoke.spec.ts` 用 `@vue/test-utils` mount + 收集 `console.warn` 守卫。两个搭架子要点：① `ElementPlus` 必须作为插件注册，否则 `el-table` 解析失败会被当原生元素渲染，`#default="{ row }"` 抛 `Cannot destructure property 'row' of undefined`（错看着像业务代码坏了）；② 必须**先 `router.push()` 再 `router.isReady()`**，否则首次导航没被触发，测试直接超时 |
 
 > **Dapper 物化能力（已核实，勿再沿用旧判断）**：Dapper **可以**物化「非公开构造 + 非公开 setter」
 > 的充血实体，用 `skipVisibility` 动态方法。**不需要** Row DTO，**不需要** `InternalsVisibleTo`。
