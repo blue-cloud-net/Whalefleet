@@ -72,7 +72,16 @@ export function imageHandlers(scenario: () => MockScenario) {
     return [
       ...MOCK_IMAGE_DETAILS.filter((image) => !removedInSession.has(image.id)),
       ...pulledInSession.values()
-    ]
+    ].map((detail) => {
+      // ⚠️ 必须套覆盖层而不是在 tag 端点里 `push` 详情对象：
+      // MOCK_IMAGE_DETAILS 是模块级常量，原地改会让「跑一次走查后夹具变了」，
+      // 下一轮看到的数据与初始态不一致，并行测试还会互相污染。
+      const override = untaggedInSession.get(detail.id)
+
+      return override
+        ? { ...detail, repoTags: [...override.repoTags] }
+        : detail
+    })
   }
 
   /** 按完整 ID / 仓库名 / `仓库:标签` / short ID 查镜像（与后端接受的形态一致）。 */
@@ -314,8 +323,107 @@ export function imageHandlers(scenario: () => MockScenario) {
       // 批量响应**不含**每条镜像解绑了哪些标签——那会让响应体随选中数量膨胀，
       // 而用户在批量场景下需要知道的只有「删没删掉」。
       return HttpResponse.json(ok({ requested: requested.length, succeeded, failures }))
+    }),
+
+    http.post('*/api/v1/hosts/:hostId/images/tag', async ({ request }) => {
+      await delay(delayFor(scenario()))
+
+      const current = scenario()
+      const body = await readBody(request)
+      const imageId = String(body.imageId ?? '').trim()
+      const repository = String(body.repository ?? '').trim()
+      const rawTag = String(body.tag ?? '').trim()
+
+      if (imageId.length === 0) {
+        return HttpResponse.json(fail(ErrorCode.ValidationFailed, 'imageId 不能为空'), {
+          status: httpStatusOf(ErrorCode.ValidationFailed)
+        })
+      }
+
+      if (repository.length === 0) {
+        return HttpResponse.json(fail(ErrorCode.ValidationFailed, 'repository 不能为空'), {
+          status: httpStatusOf(ErrorCode.ValidationFailed)
+        })
+      }
+
+      // ⚠️ repository 不能含标签：用户很容易照着「源镜像」那一栏把 nginx:1.27 整个粘进来。
+      // 后端在本地拒掉（而不是拼成 nginx:1.27:alpine —— 那会打到一个谁都没要求过的镜像上），
+      // mock 必须能产生这个分支，否则前端的本地拦截写错了也测不出来。
+      if (hasTag(repository)) {
+        return HttpResponse.json(
+          fail(
+            ErrorCode.ValidationFailed,
+            `repository 不能包含标签（当前 ${repository}）。请只填仓库名，标签放到 tag 字段`
+          ),
+          { status: httpStatusOf(ErrorCode.ValidationFailed) }
+        )
+      }
+
+      // 省略与空串都取 latest（与 pull 端点一致）：前端传空串往往是因为用户清空了输入框，
+      // 那与「没填过」无法区分。
+      const tag = rawTag.length > 0 ? rawTag : 'latest'
+      const tagMessage = validateTag(tag)
+
+      if (tagMessage !== null) {
+        return HttpResponse.json(fail(ErrorCode.ValidationFailed, tagMessage), {
+          status: httpStatusOf(ErrorCode.ValidationFailed)
+        })
+      }
+
+      const image = findImage(current, imageId)
+
+      if (!image) {
+        return HttpResponse.json(fail(ErrorCode.DockerResourceNotFound), {
+          status: httpStatusOf(ErrorCode.DockerResourceNotFound)
+        })
+      }
+
+      const reference = `${repository}:${tag}`
+
+      // ⚠️ tag **不复制镜像**：只是给同一个镜像 ID 再加一个引用。
+      // 界面的正确表现是「同一镜像多了一个标签」，而不是「多了一行镜像」——
+      // 后者会让用户以为副本可以随便删（删掉最后一个标签时镜像确实会消失）。
+      // 因此这里写的是 untaggedInSession 覆盖层（同一 id），而不是新建一条镜像。
+      const existing = untaggedInSession.get(image.id) ?? image
+
+      untaggedInSession.set(image.id, {
+        ...existing,
+        repoTags: existing.repoTags.includes(reference)
+          ? existing.repoTags
+          : [...existing.repoTags, reference]
+      })
+
+      // 详情与列表共用 untaggedInSession 覆盖层（见 detailsFor 里的说明），
+      // 因此不需要在这里额外改动任何详情对象。
+
+      return HttpResponse.json(
+        ok({
+          imageId: image.id,
+          reference,
+          repoTags: untaggedInSession.get(image.id)?.repoTags ?? existing.repoTags
+        })
+      )
     })
   ]
+}
+
+/**
+ * 标签文法校验（与后端 `ImageService.RequireTag` 一致）。
+ *
+ * @returns `null` 表示合法，否则返回具体原因。
+ *
+ * 规则来自 Docker：首字符必须是字母或下划线，其后是字母 / 数字 / `_ . -`，最长 128。
+ * **斜杠不允许**——路径分隔属于仓库名部分，写进 tag 会被守护进程拒绝，
+ * 而那句报错完全看不出是哪个字符的问题。
+ */
+function validateTag(tag: string): string | null {
+  if (!/^[a-zA-Z_][a-zA-Z0-9_.-]*$/.test(tag)) {
+    return `tag「${tag}」非法：必须以字母或下划线开头，其后只能是字母、数字与 _ . -，且不超过 128 个字符（斜杠属于仓库名，不能写在 tag 里）`
+  }
+
+  return tag.length > 128
+    ? `tag「${tag}」超过 128 个字符上限`
+    : null
 }
 
 /**
