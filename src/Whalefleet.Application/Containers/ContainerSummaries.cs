@@ -192,3 +192,58 @@ public sealed record ContainerLogsResult(string ContainerId, string Content);
 /// 而创建已经成功，为了补一个展示字段再发一次请求（失败了还会把成功当成错误）并不划算。</para>
 /// </remarks>
 public sealed record ContainerCreatedResult(string ContainerId, IReadOnlyList<string> Warnings);
+
+// ==================== 0.3.0 基础操作的结果 ====================
+
+/// <summary>
+/// 重命名结果。
+/// </summary>
+/// <param name="ContainerId">容器 ID。</param>
+/// <param name="Name">新名称。</param>
+/// <remarks>
+/// 回带名字而不是只返回 200：重命名后列表要能立刻刷新到新名字，
+/// 而拿到新名字最省事的做法是让服务端回显，不必再 inspect 一次。</remarks>
+public sealed record ContainerRenamedResult(string ContainerId, string Name);
+
+/// <summary>
+/// 容器更新结果（回带<b>更新后</b>的实际值）。
+/// </summary>
+/// <param name="ContainerId">容器 ID。</param>
+/// <param name="RestartPolicy">更新后的重启策略。</param>
+/// <param name="MemoryLimitBytes">更新后的内存上限（字节）；无限制为 <see langword="null"/>。</param>
+/// <param name="NanoCpus">更新后的 CPU 配额；无限制为 <see langword="null"/>。</param>
+/// <remarks>
+/// ⚠️ <b>回显是必要的而不是顺手加的</b>：Docker 的 update 接口对「没传的字段」的处理
+/// 在不同 API 版本间并不一致（老版本会把未传的数值字段一并写回默认值），
+/// 且对传 <c>0</c> 的字段<b>返回成功但不应用</b>。
+/// 因此本层在更新前先 inspect 一次取当前值、把未修改的字段按当前值回填，
+/// 再回带最终结果——前端拿到的永远是「改完之后真实生效」的值，而不是「我请求的值」。
+/// 本层也拒绝传 0，而不是让它变成一个静默无效的请求。
+/// </remarks>
+public sealed record ContainerUpdatedResult(
+    string ContainerId,
+    string RestartPolicy,
+    long? MemoryLimitBytes,
+    long? NanoCpus);
+
+/// <summary>
+/// 容器重建结果（复制与追加挂载共用）。
+/// </summary>
+/// <param name="ContainerId">新容器的完整 ID。</param>
+/// <param name="Name">新容器名。</param>
+/// <param name="ReplacedContainerId">被让位（改名保留）的旧容器 ID；复制场景下为 <see langword="null"/>。</param>
+/// <param name="Running">新容器当前是否在运行。</param>
+/// <param name="Warnings">守护进程的提示。</param>
+/// <param name="Recreated">是否发生了重建（追加挂载恒为 <see langword="true"/>）。</param>
+/// <remarks>
+/// <b>为什么回带旧容器 ID</b>：追加挂载之后旧容器仍以临时名存在——那是回滚的后手，
+/// 也是给用户「配置不对还能捞回来」的机会。前端必须能指到它，
+/// 否则界面上会出现一个来历不明的容器而没人敢删。
+/// </remarks>
+public sealed record ContainerRecreatedResult(
+    string ContainerId,
+    string Name,
+    string? ReplacedContainerId,
+    bool Running,
+    IReadOnlyList<string> Warnings,
+    bool Recreated);

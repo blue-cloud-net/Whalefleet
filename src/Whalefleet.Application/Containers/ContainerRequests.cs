@@ -147,6 +147,43 @@ public sealed record CreateContainerRequest
 
     /// <summary>是否保持标准输入打开（<c>docker run -i</c>）。</summary>
     public bool? StdinOpen { get; init; }
+
+    // ==================== 0.3.0 高级创建参数 ====================
+    // 界面按「常用 / 高级」两级折叠：上面这一组是高频，下方这一组平时不碰。
+    // 拆成两组而不是两套端点，是因为 Docker 的创建接口只有一个，
+    // 而「高级参数」在服务端与普通参数没有任何处理差异——差别只在界面上。
+
+    /// <summary>运行用户（对应 <c>docker run --user</c>）；省略时用镜像里 <c>USER</c> 声明的用户。</summary>
+    public string? User { get; init; }
+
+    /// <summary>新增的 Linux capabilities（对应 <c>--cap-add</c>）。</summary>
+    public IReadOnlyList<string>? CapAdd { get; init; }
+
+    /// <summary>移除的 Linux capabilities（对应 <c>--cap-drop</c>）。</summary>
+    public IReadOnlyList<string>? CapDrop { get; init; }
+
+    /// <summary>健康检查定义；省略时用镜像里的 <c>HEALTHCHECK</c>。</summary>
+    /// <remarks>传 <c>["NONE"]</c> 表示<b>覆盖</b>镜像的健康检查并关闭它——这是 Docker 的既定语义，
+    /// 与「不传」截然不同，因此单独用一条注释标出来。</remarks>
+    public ContainerHealthCheck? HealthCheck { get; init; }
+
+    /// <summary>设备映射（对应 <c>--device</c>）。</summary>
+    public IReadOnlyList<ContainerDeviceMapping>? Devices { get; init; }
+
+    /// <summary>可写内核参数（对应 <c>--sysctl</c>）；键值成对。</summary>
+    public IReadOnlyDictionary<string, string>? Sysctls { get; init; }
+
+    /// <summary>资源限制（对应 <c>--ulimit</c>）。</summary>
+    public IReadOnlyList<ContainerUlimit>? Ulimits { get; init; }
+
+    /// <summary>日志驱动配置。</summary>
+    public ContainerLogDriver? LogDriver { get; init; }
+
+    /// <summary>内存上限（字节）；省略为不限制。</summary>
+    public long? MemoryLimitBytes { get; init; }
+
+    /// <summary>CPU 配额（十亿分之一核）；省略为不限制。</summary>
+    public long? NanoCpus { get; init; }
 }
 
 /// <summary>
@@ -242,4 +279,178 @@ public sealed record BatchRemoveContainersRequest
 
     /// <summary>是否强制删除运行中的容器；省略为 <see langword="false"/>（此时这些容器会以 409 失败）。</summary>
     public bool? Force { get; init; }
+}
+
+// ==================== 0.3.0 高级创建参数与基础操作 ====================
+
+/// <summary>
+/// 容器健康检查定义。
+/// </summary>
+/// <remarks>
+/// <para><b>为什么 <see cref="Test"/> 是数组而不是一个字符串</b>：Docker 的 healthcheck 有三种形态，
+/// 而它们在 API 上是同一个字段的不同写法——
+/// <c>["CMD-SHELL", "curl -f http://localhost/ || exit 1"]</c>（交给守护进程跑 shell）、
+/// <c>["CMD", "curl", "-f", "..."]</c>（不经 shell，参数不会被二次拆分）、
+/// 以及 <c>["NONE"]</c>（关闭检查）。把它们压成一个字符串就得靠分隔符再解析回来，
+/// 而命令里本身带引号与空格——解析规则与 Docker 不一致时，
+/// 症状是「配置看着对但没生效」。这里原样保留数组形状，让调用方明确选择哪一种。</para>
+/// <para><b>时间单位对外一律用秒</b>：Docker 的 API 用纳秒，
+/// 那是 SDK 与守护进程之间的实现细节；对外用秒可读，换算在服务端做。</para>
+/// </remarks>
+public sealed record ContainerHealthCheck
+{
+    /// <summary>检查命令；<c>["NONE"]</c> 表示关闭检查。必填。</summary>
+    public IReadOnlyList<string>? Test { get; init; }
+
+    /// <summary>两次检查之间的间隔（秒）；省略时由镜像的 <c>HEALTHCHECK</c> 或守护进程默认值决定。</summary>
+    public int? IntervalSeconds { get; init; }
+
+    /// <summary>单次检查的超时（秒）。</summary>
+    public int? TimeoutSeconds { get; init; }
+
+    /// <summary>容器启动后的「宽限期」（秒）：期间检查失败不计入 <see cref="Retries"/>。</summary>
+    public int? StartPeriodSeconds { get; init; }
+
+    /// <summary>连续失败多少次判定为 <c>unhealthy</c>；省略为 3。</summary>
+    public int? Retries { get; init; }
+}
+
+/// <summary>
+/// 设备映射（对应 <c>docker run --device</c>）。
+/// </summary>
+/// <remarks>
+/// ⚠️ <b>这不是「普通用户」该用的功能</b>：把宿主设备映射进容器等价于把宿主上那个设备的
+/// 控制权交给容器（把 <c>/dev/sda</c> 映射进去基本等于交出整块磁盘）。
+/// 因此本项目既不提供 <c>--privileged</c> 的快捷方式，也不把它当普通创建参数推荐。
+/// </remarks>
+public sealed record ContainerDeviceMapping
+{
+    /// <summary>宿主设备路径（如 <c>/dev/snd</c>）；必填。</summary>
+    public string? HostPath { get; init; }
+
+    /// <summary>容器内路径；省略时与 <see cref="HostPath"/> 相同（与 <c>docker run</c> 一致）。</summary>
+    public string? ContainerPath { get; init; }
+
+    /// <summary>cgroup 设备权限：<c>r</c> 读 / <c>w</c> 写 / <c>m</c> mknod；省略为 <c>rwm</c>。</summary>
+    public string? Permissions { get; init; }
+}
+
+/// <summary>
+/// 资源限制项（对应 <c>docker run --ulimit</c>）。
+/// </summary>
+public sealed record ContainerUlimit
+{
+    /// <summary>限制名（如 <c>nofile</c> / <c>nproc</c> / <c>fsize</c>）；必填。</summary>
+    public string? Name { get; init; }
+
+    /// <summary>软限制；省略时与 <see cref="Hard"/> 相同。</summary>
+    public long? Soft { get; init; }
+
+    /// <summary>硬限制；省略时与 <see cref="Soft"/> 相同。</summary>
+    public long? Hard { get; init; }
+}
+
+/// <summary>
+/// 日志驱动配置。
+/// </summary>
+/// <remarks>
+/// <b>为什么不给「全部驱动」的清单</b>：驱动名是守护进程插件注册表里的字符串，
+/// 不同守护进程可用的驱动不同（<c>journald</c> 需要 systemd、<c>syslog</c> 需要 rsyslog）。
+/// 传了本机没有的驱动时，守护进程会在<b>启动容器时</b>才失败——那时容器已经建出来了，
+/// 症状是「创建成功、一启动就退出」。本层无法枚举可用驱动（那要读宿主配置），
+/// 因此只做非空校验，把「驱动是否存在」如实交给守护进程判定。
+/// </remarks>
+public sealed record ContainerLogDriver
+{
+    /// <summary>驱动名（<c>json-file</c> / <c>local</c> / <c>journald</c> / <c>syslog</c> / <c>none</c>）；必填。</summary>
+    public string? Type { get; init; }
+
+    /// <summary>驱动选项（如 <c>max-size</c> / <c>max-file</c>）；键值成对。</summary>
+    public IReadOnlyDictionary<string, string>? Options { get; init; }
+}
+
+/// <summary>
+/// 容器重命名请求。
+/// </summary>
+public sealed record RenameContainerRequest
+{
+    /// <summary>容器标识（完整 ID / 短 ID / 名称）。</summary>
+    public string? ContainerId { get; init; }
+
+    /// <summary>新名称；必填。</summary>
+    public string? Name { get; init; }
+}
+
+/// <summary>
+/// 容器热更新请求（**只开放守护进程真支持热改的字段**）。
+/// </summary>
+/// <remarks>
+/// <para><b>为什么字段这么少</b>：Docker 的 <c>POST /containers/{id}/update</c> 只接受
+/// 资源类字段与重启策略。镜像、端口、环境变量、挂载、网络<b>都不能</b>热改——
+/// 传过去要么被守护进程忽略，要么回一句看不懂的错。因此这里刻意只暴露三组字段，
+/// 而不在界面上摆一堆「保存后不生效」的输入框。</para>
+/// <para><b>每组字段都可为 <see langword="null"/></b>：省略 = 保持当前值。
+/// 但 <b>0 不是「取消限制」</b>——实测 <c>docker update --memory=0</c> 会<b>返回成功而容器上的限制没变</b>
+/// （守护进程对 update 的处理是「字段非 0 才应用」，于是 0 与「不传」同义）。
+/// 因此本端点把 0 视为非法并报错：要真的取消限制只能重建容器。</para>
+/// </remarks>
+public sealed record UpdateContainerRequest
+{
+    /// <summary>容器标识。</summary>
+    public string? ContainerId { get; init; }
+
+    /// <summary>新的重启策略；省略表示不改。</summary>
+    public string? RestartPolicy { get; init; }
+
+    /// <summary>内存上限（字节）；省略表示不改，<b>0 非法</b>（见类型注释）。</summary>
+    public long? MemoryLimitBytes { get; init; }
+
+    /// <summary>CPU 配额（十亿分之一核）；省略表示不改，<b>0 非法</b>（见类型注释）。</summary>
+    public long? NanoCpus { get; init; }
+}
+
+/// <summary>
+/// 容器复制（duplicate）请求。
+/// </summary>
+/// <remarks>
+/// <b>语义是「新建一个配置相同的兄弟容器」</b>，不是原地克隆：
+/// 目标名必须与原容器不同（同一守护进程上不能有两个同名容器），
+/// 因此默认在原名后加 <c>-copy</c>。原容器<b>不受影响</b>（不停止、不改名、不删除）。
+/// </remarks>
+public sealed record DuplicateContainerRequest
+{
+    /// <summary>源容器标识。</summary>
+    public string? ContainerId { get; init; }
+
+    /// <summary>新容器名；省略时在原名后加 <c>-copy</c>，仍冲突则继续追加序号。</summary>
+    public string? Name { get; init; }
+
+    /// <summary>创建后是否立即启动；省略为 <see langword="false"/>（与 <c>create</c> 端点一致）。</summary>
+    public bool? Start { get; init; }
+}
+
+/// <summary>
+/// 为已存在容器追加卷请求。
+/// </summary>
+/// <remarks>
+/// <para>⚠️ <b>这个操作会重建容器</b>，因此容器 ID 会变。Docker 没有「给运行中的容器加挂载」的接口，
+/// 唯一途径是用新配置重建。实现上先把原容器<b>改名让位</b>（不是删除），再用原名创建，
+/// 失败时改回原名并恢复原运行状态——这样回滚不依赖「删掉的东西能不能救回来」。</para>
+/// <para><b>追加而不是覆盖</b>：请求里给的是「要新增的挂载」，原有挂载全部保留；
+/// 移除某个挂载不在本端点的能力范围内。</para>
+/// </remarks>
+public sealed record AddContainerVolumesRequest
+{
+    /// <summary>容器标识。</summary>
+    public string? ContainerId { get; init; }
+
+    /// <summary>要追加的挂载；必填且不能为空。</summary>
+    public IReadOnlyList<ContainerVolumeMapping>? Volumes { get; init; }
+
+    /// <summary>
+    /// 重建成功后是否立即启动；<see langword="null"/> 表示<b>沿用原容器的运行状态</b>。
+    /// </summary>
+    /// <remarks>默认「保持原状」而不是「总是启动」：
+    /// 对一个本来就没运行的容器擅自启动它，是用户没要求的副作用。</remarks>
+    public bool? Start { get; init; }
 }
