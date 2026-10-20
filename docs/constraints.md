@@ -440,17 +440,17 @@ dotnet Whalefleet.Api.dll --urls http://0.0.0.0:8080
 
 ### 监控数据
 
+- 实时推送（SignalR），**不持久化历史指标**（v1.0 范围）
 - **宿主机级实时 CPU / 内存 / 网络 / 负载不做**：Docker Engine API 没有宿主机级指标端点
   （`/info` 只给 `NCPU` / `MemTotal` 这样的静态上限，`docker stats` 只针对容器）。
   用容器聚合值冒充宿主机指标会让同一页面出现两套口径，比不给更糟
 - 主机级实时指标需目标主机上的 Agent，属 1.0.0 之后（见 [backlog.md](./backlog.md)）
-- 实时推送（SignalR），**不持久化历史指标**（v1.0 范围）
 
 ### 镜像构建
 
 - 0.1.0 仅支持从 Docker Hub pull
 - 镜像构建（Dockerfile 上传）→ 0.4.0
-- 私有 Registry login → 0.4.0
+- 私有仓库 login → 0.4.0
 
 ### 容器终端
 

@@ -125,7 +125,7 @@
 | `1500-1599` | **资源权限**——无权限访问此主机 / 容器 / 资源等 |
 | `1600-1699` | **操作审计**——审计查询、导出等（0.9.0 起） |
 | `1700-1799` | **告警与通知**——告警规则、通知渠道等（0.11.0 起） |
-| `1800-1899` | **Registry 与镜像构建 / 推送**——Registry 配置、凭据、构建与推送错误（0.4.0 起） |
+| `1800-1899` | **仓库与镜像构建 / 推送**——仓库配置、凭据、构建与推送错误（0.4.0 起） |
 | `9000-9999` | **服务器内部错误**——未捕获异常、数据库错误等 |
 
 ### 当前已分配的错误码
@@ -178,12 +178,12 @@
 | `1513` | 400 | 内置角色受保护，不可修改或删除 | 0.1.0 |
 | `1514` | 400 | 未知权限标识（不在权限目录中） | 0.1.0 |
 | `1515` | 404 | 角色分配不存在 | 0.1.0 |
-| `1800` | 404 | Registry 配置不存在 | 0.4.0 |
-| `1801` | 400 | Registry 别名已被占用 | 0.4.0 |
-| `1802` | 400 | Registry 服务地址已被占用 | 0.4.0 |
-| `1803` | 400 | 未登记该地址的 Registry 凭据 | 0.4.0 |
-| `1804` | 400 | Registry 拒绝了该凭据 | 0.4.0 |
-| `1805` | 502 | Registry 不可达 | 0.4.0 |
+| `1800` | 404 | 仓库配置不存在 | 0.4.0 |
+| `1801` | 400 | 仓库别名已被占用 | 0.4.0 |
+| `1802` | 400 | 仓库服务地址已被占用 | 0.4.0 |
+| `1803` | 400 | 未登记该地址的仓库凭据 | 0.4.0 |
+| `1804` | 400 | 仓库拒绝了该凭据 | 0.4.0 |
+| `1805` | 502 | 仓库不可达 | 0.4.0 |
 | `1806` | 500 | 镜像构建失败 | 0.4.0 |
 | `1807` | 500 | 镜像推送失败 | 0.4.0 |
 | `9999` | 500 | 服务器内部错误 | 0.0.2 |
@@ -414,13 +414,13 @@ POST /api/v1/hosts/{hostId}/containers/list
 > 请求 / 响应形态在各迭代落地时补全。
 
 | 能力 | 端点 | 阶段 |
+|------|------|------|
 | 主机标签 | `POST /api/v1/host-tags/list` + `POST /api/v1/admin/host-tags/{create,update,remove}` | 0.6.0 |
 | 主机打标 / 去标 | `POST /api/v1/admin/hosts/tags/{assign,revoke}` | 0.6.0 |
 | 磁盘用量 | `POST /api/v1/hosts/{hostId}/system/df` | 0.6.0 |
 | 容器批量启停 | `POST /api/v1/hosts/{hostId}/containers/batch-{start,stop,restart}` | 0.7.0 |
 | 资源级清理 | `POST /api/v1/hosts/{hostId}/{images,volumes}/prune` | 0.7.0 |
 | 容器接入 / 断开网络 | `POST /api/v1/hosts/{hostId}/networks/{connect,disconnect}` | 0.7.0 |
-|------|------|------|
 | 认证日志列表 | `POST /api/v1/admin/logs/authentication/list` | 0.9.0 |
 | 活动日志列表 | `POST /api/v1/admin/logs/activity/list` | 0.9.0 |
 | 审计导出 | `POST /api/v1/admin/logs/activity/export` | 0.9.0 |
@@ -781,10 +781,10 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 停止 | `POST /api/v1/hosts/{hostId}/containers/stop` | 0.0.9 | Body: `{ containerId, waitSeconds? }`；`waitSeconds` 取值 0–300（默认 10，与 Docker 一致） |
 | 重启 | `POST /api/v1/hosts/{hostId}/containers/restart` | 0.0.9 | Body: `{ containerId }` |
 | 删除 | `POST /api/v1/hosts/{hostId}/containers/remove` | 0.0.9 | Body: `{ containerId, force? }`；不带 `force` 删运行中的容器返回 `1404`/409 |
+| **批量删除** | `POST /api/v1/hosts/{hostId}/containers/batch-remove` | **0.1.0** | Body: `{ containerIds: string[], force? }`；响应为汇总结果，**部分成功也是 200**（见下） |
 | **批量启停** | `POST /api/v1/hosts/{hostId}/containers/batch-start` | **0.7.0** | Body: `{ containerIds: string[] }`；响应与 `batch-remove` **同形状**（`succeeded` / `failed` / `failures`），**部分成功也是 200** |
 | **批量启停** | `POST /api/v1/hosts/{hostId}/containers/batch-stop` | **0.7.0** | Body: `{ containerIds: string[], waitSeconds? }`；`waitSeconds` 取值 0–300（默认 10） |
 | **批量启停** | `POST /api/v1/hosts/{hostId}/containers/batch-restart` | **0.7.0** | Body: `{ containerIds: string[] }`；响应形状同上 |
-| **批量删除** | `POST /api/v1/hosts/{hostId}/containers/batch-remove` | **0.1.0** | Body: `{ containerIds: string[], force? }`；响应为汇总结果，**部分成功也是 200**（见下） |
 | **重命名** | `POST /api/v1/hosts/{hostId}/containers/rename` | **0.3.0** | Body: `{ containerId, name }`；名称规则同 `create`（字母/数字开头，其后含 `_ . -`）；名称已被占用返回 `1404`/409 |
 | **热更新** | `POST /api/v1/hosts/{hostId}/containers/update` | **0.3.0** | Body: `{ containerId, restartPolicy?, memoryLimitBytes?, nanoCpus? }`；**只开放真能热改的字段**，镜像/端口/环境变量/挂载/网络**不支持**。省略 = 保持当前值，**传 0 是非法**（见下） |
 | **复制** | `POST /api/v1/hosts/{hostId}/containers/duplicate` | **0.3.0** | Body: `{ containerId, name?, start? }`；默认名「原名 + `-copy`」，被占用时自动递增 `-2`/`-3`。**原容器不受影响**（不停止、不改名、不删除） |
@@ -1178,8 +1178,8 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
 | **批量删除** | `POST /api/v1/hosts/{hostId}/images/batch-remove` | **0.1.0** | Body: `{ imageIds: string[], force? }`；响应为汇总结果，**部分成功也是 200**（容器侧同形状） |
 | **打标签** | `POST /api/v1/hosts/{hostId}/images/tag` | **0.3.0** | Body: `{ imageId, repository, tag? }`；对应 `docker tag`。`repository` **不得含标签**（否则 `1000`），`tag` 省略或空串取 `latest` |
 | 获取详情 | `POST /api/v1/hosts/{hostId}/images/inspect` | 0.0.10 | Body: `{ imageId }` |
-| **Push 镜像** | `POST /api/v1/hosts/{hostId}/images/push` | **0.4.0** | Body: `{ image, registryId?, platform? }`；`registryId` 省略时按镜像引用里的地址段自动匹配已登记的 Registry |
 | **构建镜像** | `POST /api/v1/hosts/{hostId}/images/build` | **0.4.0** | `multipart/form-data`：文件字段 `context`（tar 包，**必须带 filename**）+ 表单字段 `tag` / `dockerfile` / `buildArgs` / `labels` / `target` / `platform` / `noCache`；本版一次性返回（进度推送随 0.5.0 改 SignalR） |
+| **Push 镜像** | `POST /api/v1/hosts/{hostId}/images/push` | **0.4.0** | Body: `{ image, repositoryId?, platform? }`；`repositoryId` 省略时按镜像引用里的地址段自动匹配已登记的仓库 |
 | **清理** | `POST /api/v1/hosts/{hostId}/images/prune` | **0.7.0** | Body: `{ danglingOnly? }`；返回回收量；**不是** `system/prune` |
 
 #### 查询端点的请求 / 响应形态（0.0.10 已实现）
@@ -1352,12 +1352,12 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
 ```jsonc
 // POST /api/v1/hosts/local/images/push
 // Request
-{ "image": "harbor.local:5000/myapp:v1", "registryId": null, "platform": null }
+{ "image": "harbor.local:5000/myapp:v1", "repositoryId": null, "platform": null }
 // Response.data
 {
   "imageId": "sha256:3f2c…",
   "reference": "harbor.local:5000/myapp:v1",
-  "registryServerAddress": "harbor.local:5000",   // 实际推到了哪里
+  "repositoryServerAddress": "harbor.local:5000",   // 实际推到了哪里
   "authenticated": false,                          // 本次推送是否带了凭据
   "pushLog": ["…"]
 }
@@ -1366,14 +1366,14 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
 > **推镜像必须带标签**：悬挂镜像（`<none>:<none>`）没有可推的名字，
 > 因此提前报 `1000`/400，而不是让守护进程回一句看不懂的 `refusing to push unqualified name`。
 >
-> **Registry 凭据怎么选**：显式给了 `registryId` 就用它（配置不存在报 `1800`/404）；
+> **仓库凭据怎么选**：显式给了 `repositoryId` 就用它（配置不存在报 `1800`/404）；
 > 否则从镜像引用里切出地址段（`harbor.local:5000/app:v1` → `harbor.local:5000`）自动匹配。
 > 两者都找不到就<b>匿名推</b>——公开仓库本来就不需要凭据，而对着私有仓库匿名推，
 > 报错会由守护进程给出（`1807`/500）。
 >
 > **地址段的判据与 Docker 一致**：只有「第一段含 <code>.</code> 或 <code>:</code>，
-> 或整段等于 <code>localhost</code>」才算 Registry 前缀。
-> 否则官方镜像的命名空间（`org/app`）会被误当成 Registry 主机——
+> 或整段等于 <code>localhost</code>」才算 仓库前缀。
+> 否则官方镜像的命名空间（`org/app`）会被误当成 仓库主机——
 > 推镜像会因此去连一个不存在的主机。
 >
 > **`authenticated` 让人能分辨**「用的是我配的凭据」与「这仓库压根不需要凭据」。
@@ -1503,22 +1503,22 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
 
 ---
 
-### Registry 管理（0.4.0）
+### 仓库管理（0.4.0）
 
-> **路径为 `/api/v1/admin/registries/*`**（全局作用域，与主机无关）。
-> 鉴权：读用 `registry.read`，写用 `registry.write`。
+> **路径为 `/api/v1/admin/repositories/*`**（全局作用域，与主机无关）。
+> 鉴权：读用 `repository.read`，写用 `repository.write`。
 > ⚠️ 旧的草案写法（`/api/v1/registry/list`）**未采用**——它与本项目「管理面端点一律在
 > `/api/v1/admin/` 下」的既有约定不一致（见 `admin/roles`、`admin/hosts`）。
 
 | 操作 | 路径 | 阶段 | 说明 |
 |------|------|------|------|
-| 获取列表 | `POST /api/v1/admin/registries/list` | 0.4.0 | Body: `{ search? }`（按别名 / 地址模糊过滤）；**响应不含任何口令信息** |
-| 新增 | `POST /api/v1/admin/registries/add` | 0.4.0 | Body: `{ name, serverAddress, username?, password?, description? }`；口令加密后落库 |
-| 删除 | `POST /api/v1/admin/registries/remove` | 0.4.0 | Body: `{ id }`；软删除，同名 / 同址可再次使用 |
-| 测试连通性 | `POST /api/v1/admin/registries/test` | 0.4.0 | Body: `{ id? , serverAddress?, username?, password? }`；给了 `id` 则用已保存的凭据（自动解密） |
+| 获取列表 | `POST /api/v1/admin/repositories/list` | 0.4.0 | Body: `{ search? }`（按别名 / 地址模糊过滤）；**响应不含任何口令信息** |
+| 新增 | `POST /api/v1/admin/repositories/add` | 0.4.0 | Body: `{ name, serverAddress, username?, password?, description? }`；口令加密后落库 |
+| 删除 | `POST /api/v1/admin/repositories/remove` | 0.4.0 | Body: `{ id }`；软删除，同名 / 同址可再次使用 |
+| 测试连通性 | `POST /api/v1/admin/repositories/test` | 0.4.0 | Body: `{ id? , serverAddress?, username?, password? }`；给了 `id` 则用已保存的凭据（自动解密） |
 
 ```jsonc
-// POST /api/v1/admin/registries/list
+// POST /api/v1/admin/repositories/list
 // Response.data
 [
   {
@@ -1552,7 +1552,7 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
 > 同名会让管理界面出现两条分不清的记录；<b>同址更危险</b>——它会让「推镜像时用哪条凭据」
 > 变成随机行为。
 >
-> **`test` 用 `registry.write` 而不是 `registry.read`**：测试传的是<b>凭据</b>，
+> **`test` 用 `repository.write` 而不是 `repository.read`**：测试传的是<b>凭据</b>，
 > 能用凭据意味着能读出它。把这道门开给只读角色等于让对方把口令送到任意地址上去
 > （把地址改成自己的服务器就能截走）。
 >

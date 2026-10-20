@@ -78,7 +78,7 @@
 | `0.1.0` | 授权基座与 MVP 收口 | 🚧 | 授权重写为带作用域的 User → Role → Permission（进行中）；批量删除 / socket-proxy / 反代示例已完成 |
 | `0.2.0` | Volume 与 Network | ✅ | 两类资源的 CRUD + 详情；列表不分页（归 0.16.0） |
 | `0.3.0` | 容器与镜像基础操作 | ⬜ | rename / update / duplicate、镜像 tag、高级创建参数、运行时挂卷 |
-| `0.4.0` | 镜像构建与私有 Registry | ✅ | 构建 + 凭据存储 + 管理 API + push，含前端（构建对话框 / Registry 配置页 / 推送） |
+| `0.4.0` | 镜像构建与私有仓库 | ✅ | 构建 + 凭据存储 + 管理 API + push，含前端（构建对话框 / 仓库配置页 / 推送） |
 | `0.5.0` | 实时通道（SignalR） | ⬜ | 日志流 / stats / 通知条；进度推送改实时 |
 | `0.6.0` | 监控与可观测性 | ⬜ | 容器指标 + 健康检测；Tag / 分组边界 / 过滤 / `system/df` / daemon Info；**移除主机运行时长** |
 | `0.7.0` | 批量操作与资源清理 | ⬜ | 批量启停 / 重启 / 按分组批量 + 资源级 prune |
@@ -108,7 +108,7 @@
 
 | 阶段 | 编号 | 主题 | 可后移 |
 |------|------|------|:---:|
-| 1 资源基础 | `0.2.0`–`0.4.0` | Volume/Network → 容器镜像操作 → 镜像构建与 Registry | ❌ |
+| 1 资源基础 | `0.2.0`–`0.4.0` | Volume/Network → 容器镜像操作 → 镜像构建与仓库 | ❌ |
 | 2 实时与监控 | `0.5.0`–`0.6.0` | 实时通道 → 监控与可观测性 | ❌ |
 | 3 批量与远程 | `0.7.0`–`0.9.0` | 批量操作与资源清理 → exec 终端 → 操作审计（认证日志 + 活动日志） | ❌ |
 | 4 编排、告警与权限 | `0.10.0`–`0.13.0` | Compose 基础 → 告警规则体系 → 资源粒度 RBAC → 账号团队与安全 | `0.10.0` ❌，其余 ✅ |
@@ -131,9 +131,9 @@
   按 `domain.level` 命名，分 Global 与 Host 两类作用域。Host 域为 `host.read` / `host.admin`
   与 `container` / `image` / `network` / `volume` 各自的 read + write；
   Global 域为 `user.read` / `user.write` / `role.read` / `role.write` / `host.manage`
-  / `registry.read` / `registry.write` / `audit.read`。
+  / `repository.read` / `repository.write` / `audit.read`。
   `PermissionScope` **预留 Container 一档**，但本迭代只开放全局与主机两条分配路径
-  （落地：`Core/Permissions/Permission.cs`，**18 项**——0.4.0 新增 `registry.read` / `registry.write`；
+  （落地：`Core/Permissions/Permission.cs`，**18 项**——0.4.0 新增 `repository.read` / `repository.write`；
   目录与 `POST /admin/roles/permissions` 逐项一致有守卫测试）
 - ✅ **角色携带权限**：新增 `role_permissions` 表与迁移；`Role` 实体带权限集合，
   内置角色（`admin` / `operator` / `viewer` / `auditor`）的权限集**不可修改**。
@@ -282,24 +282,24 @@
 
 ---
 
-### 0.4.0 ✅ — 镜像构建与私有 Registry
+### 0.4.0 ✅ — 镜像构建与私有仓库
 
 **目标**：支持上传 Dockerfile 构建镜像，并把镜像推到私有仓库。
 
 - ✅ **镜像构建**：`POST /api/v1/hosts/{hostId}/images/build`
   （multipart：文件字段 `context` = 构建上下文 tar + 表单字段 `tag` / `dockerfile` /
   `buildArgs` / `labels` / `target` / `platform` / `noCache`）。
-- ✅ **Registry 凭据存储**（加密落 SQLite）：AES-GCM（随机 nonce），
   **本版一次性返回结果**，与现有 `images/pull` 保持同一形态；进度推送随 `0.5.0` 一起改
+- ✅ **仓库凭据存储**（加密落 SQLite）：AES-GCM（随机 nonce），
   密钥在数据卷下的 `registry.key`（0600），与 JWT 密钥**分开**存。
   响应里绝不含口令，也不含密文
-- ✅ **Registry 管理 API**：`POST /api/v1/admin/registries/{list,add,remove,test}`
-  （全局作用域，需 `registry.read` / `registry.write`）
+- ✅ **仓库管理 API**：`POST /api/v1/admin/repositories/{list,add,remove,test}`
+  （全局作用域，需 `repository.read` / `repository.write`）
 - ✅ **镜像 push**：`POST /api/v1/hosts/{hostId}/images/push`
-  （`registryId` 省略时按镜像引用里的地址段自动匹配已登记的 Registry）
-- ✅ **前端**：构建对话框（文件上传）、Registry 配置页、镜像列表的「push」操作
+  （`repositoryId` 省略时按镜像引用里的地址段自动匹配已登记的仓库）
+- ✅ **前端**：构建对话框（文件上传）、仓库配置页、镜像列表的「push」操作
 
-**验收**：上传一个 Dockerfile 能构建出镜像；配置一个私有 Registry 后能 push 成功。
+**验收**：上传一个 Dockerfile 能构建出镜像；配置一个私有仓库 后能 push 成功。
 
 **落地记录**：
 
@@ -313,10 +313,10 @@
 4. **multipart 的文件段必须带 `filename`**：ASP.NET Core 靠 Content-Disposition 里的
    `filename` 判断这一段是「文件」还是「普通表单字段」。不带 filename 时 tar 被当成普通字段，
    服务端报「context 字段是必填的」——而真实客户端（`curl -F`、浏览器 FormData）都会带。
-5. **Registry 地址规范化的四个落点必须一致**：存库 / 镜像引用 / Docker 的 `AuthConfig.ServerAddress` /
-   按地址查配置。为此把地址抽成值对象 `RegistryServerAddress`，规范化只发生在一个地方。
+5. **仓库地址规范化的四个落点必须一致**：存库 / 镜像引用 / Docker 的 `AuthConfig.ServerAddress` /
+   按地址查配置。为此把地址抽成值对象 `RepositoryServerAddress`，规范化只发生在一个地方。
 6. **别名与地址各占一个部分唯一索引**：同址尤其危险——它会让「推镜像时用哪条凭据」变成随机行为。
-7. **`test` 端点用 `registry.write` 而不是 `registry.read`**：测试传的是凭据，
+7. **`test` 端点用 `repository.write` 而不是 `repository.read`**：测试传的是凭据，
    能用凭据意味着能读出它。给只读角色开这道门等于让对方把口令送到任意地址上去。
 8. **`registry.key` 必须随数据库一起备份**：漏了它，已保存的口令全部无法解密
    （表现为「认证失败」，但根因是密钥没了）。
@@ -332,19 +332,19 @@
     而 axios 见到 FormData + JSON 头会 `JSON.stringify(formDataToJSON(data))`
     ——**文件被静默丢掉**，服务端只报「context 是必填的」。改成
     `multipart/form-data` 才会走 FormData 分支；浏览器随后会清掉该头自己补 boundary。
-12. **Registry 页用 `requiresPermission` 而不是 `requiresAdmin`**：后端这道门是
-    `registry.read`，自定义角色可能只带它。用 `requiresAdmin`（管理面三项权限的
+12. **仓库页用 `requiresPermission` 而不是 `requiresAdmin`**：后端这道门是
+    `repository.read`，自定义角色可能只带它。用 `requiresAdmin`（管理面三项权限的
     合取）会把这类用户挡在自己的页外，比后端更严。
 13. **推送对话框必须把「会不会带凭据」提前说清**：匿名推送同样是成功，光看「推送
     成功」无法区分「凭据生效了」与「这个仓库根本不要凭据」——后者往往意味着地址
     配错了（推到了一个意外的公开仓库）。多标签镜像还要提示只推第一个。
-14. **前端不复刻 Registry 地址解析的第二套规则**：`utils/registry-display.ts` 的
-    `registryAddressOf` 照抄后端 `ImageReference.ExtractServerAddress`
+14. **前端不复刻 仓库地址解析的第二套规则**：`utils/repository-display.ts` 的
+    `repositoryAddressOf` 照抄后端 `ImageReference.ExtractServerAddress`
     （首段含 `.`/`:` 或等于 `localhost` 才算主机）。两边漂移的后果是「界面说会连
     A、后端实际连 B」，而 B 才决定成败。
 
 > 后端与前端的验收口径一致：上传一个 Dockerfile 能构建出镜像；配置一个私有
-> Registry 后能 push 成功。后端另有对真实私有 Registry 的推送与拉回集成测试。
+> 仓库后能 push 成功。后端另有对真实私有仓库 的推送与拉回集成测试。
 
 ---
 
@@ -475,12 +475,12 @@
 **目标**：让「一次处理一批」与「清掉无用的」不必逐条点、也不必回 CLI。
 
 - ⬜ **批量启停**：容器 `batch-start` / `batch-stop` / `batch-restart`。响应形态复用 `0.1.0` 的
-- ⬜ **按分组批量操作**：按主机分组批量启停 / 批量打标签（分组边界来自 `0.6.0`）
   `batch-remove`——**部分成功也返回 200**，`failures` 逐条带 ID 与错误码
+- ⬜ **按分组批量操作**：按主机分组批量启停 / 批量打标签（分组边界来自 `0.6.0`）
 - ⬜ **镜像清理**：`images/prune`（悬空层 + 未被引用的镜像，支持 `danglingOnly`）
+- ⬜ **卷清理**：`volumes/prune`（未被任何容器引用的卷）
 - ⬜ **容器接入 / 断开网络**：`networks/connect` 与 `networks/disconnect`
   （原标 `0.3.0`，已移出到本档）
-- ⬜ **卷清理**：`volumes/prune`（未被任何容器引用的卷）
 - ⬜ **前端**：列表页批量操作条扩展到启停；清理入口放在镜像 / 数据卷页的「更多」里，
   **先展示将删除的清单再确认**（清理不可逆）
 
@@ -488,8 +488,8 @@
 
 1. 选中 5 个容器一次性启停，其中 1 个失败时响应仍为 200 且 `failures` 指明是哪一个、为什么
 2. 清理悬空层后 `docker system df` 的可回收空间下降
-4. 按分组批量启停能一次覆盖该组全部主机
 3. 清理入口**必须先列清单**——不能一键点下去就删
+4. 按分组批量启停能一次覆盖该组全部主机
 
 > **`system/prune`（一次清四类）仍是明确非目标**：它把「删多少」的决定权完全交给守护进程，
 > 而本项目的界面强调「先看到再确认」。本迭代只做**资源级** prune。
@@ -528,8 +528,8 @@ terminal token 过期后无法重连；断开后不残留容器内进程；
   **写库而非只写日志**——用户与资源都会消失，记录里的名称必须自洽
 - ⬜ **两个页面**（对齐 Portainer 的认证日志 / 活动日志）：
   **认证日志**（登录成功 / 失败 / 登出 / 令牌撤销 / 账户停用）与
-  ——其中 **Stack 相关的埋点随 `0.10.0` 的 Compose 能力接入**（本档审计表与页面先就位）
   **活动日志**（容器、镜像、卷、网络、Stack、主机、用户与角色、MCP 工具调用）
+  ——其中 **Stack 相关的埋点随 `0.10.0` 的 Compose 能力接入**（本档审计表与页面先就位）
 - ⬜ **写入点**：应用服务层统一埋点，而不是每个 Controller 各写一遍；中间件兜底记录 4xx / 5xx
 - ⬜ **exec 会话接入**：把 `0.8.0` 的 Serilog 留痕改为写审计
 - ⬜ **查询与导出**：分页 + 按操作人 / 目标类型 / 时间范围过滤；导出 CSV
@@ -652,8 +652,8 @@ terminal token 过期后无法重连；断开后不残留容器内进程；
 - ⬜ **容器 commit**：把容器当前状态提交为镜像（需二次确认——它会把临时改动固化）
 - ⬜ **文件浏览**：容器文件系统与卷的目录浏览；只读下载单个文件；
   **写入 / 上传只在显式确认后开放**，且默认关闭
-  （Stack 部分**依赖 `0.10.0`**）
 - ⬜ **反向生成定义**：导出 Stack 为 compose YAML；导出容器为 `docker run` 命令 / compose 片段
+  （Stack 部分**依赖 `0.10.0`**）
 - ⬜ 大文件走流式传输与进度回报，不整块读进内存
 
 **验收**：
@@ -694,9 +694,9 @@ terminal token 过期后无法重连；断开后不残留容器内进程；
 5. 恢复备份后原 Webhook 链接仍然有效（token 已被备份）
 
 > **Webhook 在 Portainer 是商业版独占**——做出来是免费版的实打实差异点。
+> **自动更新的检测逻辑落在本迭代**，`0.16.0` 只负责把它显示成列表的一列。
 >
 > **本档依赖 `0.10.0`**：Webhook 的作用对象是 Stack，Stack 能力先于本档交付。
-> **自动更新的检测逻辑落在本迭代**，`0.16.0` 只负责把它显示成列表的一列。
 
 ---
 

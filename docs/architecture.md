@@ -184,7 +184,7 @@ dotnet list src/Whalefleet.Application/Whalefleet.Application.csproj package
 | `HostGroup` | `Core/Hosts/HostGroup.cs` | `FullAuditedEntity<Guid, Guid>` | `name`（同上） | 名称 1–32 且无控制字符；**纯展示性**——不参与任何授权判定 |
 | `RefreshToken` | `Core/Auth/RefreshToken.cs` | `CreationAuditedEntity<Guid, Guid>` | `token_hash` 唯一 | 只存哈希（非原文）；归属用户非空；`IsActiveAt` = 未撤销且未过期 |
 | `UserRoleAssignment` | `Core/Permissions/UserRoleAssignment.cs` | `FullAuditedEntity<Guid, Guid>` | `(user_id, role_id, COALESCE(host_id, ''))` 部分唯一索引（`WHERE is_deleted = 0`） | 用户与角色主键非空；`host_id` 为 `NULL` 即**全局分配**，非空即仅在该主机上生效（`AppliesTo`）；撤销走软删除，因此同一组合可重新分配 |
-| `RegistryCredential` | `Core/Registries/RegistryCredential.cs` | `FullAuditedEntity<Guid, Guid>` | 别名与服务地址各占一个部分唯一索引（`WHERE is_deleted = 0`） | **只存口令密文**（实体里永远没有明文）；账号与口令必须成对；地址经 `RegistryServerAddress` 规范化 |
+| `RepositoryCredential` | `Core/Repositories/RepositoryCredential.cs` | `FullAuditedEntity<Guid, Guid>` | 别名与服务地址各占一个部分唯一索引（`WHERE is_deleted = 0`） | **只存口令密文**（实体里永远没有明文）；账号与口令必须成对；地址经 `RepositoryServerAddress` 规范化 |
 
 > **0.1.0 已落地权限目录、`role_permissions` 与 `user_role_assignments`**（迁移 `0006_rbac.sql`、仓储、DI
 > 与角色 / 分配管理端点）。权限目录是**静态封闭集**（`Core/Permissions/Permission.cs` 里的 `Permission` 常量与
@@ -198,9 +198,9 @@ dotnet list src/Whalefleet.Application/Whalefleet.Application.csproj package
 > 三者分立，因此「新建一个角色」不会隐式带来任何授权。
 
 **值对象**：`HostEndpoint`（端点原文，不可变、按值相等）、`HostCredentials`（认证方式 + 不透明 JSON 载荷，
-`ToString()` 只输出认证方式、**不泄漏载荷**）、`RegistryServerAddress`（Registry 地址的规范化形态）。
+`ToString()` 只输出认证方式、**不泄漏载荷**）、`RepositoryServerAddress`（仓库地址的规范化形态）。
 
-> **`RegistryServerAddress` 为什么是值对象**（0.4.0）：同一个地址会出现在**四个**地方——
+> **`RepositoryServerAddress` 为什么是值对象**（0.4.0）：同一个地址会出现在**四个**地方——
 > 存库的 `server_address` 列、推镜像时拼出的镜像引用、传给 Docker 的
 > `AuthConfig.ServerAddress`、以及按地址查配置时的查询条件。
 > 四处必须**逐字一致**，否则守护进程会拿 A 处的地址去请求 B 处的仓库，
@@ -238,11 +238,11 @@ dotnet list src/Whalefleet.Application/Whalefleet.Application.csproj package
 | `viewer` | 只读 | `host.read` + `container` / `image` / `network` / `volume` 的 `read`（主机域） | |
 | `auditor` | 审计 | 同 `viewer`，另加 `audit.read`（审计能力排在 1.0.0 之后） | ✅ |
 
-> **0.4.0 新增两个 Global 权限**：`registry.read` / `registry.write`。
-> 它们**只给 admin**——Registry 配置与主机无关（同一个 Harbor，推到哪台机器都用它），
+> **0.4.0 新增两个 Global 权限**：`repository.read` / `repository.write`。
+> 它们**只给 admin**——仓库配置与主机无关（同一个 Harbor，推到哪台机器都用它），
 > 因此是全局权限；而把它们给 `operator` / `viewer` / `auditor` 等于把
 > 「管理私有仓库凭据」下放给主机级运维，那是一次静默提权。
-> 内置角色的权限集被锁死，因此新增权限必须**改迁移**（`0007_registries.sql`）
+> 内置角色的权限集被锁死，因此新增权限必须**改迁移**（`0007_repositories.sql`）
 > 而不是运行时补——这正是「权限目录是编译期事实」这一设计的代价与好处。
 
 **角色携带权限，分配携带作用域**：角色回答的是「能做什么」（一组权限 + 一个可复用的名字），
@@ -422,7 +422,7 @@ Hub 鉴权：JWT 通过 `?access_token=...` 查询参数传递（WebSocket 不�
 - **WAL 模式**启用（`PRAGMA journal_mode=WAL`；文件级属性，设置一次持久生效）
 - 应用启动时（开始监听**之前**）自动执行**版本化迁移**（`PRAGMA user_version` + 内嵌 `000N_*.sql`）
 - 单次操作一个连接（用完还池），不提供跨仓储事务——0.0.3 的业务写入均为单语句
-- 存储内容：用户信息、资源授权关系、Docker 主机配置、刷新令牌哈希、Registry 凭据（加密，0.4.0 起）
+- 存储内容：用户信息、资源授权关系、Docker 主机配置、刷新令牌哈希、仓库凭据（加密，0.4.0 起）
 
 ---
 

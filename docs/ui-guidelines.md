@@ -95,7 +95,7 @@ UnoCSS 默认 + 自定义：
 | 作用域 | 菜单项 | 可见角色 | 阶段 |
 |--------|--------|---------|------|
 | `global` | 总览 / 全局设置 | admin + user | 0.0.7+ |
-| `global` | 管理：主机管理 / 用户管理 / 角色 / Registry | **admin only**（Registry 按 `registry.read` 判） | 0.0.8 · Registry 0.4.0 |
+| `global` | 管理：主机管理 / 用户管理 / 角色 / 仓库 | **admin only**（仓库按 `repository.read` 判） | 0.0.8 · 仓库 0.4.0 |
 | `host` | 概览（落地页，单独渲染，不从路由表派生） | admin + user | 0.0.7+ |
 | `host` | 状态 / 容器 / 镜像 / 数据卷 / 网络 / 编排 / 事件 | admin + user | 0.0.7+ |
 
@@ -394,7 +394,7 @@ HOST_TONE_RAIL[tone]                // 卡片左侧色条
   /hosts                            → HostsView        (admin, 主机 CRUD)
   /users                            → UsersView        (admin)
   /roles                            → RolesView        (admin, 角色与权限矩阵)
-  /registries                       → RegistriesView   (需 registry.read)
+  /repositories                      → RepositoriesView  (需 repository.read)
 
   ─── 主机作用域（scope: 'host'）───
   /hosts/:hostId                    → redirect → /hosts/:hostId/dashboard
@@ -407,8 +407,8 @@ HOST_TONE_RAIL[tone]                // 卡片左侧色条
   /hosts/:hostId/volumes            → VolumesView      (0.2.0+)
   /hosts/:hostId/networks           → NetworksView     (0.2.0+)
   /hosts/:hostId/events             → EventsView       (操作审计，0.9.0+ 占位)
-  /hosts/:hostId/registries         → RegistryListView (0.4.0+)
   /hosts/:hostId/stacks/:name       → StackDetailView  (0.10.0+)
+  /hosts/:hostId/repositories        → RepositoryListView (0.4.0+)
 ```
 
 > **注意**：`/hosts`（主机管理，admin CRUD）与 `/hosts/:hostId/**`（某台主机的资源作用域）
