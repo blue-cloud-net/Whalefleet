@@ -479,7 +479,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 操作 | 路径 | 角色 | 说明 |
 |------|------|------|------|
 | 可见主机列表 | `POST /api/v1/hosts/list` | 任意已登录 | 返回**当前用户可见**的主机（含 `status`）；全局持有内置 `admin` 角色者返回全部，其余按**带作用域的角色分配**过滤（判定标准是是否具备 `host.read`） |
-| 单台概览 | `POST /api/v1/hosts/{hostId}/overview` | 任意已登录 | 返回单台主机的 `version` / `counts` / `startedAt`；失败形态 `1300`/404、`1501`/403 |
+| 单台概览 | `POST /api/v1/hosts/{hostId}/overview` | 任意已登录 | 返回单台主机的 `version` / `counts` / `daemon`（`startedAt` **0.6.0 移除**）；失败形态 `1300`/404、`1501`/403 |
 
 **两个端点共用同一个响应形状**（列表里取不到的字段为 `null`，对应界面上的「—」占位）：
 
@@ -495,13 +495,47 @@ POST /api/v1/hosts/{hostId}/containers/list
   "enabled": true,
   "status": "online",                  // online | offline | unknown
   "counts": { "containers": 12, "images": 30, "volumes": 5, "networks": 4 },  // 列表接口为 null
-  "startedAt": "2026-01-02T03:04:05.678+00:00",                                // 列表接口为 null
+  "startedAt": "2026-01-02T03:04:05.678+00:00",                                // 列表接口为 null；**0.6.0 移除**
   "version": {                         // 列表接口为 null（离线时也为 null）
     "version": "27.3.1", "apiVersion": "1.47",
     "os": "linux", "arch": "x86_64", "goVersion": "go1.22.7"
+  },
+  "daemon": {                          // 列表接口为 null（离线时也为 null）；**0.6.0 新增**
+    "operatingSystem": "Ubuntu 24.04.5 LTS", "osVersion": "24.04", "osType": "linux",
+    "architecture": "x86_64", "kernelVersion": "6.17.0-40-generic",
+    "cpuCount": 24, "memoryBytes": 67161847808,
+    "storageDriver": "overlayfs", "storageDriverStatus": [["driver-type", "io.containerd.snapshotter.v1"]],
+    "loggingDriver": "json-file", "cgroupDriver": "systemd", "cgroupVersion": "2",
+    "defaultRuntime": "runc", "runtimes": ["runc", "io.containerd.runc.v2"],
+    "initBinary": "docker-init",
+    "containerdVersion": "b7a25261e029d68978bbf290df0a62fc819b3c51",
+    "runcVersion": "v1.5.2-0-g29dd3dc2", "initVersion": "de40ad0",
+    "plugins": { "volume": ["local"], "network": ["bridge", "host"], "log": ["json-file"], "authorization": [] },
+    "registryMirrors": ["https://dockerhubcache.huansky.online/"],
+    "insecureRegistries": ["127.0.0.0/8"], "indexServerAddress": "https://index.docker.io/v1/",
+    "dockerRootDir": "/var/lib/docker",
+    "securityOptions": ["name=apparmor,profile=default", "name=seccomp,profile=builtin"],
+    "liveRestoreEnabled": false, "firewallBackend": "iptables",
+    "httpProxy": null, "httpsProxy": null, "noProxy": null,
+    "warnings": []
   }
 }
 ```
+
+> **`startedAt` 0.6.0 移除**：该字段自 `0.0.8` 起一直返回 `/info` 的 `SystemTime`，
+> 而 `SystemTime` 是守护进程的**当前时间**（moby `daemon/info.go`：
+> `SystemTime: time.Now().Format(time.RFC3339Nano)`），**不是启动时刻**——
+> 官方 API 文档写的是 "Current system-time"。前端拿它算「已运行 x」恒为 0 秒。
+> Docker Engine API 不提供守护进程启动时刻，也不提供宿主 boot time，
+> 因此该字段在 `0.6.0` **移除**而不是换个口径继续显示一个假的。
+>
+> **`daemon` 0.6.0 新增**（字段清单与取舍见 [roadmap.md](roadmap.md#060---监控与可观测性)）：
+> - **不重复 `version` 已有字段**：`os` / `arch` 已由 `/version` 给出，不在此重列
+> - **不返回 Swarm 相关**：Swarm 属非目标（见 [overview.md](./overview.md)）
+> - **`cpuCount` / `memoryBytes` 是静态上限，不是实时指标**（`/info` 只给 `NCPU` / `MemTotal`）；
+>   界面上不得标成「当前 CPU / 内存」
+> - **代理 URL 强制遮蔽 userinfo**：`http://user:pass@host` 里的密码不得进入响应体
+> - **不新增 Docker 调用**：全部字段来自已有的那次 `/info`
 
 > **两个端点为什么共用一个形状**：前端把「主机列表」与「单台概览」都装进同一个 `HostOverview` 类型，
 > 列表里缺的字段本来就是「这趟没取」。分成两个类型只会让前端每处都写两次字段访问。
@@ -510,7 +544,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 > 把 Guid 放进来会立刻多出一个「界面上的 id 与 URL 里的 hostId 不是同一个东西」的坑。
 > Guid 只用于权限外键与审计。
 >
-> **列表刻意不含 `counts` / `version` / `startedAt`**：取它们要额外调用守护进程（版本一次、计数四次），
+> **列表刻意不含 `counts` / `version` / `daemon`**：取它们要额外调用守护进程（版本一次、计数四次），
 > 主机一多列表就会明显变慢甚至超时。列表只对每台主机做一次轻量探测（`/version`），
 > 那两项由概览接口按需取。
 >

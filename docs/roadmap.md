@@ -80,7 +80,7 @@
 | `0.3.0` | 容器与镜像基础操作 | ⬜ | rename / update / duplicate、镜像 tag、高级创建参数、运行时挂卷 |
 | `0.4.0` | 镜像构建与私有 Registry | ✅ | 构建 + 凭据存储 + 管理 API + push，含前端（构建对话框 / Registry 配置页 / 推送） |
 | `0.5.0` | 实时通道（SignalR） | ⬜ | 日志流 / stats / 通知条；进度推送改实时 |
-| `0.6.0` | 监控与可观测性 | ⬜ | 容器指标 + 健康检测；Tag / 分组边界 / 过滤 / `system/df` / daemon Info |
+| `0.6.0` | 监控与可观测性 | ⬜ | 容器指标 + 健康检测；Tag / 分组边界 / 过滤 / `system/df` / daemon Info；**移除主机运行时长** |
 | `0.7.0` | 批量操作与资源清理 | ⬜ | 批量启停 / 重启 / 按分组批量 + 资源级 prune |
 | `0.8.0` | exec 交互式终端 | ⬜ | WebSocket + xterm.js + 短时 terminal token |
 | `0.9.0` | 操作审计日志 | ⬜ | 认证日志 + 活动日志两页；exec 会话接入 |
@@ -376,6 +376,9 @@
 > **本档合并了原「主机组织与可观测性」的内容**：Tag / 分组边界 / 总览过滤 /
 > `system/df` / daemon Info 一并在此交付。拆成两档会让 `0.7.0` 的批量操作
 > 依赖一个尚未交付的分组边界。
+>
+> **本档还承接一处纠错**：主机「运行时间」是**假数据**（恒为 0 秒），
+> 根因与处置见下节「主机技术信息补全与纠错」。
 
 #### 容器级实时监控（消费 `0.5.0` 的 `ContainerStatsHub`）
 
@@ -404,8 +407,37 @@
 - ⬜ **总览过滤**：按分组 / 标签 / 状态 / 名称过滤；**「未分组」是可点击的过滤项**，
   而不是一句说明文字
 - ⬜ **磁盘用量**：`POST /api/v1/hosts/{hostId}/system/df`——镜像 / 容器 / 卷 / 构建缓存占用与可回收量
-- ⬜ **daemon Info 补全**：存储驱动、日志驱动、网络驱动、插件、运行时、registry 镜像加速器
 - ⬜ 新错误码：`1306` 标签不存在、`1307` 标签名已占用
+
+#### 主机技术信息补全与纠错
+
+- ⬜ **移除主机「运行时间」**：`POST /api/v1/hosts/{hostId}/overview` 的 `startedAt` 字段
+  与前端全部相关文案**一并删除**（总览长条、主机卡片、概览页信息卡、对应 i18n 词条）
+  - **根因**：`/info` 的 `SystemTime` 是守护进程的**当前时间**（moby `daemon/info.go`：
+    `SystemTime: time.Now().Format(time.RFC3339Nano)`，官方 API 文档写的是
+    "Current system-time in RFC 3339 format with nano-seconds"），**不是启动时刻**。
+    `0.0.8` 把它当启动时刻填充，前端算出「已运行 0 秒」
+  - **Docker Engine API 不提供守护进程启动时刻，也不提供宿主 boot time**：
+    `/info` 没有、`/version` 没有、`/events` 只是内存环形缓冲。因此这不是「映射错了字段」，
+    而是**该信息根本不存在**——换任何字段都换不出真的
+  - **不改口径**：把 `startedAt` 改名成 `daemonTime` 并显示绝对时刻，得到的仍是另一个假数据；
+    显示成守护进程的当前时间，会让人误以为那是机器的启动时刻
+  - **容器级「已运行 x」不受影响**：`inspect` 的 `State.StartedAt` 是真的启动时刻
+- ⬜ **daemon Info 补全**：`GET /info` 的其余字段投影进概览响应的**新 `daemon` 对象**
+  （列表端点与主机离线时为 `null`，与 `counts` / `version` 同口径）
+  - **系统**：`OperatingSystem` / `OsVersion` / `OsType` / `Architecture` / `KernelVersion`
+  - **容量**：`CpuCount`（`NCPU`）/ `MemoryBytes`（`MemTotal`）——**静态上限，不是实时指标**，
+    与本档下方「不做宿主机级实时指标」的约束同源，界面上不得标成「当前 CPU」
+  - **驱动**：存储驱动（`Driver` + `DriverStatus`）/ 日志驱动 / Cgroup 驱动与版本
+  - **运行时**：默认运行时 / 运行时列表 / `init` 二进制 / containerd / runc / init 三者版本
+  - **插件**：volume / network / log / authorization 四类
+  - **Registry**：镜像加速器 / 不安全仓库 CIDR / `IndexServerAddress`
+  - **其他**：Docker 根目录 / 安全选项 / live-restore / 防火墙后端 / CDI 目录 /
+    代理三项（HTTP / HTTPS / NoProxy）/ 守护进程告警
+  - **代理 URL 必须遮蔽 userinfo**（`http://user:pass@host` 会把密码送进 API 响应），
+    与「密码永不进日志」同源
+  - **不重复** `version.os` / `version.arch`（`/version` 已给），**不返回** Swarm 相关（非目标）
+  - **不新增任何 Docker 调用**：全部字段都来自已有的那次 `/info`，调用次数不变
 
 **验收**：
 
@@ -415,6 +447,9 @@
 4. 手动 `stop` 的容器**不**收到异常退出通知
 5. 给主机打 3 个标签，按标签过滤后只剩匹配主机；点「未分组」能筛出未分组主机
 6. 总览显示的磁盘用量与 `docker system df` 一致；主机详情页能看到存储驱动与日志驱动
+7. 主机概览页能看到存储驱动 / 日志驱动 / Cgroup 驱动 / 运行时 / 插件 / 镜像加速器；
+   代理地址中的 userinfo 已被遮蔽
+8. 主机概览页与总览长条**不再出现**「已运行 0 秒」；容器列表的「已运行 x」不受影响
 
 > **Group 与 Tag 的职责写死**（否则两套组织方式必然打架）：
 > **Group = 单一归属**（分组 + 选择与过滤边界 + 批量操作边界）；
@@ -425,6 +460,11 @@
 > 指标端点——`/info` 只给 `NCPU` / `MemTotal` 这样的静态上限，`docker stats` 只针对容器。
 > 用容器聚合值冒充宿主机指标，会让同一个页面出现两套口径，比不给更糟。
 > 主机级实时指标因此是 **1.0.0 之后** 的事（那需要目标主机上部署 Agent）。
+>
+> **不做主机「运行时间」**：同一个理由的另一种形式——Docker Engine API **不提供**
+> 守护进程启动时刻，也不提供宿主 boot time。`/info` 的 `SystemTime` 是**当前时间**，
+> 把它当启动时刻用只会得到一个恒为 0 秒的假数据。因此本档直接**移除**该字段，
+> 而不是换个口径继续显示一个假的。
 >
 > **不持久化历史指标**：本迭代只暴露「当下值」。历史曲线仍是非目标（那需要时序存储）。
 
