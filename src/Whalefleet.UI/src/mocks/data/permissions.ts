@@ -5,8 +5,8 @@ import type { PermissionDefinition, RoleAssignmentSummary, RoleSummary } from '@
  * mock 角色 / 权限目录 / 角色分配夹具（0.1.0）。
  *
  * ## 为什么权限目录要在这里再写一份
- * 后端的 `/admin/roles/permissions` 返回的是**编译期目录**（`Permission.Hosts` +
- * `Permission.Globals`，共 16 项）。mock 必须能返回同一份，
+ * 后端的 `/admin/roles/permissions` 返回的是**编译期目录**（`Permission.Hosts`
+ * + `Permission.Globals`，共 18 项，0.4.0 新增 registry.read / registry.write）。mock 必须能返回同一份，
  * 否则权限矩阵在没有后端时无法渲染。**顺序与后端一致**（Host 域在前、Global 在后），
  * 因为界面的分组顺序就来自它。
  *
@@ -51,6 +51,10 @@ export const MOCK_PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { name: 'role.read', domain: 'role', level: 'read', scope: 'global' },
   { name: 'role.write', domain: 'role', level: 'write', scope: 'global' },
   { name: 'host.manage', domain: 'host', level: 'manage', scope: 'global' },
+  // Registry 配置是全局的（同一份凭据在多台主机上通用），
+  // 因此不用 host.manage 把它挤进主机域：那样会变成「管得了主机才配得了仓库」
+  { name: 'registry.read', domain: 'registry', level: 'read', scope: 'global' },
+  { name: 'registry.write', domain: 'registry', level: 'write', scope: 'global' },
   { name: 'audit.read', domain: 'audit', level: 'read', scope: 'global' }
 ]
 

@@ -65,6 +65,16 @@ public class ErrorCodesTests
         [nameof(ErrorCodes.PermissionUnknown)] = 1514,
         [nameof(ErrorCodes.RoleAssignmentNotFound)] = 1515,
 
+        // Registry 与镜像构建 / 推送
+        [nameof(ErrorCodes.RegistryNotFound)] = 1800,
+        [nameof(ErrorCodes.RegistryNameAlreadyExists)] = 1801,
+        [nameof(ErrorCodes.RegistryAddressAlreadyExists)] = 1802,
+        [nameof(ErrorCodes.RegistryCredentialMissing)] = 1803,
+        [nameof(ErrorCodes.RegistryAuthFailed)] = 1804,
+        [nameof(ErrorCodes.RegistryUnreachable)] = 1805,
+        [nameof(ErrorCodes.ImageBuildFailed)] = 1806,
+        [nameof(ErrorCodes.ImagePushFailed)] = 1807,
+
         // 服务器内部错误
         [nameof(ErrorCodes.InternalError)] = 9999,
     };

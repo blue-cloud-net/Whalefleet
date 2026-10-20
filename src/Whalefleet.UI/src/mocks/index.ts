@@ -4,6 +4,7 @@ import { authHandlers } from './handlers/auth'
 import { containerHandlers } from './handlers/containers'
 import { hostHandlers } from './handlers/hosts'
 import { imageHandlers } from './handlers/images'
+import { registryHandlers } from './handlers/registries'
 import { roleHandlers } from './handlers/permissions'
 import { resourceHandlers } from './handlers/resources'
 import { userHandlers } from './handlers/users'
@@ -45,6 +46,7 @@ export const handlers = [
   ...hostHandlers(() => currentScenario),
   ...containerHandlers(() => currentScenario),
   ...imageHandlers(() => currentScenario),
+  ...registryHandlers(() => currentScenario),
   ...resourceHandlers(() => currentScenario),
   ...userHandlers(() => currentScenario),
   ...roleHandlers(() => currentScenario)

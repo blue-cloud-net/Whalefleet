@@ -66,6 +66,28 @@ public static class DockerAvailability
     public const string RegistryHost = "registry-1.docker.io";
 
     /// <summary>
+    /// 宿主本地私有 Registry 的主机（<c>registry:2</c> 的默认监听地址）。
+    /// </summary>
+    public const string DefaultRegistryHost = "127.0.0.1";
+
+    /// <summary>
+    /// 宿主本地私有 Registry 的端口（<c>registry:2</c> 的默认监听端口）。
+    /// </summary>
+    public const int DefaultRegistryPort = 5000;
+
+    /// <summary>
+    /// 宿主本地私有 Registry 的完整地址。
+    /// </summary>
+    public const string DefaultRegistryEndpoint = "127.0.0.1:5000";
+
+    /// <summary>
+    /// 本机没有跑着私有 Registry 时的跳过原因。
+    /// </summary>
+    public const string LocalRegistrySkipReason =
+        "本机没有跑着可推送的私有 Registry——推镜像成功路径的用例已跳过。"
+        + "起一个即可：docker run -d --rm -p 5000:5000 --name whalefleet-test-registry registry:2";
+
+    /// <summary>
     /// 镜像仓库是否可达（能建立到某个镜像仓库的 TCP 连接）。
     /// </summary>
     /// <remarks>

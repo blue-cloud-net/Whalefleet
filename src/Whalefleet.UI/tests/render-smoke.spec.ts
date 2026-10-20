@@ -1,0 +1,316 @@
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
+import { mount, type VueWrapper } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
+import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import ElementPlus from 'element-plus'
+import { i18n } from '../src/locales'
+import { useAuthStore } from '../src/stores/auth'
+import type { CurrentUser } from '../src/types/api'
+
+/**
+ * 渲染冒烟（0.4.0 新增 / 改动组件）。
+ *
+ * ## 为什么必须有这个文件
+ * `typecheck` 与 `lint` **抓不到**一类错误：模板里引用了一个 `<script setup>`
+ * 根本没导出的函数。Vue 3 此时只在 console 里告警
+ * （`Property "xxx" was accessed during render but is not defined on instance`），
+ * 那一段内容**渲染成空白**，页面其余部分照常显示——没有任何异常抛出，
+ * 退出码也是 0。AGENTS.md 陷阱 14 记的就是这个：症状是「整块内容空白且
+ * v-loading 卡住」，几乎不可能靠读日志定位。
+ *
+ * 所以守卫的手段是**真的 mount 一次并检查 console 告警**，而不是静态分析。
+ *
+ * ## 为什么用**真实** i18n 而不是把 `t()` 桩成返回 key
+ * 桩掉 `t` 就查不出「key 不存在」——而 vue-i18n 对缺失 key 也**只告警不报错**，
+ * 界面上直接显示一串 key 路径（AGENTS.md 前端约定里明确禁止拼 key，同理也不能
+ * 拼错）。用真实词条库 + 收集告警，才能把这两类静默失败一起拦住。
+ */
+
+// ===== API 层桩：渲染守卫不该发网络请求 =====
+vi.mock('../src/api/registry', () => ({
+  listRegistries: vi.fn(async () => []),
+  addRegistry: vi.fn(),
+  removeRegistry: vi.fn(async () => null),
+  testRegistry: vi.fn(async () => ({ reachable: true, authenticated: true, message: 'ok' }))
+}))
+
+vi.mock('../src/api/image', () => ({
+  listImages: vi.fn(async () => ({ items: [], total: 0, pageIndex: 0, pageSize: 20 })),
+  batchRemoveImages: vi.fn(async () => ({ requested: 0, succeeded: 0, failures: [] })),
+  removeImage: vi.fn(async () => ({ untagged: [], deleted: [] })),
+  pullImage: vi.fn(),
+  buildImage: vi.fn(),
+  pushImage: vi.fn()
+}))
+
+vi.mock('../src/api/auth', () => ({
+  login: vi.fn(),
+  logoutSession: vi.fn(),
+  refreshSession: vi.fn()
+}))
+
+// ===== element-plus 的消息组件是副作用调用，桩掉以免污染测试输出 =====
+vi.mock('element-plus', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('element-plus')>()
+
+  return {
+    ...actual,
+    ElMessage: Object.assign(vi.fn(), {
+      success: vi.fn(),
+      error: vi.fn(),
+      warning: vi.fn(),
+      info: vi.fn()
+    }),
+    ElMessageBox: Object.assign(vi.fn(), { confirm: vi.fn() })
+  }
+})
+
+/** 收集渲染期的 console 告警（Vue 的「未定义属性」只走这里）。 */
+let warnings: string[] = []
+let warnSpy: ReturnType<typeof vi.spyOn>
+let errorSpy: ReturnType<typeof vi.spyOn>
+
+beforeEach(() => {
+  warnings = []
+  // 固定语言：断言的是**渲染出来的文案**而不是 key（真实 i18n 会把 key 翻成文字），
+  // 语言的确定性与断言的确定性必须绑定。
+  i18n.global.locale.value = 'zh-CN'
+  warnSpy = vi.spyOn(console, 'warn').mockImplementation((...args) => {
+    warnings.push(args.map(String).join(' '))
+  })
+  errorSpy = vi.spyOn(console, 'error').mockImplementation((...args) => {
+    warnings.push(args.map(String).join(' '))
+  })
+})
+
+afterEach(() => {
+  warnSpy.mockRestore()
+  errorSpy.mockRestore()
+  vi.clearAllMocks()
+})
+
+/** 与「模板引用了不存在的标识符」有关的告警模式。 */
+const TEMPLATE_BUG_PATTERNS = [
+  /was accessed during render but is not defined on instance/,
+  /is not a function/,
+  /Failed to resolve component/,
+  /not found in the following locale resource/,
+  /Cannot read propert(y|ies) of undefined/,
+  /Cannot read propert(y|ies) of null/
+]
+
+/** 把命中的渲染期缺陷原样返回，好让断言消息里能看到全文。 */
+function templateBugs(): string[] {
+  return warnings.filter((line) => TEMPLATE_BUG_PATTERNS.some((p) => p.test(line)))
+}
+
+const routes: RouteRecordRaw[] = [
+  { path: '/', name: 'overview', component: { template: '<div />' } },
+  { path: '/registries', name: 'registries', component: { template: '<div />' } },
+  {
+    path: '/hosts/:hostId/images',
+    name: 'host-images',
+    component: { template: '<div />' }
+  },
+  {
+    path: '/hosts/:hostId/images/:id/inspect',
+    name: 'host-image-inspect',
+    component: { template: '<div />' }
+  }
+]
+
+/**
+ * 造一个「什么都能写」的鉴权 store。
+ *
+ * ⚠️ 走 `setSession` 而不是直接改 state：`CurrentUser` 的字段必须一次给齐，
+ * 少一个字段会让权限判定拿到 `undefined`，测试就成了在测一个不存在的用户形态。
+ */
+function seedAuth(permissions: string[]): void {
+  const user: CurrentUser = {
+    id: '00000000-0000-0000-0000-000000000001',
+    username: 'smoke',
+    displayName: null,
+    isDefault: false,
+    permissions,
+    lastLoginAt: null
+  }
+
+  useAuthStore().setSession({
+    accessToken: 'access-token',
+    refreshToken: 'refresh-token',
+    user
+  } as never)
+}
+
+interface MountOptions {
+  permissions?: string[]
+  props?: Record<string, unknown>
+  /** 初始路由；主机作用域的视图靠它拿到 `route.params.hostId` */
+  path?: string
+}
+
+/**
+ * 挂载并等路由就绪。
+ *
+ * ⚠️ **`ElementPlus` 必须作为插件注册**：否则 `el-table` / `el-dialog` 全部解析失败，
+ * Vue 会把它们当**原生自定义元素**直接渲染子树 —— 于是 `el-table-column` 的
+ * `#default="{ row }"` 拿到 `undefined` 而抛
+ * `Cannot destructure property 'row' of undefined`。那个错看起来像业务代码坏了，
+ * 实际是测试环境没装插件，与被测组件无关。
+ */
+async function mountSmoke(component: unknown, options: MountOptions = {}): Promise<VueWrapper> {
+  const pinia = createPinia()
+
+  setActivePinia(pinia)
+  seedAuth(options.permissions ?? ['registry.read', 'registry.write', 'image.write'])
+
+  const router = createRouter({ history: createWebHistory(), routes })
+
+  // ⚠️ 必须**先 push 再 isReady**：`isReady()` 等的是「首次导航完成」，
+  // 而首次导航是由 app.use(router) 触发的——此时 app 还不存在，于是永远不 resolve，
+  // 测试直接超时。先 push 一次就把导航启动了。
+  await router.push(options.path ?? '/')
+  await router.isReady()
+
+  return mount(component as never, {
+    global: { plugins: [pinia, router, i18n, ElementPlus] },
+    props: options.props
+  })
+}
+
+describe('Registry 配置页渲染冒烟（0.4.0）', () => {
+  it('有权时正常渲染，且不是空白页', async () => {
+    const RegistriesView = (await import('../src/views/RegistriesView.vue')).default
+    const wrapper = await mountSmoke(RegistriesView)
+
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    // 空白页也是「无告警」的失败形态，所以必须单独断言内容非空
+    expect(wrapper.text()).toContain('新增配置')
+    wrapper.unmount()
+  })
+
+  it('只有 registry.read 时不渲染写操作（新增 / 测试按钮消失）', async () => {
+    const RegistriesView = (await import('../src/views/RegistriesView.vue')).default
+    const wrapper = await mountSmoke(RegistriesView, { permissions: ['registry.read'] })
+
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    // 无写权限时不该出现新增按钮与测试按钮
+    expect(wrapper.text()).not.toContain('新增配置')
+    expect(wrapper.text()).not.toContain('测试连接')
+    wrapper.unmount()
+  })
+})
+
+describe('三个对话框渲染冒烟（0.4.0）', () => {
+  it('Registry 表单对话框', async () => {
+    const Dialog = (await import('../src/components/business/RegistryFormDialog.vue')).default
+    const wrapper = await mountSmoke(Dialog, { props: { modelValue: true } })
+
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    expect(wrapper.text()).toContain('新增 Registry 配置')
+    wrapper.unmount()
+  })
+
+  it('构建对话框', async () => {
+    const Dialog = (await import('../src/components/business/BuildImageDialog.vue')).default
+    const wrapper = await mountSmoke(Dialog, { props: { modelValue: true, hostId: 'prod-01' } })
+
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    // 上下文选择器与「上传 tar」提示必须真的渲染出来
+    expect(wrapper.text()).toContain('选择 tar 文件')
+    expect(wrapper.text()).toContain('tar -cf context.tar .')
+    wrapper.unmount()
+  })
+
+  it('推送对话框（有标签的镜像）', async () => {
+    const Dialog = (await import('../src/components/business/PushImageDialog.vue')).default
+    const wrapper = await mountSmoke(Dialog, {
+      props: {
+        modelValue: true,
+        hostId: 'prod-01',
+        image: {
+          id: 'sha256:abc',
+          repoTags: ['harbor.local:5000/app:v1', 'harbor.local:5000/app:latest'],
+          repoDigests: [],
+          created: '2026-10-01T00:00:00Z',
+          size: 1,
+          sharedSize: 0,
+          containerCount: 0
+        }
+      }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    expect(wrapper.text()).toContain('harbor.local:5000/app:v1')
+    // 多标签必须提示「只推第一个」，否则用户以为两个都会推上去
+    expect(wrapper.text()).toContain('推送只推第一个标签')
+    wrapper.unmount()
+  })
+
+  it('推送对话框（悬挂镜像：不出标签，也不该崩）', async () => {
+    const Dialog = (await import('../src/components/business/PushImageDialog.vue')).default
+    const wrapper = await mountSmoke(Dialog, {
+      props: {
+        modelValue: true,
+        hostId: 'prod-01',
+        image: {
+          id: 'sha256:deadbeef',
+          repoTags: [],
+          repoDigests: [],
+          created: '2026-10-01T00:00:00Z',
+          size: 1,
+          sharedSize: 0,
+          containerCount: 0
+        }
+      }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    expect(wrapper.text()).toContain('悬挂镜像没有标签')
+    wrapper.unmount()
+  })
+
+  it('推送对话框（image 为 null：少一个 ?. 就会在这里炸）', async () => {
+    const Dialog = (await import('../src/components/business/PushImageDialog.vue')).default
+    const wrapper = await mountSmoke(Dialog, {
+      props: { modelValue: true, hostId: 'prod-01', image: null }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    // ⚠️ `stackedTagCount(image?.repoTags)` 这类可选链是这里最容易写错的地方
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    expect(wrapper.text()).toContain('该镜像没有标签')
+    wrapper.unmount()
+  })
+})
+
+describe('镜像列表页渲染冒烟（0.4.0 改过模板）', () => {
+  it('空列表时正常渲染，且「构建镜像」入口存在', async () => {
+    const ImagesView = (await import('../src/views/ImagesView.vue')).default
+    const wrapper = await mountSmoke(ImagesView, { path: '/hosts/prod-01/images' })
+
+    await wrapper.vm.$nextTick()
+    // 等一次微任务让 listImages 的 promise 落定（onMounted 里 load 了一次）
+    await Promise.resolve()
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    // 这次给 ImagesView 加了按钮与对话框 import，改过的模板行必须能真的渲染
+    expect(wrapper.text()).toContain('构建镜像')
+    expect(wrapper.text()).toContain('拉取镜像')
+    wrapper.unmount()
+  })
+})

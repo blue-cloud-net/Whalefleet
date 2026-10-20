@@ -2,6 +2,7 @@ import { http, HttpResponse, delay } from 'msw'
 import { ErrorCode, fail, httpStatusOf, ok } from '../envelope'
 import { delayFor, hostsFor, type MockScenario } from '../scenarios'
 import { MOCK_IMAGE_DETAILS, MOCK_IMAGES_DEFAULT } from '../data/images'
+import { registriesFor } from './registries'
 import type { BatchOperationFailure, ImageDetail, ImageSummary } from '@/types/api'
 
 /**
@@ -33,7 +34,7 @@ export function resetSessionImages(): void {
 }
 
 /**
- * 镜像端点 mock（对应后端 0.0.10 已实现的四个端点）。
+ * 镜像端点 mock（0.0.10 四个基础端点，0.3.0 追加 tag，0.4.0 追加 build / push）。
  *
  * ## 复刻了后端的哪些「容易被忽略的语义」
  * 1. **`pageSize` 夹紧**（请求 5000 → 100）：前端若用请求值算下一页就会露馅。
@@ -403,8 +404,182 @@ export function imageHandlers(scenario: () => MockScenario) {
           repoTags: untaggedInSession.get(image.id)?.repoTags ?? existing.repoTags
         })
       )
-    })
+    }),
+
+    http.post('*/api/v1/hosts/:hostId/images/build', async ({ request }) => {
+      await delay(delayFor(scenario()))
+
+      // ⚠️ 必须走 `formData()` 而不是 `json()`：这条请求是 multipart。
+      // 而**前端若忘了覆盖 Content-Type**，axios 会把 FormData 序列化成 JSON
+      // （文件直接丢掉），于是这里 `context` 拿不到 —— 与真实后端表现一致，
+      // 这正是这条 mock 要复刻的那个坑。
+      const form = await request.formData()
+      const context = form.get('context')
+      const tag = String(form.get('tag') ?? '').trim()
+
+      if (!(context instanceof File) || context.size === 0) {
+        return HttpResponse.json(fail(ErrorCode.ValidationFailed, 'context 字段是必填的'), {
+          status: httpStatusOf(ErrorCode.ValidationFailed)
+        })
+      }
+
+      if (tag.length === 0) {
+        return HttpResponse.json(fail(ErrorCode.ValidationFailed, 'tag 不能为空'), {
+          status: httpStatusOf(ErrorCode.ValidationFailed)
+        })
+      }
+
+      const reference = hasTag(tag) ? tag : `${tag}:latest`
+
+      // 构建失败：与真实后端一致——守护进程的 HTTP 是 200，错误只在进度流里，
+      // 由后端翻译成 1806。**错误码必须是 1806 而不是 1402**：后者会让用户
+      // 以为后端挂了，而真正该修的是 Dockerfile。
+      if (tag.startsWith('broken')) {
+        return HttpResponse.json(
+          fail(ErrorCode.ImageBuildFailed, `构建镜像 ${reference} 失败：COPY failed: no such file`),
+          { status: httpStatusOf(ErrorCode.ImageBuildFailed) }
+        )
+      }
+
+      // 成功：造一个镜像放进会话，让「构建完成后列表里能看到它」成立
+      const detail = createFixture(reference, pulledInSession.size)
+
+      pulledInSession.set(detail.id, detail)
+      removedInSession.delete(detail.id)
+
+      return HttpResponse.json(
+        ok({
+          imageId: detail.id,
+          reference,
+          size: detail.size,
+          repoTags: detail.repoTags,
+          // 日志保留最后若干行；这里给一段形似真实构建输出的内容，
+          // 让界面的「构建日志」面板真的有事可展示
+          buildLog: [
+            `Step 1/4 : FROM alpine:3.20`,
+            `Step 2/4 : COPY payload.txt /payload.txt`,
+            `Step 3/4 : LABEL org.opencontainers.image.title=${reference}`,
+            `Step 4/4 : CMD ["/bin/sh"]`,
+            `Successfully built ${detail.id.replace('sha256:', '').slice(0, 12)}`,
+            `Successfully tagged ${reference}`
+          ]
+        })
+      )
+    }),
+
+    http.post('*/api/v1/hosts/:hostId/images/push', async ({ request }) => {
+      await delay(delayFor(scenario()))
+
+      const body = await readBody(request)
+      const image = String(body.image ?? '').trim()
+      const registryId = String(body.registryId ?? '').trim()
+
+      if (image.length === 0) {
+        return HttpResponse.json(fail(ErrorCode.ValidationFailed, 'image 不能为空'), {
+          status: httpStatusOf(ErrorCode.ValidationFailed)
+        })
+      }
+
+      // 推送必须是「仓库:标签」形态；没标签的引用推不出去
+      if (!hasTag(image)) {
+        return HttpResponse.json(
+          fail(ErrorCode.ValidationFailed, '镜像没有标签，无法推送'),
+          { status: httpStatusOf(ErrorCode.ValidationFailed) }
+        )
+      }
+
+      const hit = findImage(scenario(), image)
+
+      if (!hit) {
+        return HttpResponse.json(fail(ErrorCode.DockerResourceNotFound), {
+          status: httpStatusOf(ErrorCode.DockerResourceNotFound)
+        })
+      }
+
+      const serverAddress = addressOf(image)
+
+      if (serverAddress.length === 0) {
+        return HttpResponse.json(fail(ErrorCode.ValidationFailed, '无法从引用解析出 Registry 地址'), {
+          status: httpStatusOf(ErrorCode.ValidationFailed)
+        })
+      }
+
+      // 显式指定的配置必须存在（1800）；不给则按地址自动匹配
+      const registries = registriesFor(scenario())
+      const explicit = registryId.length > 0
+        ? registries.find((item) => item.id === registryId)
+        : undefined
+
+      if (registryId.length > 0 && !explicit) {
+        return HttpResponse.json(
+          fail(ErrorCode.RegistryNotFound, `未找到 Registry 配置 ${registryId}`),
+          { status: httpStatusOf(ErrorCode.RegistryNotFound) }
+        )
+      }
+
+      const matched =
+        explicit ?? registries.find((item) => item.serverAddress.toLowerCase() === serverAddress)
+
+      // 两条失败路径：不可达 1805、凭据被拒 1804（与 registry 的 test 端点同约定）
+      if (serverAddress.startsWith('unreachable')) {
+        return HttpResponse.json(fail(ErrorCode.RegistryUnreachable, 'dial tcp: connection refused'), {
+          status: httpStatusOf(ErrorCode.RegistryUnreachable)
+        })
+      }
+
+      if (serverAddress.startsWith('denied')) {
+        return HttpResponse.json(
+          fail(ErrorCode.RegistryAuthFailed, '401 Unauthorized from /v2/'),
+          { status: httpStatusOf(ErrorCode.RegistryAuthFailed) }
+        )
+      }
+
+      const authenticated = matched?.hasCredentials === true
+
+      return HttpResponse.json(
+        ok({
+          imageId: hit.id,
+          reference: image,
+          registryServerAddress: serverAddress,
+          authenticated,
+          pushLog: [
+            `The push refers to repository [${serverAddress}/${repositoryOf(image)}]`,
+            `${shortOf(hit.id)}: Pushed`,
+            `${image.split(':').pop()}: digest: sha256:${'0'.repeat(8)} size: 528`,
+            authenticated ? 'authenticated: true' : 'authenticated: false'
+          ]
+        })
+      )
+    }),
   ]
+}
+
+/** 引用里的地址段（与后端 `ImageReference.ExtractServerAddress` 同判据的简化版）。 */
+function addressOf(reference: string): string {
+  const repository = reference.slice(0, reference.lastIndexOf(':'))
+  const slash = repository.indexOf('/')
+
+  if (slash <= 0) return 'registry-1.docker.io'
+
+  const prefix = repository.slice(0, slash)
+  const looksLikeHost = prefix.includes('.') || prefix.includes(':') || prefix.toLowerCase() === 'localhost'
+
+  return looksLikeHost ? prefix.toLowerCase() : 'registry-1.docker.io'
+}
+
+/** 引用里的仓库段（去掉地址前缀与标签）。 */
+function repositoryOf(reference: string): string {
+  const withoutTag = reference.slice(0, reference.lastIndexOf(':'))
+  const slash = withoutTag.indexOf('/')
+
+  return slash > 0 && (withoutTag.slice(0, slash).includes('.') || withoutTag.slice(0, slash).includes(':'))
+    ? withoutTag.slice(slash + 1)
+    : withoutTag
+}
+
+/** 短 ID（12 位）。 */
+function shortOf(id: string): string {
+  return id.replace('sha256:', '').slice(0, 12)
 }
 
 /**

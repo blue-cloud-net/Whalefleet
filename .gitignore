@@ -405,3 +405,21 @@ FodyWeavers.xsd
 .env
 .env.*
 !.env.example
+
+# ---------- 运行期数据目录（含密钥文件） ----------
+# 开发环境（appsettings.Development.json）把数据库放在 **相对路径**
+# `data/whalefleet.db`，因此目录落在项目目录下。
+# 里面除了数据库，还有两个**密钥文件**：
+#   jwt.key      —— JWT 签名密钥（0.0.15 起自动生成）
+#   registry.key —— Registry 口令加密密钥（0.4.0 起自动生成）
+# 它们是 0600 的随机密钥，绝不能进版本库。
+# ⚠️ .dockerignore 只挡镜像、不挡 git：漏掉这里，一次 `git add .` 就会
+#    把密钥连同历史一起提交，事后只能靠换密钥 + 清历史来补救。
+#
+# ⚠️ **不要写成 `**/data/`**：那会连 `src/Whalefleet.UI/src/mocks/data/`
+#    （前端 mock 场景源码）一起排除。已跟踪的文件不受影响，所以从既有文件里
+#    看不出问题——症状是**新增**一个 mock 夹具后 `git status` 里根本没有它，
+#    而且没有任何报错。只按「运行期会写出 data/ 目录的那几处」逐个列举。
+/data
+src/*/data/
+tests/*/data/

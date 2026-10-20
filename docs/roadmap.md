@@ -78,7 +78,7 @@
 | `0.1.0` | 授权基座与 MVP 收口 | 🚧 | 授权重写为带作用域的 User → Role → Permission（进行中）；批量删除 / socket-proxy / 反代示例已完成 |
 | `0.2.0` | Volume 与 Network | ✅ | 两类资源的 CRUD + 详情；列表不分页（归 0.16.0） |
 | `0.3.0` | 容器与镜像基础操作 | ⬜ | rename / update / duplicate、镜像 tag、高级创建参数、运行时挂卷 |
-| `0.4.0` | 镜像构建与私有 Registry | ⬜ | 构建 + 凭据存储 + login + push |
+| `0.4.0` | 镜像构建与私有 Registry | ✅ | 构建 + 凭据存储 + 管理 API + push，含前端（构建对话框 / Registry 配置页 / 推送） |
 | `0.5.0` | Compose / Stack 基础功能 | ⬜ | 列表 / 部署 / 更新 / 停止 / 删除 / 服务列表 |
 | `0.6.0` | 批量操作与资源清理 | ⬜ | 批量启停 / 重启 + 资源级 prune |
 | `0.7.0` | 实时通道（SignalR） | ⬜ | 日志流 / stats / 通知条；进度推送改实时 |
@@ -127,9 +127,11 @@
 - ✅ **权限目录**：静态封闭集合（**不建表**——「应用有没有某功能」是编译期事实），
   按 `domain.level` 命名，分 Global 与 Host 两类作用域。Host 域为 `host.read` / `host.admin`
   与 `container` / `image` / `network` / `volume` 各自的 read + write；
-  Global 域为 `user.read` / `user.write` / `role.read` / `role.write` / `host.manage` / `audit.read`。
+  Global 域为 `user.read` / `user.write` / `role.read` / `role.write` / `host.manage`
+  / `registry.read` / `registry.write` / `audit.read`。
   `PermissionScope` **预留 Container 一档**，但本迭代只开放全局与主机两条分配路径
-  （落地：`Core/Permissions/Permission.cs`，16 项；目录与 `POST /admin/roles/permissions` 逐项一致有守卫测试）
+  （落地：`Core/Permissions/Permission.cs`，**18 项**——0.4.0 新增 `registry.read` / `registry.write`；
+  目录与 `POST /admin/roles/permissions` 逐项一致有守卫测试）
 - ✅ **角色携带权限**：新增 `role_permissions` 表与迁移；`Role` 实体带权限集合，
   内置角色（`admin` / `operator` / `viewer` / `auditor`）的权限集**不可修改**。
   `users.role_id` 废弃——用户 ↔ 角色改为多对多
@@ -277,18 +279,69 @@
 
 ---
 
-### 0.4.0 ⬜ — 镜像构建与私有 Registry
+### 0.4.0 ✅ — 镜像构建与私有 Registry
 
 **目标**：支持上传 Dockerfile 构建镜像，并把镜像推到私有仓库。
 
-- 镜像构建：`POST /api/v1/hosts/{hostId}/images/build`（multipart：Dockerfile + context tar）。
+- ✅ **镜像构建**：`POST /api/v1/hosts/{hostId}/images/build`
+  （multipart：文件字段 `context` = 构建上下文 tar + 表单字段 `tag` / `dockerfile` /
+  `buildArgs` / `labels` / `target` / `platform` / `noCache`）。
   **本版一次性返回结果**，与现有 `images/pull` 保持同一形态；进度推送随 `0.7.0` 一起改
-- Registry 凭据存储（加密落 SQLite）、登录与验证
-- Registry 管理 API：`POST /api/v1/admin/registries/{list,add,remove,test}`
-- 镜像 push：`POST /api/v1/hosts/{hostId}/images/push`
-- 前端：构建对话框（文件上传）、Registry 配置页、镜像列表的「push」操作
+- ✅ **Registry 凭据存储**（加密落 SQLite）：AES-GCM（随机 nonce），
+  密钥在数据卷下的 `registry.key`（0600），与 JWT 密钥**分开**存。
+  响应里绝不含口令，也不含密文
+- ✅ **Registry 管理 API**：`POST /api/v1/admin/registries/{list,add,remove,test}`
+  （全局作用域，需 `registry.read` / `registry.write`）
+- ✅ **镜像 push**：`POST /api/v1/hosts/{hostId}/images/push`
+  （`registryId` 省略时按镜像引用里的地址段自动匹配已登记的 Registry）
+- ✅ **前端**：构建对话框（文件上传）、Registry 配置页、镜像列表的「push」操作
 
 **验收**：上传一个 Dockerfile 能构建出镜像；配置一个私有 Registry 后能 push 成功。
+
+**落地记录**：
+
+1. **构建上下文只收已打包的 tar**（不收多文件再由服务端打包）：后者要在服务端实现一套
+   tar 写入器并配套路径穿越防护（tar 条目名可含 `../`），而收益仅是界面少一步。
+2. **构建失败有两条路径，都要归到 `1806`**：请求阶段就失败（Dockerfile 不存在、语法错到无法解析）
+   由 SDK 抛异常；请求成功但构建失败（基础镜像拉不动、指令执行失败）则**错误只在进度流里**
+   ——HTTP 层仍是 200。不检查进度流，「Dockerfile 语法错」会被报成「成功但什么也没产出」。
+3. **构建日志回带在响应里**（最多 500 行）：构建失败时 Docker 只给一行
+   `returned a non-zero code: 1`，真正的原因在上面几百行里。排错的现场在用户手里。
+4. **multipart 的文件段必须带 `filename`**：ASP.NET Core 靠 Content-Disposition 里的
+   `filename` 判断这一段是「文件」还是「普通表单字段」。不带 filename 时 tar 被当成普通字段，
+   服务端报「context 字段是必填的」——而真实客户端（`curl -F`、浏览器 FormData）都会带。
+5. **Registry 地址规范化的四个落点必须一致**：存库 / 镜像引用 / Docker 的 `AuthConfig.ServerAddress` /
+   按地址查配置。为此把地址抽成值对象 `RegistryServerAddress`，规范化只发生在一个地方。
+6. **别名与地址各占一个部分唯一索引**：同址尤其危险——它会让「推镜像时用哪条凭据」变成随机行为。
+7. **`test` 端点用 `registry.write` 而不是 `registry.read`**：测试传的是凭据，
+   能用凭据意味着能读出它。给只读角色开这道门等于让对方把口令送到任意地址上去。
+8. **`registry.key` 必须随数据库一起备份**：漏了它，已保存的口令全部无法解密
+   （表现为「认证失败」，但根因是密钥没了）。
+9. **错误码段选 `1800-1899`**：`1600-1699` 已被 `0.9.0` 预留给操作审计，
+   `1700-1799` 预留给 `0.11.0` 告警——本迭代不能占用别人的段。
+
+前端落地记录：
+
+10. **构建 / 推送请求必须放宽 30 秒超时**：`http` 实例的默认超时会在真实构建跑到
+    第 30 秒时返回一个与构建无关的网络超时，用户会当成「后端挂了」，而构建其实还
+    在跑。两条请求都设 `timeout: 0`。
+11. **multipart 必须显式覆盖 `Content-Type`**：实例默认头是 `application/json`，
+    而 axios 见到 FormData + JSON 头会 `JSON.stringify(formDataToJSON(data))`
+    ——**文件被静默丢掉**，服务端只报「context 是必填的」。改成
+    `multipart/form-data` 才会走 FormData 分支；浏览器随后会清掉该头自己补 boundary。
+12. **Registry 页用 `requiresPermission` 而不是 `requiresAdmin`**：后端这道门是
+    `registry.read`，自定义角色可能只带它。用 `requiresAdmin`（管理面三项权限的
+    合取）会把这类用户挡在自己的页外，比后端更严。
+13. **推送对话框必须把「会不会带凭据」提前说清**：匿名推送同样是成功，光看「推送
+    成功」无法区分「凭据生效了」与「这个仓库根本不要凭据」——后者往往意味着地址
+    配错了（推到了一个意外的公开仓库）。多标签镜像还要提示只推第一个。
+14. **前端不复刻 Registry 地址解析的第二套规则**：`utils/registry-display.ts` 的
+    `registryAddressOf` 照抄后端 `ImageReference.ExtractServerAddress`
+    （首段含 `.`/`:` 或等于 `localhost` 才算主机）。两边漂移的后果是「界面说会连
+    A、后端实际连 B」，而 B 才决定成败。
+
+> 后端与前端的验收口径一致：上传一个 Dockerfile 能构建出镜像；配置一个私有
+> Registry 后能 push 成功。后端另有对真实私有 Registry 的推送与拉回集成测试。
 
 ---
 

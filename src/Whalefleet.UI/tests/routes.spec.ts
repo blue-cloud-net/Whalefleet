@@ -32,12 +32,25 @@ describe('路由表', () => {
     expect(roles?.meta?.icon).toBe('i-carbon-user-role')
   })
 
-  it('管理组菜单顺序：主机 → 用户 → 角色（日常动线是「看人再建角色」）', () => {
+  it('管理组菜单顺序：主机 → 用户 → 角色 → Registry（日常动线是「看人再建角色」）', () => {
     const manage = children()
       .filter((r) => r.meta?.scope !== 'host' && r.meta?.group === 'manage')
       .map((r) => r.name)
 
-    expect(manage).toEqual(['hosts', 'users', 'roles'])
+    // Registry 排在末尾：管理组前三项是「人」的动线（看主机 → 看人 → 缺角色再建），
+    // Registry 是纯基础设施配置、一配就不动，插在中间会打断日常动线。
+    expect(manage).toEqual(['hosts', 'users', 'roles', 'registries'])
+  })
+
+  it('registries 用 registry.read 权限而非 requiresAdmin 把门', () => {
+    const registries = children().find((r) => r.name === 'registries')
+
+    expect(registries?.meta?.requiresPermission).toBe('registry.read')
+    // ⚠️ 不能同时标 requiresAdmin：后端这道门只看 registry.read，
+    // 自定义角色可能只带它；叠加管理面要求会比后端更严，把人挡在自己的页外。
+    expect(registries?.meta?.requiresAdmin).toBeUndefined()
+    expect(registries?.meta?.scope).toBe('global')
+    expect(registries?.path).toBe('registries')
   })
 
   it('全局作用域：overview 与 settings 存在且 scope=global', () => {

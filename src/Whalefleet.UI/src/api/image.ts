@@ -1,9 +1,11 @@
 import { request } from '@/api'
 import type {
   BatchOperationResult,
+  ImageBuildResult,
   ImageDetail,
   ImageListResult,
   ImagePullResult,
+  ImagePushResult,
   ImageRemovedResult,
   ImageTaggedResult
 } from '@/types/api'
@@ -145,5 +147,92 @@ export function tagImage(
     url: `/api/v1/hosts/${encodeURIComponent(hostId)}/images/tag`,
     method: 'post',
     data: { imageId, repository, tag }
+  })
+}
+
+/**
+ * 用上传的构建上下文 tar 构建镜像（`multipart/form-data`，0.4.0）。
+ *
+ * ## ⚠️ 三处必踩的坑
+ *
+ * 1. **必须显式覆盖 `Content-Type`**。`http` 实例的默认头是 `application/json`，
+ *    而 axios 的 `transformRequest` 见到 FormData 且带 JSON Content-Type 时会
+ *    `JSON.stringify(formDataToJSON(data))` —— **文件被静默丢掉**，
+ *    服务端报「context 字段是必填的」（`1000`）。改成 `multipart/form-data`
+ *    才会走 FormData 分支；浏览器环境下 axios 随后会**清掉**这个头，
+ *    由浏览器自己补 boundary（自己拼 boundary 一定拼错）。
+ * 2. **文件段必须带文件名**。表单里没有 `filename` 的段会被当成普通字段，
+ *    `Request.Form.Files` 为空——症状同样是「context 是必填的」。
+ * 3. **必须放宽超时**。实例默认 30 秒，而一次真实构建是分钟级；
+ *    不放宽就会在 30 秒时收到一个与构建无关的「网络超时」，
+ *    用户以为是后端挂了，实际上构建还在跑。
+ *
+ * ## `buildArgs` / `labels` 走 JSON 字符串
+ * 表单没有天然字典形态，后端约定收 **JSON 对象的字符串**。
+ * 界面的校验在 `utils/image-build.ts`，这里不再解析一遍。
+ *
+ * 失败：`1806`（构建失败，消息里带守护进程给的原因，`buildLog` 有完整日志）、
+ * `1000`（参数非法）、`1301`（主机不可达）。
+ */
+export function buildImage(
+  hostId: string,
+  payload: {
+    /** 构建上下文 tar */
+    context: File
+    /** 产物引用（`仓库名` 或 `仓库名:标签`）；必填 */
+    tag: string
+    /** tar 包内的 Dockerfile 路径；省略为 `Dockerfile` */
+    dockerfile?: string
+    /** JSON 对象字符串，如 `{"VERSION":"1.0"}` */
+    buildArgs?: string
+    /** JSON 对象字符串 */
+    labels?: string
+    target?: string
+    platform?: string
+    noCache?: boolean
+  }
+): Promise<ImageBuildResult> {
+  const form = new FormData()
+
+  // 顺序无关，但文件名**必须有**（见上文坑 2）
+  form.append('context', payload.context, payload.context.name)
+  form.append('tag', payload.tag)
+
+  if (payload.dockerfile) form.append('dockerfile', payload.dockerfile)
+  if (payload.buildArgs) form.append('buildArgs', payload.buildArgs)
+  if (payload.labels) form.append('labels', payload.labels)
+  if (payload.target) form.append('target', payload.target)
+  if (payload.platform) form.append('platform', payload.platform)
+  if (payload.noCache) form.append('noCache', 'true')
+
+  return request<ImageBuildResult>({
+    url: `/api/v1/hosts/${encodeURIComponent(hostId)}/images/build`,
+    method: 'post',
+    data: form,
+    headers: { 'Content-Type': 'multipart/form-data' },
+    // 0 = 不限时：构建可能是分钟级，30 秒的默认值会误报成「网络超时」
+    timeout: 0
+  })
+}
+
+/**
+ * 把本地镜像推送到 Registry（0.4.0）。
+ *
+ * `registryId` 省略时后端**按镜像引用里的地址段自动匹配**已登记的配置。
+ * 显式指定用于「本地标签不带仓库前缀，但就是要推到内网 Harbor」这种场景。
+ *
+ * 失败：`1807`（推送失败）、`1804`（凭据被拒）、`1800`（指定的配置不存在）、
+ * `1000`（镜像没有标签——推送必须用 `仓库:标签` 形态）。
+ */
+export function pushImage(
+  hostId: string,
+  payload: { image: string; registryId?: string; platform?: string }
+): Promise<ImagePushResult> {
+  return request<ImagePushResult>({
+    url: `/api/v1/hosts/${encodeURIComponent(hostId)}/images/push`,
+    method: 'post',
+    data: payload,
+    // 大镜像推送是分钟级，理由同 buildImage
+    timeout: 0
   })
 }

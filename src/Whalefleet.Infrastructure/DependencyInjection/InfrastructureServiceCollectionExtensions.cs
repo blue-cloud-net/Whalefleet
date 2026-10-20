@@ -122,6 +122,16 @@ public static class InfrastructureServiceCollectionExtensions
 
         services.AddSingleton<ITokenService, JwtTokenService>();
 
+        // Registry 凭据加密（0.4.0）：密钥文件（registry.key）与 JWT 密钥同机制——
+        // 落盘、0600、生成一次后复用。两者**分开**是为了「泄漏 JWT 密钥 ≠ 能解出口令」。
+        services.AddSingleton<RegistrySecretKeyStore>();
+        services.AddSingleton<IRegistrySecretProtector, RegistrySecretProtector>();
+
+        // Registry 连通性探测（0.4.0）：发 HTTPS 请求，需要 HttpClient 工厂托管连接池。
+        // 不手写 new HttpClient()——那会让 DNS 变更在长时间运行的实例上失效。
+        services.AddHttpClient();
+        services.AddSingleton<IRegistryConnectivityProbe, RegistryConnectivityProbe>();
+
         // 登录失败计数：内存缓存（AddMemoryCache 重复调用安全，返回同一实例）。
         services.AddMemoryCache();
         services.AddSingleton<ILoginAttemptTracker, InMemoryLoginAttemptTracker>();

@@ -126,6 +126,14 @@ describe('错误码 → HTTP 状态码（与后端 ErrorCodeCatalog + ErrorHttpS
     [1513, 400],
     [1514, 400],
     [1515, 404],
+    [1800, 404],
+    [1801, 400],
+    [1802, 400],
+    [1803, 400],
+    [1804, 400],
+    [1805, 502],
+    [1806, 500],
+    [1807, 500],
     [9999, 500]
   ]
 
@@ -1109,7 +1117,10 @@ describe('角色与权限目录端点（0.1.0）', () => {
 
     const admin = roles.find((role) => role.name === 'admin')!
     expect(admin.isBuiltIn).toBe(true)
-    expect(admin.permissions).toHaveLength(16)
+    // 0.4.0 把目录从 16 条扩到 18 条（registry.read / registry.write）。
+    // admin 的权限集必须覆盖**整个目录**，因此这里跟着目录长度走：
+    // 写死 16 会在新增权限时拦下「admin 漏了一项」——而那正是最该拦的情况。
+    expect(admin.permissions).toHaveLength(18)
     expect(typeof admin.assignmentCount).toBe('number')
 
     // 全库至多一个默认角色
@@ -1124,7 +1135,7 @@ describe('角色与权限目录端点（0.1.0）', () => {
     expect(roles.every((role) => !role.isBuiltIn)).toBe(true)
   })
 
-  it('权限目录共 16 条，Host 域在前、Global 在后（矩阵的分组顺序就来自它）', async () => {
+  it('权限目录共 18 条，Host 域在前、Global 在后（矩阵的分组顺序就来自它）', async () => {
     const { status, json } = await post('/api/v1/admin/roles/permissions')
 
     expect(status).toBe(200)
@@ -1136,12 +1147,18 @@ describe('角色与权限目录端点（0.1.0）', () => {
       scope: string
     }[]
 
-    expect(permissions).toHaveLength(16)
+    expect(permissions).toHaveLength(18)
     expect(permissions[0].name).toBe('host.read')
     expect(permissions.at(-1)!.name).toBe('audit.read')
     // 作用域是判定依据：host.manage 与 host.read 前缀相同、作用域完全不同
     expect(permissions.find((item) => item.name === 'host.manage')!.scope).toBe('global')
     expect(permissions.find((item) => item.name === 'host.read')!.scope).toBe('host')
+
+    // Registry 两项是**全局**作用域：同一份凭据在所有主机上通用，
+    // 挂到主机下会让同一把口令在 N 台机器上各存一份、迟早漂移。
+    for (const name of ['registry.read', 'registry.write']) {
+      expect(permissions.find((item) => item.name === name)?.scope, name).toBe('global')
+    }
   })
 
   it('角色名重复 → 1511 / 400（且不区分大小写）', async () => {

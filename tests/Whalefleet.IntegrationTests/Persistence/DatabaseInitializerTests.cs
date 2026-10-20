@@ -20,9 +20,9 @@ public class DatabaseInitializerTests
     /// 以此强制「新脚本确实被跑过」。
     /// </summary>
     /// <remarks>
-    /// 0.1.0 新增 <c>0006_rbac.sql</c>。
+    /// 0.1.0 新增 <c>0006_rbac.sql</c>；0.4.0 新增 <c>0007_registries.sql</c>。
     /// </remarks>
-    private const int _expectedSchemaVersion = 6;
+    private const int _expectedSchemaVersion = 7;
 
     [Fact]
     public async Task 初始化_建出业务表并推进架构版本()
