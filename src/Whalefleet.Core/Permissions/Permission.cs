@@ -7,9 +7,9 @@ namespace Whalefleet.Core.Permissions;
 /// <para><b>为什么权限要分作用域</b>：「能不能管用户」与「能不能在这台主机上启停容器」是两类不同的授权事实。
 /// 少了作用域这一维，"把 admin 角色分配给某台主机"就分不清是「仅在这台机器上是管理员」
 /// 还是「成了系统管理员」——后者是一次静默提权。</para>
-/// <para><b><see cref="Container"/> 为 0.5.0 预留</b>：目录里已经存在容器级权限，
+/// <para><b><see cref="Container"/> 为 0.12.0 预留</b>：目录里已经存在容器级权限，
 /// 但 0.1.0 <b>只开放</b> <see cref="Global"/> 与 <see cref="Host"/> 两条分配路径。
-/// 预先留出这一档，是为了让 0.5.0 只需要"打通一条已存在的路径"，而不必回头改已有角色的权限定义。</para>
+/// 预先留出这一档，是为了让 0.12.0 只需要"打通一条已存在的路径"，而不必回头改已有角色的权限定义。</para>
 /// </remarks>
 public enum PermissionScope
 {
@@ -24,7 +24,7 @@ public enum PermissionScope
     Host,
 
     /// <summary>
-    /// 容器级：针对单台主机上的某个容器（0.5.0 落地）。
+    /// 容器级：针对单台主机上的某个容器（0.12.0 落地）。
     /// </summary>
     Container,
 }

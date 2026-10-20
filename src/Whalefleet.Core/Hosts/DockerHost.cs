@@ -70,7 +70,7 @@ public sealed class DockerHost : FullAuditedEntity<Guid, Guid>
     /// </summary>
     /// <remarks>
     /// 分组是**展示性**概念（总览页按组聚合），不参与任何授权判定——
-    /// 「谁能操作哪台主机」由 0.1.0 落地的可见性表与 0.5.0 的容器级权限表回答。见 <see cref="HostGroup"/>。
+    /// 「谁能操作哪台主机」由 0.1.0 落地的可见性表与 0.12.0 的容器级权限表回答。见 <see cref="HostGroup"/>。
     /// </remarks>
     public Guid? GroupId { get; private set; }
 
