@@ -139,7 +139,7 @@ public sealed record TagImageRequest
 /// 并给它配套路径穿越防护（tar 条目名可含 <c>../</c>），而收益仅是界面少一步。
 /// 用户用 <c>tar -cf context.tar .</c> 一次，比界面上的文件选择器更快。</para>
 /// <para><b>构建进度本版一次性返回</b>：与现有 <c>pull</c> 同一形态。
-/// 实时进度推送随 <c>0.7.0</c> 的 SignalR 一起改。</para>
+/// 实时进度推送随 <c>0.5.0</c> 的 SignalR 一起改。</para>
 /// </remarks>
 public sealed record BuildImageRequest
 {

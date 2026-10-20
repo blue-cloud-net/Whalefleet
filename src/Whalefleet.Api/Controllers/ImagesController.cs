@@ -294,7 +294,7 @@ public sealed class ImagesController : ControllerBase
     /// <response code="500">推送失败（<c>1807</c>，消息与 <c>pushLog</c> 带守护进程给的原因）。</response>
     /// <response code="502">主机不可达（<c>1301</c>）。</response>
     /// <remarks>
-    /// <b>与 build 一样一次性返回</b>：实时进度推送随 0.7.0 的 SignalR 一起改。
+    /// <b>与 build 一样一次性返回</b>：实时进度推送随 0.5.0 的 SignalR 一起改。
     /// </remarks>
     [HttpPost("push")]
     [ProducesResponseType(typeof(ApiResult<ImagePushResult>), StatusCodes.Status200OK)]
