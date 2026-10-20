@@ -7,6 +7,14 @@ import { defineConfig, presetIcons, presetTypography, presetUno } from 'unocss'
 
 const require = createRequire(import.meta.url)
 
+/** Carbon 图标集：图标名是否存在，唯一的事实来源 */
+const carbonIcons = require('@iconify-json/carbon/icons.json') as { icons: Record<string, unknown> }
+
+/** `i-carbon-xxx` 这个类名对应的图标在 Carbon 里是否真实存在 */
+function hasCarbonIcon(className: string): boolean {
+  return className.replace(/^i-carbon-/, '') in carbonIcons.icons
+}
+
 /**
  * 校验图标名在 Carbon 里真实存在。
  *
@@ -21,9 +29,8 @@ const require = createRequire(import.meta.url)
  * 同一图标被三路各收一次是常态，而重复条目会让下面的报错把同一个名字列好几遍。
  */
 function assertIconsExist(icons: string[]): string[] {
-  const carbon = require('@iconify-json/carbon/icons.json') as { icons: Record<string, unknown> }
   const unique = [...new Set(icons)]
-  const missing = unique.filter((name) => !(name.replace(/^i-carbon-/, '') in carbon.icons))
+  const missing = unique.filter((name) => !hasCarbonIcon(name))
   if (missing.length > 0) {
     throw new Error(
       `[uno.config] safelist 中存在 Carbon 没有的图标：\n  - ${missing.join('\n  - ')}\n` +
@@ -55,8 +62,49 @@ function collectRouteIcons(): string[] {
   return [...icons]
 }
 
+/** 图标类名的匹配模式，形状与 UnoCSS 扫描器切出的 token 对齐 */
+const ICON_TOKEN_RE = /i-carbon-[a-z0-9-]+/g
+
 /**
- * 从 `src` 下所有 `.vue` / `.ts` 中收集出现的 `i-carbon-*` 图标名。
+ * 剥掉三类注释，只留可执行代码。
+ *
+ * 行注释的前导组排除 `https://` 这类 URL 里的「//」，
+ * 否则一行里 URL 之后的真图标会被连带吃掉。
+ */
+function stripComments(source: string): string {
+  return source
+    .replace(/<!--[\s\S]*?-->/g, '') // 模板注释
+    .replace(/\/\*[\s\S]*?\*\//g, '') // 块注释
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1')
+}
+
+/** 遍历 `src/**` 下的 `.vue` / `.ts`，外加 `uno.config.ts` 自身 */
+function forEachSourceFile(visit: (source: string) => void): void {
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name)
+
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules') continue
+
+        walk(full)
+        continue
+      }
+
+      if (!/\.(vue|ts)$/.test(entry.name)) continue
+
+      visit(readFileSync(full, 'utf-8'))
+    }
+  }
+
+  walk(fileURLToPath(new URL('./src', import.meta.url)))
+  // 自身也要扫：它的注释里同样留着历史错名（`i-carbon-data-center-alt`、
+  // 多打一个连字符的 `i-carbon-meter--alt`），别指望扫描入口只有 src/**。
+  visit(readFileSync(fileURLToPath(import.meta.url), 'utf-8'))
+}
+
+/**
+ * 从 `src` 下所有 `.vue` / `.ts` 中收集出现的 `i-carbon-*` 图标名（注释已剥除）。
  *
  * ## 为什么 safelist 之外的模板也要纳管
  * 历史上有过两处图标名写错（`i-carbon-data-center-alt`，以及多打一个连字符的
@@ -73,38 +121,56 @@ function collectRouteIcons(): string[] {
  * 不满足 `[a-z0-9-]+` 至少一个字符，压根匹配不上。
  */
 function collectSourceIcons(): string[] {
-  const srcDir = fileURLToPath(new URL('./src', import.meta.url))
   const icons = new Set<string>()
 
-  const walk = (dir: string): void => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = join(dir, entry.name)
-
-      if (entry.isDirectory()) {
-        if (entry.name === 'node_modules') continue
-
-        walk(full)
-        continue
-      }
-
-      if (!/\.(vue|ts)$/.test(entry.name)) continue
-
-      const source = readFileSync(full, 'utf-8')
-        .replace(/<!--[\s\S]*?-->/g, '') // 模板注释
-        .replace(/\/\*[\s\S]*?\*\//g, '') // 块注释
-        // 行注释：前导组排除 `https://` 这类 URL 里的「//」，
-        // 否则一行里 URL 之后的真图标会被连带吃掉
-        .replace(/(^|[^:])\/\/[^\n]*/g, '$1')
-
-      for (const match of source.matchAll(/i-carbon-[a-z0-9-]+/g)) {
-        icons.add(match[0])
-      }
+  forEachSourceFile((source) => {
+    for (const match of stripComments(source).matchAll(ICON_TOKEN_RE)) {
+      icons.add(match[0])
     }
-  }
-
-  walk(srcDir)
+  })
 
   return [...icons]
+}
+
+/**
+ * 收集**只出现在注释里**的图标名，仅供 blocklist 使用（不要并进 safelist）。
+ *
+ * ## 为什么需要它
+ * 上面两个函数都刻意剥掉注释再校验（正确做法），但 **UnoCSS 自带的扫描器
+ * 不看注释**：它把整份文件当纯文本切 token。于是
+ * 「`i-carbon-tune` / `i-carbon-slider` / `i-carbon-admin` / `i-carbon-manage`
+ * 都不存在，别再凭直觉写」这句注释里的名字，会被当成真类名生成规则，
+ * presetIcons 再去 Carbon 里找、找不到，就每次 dev/build 都刷
+ * `[unocss] failed to load icon "carbon-tune"`。
+ *
+ * 症状纯属噪音（注释里的名字永远不会被用到），但**噪音会掩盖真正的告警**——
+ * 而 warn 存在的意义就是让人一眼看见写错的图标名。
+ *
+ * 这些名字只可能来自注释：真实代码里的错名已经被 `assertIconsExist`
+ * 在配置加载期硬拦（dev/build 当场失败），走不到这里。
+ */
+function collectCommentIcons(): string[] {
+  const live = new Set(collectSourceIcons())
+  const commented = new Set<string>()
+
+  forEachSourceFile((source) => {
+    for (const match of source.matchAll(ICON_TOKEN_RE)) {
+      if (!live.has(match[0])) commented.add(match[0])
+    }
+  })
+
+  return [...commented]
+}
+
+/**
+ * blocklist 条目 = 注释里出现过、且 Carbon 里根本不存在的图标名。
+ *
+ * 只收「Carbon 里没有」的：注释里也会提到**正确**的名字（如本文档里的
+ * `i-carbon-layers` / `i-carbon-events`），那些必须留着，拦了就是误伤。
+ * 维护成本为零——注释里新增一个历史错名，下一次 dev/build 自动被拦。
+ */
+function commentIconBlocklist(): string[] {
+  return collectCommentIcons().filter((name) => !hasCarbonIcon(name))
 }
 
 // UnoCSS：utility-first，与 Element Plus 互不重叠
@@ -248,6 +314,9 @@ export default defineConfig({
       'app-log-list': 'flex flex-col gap-1'
     }
   ],
+  // 注释里的历史错名一律 blocklist：让 presetIcons 根本不去生成这些规则，
+  // 免得每次 dev/build 都被 "failed to load icon" 刷屏（见 commentIconBlocklist）
+  blocklist: commentIconBlocklist(),
   // 一律过一遍存在性校验：Carbon 无 `-alt` 变体，写错名字只会静默丢图标（见 assertIconsExist）
   safelist: assertIconsExist([
     // ===== 路由 meta.icon 自动同步（见 collectRouteIcons）=====
