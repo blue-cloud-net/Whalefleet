@@ -161,8 +161,8 @@
 | `1303` | 400 | 主机名已被占用 | 0.0.8 |
 | `1304` | 400 | 分组名已被占用 | 0.0.13 |
 | `1305` | 404 | 分组不存在 | 0.0.13 |
-| `1306` | 404 | 主机标签不存在 | 0.10.0 |
-| `1307` | 400 | 主机标签名已占用 | 0.10.0 |
+| `1306` | 404 | 主机标签不存在 | 0.6.0 |
+| `1307` | 400 | 主机标签名已占用 | 0.6.0 |
 | `1401` | 404 | 容器 / 镜像 / Volume / Network 不存在 | 0.0.9 |
 | `1402` | 500 | Docker API 调用失败 | 0.0.9 |
 | `1403` | 408 | Docker 操作超时 | 0.0.9 |
@@ -275,13 +275,13 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 不存在 / 已停用 | `1300`（404）/ `1302`（400） |
 | 缺省值 | **无**。全局作用域端点不含该段；主机作用域端点必须显式给出 |
 
-> **Hub 与 WebSocket 路径**（0.7.0 / 0.8.0）同样遵循「主机进路径」；`NotificationHub` 是**唯一**的全局 Hub，不含 `hostId`。
+> **Hub 与 WebSocket 路径**（0.5.0 / 0.8.0）同样遵循「主机进路径」；`NotificationHub` 是**唯一**的全局 Hub，不含 `hostId`。
 
 ---
 
 ## API 接口列表
 
-### 认证（0.0.4 - 0.0.5 / 0.7.0）
+### 认证（0.0.4 - 0.0.5 / 0.5.0）
 
 | 操作 | 路径 | 阶段 | 说明 |
 |------|------|------|------|
@@ -408,19 +408,23 @@ POST /api/v1/hosts/{hostId}/containers/list
 > **`/mcp` 必须与 `/api`、`/healthz` 一同排除在 SPA 回退之外**，否则打错的子路径会变成 200 + HTML。
 > **`Mcp:AllowedHosts` 不匹配返回 421**（DNS-rebinding 防护）——这是 MCP 客户端配置里最容易漏的一项。
 
-### 0.9.0 起的新增端点（索引）
+### 0.6.0 起的新增端点（索引）
 
 > 这些迭代沿用既有约定（RPC 风格 + 主机作用域路径 + `ApiResult` 信封），此处只列路径与阶段；
 > 请求 / 响应形态在各迭代落地时补全。
 
 | 能力 | 端点 | 阶段 |
+| 主机标签 | `POST /api/v1/host-tags/list` + `POST /api/v1/admin/host-tags/{create,update,remove}` | 0.6.0 |
+| 主机打标 / 去标 | `POST /api/v1/admin/hosts/tags/{assign,revoke}` | 0.6.0 |
+| 磁盘用量 | `POST /api/v1/hosts/{hostId}/system/df` | 0.6.0 |
+| 容器批量启停 | `POST /api/v1/hosts/{hostId}/containers/batch-{start,stop,restart}` | 0.7.0 |
+| 资源级清理 | `POST /api/v1/hosts/{hostId}/{images,volumes}/prune` | 0.7.0 |
+| 容器接入 / 断开网络 | `POST /api/v1/hosts/{hostId}/networks/{connect,disconnect}` | 0.7.0 |
 |------|------|------|
 | 认证日志列表 | `POST /api/v1/admin/logs/authentication/list` | 0.9.0 |
 | 活动日志列表 | `POST /api/v1/admin/logs/activity/list` | 0.9.0 |
 | 审计导出 | `POST /api/v1/admin/logs/activity/export` | 0.9.0 |
-| 主机标签 CRUD | `POST /api/v1/admin/host-tags/{list,create,remove}` | 0.10.0 |
-| 主机打标 / 去标 | `POST /api/v1/admin/hosts/{hostId}/tags/{attach,detach}` | 0.10.0 |
-| 磁盘用量 | `POST /api/v1/hosts/{hostId}/system/df` | 0.10.0 |
+| Stack 管理 | `POST /api/v1/hosts/{hostId}/stacks/{list,deploy,update,stop,remove}` | 0.10.0 |
 | 告警规则 | `POST /api/v1/admin/alert-rules/{list,update}` | 0.11.0 |
 | 通知中心 | `POST /api/v1/notifications/{list,read}` | 0.11.0 |
 | 通知渠道测试 | `POST /api/v1/admin/notifications/test` | 0.11.0 |
@@ -637,7 +641,103 @@ POST /api/v1/hosts/{hostId}/containers/list
 > 「要不要翻页」的判断，而真实数据永远在第一页。
 ---
 
-### 容器管理（0.0.9 / 0.3.0 / 0.6.0 / 0.14.0）
+### 监控与可观测性（0.6.0）
+
+> **容器指标的数据源是 `0.5.0` 的 `ContainerStatsHub`**，本档只负责**消费侧**
+> （列表指标列、健康检测、订阅调度）。因此本节**不新增 Hub**。
+>
+> **宿主机级实时指标明确不做**（见本节末尾），所以也不存在 `HostStatsHub`。
+
+#### 主机标签（Tag）
+
+| 操作 | 路径 | 角色 | 说明 |
+|------|------|------|------|
+| 获取列表 | `POST /api/v1/host-tags/list` | 任意已登录 | 供过滤与打标用；无分页 |
+| 创建标签 | `POST /api/v1/admin/host-tags/create` | admin | Body: `{ name, description?, color? }`；名称重复 → `1307`/400 |
+| 更新标签 | `POST /api/v1/admin/host-tags/{tagId}/update` | admin | Body: `{ name?, description?, color? }`；未提供表示不改 |
+| 删除标签 | `POST /api/v1/admin/host-tags/{tagId}/delete` | admin | 关联关系一并清除，**不删主机** |
+| 批量打标 | `POST /api/v1/admin/hosts/tags/assign` | admin | Body: `{ hostIds: string[], tagIds: string[] }`；**幂等** |
+| 批量清标 | `POST /api/v1/admin/hosts/tags/revoke` | admin | Body: `{ hostIds: string[], tagIds: string[] }`；**幂等** |
+
+> **与分组的分工**：Tag 是**多对多**打标（一个主机多个标签、一个标签多台主机），
+> Group 是**单一归属**（一个主机一个分组）。两者都**不参与授权判定**。
+> 标签不存在 → `1306`/404；标签名已占用 → `1307`/400。
+>
+> **删除标签不删主机**，与删除分组的处理同因（标签只是标记）。
+>
+> **打标 / 清标是幂等的**：重复打同一个标签不报错——前端允许「全选 + 批量打标」
+> 这种必然包含重复的操作，非幂等会让第二次点击变成失败。
+
+#### 总览过滤
+
+`POST /api/v1/hosts/list` 与 `POST /api/v1/hosts/{hostId}/overview` 支持以下**可选**过滤参数：
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `groupId` | `string?` | 按分组过滤；`null` / 空串 = **未分组** |
+| `tagIds` | `string[]?` | 按标签过滤（**任一命中**）；与 `groupId` 是 AND 关系 |
+| `status` | `string?` | `online` / `offline` / `unknown` |
+| `search` | `string?` | 按名称 / endpoint 模糊匹配，不区分大小写 |
+
+> **「未分组」必须是一个能传的值**：前端把它做成一个可点击的过滤项，
+> 而「未分组」在数据上就是 `group_id IS NULL`——于是它只能用**空值**表达。
+> 这就要求调用方能区分「没传 `groupId`」（不过滤）与「传了空串」（只看未分组），
+> 因此约定：**字段缺失 = 不过滤，空串 / `null` = 未分组**。
+
+#### 磁盘用量
+
+| 操作 | 路径 | 说明 |
+|------|------|------|
+| 磁盘用量 | `POST /api/v1/hosts/{hostId}/system/df` | 无 Body；**`type` 可选**（`image` / `container` / `volume` / `build-cache`），省略则返回全部 |
+
+```jsonc
+// POST /api/v1/hosts/{hostId}/system/df  →  Response.data
+{
+  "layersSize": 10737418240,             // 已用层大小
+  "images":    [ { "id": "…", "size": 123456, "reclaimable": 0 } ],
+  "containers":[ { "id": "…", "size": 0,     "reclaimable": 0 } ],
+  "volumes":   [ { "name": "…", "size": 3221225472, "reclaimable": 0 } ],
+  "buildCache":[ { "id": "…", "size": 0,     "reclaimable": 0 } ]
+}
+```
+
+> **`type` 过滤不能省**：不指定时守护进程会顺带统计镜像层，慢好几秒。
+>
+> **`reclaimable` 与 `size` 可为 `null`**：`null` = 守护进程没给用量（老版本守护进程、
+> 第三方驱动，或用量查询失败），`0` = 确实是 0。界面必须分别渲染——
+> 统一显示「—」会丢掉「确实是 0」这个信息。
+
+#### 容器健康与退出原因
+
+`POST /api/v1/hosts/{hostId}/containers/inspect` 的响应**新增**三个字段：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `healthStatus` | `string?` | `healthy` / `unhealthy` / `starting` / `none`；**未配置健康检查**是 `none`，不是 `null` |
+| `restartCount` | `number` | 守护进程累计的重启次数 |
+| `oomKilled` | `boolean` | 上一次退出是否被 OOM 杀死 |
+
+> **健康状态只从 inspect 取**：列表接口不返回它——`docker ps` 没有健康检查列，
+> 要拿到就得逐个 inspect，与「每 5 秒刷一次列表」的代价不成比例。
+> 因此列表页的健康列由**单独的一次批量查询**供给，查询失败时降级为「—」而不是报错。
+>
+> **`healthStatus` 不用 `null` 表示「未配置」**：那是两种不同的事——
+> `none`（没配健康检查，永远不会变）与 `null`（取不到）。混成一个值，
+> 界面就没法把「没配」与「查不到」分开表达。
+
+#### 明确不做
+
+- **宿主机级实时 CPU / 内存 / 网络 / 负载**：Docker Engine API **没有**宿主机级指标端点——
+  `/info` 只给 `NCPU` / `MemTotal` 这样的静态上限，`docker stats` 只针对容器。
+  用容器聚合值冒充宿主机指标，会让同一个页面出现两套口径，比不给更糟。
+  需要它就得在目标主机上部署 Agent（1.0.0 之后）。
+- **一次性 stats API**：`POST /api/v1/hosts/{hostId}/containers/stats`（单次 `docker stats --no-stream`）
+  明确不做，实时值走 `0.5.0` 的 Hub。
+- **历史指标持久化**：进程内只留最近 60 点环形缓冲供 sparkline，**不落库**。
+
+---
+
+### 容器管理（0.0.9 / 0.3.0 / 0.7.0 / 0.14.0）
 
 | 操作 | 路径 | 阶段 | 说明 |
 |------|------|------|------|
@@ -647,6 +747,9 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 停止 | `POST /api/v1/hosts/{hostId}/containers/stop` | 0.0.9 | Body: `{ containerId, waitSeconds? }`；`waitSeconds` 取值 0–300（默认 10，与 Docker 一致） |
 | 重启 | `POST /api/v1/hosts/{hostId}/containers/restart` | 0.0.9 | Body: `{ containerId }` |
 | 删除 | `POST /api/v1/hosts/{hostId}/containers/remove` | 0.0.9 | Body: `{ containerId, force? }`；不带 `force` 删运行中的容器返回 `1404`/409 |
+| **批量启停** | `POST /api/v1/hosts/{hostId}/containers/batch-start` | **0.7.0** | Body: `{ containerIds: string[] }`；响应与 `batch-remove` **同形状**（`succeeded` / `failed` / `failures`），**部分成功也是 200** |
+| **批量启停** | `POST /api/v1/hosts/{hostId}/containers/batch-stop` | **0.7.0** | Body: `{ containerIds: string[], waitSeconds? }`；`waitSeconds` 取值 0–300（默认 10） |
+| **批量启停** | `POST /api/v1/hosts/{hostId}/containers/batch-restart` | **0.7.0** | Body: `{ containerIds: string[] }`；响应形状同上 |
 | **批量删除** | `POST /api/v1/hosts/{hostId}/containers/batch-remove` | **0.1.0** | Body: `{ containerIds: string[], force? }`；响应为汇总结果，**部分成功也是 200**（见下） |
 | **重命名** | `POST /api/v1/hosts/{hostId}/containers/rename` | **0.3.0** | Body: `{ containerId, name }`；名称规则同 `create`（字母/数字开头，其后含 `_ . -`）；名称已被占用返回 `1404`/409 |
 | **热更新** | `POST /api/v1/hosts/{hostId}/containers/update` | **0.3.0** | Body: `{ containerId, restartPolicy?, memoryLimitBytes?, nanoCpus? }`；**只开放真能热改的字段**，镜像/端口/环境变量/挂载/网络**不支持**。省略 = 保持当前值，**传 0 是非法**（见下） |
@@ -899,7 +1002,7 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
 >
 > **默认只列运行中的容器**（与 `docker ps` 一致）；`all: true` 等价于 `docker ps -a`。
 >
-> **日志不做实时跟随**：一次性 HTTP 响应跟着日志流只会把连接挂到容器退出；实时流是 0.7.0
+> **日志不做实时跟随**：一次性 HTTP 响应跟着日志流只会把连接挂到容器退出；实时流是 0.5.0
 > 的 SignalR 推送要解决的事。`tail` 越界（负数或 > 10000）返回 `1000`/400 而**不是**静默截断——
 > 调用方要 100 万行却只拿到 1 万行，会误以为「日志就这么多」。
 
@@ -1031,19 +1134,19 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
 
 ---
 
-### 镜像管理（0.0.10 / 0.4.0 / 0.7.0）
+### 镜像管理（0.0.10 / 0.4.0 / 0.5.0 / 0.7.0）
 
 | 操作 | 路径 | 阶段 | 说明 |
 |------|------|------|------|
 | 获取列表 | `POST /api/v1/hosts/{hostId}/images/list` | 0.0.10 | Body: `{ all?, search?, pageIndex?, pageSize?, sortBy?, sortDir? }`；分页在服务端**内存**完成（Docker 无分页参数），`pageSize` 上限 100 |
-| 拉取 | `POST /api/v1/hosts/{hostId}/images/pull` | 0.0.10 | Body: `{ image, tag?, platform? }`；0.0.10 一次性返回结果，0.7.0 改 SignalR 实时进度 |
+| 拉取 | `POST /api/v1/hosts/{hostId}/images/pull` | 0.0.10 | Body: `{ image, tag?, platform? }`；0.0.10 一次性返回结果，0.5.0 改 SignalR 实时进度 |
 | 删除 | `POST /api/v1/hosts/{hostId}/images/remove` | 0.0.10 | Body: `{ imageId, force? }`；被容器占用的镜像返回 `1404`/409 |
 | **批量删除** | `POST /api/v1/hosts/{hostId}/images/batch-remove` | **0.1.0** | Body: `{ imageIds: string[], force? }`；响应为汇总结果，**部分成功也是 200**（容器侧同形状） |
 | **打标签** | `POST /api/v1/hosts/{hostId}/images/tag` | **0.3.0** | Body: `{ imageId, repository, tag? }`；对应 `docker tag`。`repository` **不得含标签**（否则 `1000`），`tag` 省略或空串取 `latest` |
 | 获取详情 | `POST /api/v1/hosts/{hostId}/images/inspect` | 0.0.10 | Body: `{ imageId }` |
-| **构建镜像** | `POST /api/v1/hosts/{hostId}/images/build` | **0.4.0** | `multipart/form-data`：文件字段 `context`（tar 包，**必须带 filename**）+ 表单字段 `tag` / `dockerfile` / `buildArgs` / `labels` / `target` / `platform` / `noCache`；本版一次性返回（进度推送随 0.7.0 改 SignalR） |
 | **Push 镜像** | `POST /api/v1/hosts/{hostId}/images/push` | **0.4.0** | Body: `{ image, registryId?, platform? }`；`registryId` 省略时按镜像引用里的地址段自动匹配已登记的 Registry |
-| **清理** | `POST /api/v1/hosts/{hostId}/images/prune` | **0.6.0** | Body: `{ danglingOnly? }`；返回回收量；**不是** `system/prune` |
+| **构建镜像** | `POST /api/v1/hosts/{hostId}/images/build` | **0.4.0** | `multipart/form-data`：文件字段 `context`（tar 包，**必须带 filename**）+ 表单字段 `tag` / `dockerfile` / `buildArgs` / `labels` / `target` / `platform` / `noCache`；本版一次性返回（进度推送随 0.5.0 改 SignalR） |
+| **清理** | `POST /api/v1/hosts/{hostId}/images/prune` | **0.7.0** | Body: `{ danglingOnly? }`；返回回收量；**不是** `system/prune` |
 
 #### 查询端点的请求 / 响应形态（0.0.10 已实现）
 
@@ -1142,7 +1245,7 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
 >
 > **0.0.10 的拉取进度只进日志**：拉取层数大时可以到几十秒，一次性 HTTP 响应期间客户端只能干等
 > （前端可以先转圈）。进度同时写进 Serilog（Debug 逐层、Information 记完成）。
-> **SignalR 实时进度推到 0.7.0**——那时列表页与详情页也顺带接上。
+> **SignalR 实时进度推到 0.5.0**——那时列表页与详情页也顺带接上。
 >
 > **拉取完成后额外做一次 inspect**：为了让「拉取成功」的响应直接带上镜像 ID 与大小
 > （验收标准要求），必须在完成后读一次镜像元数据；否则调用方还要再发一次请求才知道拉了什么。
@@ -1246,13 +1349,14 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
 
 ---
 
-### Volume 管理（0.2.0 / 0.6.0 / 0.14.0）
+### Volume 管理（0.2.0 / 0.7.0 / 0.14.0）
 
 | 操作 | 路径 | 说明 |
 |------|------|------|
 | 获取列表 | `POST /api/v1/hosts/{hostId}/volumes/list` | 无 Body |
 | 创建 | `POST /api/v1/hosts/{hostId}/volumes/create` | Body: `{ name, driver?, driverOptions?, labels? }` |
 | 删除 | `POST /api/v1/hosts/{hostId}/volumes/remove` | Body: `{ name, force? }` |
+| **清理** | `POST /api/v1/hosts/{hostId}/volumes/prune` | Body: `{ dryRun? }`；返回**将删除的清单**与回收量。`dryRun=true` 时只列不删 |
 | **批量删除** | `POST /api/v1/hosts/{hostId}/volumes/batch-remove` | Body: `{ names: [...], force? }` |
 | 获取详情 | `POST /api/v1/hosts/{hostId}/volumes/inspect` | Body: `{ name }` |
 
@@ -1286,12 +1390,14 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
 
 ---
 
-### Network 管理（0.2.0 / 0.3.0）
+### Network 管理（0.2.0 / 0.3.0 / 0.7.0）
 
 | 操作 | 路径 | 说明 |
 |------|------|------|
 | 获取列表 | `POST /api/v1/hosts/{hostId}/networks/list` | 无 Body |
 | 创建 | `POST /api/v1/hosts/{hostId}/networks/create` | Body: `{ name, driver?, subnet?, gateway?, ipRange?, attachable?, labels? }` |
+| **接入网络** | `POST /api/v1/hosts/{hostId}/networks/connect` | Body: `{ containerId, networkId }`；容器已接入时**幂等返回成功** |
+| **断开网络** | `POST /api/v1/hosts/{hostId}/networks/disconnect` | Body: `{ containerId, networkId, force? }`；容器未接入时**幂等返回成功** |
 | 删除 | `POST /api/v1/hosts/{hostId}/networks/remove` | Body: `{ networkId }` |
 | 获取详情 | `POST /api/v1/hosts/{hostId}/networks/inspect` | Body: `{ networkId }` |
 
@@ -1351,7 +1457,7 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
 
 ---
 
-### Docker Compose / Stack（0.5.0 / 0.15.0）
+### Docker Compose / Stack（0.10.0 / 0.15.0）
 
 | 操作 | 路径 | 说明 |
 |------|------|------|
@@ -1552,7 +1658,7 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
 
 ---
 
-## SignalR Hub 规范（0.7.0）
+## SignalR Hub 规范（0.5.0）
 
 ### Hub 路径
 
@@ -1602,7 +1708,7 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
 |------|------|------|
 | `OnContainerDied` | `{ containerId, name, exitCode, timestamp }` | 容器异常退出通知 |
 
-### Image Pull 进度频道（0.7.0）
+### Image Pull 进度频道（0.5.0）
 
 为镜像 pull 操作提供临时频道，仅本请求客户端可见：
 
@@ -1633,7 +1739,8 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
 
 - ❌ `POST /api/v1/hosts/{hostId}/containers/exec`（一次性 exec）
 - ❌ `POST /api/v1/hosts/{hostId}/containers/stats`（一次性 stats）
-- ❌ `POST /api/v1/system/prune`（一次清四类）——**资源级 prune 已在 0.6.0 交付**，不做的是「一键全清」
+- ❌ `POST /api/v1/system/prune`（一次清四类）——**资源级 prune 已在 0.7.0 交付**，不做的是「一键全清」
+- ❌ **宿主机级实时指标**（CPU / 内存 / 网络 / 负载）——Docker Engine API 无此端点，需目标主机上的 Agent（1.0.0 之后）
 - ❌ OAuth / OIDC 登录相关 API
 - ❌ 应用模板相关 API、GitOps 从 Git 同步 Stack 的 API
 - ❌ 计划任务 / cron 相关 API
