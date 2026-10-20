@@ -21,6 +21,12 @@ namespace Whalefleet.Application.Networks;
 /// </remarks>
 public sealed class NetworkService
 {
+    /// <summary>列表默认每页条数。</summary>
+    private const int DefaultPageSize = 20;
+
+    /// <summary>列表每页条数上限（与容器 / 镜像 / 数据卷一致）。</summary>
+    private const int MaxPageSize = 100;
+
     private readonly IDockerHostAccessor _accessor;
     private readonly ILogger<NetworkService> _logger;
 
@@ -40,11 +46,12 @@ public sealed class NetworkService
     }
 
     /// <summary>
-    /// 列出主机上的网络。
+    /// 列出主机上的网络（**服务端内存分页**）。
     /// </summary>
     /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">查询请求（分页）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>全部网络。</returns>
+    /// <returns>当前页数据与总数。</returns>
     /// <exception cref="BusinessException">
     /// 主机不可达（<c>1301</c>）、已停用（<c>1302</c>）或 Docker 调用失败（<c>1402</c>）。
     /// </exception>
@@ -55,9 +62,11 @@ public sealed class NetworkService
     /// </remarks>
     public async Task<NetworkListResult> ListAsync(
         string hostId,
+        ListNetworksRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
+        ArgumentNullException.ThrowIfNull(request);
 
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
 
@@ -66,9 +75,21 @@ public sealed class NetworkService
             "网络列表",
             cancellationToken).ConfigureAwait(false);
 
-        _logger.LogDebug("主机 {HostId} 网络列表：共 {Count} 个", hostId, networks.Count);
+        var pageIndex = Math.Max(request.PageIndex ?? 0, 0);
+        var pageSize = Math.Clamp(request.PageSize ?? DefaultPageSize, 1, MaxPageSize);
 
-        return new NetworkListResult([.. networks.Select(MapSummary)]);
+        _logger.LogDebug(
+            "主机 {HostId} 网络列表：共 {Total} 个，返回第 {PageIndex} 页（每页 {PageSize}）",
+            hostId,
+            networks.Count,
+            pageIndex,
+            pageSize);
+
+        return new NetworkListResult(
+            [.. networks.Skip(pageIndex * pageSize).Take(pageSize).Select(MapSummary)],
+            networks.Count,
+            pageIndex,
+            pageSize);
     }
 
     /// <summary>

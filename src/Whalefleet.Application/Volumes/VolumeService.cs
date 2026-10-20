@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net.Sockets;
 using Docker.DotNet;
 using Docker.DotNet.Models;
 using Whalefleet.Application.Abstractions;
@@ -15,51 +16,80 @@ namespace Whalefleet.Application.Volumes;
 /// <para><b>主机校验不在这里</b>：主机是否存在（<c>1300</c>）与可见性（<c>1501</c>）由
 /// Api 层的 <c>CurrentHostMiddleware</c> 在进入本服务前完成。</para>
 /// <para><b>外部响应按可空处理</b>：SDK 的 <c>VolumeResponse</c> 把字段声明为非空，
-/// 但它们的值来自另一个进程的 JSON。老版本守护进程不返回 <c>UsageData</c>，
-/// <c>CreatedAt</c> 也可能为空串。所有映射都按可空写，缺失就退化成空值 / 0 而不是崩掉——
-/// 否则会变成 <c>9999</c>/500，而那明明只是「对端没给这个字段」。</para>
+/// 但它们的值来自另一个进程的 JSON。<c>CreatedAt</c> 可能为空串，用量则要从
+/// <c>GET /system/df</c> 另取（<c>GET /volumes</c> 不返回它）。所有映射都按可空写，
+/// 缺失就退化成空值而不是崩掉——否则会变成 <c>9999</c>/500，而那明明只是「对端没给这个字段」。</para>
 /// <para><b>日志纪律</b>：只记卷名与条数，<b>不</b>记 <c>Options</c>——
 /// <c>local</c> 驱动的 <c>device</c> 常指向含业务含义的目录结构，
 /// 而第三方驱动（如某些加密卷插件）的选项里可能含口令。</para>
 /// </remarks>
 public sealed class VolumeService
 {
+    /// <summary>列表默认每页条数。</summary>
+    private const int DefaultPageSize = 20;
+
+    /// <summary>列表每页条数上限（与容器 / 镜像一致）。</summary>
+    private const int MaxPageSize = 100;
+
+    /// <summary><c>GET /system/df</c> 的 <c>type</c> 过滤值：只要卷，跳过镜像层统计。</summary>
+    private const string VolumeUsageType = "volume";
+
+    /// <summary>「用量未知」：查询失败时的返回值。<b>不是</b>「用量为 0」。</summary>
+    private static readonly IReadOnlyDictionary<string, UsageData> EmptyUsage =
+        new Dictionary<string, UsageData>(0, StringComparer.Ordinal);
+
     private readonly IDockerHostAccessor _accessor;
+    private readonly VolumeUsageCache _usageCache;
     private readonly ILogger<VolumeService> _logger;
 
     /// <summary>
     /// 初始化数据卷用例。
     /// </summary>
     /// <param name="accessor">主机访问器（解析主机并取得 Docker 客户端）。</param>
+    /// <param name="usageCache">卷用量短时缓存（单例）。</param>
     /// <param name="logger">日志。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
-    public VolumeService(IDockerHostAccessor accessor, ILogger<VolumeService> logger)
+    public VolumeService(
+        IDockerHostAccessor accessor,
+        VolumeUsageCache usageCache,
+        ILogger<VolumeService> logger)
     {
         ArgumentNullException.ThrowIfNull(accessor);
+        ArgumentNullException.ThrowIfNull(usageCache);
         ArgumentNullException.ThrowIfNull(logger);
 
         _accessor = accessor;
+        _usageCache = usageCache;
         _logger = logger;
     }
 
     /// <summary>
-    /// 列出主机上的数据卷。
+    /// 列出主机上的数据卷（**服务端内存分页**，附带占用与引用数）。
     /// </summary>
     /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">查询请求（分页）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>全部数据卷与守护进程给出的告警。</returns>
+    /// <returns>当前页数据、总数与守护进程给出的告警。</returns>
     /// <exception cref="BusinessException">
     /// 主机不可达（<c>1301</c>）、已停用（<c>1302</c>）或 Docker 调用失败（<c>1402</c>）。
     /// </exception>
     /// <remarks>
-    /// <b>顺序沿用守护进程的返回顺序</b>（Docker 按名字升序返回）：
+    /// <para><b>顺序沿用守护进程的返回顺序</b>（Docker 按名字升序返回）：
     /// 额外重排只会让「翻页时看到的东西变了」更难解释，而排序能力统一归 <c>0.16.0</c>。
+    /// 排序若要做，必须发生在分页<b>之前</b>，否则 <c>total</c> 不变而每页内容错位。</para>
+    /// <para><b>用量必须另查一次 <c>GET /system/df</c></b>：<c>GET /volumes</c> 的每一项里
+    /// **没有 <c>UsageData</c>**（实测确认，不是版本问题），拿它算占用 / 引用数永远是 0。
+    /// 带 <c>type=volume</c> 过滤后只统计卷，不会去扫镜像层。</para>
+    /// <para><b>用量查询失败只降级、不整单失败</b>：列表本身是好的，为了两个附加字段
+    /// 把「能看到卷名」变成 500 不划算；此时用量给 <c>null</c>，界面显示「—」。</para>
     /// </remarks>
     public async Task<VolumeListResult> ListAsync(
         string hostId,
+        ListVolumesRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
+        ArgumentNullException.ThrowIfNull(request);
 
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
 
@@ -71,13 +101,104 @@ public sealed class VolumeService
         var volumes = response.Volumes ?? [];
         var warnings = response.Warnings ?? [];
 
+        var usage = await GetUsageAsync(client, hostId, cancellationToken).ConfigureAwait(false);
+
+        var pageIndex = Math.Max(request.PageIndex ?? 0, 0);
+        var pageSize = Math.Clamp(request.PageSize ?? DefaultPageSize, 1, MaxPageSize);
+
         _logger.LogDebug(
-            "主机 {HostId} 数据卷列表：共 {Count} 个，告警 {WarningCount} 条",
+            "主机 {HostId} 数据卷列表：共 {Total} 个（用量 {UsageCount} 项，告警 {WarningCount} 条），返回第 {PageIndex} 页（每页 {PageSize}）",
             hostId,
             volumes.Count,
-            warnings.Count);
+            usage.Count,
+            warnings.Count,
+            pageIndex,
+            pageSize);
 
-        return new VolumeListResult([.. volumes.Select(MapSummary)], [.. warnings]);
+        return new VolumeListResult(
+            [.. volumes
+                .Skip(pageIndex * pageSize)
+                .Take(pageSize)
+                .Select(volume => MapSummary(volume, usage.GetValueOrDefault(volume.Name ?? string.Empty)))],
+            volumes.Count,
+            pageIndex,
+            pageSize,
+            [.. warnings]);
+    }
+
+    /// <summary>
+    /// 查询各卷的用量（占用字节数与引用它的容器数）。
+    /// </summary>
+    /// <param name="client">该主机的 Docker 客户端。</param>
+    /// <param name="hostId">主机标识（仅用于日志）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>卷名 → 用量；查询失败时为空字典（表示「不知道」，与「0」不同）。</returns>
+    /// <remarks>
+    /// <para><b>为什么不是列表接口</b>：<c>GET /volumes</c> 返回的每一项里没有 <c>UsageData</c>，
+    /// 用量只出现在 <c>GET /system/df</c>。本仓库早期按「列表接口在 1.42+ 会返回用量」
+    /// 实现，结果真实环境里占用与引用数一直空着。</para>
+    /// <para><b><c>type=volume</c> 过滤不可省</b>：不带过滤时守护进程会顺带计算镜像层大小，
+    /// 在有几十 GB 镜像的机器上要等好几秒。</para>
+    /// <para><b>结果走 30 秒缓存</b>（见 <see cref="VolumeUsageCache"/>）：拿一次就要几秒，
+    /// 而翻页会反复调这个列表接口——不缓存的话分页带来的快会被它整个吃掉。</para>
+    /// <para><b>只吞「查不到用量」这一类异常</b>：主机不可达、调用方取消都会照常上抛——
+    /// 前者会让列表调用本身也失败，后者是请求已中止。失败<b>不写缓存</b>：
+    /// 一次瞬时抖动不该变成半分钟的空白列。</para>
+    /// </remarks>
+    private async Task<IReadOnlyDictionary<string, UsageData>> GetUsageAsync(
+        IDockerClient client,
+        string hostId,
+        CancellationToken cancellationToken)
+    {
+        if (_usageCache.TryGet(hostId, out var cached))
+        {
+            return cached;
+        }
+
+        try
+        {
+            var response = await client.System.GetDataUsageInfoAsync(
+                new SytemDataUsageInfoParameters { Type = [VolumeUsageType] },
+                cancellationToken).ConfigureAwait(false);
+
+            var items = response.VolumeUsage?.Items;
+
+            if (items is null)
+            {
+                // 老版守护进程的 /system/df 只有旧的 Volumes 数组（无分组用量），
+                // SDK 模型里没有那个属性 → 拿不到就是拿不到，不能当成「都是 0」。
+                return EmptyUsage;
+            }
+
+            var usage = items
+                .Where(item => item.Name is not null && item.UsageData is not null)
+                .GroupBy(item => item.Name!, StringComparer.Ordinal)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Last().UsageData!,
+                    StringComparer.Ordinal);
+
+            _usageCache.Set(hostId, usage);
+
+            return usage;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is DockerApiException
+            or HttpRequestException
+            or SocketException
+            or IOException
+            or TimeoutException)
+        {
+            _logger.LogWarning(
+                exception,
+                "主机 {HostId} 数据卷用量查询失败：占用与引用数将留空（列表本身仍返回）",
+                hostId);
+
+            return EmptyUsage;
+        }
     }
 
     /// <summary>
@@ -167,7 +288,9 @@ public sealed class VolumeService
             name,
             string.IsNullOrEmpty(driver) ? "默认" : driver);
 
-        return MapSummary(volume);
+        // 创建响应里没有用量字段：新建的卷要等下次列表（或 system df）才有大小与引用数。
+        // 传 null 而不是 0，界面因此显示「—」而不是伪造的「0 B」。
+        return MapSummary(volume, volume.UsageData);
     }
 
     /// <summary>
@@ -182,8 +305,8 @@ public sealed class VolumeService
     /// </exception>
     /// <remarks>
     /// <para><b>不做多余的 inspect</b>：与网络删除不同，这里故意不预读一次。
-    /// 卷的占用信息在列表里拿不到（<c>UsageData.RefCount</c> 也可能缺失），
-    /// 预读一遍并不能给出「谁在用」，而错误消息里 Docker 已经把容器 ID 带出来了。
+    /// 列表里虽已带回 <c>RefCount</c>，但它只说明「有没有人引用」，
+    /// 说清「是谁在引用」还得再查容器——而错误消息里 Docker 已经把容器 ID 带出来了。
     /// 多一次往返换来一句仍然不够用的提示，不值。</para>
     /// <para><b><c>force</c> 只能让「卷不存在」变成成功</b>，并不能删掉仍被引用的卷
     /// （已实测）。因此本服务不把它包装成「强制」语义，也不为它做额外处理——
@@ -361,16 +484,17 @@ public sealed class VolumeService
     /// 把守护进程返回的卷对象映射成列表项。
     /// </summary>
     /// <param name="volume">卷对象。</param>
+    /// <param name="usage">该卷的用量；<see langword="null"/> 表示查不到（显示成「—」而不是 0）。</param>
     /// <returns>列表项。</returns>
-    private static VolumeSummary MapSummary(VolumeResponse volume) =>
+    private static VolumeSummary MapSummary(VolumeResponse volume, UsageData? usage) =>
         new(
             volume.Name ?? string.Empty,
             volume.Driver ?? string.Empty,
             volume.Mountpoint ?? string.Empty,
             volume.Scope ?? string.Empty,
             ParseCreatedAt(volume.CreatedAt),
-            volume.UsageData?.Size ?? 0L,
-            volume.UsageData?.RefCount ?? 0L,
+            usage?.Size,
+            usage?.RefCount,
             Copy(volume.Labels));
 
     /// <summary>

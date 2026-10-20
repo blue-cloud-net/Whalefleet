@@ -13,8 +13,8 @@ namespace Whalefleet.Api.Controllers;
 /// 由 <c>CurrentHostMiddleware</c> 在进入动作方法之前完成，因此控制器里看不到任何主机校验代码。</para>
 /// <para><b>失败路径全在下层</b>：网络标识非法（<c>1000</c>）、网络不存在（<c>1401</c>）、
 /// 同名或子网重叠 / 仍有容器接入 / 内置网络（均为 <c>1404</c>）都由 <c>NetworkService</c> 决定。</para>
-/// <para><b>列表端点不收请求体</b>：理由与数据卷一致——分页与筛选是四类资源<b>统一</b>的改动
-/// （<c>0.16.0</c>），提前做一半只会让接口返工。</para>
+/// <para><b>列表端点收一个只含分页字段的请求体</b>：<c>{ pageIndex?, pageSize? }</c>，
+/// 缺字段按「第 0 页、每页 20 条」处理。筛选与排序仍归 <c>0.16.0</c>。</para>
 /// </remarks>
 [ApiController]
 [Route("api/v1/hosts/{hostId}/networks")]
@@ -39,8 +39,9 @@ public sealed class NetworksController : ControllerBase
     /// 列出主机上的网络。
     /// </summary>
     /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">查询请求（分页）；省略按第 0 页、每页 20 条。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>统一响应，<c>data</c> 为全部网络。</returns>
+    /// <returns>统一响应，<c>data</c> 为当前页数据与总数。</returns>
     /// <response code="200">查询成功。</response>
     /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
     /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
@@ -54,9 +55,12 @@ public sealed class NetworksController : ControllerBase
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status502BadGateway)]
     public async Task<IActionResult> ListAsync(
         string hostId,
+        [FromBody] ListNetworksRequest? request,
         CancellationToken cancellationToken)
     {
-        var result = await _networks.ListAsync(hostId, cancellationToken).ConfigureAwait(false);
+        var result = await _networks
+            .ListAsync(hostId, request ?? new ListNetworksRequest(), cancellationToken)
+            .ConfigureAwait(false);
 
         return this.Ok(ApiResults.Ok(result));
     }

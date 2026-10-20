@@ -112,11 +112,18 @@ public sealed record NetworkContainerEndpoint(
 /// <summary>
 /// 网络列表结果。
 /// </summary>
-/// <param name="Items">全部网络（<b>不分页</b>）。</param>
+/// <param name="Items">当前页的网络。</param>
+/// <param name="Total">分页前的总条数。</param>
+/// <param name="PageIndex">服务端实际使用的页码（从 0 开始，负数已按 0 处理）。</param>
+/// <param name="PageSize">服务端实际使用的每页条数（**已夹紧**：请求 5000 会回 100）。</param>
 /// <remarks>
-/// 与 <c>VolumeListResult</c> 同一口径：单台主机上的网络是个位数到几十条，
-/// 条目又只有几十字节，不值得切分；分页与筛选统一归 <c>0.16.0</c>。
-/// 与数据卷不同的是<b>这里没有 <c>Warnings</c></b>——
-/// Docker 的 <c>GET /networks</c> 响应里没有 <c>warnings</c> 字段，硬加一个只能是永远为空。
+/// <para>与 <c>VolumeListResult</c> 同一口径：Docker 没有分页参数，切片在服务端内存完成；
+/// <c>pageSize</c> 默认 20、上限 100，超出夹紧。</para>
+/// <para>与数据卷不同的是<b>这里没有 <c>Warnings</c></b>——
+/// Docker 的 <c>GET /networks</c> 响应里没有 <c>warnings</c> 字段，硬加一个只能是永远为空。</para>
 /// </remarks>
-public sealed record NetworkListResult(IReadOnlyList<NetworkSummary> Items);
+public sealed record NetworkListResult(
+    IReadOnlyList<NetworkSummary> Items,
+    int Total,
+    int PageIndex,
+    int PageSize);

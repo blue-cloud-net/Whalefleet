@@ -73,6 +73,10 @@ public static class ApplicationServiceCollectionExtensions
         // Docker 客户端本身的复用由 Singleton 的客户端池负责。
         services.AddScoped<VolumeService>();
 
+        // 卷用量的短时缓存（见 VolumeUsageCache 的说明）：必须 **Singleton**——
+        // 它的全部价值就是在多个请求之间复用一次几秒钟的 /system/df。
+        services.AddSingleton<VolumeUsageCache>();
+
         // 网络用例（0.2.0）。Scoped：同上。
         services.AddScoped<NetworkService>();
 

@@ -169,6 +169,37 @@ public class VolumeEndpointsTests : IAsyncLifetime
         // 卷侧没有内置卷，但绝大多数镜像层会带出至少一个匿名卷 —— 不作断言，
         // 只确保「没有重复名字」，那是映射层最容易犯的错。
         result.Items.Select(item => item.Name).Should().OnlyHaveUniqueItems();
+
+        // 分页字段必须回带：界面用 `total` 算页数，用 `pageIndex` / `pageSize` 校准页码。
+        result.Total.Should().BeGreaterThanOrEqualTo(result.Items.Count);
+        result.PageIndex.Should().Be(0);
+        result.PageSize.Should().Be(20);
+        result.Items.Count.Should().BeLessThanOrEqualTo(result.PageSize);
+    }
+
+    [DockerFact]
+    public async Task 列出数据卷_分页参数生效且页码越界返回空页()
+    {
+        using var client = await this.LoginAsync();
+
+        using var first = await client.PostAsJsonAsync(
+            $"/api/v1/hosts/{_localHost}/volumes/list",
+            new { pageIndex = 0, pageSize = 1 });
+
+        var firstPage = await ReadDataAsync<VolumeListPayload>(first);
+
+        firstPage.PageSize.Should().Be(1);
+        firstPage.Items.Should().HaveCount(1);
+
+        using var beyond = await client.PostAsJsonAsync(
+            $"/api/v1/hosts/{_localHost}/volumes/list",
+            new { pageIndex = 100_000, pageSize = 100 });
+
+        var beyondPage = await ReadDataAsync<VolumeListPayload>(beyond);
+
+        // 越界页返回「空的 items + 不变的 total」：界面据此停在页脚而不是整页报错
+        beyondPage.Items.Should().BeEmpty();
+        beyondPage.Total.Should().Be(firstPage.Total);
     }
 
     [DockerImageFact]
@@ -784,6 +815,9 @@ public class VolumeEndpointsTests : IAsyncLifetime
 
     private sealed record VolumeListPayload(
         List<VolumeSummaryPayload> Items,
+        int Total,
+        int PageIndex,
+        int PageSize,
         List<string> Warnings);
 
     private sealed record VolumeSummaryPayload(
@@ -791,8 +825,9 @@ public class VolumeEndpointsTests : IAsyncLifetime
         string Driver,
         string Mountpoint,
         string Scope,
-        long Size,
-        long RefCount,
+        // ⚠️ 可空：守护进程不报用量时后端给 null（不是 0）
+        long? Size,
+        long? RefCount,
         Dictionary<string, string> Labels);
 
     private sealed record VolumeDetailPayload(

@@ -15,8 +15,8 @@ namespace Whalefleet.Api.Controllers;
 /// <para><b>失败路径全在下层</b>：卷名非法（<c>1000</c>）、卷不存在（<c>1401</c>）、
 /// 仍被容器引用（<c>1404</c>）都由 <c>VolumeService</c> + <c>DockerErrorTranslator</c> 决定，
 /// 控制器只负责「取输入 → 调用用例 → 包装成功响应」。</para>
-/// <para><b>列表端点不收请求体</b>：单台主机上的卷数量少、条目也小，
-/// 而分页与筛选是四类资源<b>统一</b>的改动（<c>0.16.0</c>），提前做一半只会让接口返工。</para>
+/// <para><b>列表端点收一个只含分页字段的请求体</b>：<c>{ pageIndex?, pageSize? }</c>，
+/// 缺字段按「第 0 页、每页 20 条」处理。筛选与排序仍归 <c>0.16.0</c>。</para>
 /// </remarks>
 [ApiController]
 [Route("api/v1/hosts/{hostId}/volumes")]
@@ -41,8 +41,9 @@ public sealed class VolumesController : ControllerBase
     /// 列出主机上的数据卷。
     /// </summary>
     /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">查询请求（分页）；省略按第 0 页、每页 20 条。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>统一响应，<c>data</c> 为全部卷与守护进程给出的告警。</returns>
+    /// <returns>统一响应，<c>data</c> 为当前页数据、总数与守护进程给出的告警。</returns>
     /// <response code="200">查询成功。</response>
     /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
     /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
@@ -56,9 +57,12 @@ public sealed class VolumesController : ControllerBase
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status502BadGateway)]
     public async Task<IActionResult> ListAsync(
         string hostId,
+        [FromBody] ListVolumesRequest? request,
         CancellationToken cancellationToken)
     {
-        var result = await _volumes.ListAsync(hostId, cancellationToken).ConfigureAwait(false);
+        var result = await _volumes
+            .ListAsync(hostId, request ?? new ListVolumesRequest(), cancellationToken)
+            .ConfigureAwait(false);
 
         return this.Ok(ApiResults.Ok(result));
     }

@@ -4,12 +4,16 @@ namespace Whalefleet.Application.Volumes;
 /// 数据卷列表请求。
 /// </summary>
 /// <remarks>
-/// <b>刻意为空</b>：列表端点不接受请求体（见 <see cref="VolumeListResult"/> 的分页说明）。
-/// 留一个空类型而不是直接删掉，是为了让控制器与前端的接口签名保持可读，
-/// 也为 <c>0.16.0</c> 接入筛选参数时不必改路由或方法名。
+/// <b>字段一律可空</b>：请求体由客户端决定，缺字段是常态（旧前端、手写 <c>curl</c> 都可能只发 <c>{}</c>）。
+/// 校验与夹紧统一在 <see cref="VolumeService.ListAsync"/> 里做。
 /// </remarks>
 public sealed record ListVolumesRequest
 {
+    /// <summary>页码（从 0 开始）；省略时按 0 处理，负数同样按 0 处理。</summary>
+    public int? PageIndex { get; init; }
+
+    /// <summary>每页条数；省略时用默认值（20），超出上限（100）会被夹紧。</summary>
+    public int? PageSize { get; init; }
 }
 
 /// <summary>

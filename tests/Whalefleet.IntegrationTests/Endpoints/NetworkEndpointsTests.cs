@@ -167,6 +167,38 @@ public class NetworkEndpointsTests : IAsyncLifetime
 
         // 名字唯一：重复会让界面上出现两行同名、只有 ID 能分辨的网络。
         result.Items.Select(item => item.Name).Should().OnlyHaveUniqueItems();
+
+        // 分页字段必须回带：界面用 `total` 算页数，用 `pageIndex` / `pageSize` 校准页码。
+        // 少了它们，前端只能拿 `items.length` 顶替——翻页后页脚就会显示成「共 20 个」。
+        result.Total.Should().BeGreaterThanOrEqualTo(result.Items.Count);
+        result.PageIndex.Should().Be(0);
+        result.PageSize.Should().Be(20);
+        result.Items.Count.Should().BeLessThanOrEqualTo(result.PageSize);
+    }
+
+    [DockerFact]
+    public async Task 列出网络_分页参数生效且页码越界返回空页()
+    {
+        using var client = await this.LoginAsync();
+
+        using var first = await client.PostAsJsonAsync(
+            $"/api/v1/hosts/{_localHost}/networks/list",
+            new { pageIndex = 0, pageSize = 1 });
+
+        var firstPage = await ReadDataAsync<NetworkListPayload>(first);
+
+        firstPage.PageSize.Should().Be(1);
+        firstPage.Items.Should().HaveCount(1);
+
+        using var beyond = await client.PostAsJsonAsync(
+            $"/api/v1/hosts/{_localHost}/networks/list",
+            new { pageIndex = 10_000, pageSize = 100 });
+
+        var beyondPage = await ReadDataAsync<NetworkListPayload>(beyond);
+
+        // 越界页必须是「空的 items + 不变的 total」，而不是 404 或错误响应
+        beyondPage.Items.Should().BeEmpty();
+        beyondPage.Total.Should().Be(firstPage.Total);
     }
 
     [DockerFact]
@@ -367,7 +399,9 @@ public class NetworkEndpointsTests : IAsyncLifetime
             var listedBody = await ReadAsync(
                 await client.PostAsJsonAsync(
                     $"/api/v1/hosts/{_localHost}/networks/list",
-                    new { }));
+                    // ⚠️ 必须显式要大页：默认每页 20 条，网络多的机器上新创建的那条
+                    // 完全可能不在第 0 页——那会让本用例挂在与被测行为无关的地方。
+                    new { pageSize = 100 }));
 
             foreach (var item in listedBody.GetProperty("data").GetProperty("items").EnumerateArray())
             {
@@ -630,7 +664,11 @@ public class NetworkEndpointsTests : IAsyncLifetime
 
     private sealed record CreatedPayload(string ContainerId, List<string> Warnings);
 
-    private sealed record NetworkListPayload(List<NetworkSummaryPayload> Items);
+    private sealed record NetworkListPayload(
+        List<NetworkSummaryPayload> Items,
+        int Total,
+        int PageIndex,
+        int PageSize);
 
     private sealed record NetworkSummaryPayload(
         string Id,

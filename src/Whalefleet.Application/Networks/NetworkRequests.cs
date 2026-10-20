@@ -4,12 +4,16 @@ namespace Whalefleet.Application.Networks;
 /// 网络列表请求。
 /// </summary>
 /// <remarks>
-/// <b>刻意为空</b>：列表端点不接受请求体（见 <see cref="NetworkListResult"/>）。
-/// 留一个空类型而不是删掉，是为了让控制器签名可读，
-/// 也为 <c>0.16.0</c> 接入 <c>search</c> / <c>sortBy</c> 时不必改路由或方法名。
+/// <b>字段一律可空</b>：请求体由客户端决定，缺字段是常态。校验与夹紧统一在
+/// <see cref="NetworkService.ListAsync"/> 里做。
 /// </remarks>
 public sealed record ListNetworksRequest
 {
+    /// <summary>页码（从 0 开始）；省略时按 0 处理，负数同样按 0 处理。</summary>
+    public int? PageIndex { get; init; }
+
+    /// <summary>每页条数；省略时用默认值（20），超出上限（100）会被夹紧。</summary>
+    public int? PageSize { get; init; }
 }
 
 /// <summary>
