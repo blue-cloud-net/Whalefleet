@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { listHostGroups } from '@/api/host-group'
-import { listHosts } from '@/api/host'
+import { getHostOverview, listHosts } from '@/api/host'
 import type { HostGroup, HostInfo, HostOverview } from '@/types/api'
 
 /**
@@ -40,7 +40,9 @@ export const useHostStore = defineStore('host', {
     /** 最近一次成功同步时间（ISO 字符串），供页面显示「数据更新于…」 */
     lastSyncedAt: null as string | null,
     /** `ensureLoaded()` 的在途 Promise，用于并发去重 */
-    _inflight: null as Promise<void> | null
+    _inflight: null as Promise<void> | null,
+    /** `loadHostDetails()` 的在途 Promise，用于并发去重 */
+    _detailsInflight: null as Promise<void> | null
   }),
   getters: {
     /** 当前主机；全局作用域返回 null（不再回退到 local，避免"看起来像选中了某台机器"） */
@@ -108,11 +110,63 @@ export const useHostStore = defineStore('host', {
         this.hosts = hosts
         this.groups = groups
         this.lastSyncedAt = new Date().toISOString()
+
+        // 版本 / 计数不阻塞首屏：列表已够画出主机行，这几项到位后再各自补上。
+        // 刻意**不** await——否则守卫要多等 N 次重量调用，深链首屏白屏时间翻倍。
+        void this.loadHostDetails()
       } catch (err) {
         this.error = err instanceof Error ? err.message : String(err)
       } finally {
         this.loading = false
       }
+    },
+
+    /**
+     * 补齐全在线主机的聚合信息（`version` / `counts` / `startedAt`）并合并进列表。
+     *
+     * **为什么需要这一步**：列表端点刻意不带这三项——每台主机要额外四次守护进程调用，
+     * 主机一多列表就会明显变慢甚至超时。它们只能走 `POST /hosts/{hostId}/overview`。
+     * 此前前端只定义了 `getHostOverview()` 却**没有任何调用方**，于是总览卡片与主机落地页的
+     * 四类资源计数恒为「—」、版本行整行消失——看起来像后端没实现，其实是最后一段没接上。
+     *
+     * 语义：
+     * - **只问在线主机**：离线主机刚被列表探测判过，再问一次只是多等一次超时；
+     * - **单台失败不影响其他**（`allSettled`）：一台主机连不上不该让整页计数全空；
+     * - **只覆盖拿到的字段**：接口回 `null`（如离线）时保留列表里的原值，不把已知信息抹掉。
+     */
+    async loadHostDetails(): Promise<void> {
+      if (this._detailsInflight) return this._detailsInflight
+
+      const targets = this.hosts.filter((h) => h.status === 'online').map((h) => h.id)
+      if (targets.length === 0) return
+
+      const pending = (async () => {
+        const results = await Promise.allSettled(targets.map((id) => getHostOverview(id)))
+
+        const details = new Map<string, HostOverview>()
+        for (const [index, result] of results.entries()) {
+          const id = targets[index]
+          if (id !== undefined && result.status === 'fulfilled') details.set(id, result.value)
+        }
+
+        // 只更新仍在列表里的主机：这批请求返回前列表可能已被重新拉取过
+        this.hosts = this.hosts.map((host) => {
+          const detail = details.get(host.id)
+          if (!detail) return host
+
+          return {
+            ...host,
+            version: detail.version ?? host.version,
+            counts: detail.counts ?? host.counts,
+            startedAt: detail.startedAt ?? host.startedAt
+          }
+        })
+      })().finally(() => {
+        this._detailsInflight = null
+      })
+
+      this._detailsInflight = pending
+      return pending
     },
 
     /**

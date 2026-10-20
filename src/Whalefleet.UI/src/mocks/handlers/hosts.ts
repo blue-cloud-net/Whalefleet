@@ -1,8 +1,20 @@
 import { http, HttpResponse, delay } from 'msw'
 import { ErrorCode, fail, httpStatusOf, ok } from '../envelope'
 import { delayFor, hostsFor, type MockScenario } from '../scenarios'
-import { MOCK_HOST_GROUPS } from '../data/hosts'
-import type { AdminHostSummary, HostGroup } from '@/types/api'
+import { MOCK_HOST_GROUPS, MOCK_HOST_COUNTS } from '../data/hosts'
+import type { AdminHostSummary, HostGroup, HostOverview } from '@/types/api'
+
+/**
+ * 列表投影：与后端 `HostQueryService.ListVisibleAsync` 一致。
+ *
+ * **不含 `version` / `counts` / `startedAt`**——它们要每台主机额外调守护进程，
+ * 由 `POST /hosts/{hostId}/overview` 按需取。mock 若在列表里带上，
+ * 就会出现「mock 里一屏齐全、接上真后端四类计数全是 —」的假验收。
+ */
+function listProjection(host: HostOverview): HostOverview {
+  const { version: _version, counts: _counts, startedAt: _startedAt, ...rest } = host
+  return rest
+}
 
 /**
  * 主机相关端点 mock。
@@ -90,7 +102,7 @@ export function hostHandlers(scenario: () => MockScenario) {
       })
     }
 
-    return HttpResponse.json(ok(visibleHosts()))
+    return HttpResponse.json(ok(visibleHosts().map(listProjection)))
   }
 
   /** 管理端点的主机（主键 id + reachable，形状与展示列表不同）。 */
@@ -186,7 +198,8 @@ export function hostHandlers(scenario: () => MockScenario) {
         return HttpResponse.json(ok({ ...host, version: undefined, counts: undefined }))
       }
 
-      return HttpResponse.json(ok(host))
+      // 在线主机：计数只在概览端点下发（后端是实时问守护进程），列表永远不给
+      return HttpResponse.json(ok({ ...host, counts: host.counts ?? MOCK_HOST_COUNTS[host.id] }))
     }),
 
     // ===== 分组：读（所有已登录用户，总览页要用）=====

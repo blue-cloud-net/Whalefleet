@@ -1,10 +1,19 @@
-import { describe, expect, it, beforeEach } from 'vitest'
+import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import { getHostOverview } from '@/api/host'
 import { useHostStore } from '../src/stores/host'
 import { MOCK_HOST_GROUPS, MOCK_HOSTS_DEFAULT } from '../src/mocks/data/hosts'
 import type { HostOverview } from '../src/types/api'
 
+vi.mock('@/api/host', () => ({
+  listHosts: vi.fn(),
+  getHostOverview: vi.fn()
+}))
+
+const mockedOverview = vi.mocked(getHostOverview)
+
 beforeEach(() => {
+  vi.clearAllMocks()
   setActivePinia(createPinia())
   // 主机与分组都不再由 store 内置（0.0.13 起分组也来自后端），因此测试需显式铺数据。
   // 两者都要铺，否则 groupedHosts 恒为空。
@@ -89,5 +98,59 @@ describe('主机 store — 分组聚合', () => {
     const host = useHostStore()
     host.setHosts([])
     expect(host.groupedHosts).toEqual([])
+  })
+})
+
+describe('主机 store — 聚合信息（version / counts）', () => {
+  /** 造一份最小可用的概览响应（真实后端在列表里不返回这些字段） */
+  const overviewOf = (id: string, patch: Partial<HostOverview> = {}): HostOverview => ({
+    id,
+    name: id,
+    type: 'tcp',
+    endpoint: `tcp://${id}:2375`,
+    enabled: true,
+    status: 'online',
+    ...patch
+  })
+
+  const countsOf = (containers: number) => ({ containers, images: 3, volumes: 2, networks: 1 })
+
+  it('只向在线主机要聚合信息，并把计数与版本合并进列表', async () => {
+    const host = useHostStore()
+    mockedOverview.mockImplementation(async (id) =>
+      overviewOf(id, { counts: countsOf(7), version: { version: '28.0.0' } })
+    )
+
+    await host.loadHostDetails()
+
+    // staging-01 离线：刚被列表探测判过，再问一次只是白等一次超时
+    expect(mockedOverview.mock.calls.map(([id]) => id)).toEqual(['local', 'prod-01'])
+    expect(host.hosts.find((h) => h.id === 'local')?.counts?.containers).toBe(7)
+    expect(host.hosts.find((h) => h.id === 'local')?.version?.version).toBe('28.0.0')
+    expect(host.hosts.find((h) => h.id === 'staging-01')?.counts).toBeUndefined()
+  })
+
+  it('单台失败不影响其他主机：失败的那台保留缺失态', async () => {
+    const host = useHostStore()
+    mockedOverview.mockImplementation(async (id) => {
+      if (id === 'local') throw new Error('socket 不可达')
+      return overviewOf(id, { counts: countsOf(4) })
+    })
+
+    await expect(host.loadHostDetails()).resolves.toBeUndefined()
+
+    expect(host.hosts.find((h) => h.id === 'local')?.counts).toBeUndefined()
+    expect(host.hosts.find((h) => h.id === 'prod-01')?.counts?.containers).toBe(4)
+  })
+
+  it('接口未回字段时不抹掉列表已有的值', async () => {
+    const host = useHostStore()
+    const existing = MOCK_HOSTS_DEFAULT[0] as HostOverview
+    host.setHosts([{ ...existing, counts: countsOf(11) }])
+    mockedOverview.mockResolvedValue(overviewOf('local'))
+
+    await host.loadHostDetails()
+
+    expect(host.hosts[0]?.counts?.containers).toBe(11)
   })
 })

@@ -17,7 +17,10 @@ const router = useRouter()
 const { t } = useI18n()
 const auth = useAuthStore()
 
-/** 资源计数占位：后端聚合接口（0.0.8）就绪前显示「—」 */
+/**
+ * 资源计数：由 store 的 `loadHostDetails()` 从单台概览端点（`POST /hosts/{hostId}/overview`）补齐。
+ * 列表端点刻意不带计数，因此刚进页面时短暂为空 → 显示「—」。
+ */
 const stats = computed(() => [
   { key: 'containers', label: t('nav.containers'), icon: 'i-carbon-container-software' },
   { key: 'images', label: t('nav.images'), icon: 'i-carbon-image' },

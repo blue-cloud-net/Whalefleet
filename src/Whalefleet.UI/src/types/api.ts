@@ -142,7 +142,7 @@ export interface HostInfo {
 /** 主机连通状态（0.0.8 后端 /api/v1/host/list 返回前为本地占位） */
 export type HostStatus = 'online' | 'offline' | 'unknown'
 
-/** 单台主机的资源计数（后端聚合接口就绪前为 undefined，UI 显示占位） */
+/** 单台主机的资源计数（列表端点不给；由 `getHostOverview()` 提供，未取到或主机离线时缺省） */
 export interface HostCounts {
   containers: number
   images: number
@@ -193,7 +193,10 @@ export interface HostVersion {
 
 /**
  * 总览页用的主机视图：在 HostInfo 基础上补充连通状态、资源计数、版本与分组。
- * 后端聚合接口（0.0.8）就绪前，仅 status / counts / version / startedAt 可能缺失。
+ *
+ * ⚠️ **列表端点只给 `status`**：`counts` / `version` / `startedAt` 要每台主机额外调守护进程，
+ * 由 `POST /hosts/{hostId}/overview` 单独取（store 的 `loadHostDetails()`）。
+ * 尚未取到、主机离线或该台请求失败时，这三个字段缺省（UI 显示「—」）。
  */
 export interface HostOverview extends HostInfo {
   status?: HostStatus

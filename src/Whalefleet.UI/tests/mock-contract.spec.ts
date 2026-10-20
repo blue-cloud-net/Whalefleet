@@ -175,11 +175,14 @@ describe('主机列表契约', () => {
     }
   })
 
-  it('列表内置 status，但不含 version / counts（两者走聚合端点）', async () => {
+  it('列表内置 status，但不含 version / counts / startedAt（三者走聚合端点）', async () => {
     const { json } = await post('/api/v1/hosts/list')
     const hosts = json.data as HostOverview[]
     expect(hosts.some((h) => h.status === 'online')).toBe(true)
     expect(hosts.every((h) => h.counts === undefined)).toBe(true)
+    // 版本与启动时间同样只在概览端点给：列表带上它们，前端就测不出「忘了取概览」这个缺陷
+    expect(hosts.every((h) => h.version === undefined)).toBe(true)
+    expect(hosts.every((h) => h.startedAt === undefined)).toBe(true)
   })
 })
 
@@ -204,6 +207,15 @@ describe('主机聚合端点的错误分支（复刻 CurrentHostMiddleware 与 I
 
     const offline = await post('/api/v1/hosts/staging-01/overview')
     expect((offline.json.data as HostOverview).version).toBeUndefined()
+  })
+
+  it('概览端点是四类资源计数的唯一来源', async () => {
+    const { json } = await post('/api/v1/hosts/local/overview')
+    const counts = (json.data as HostOverview).counts
+    expect(counts?.containers).toBe(MOCK_CONTAINERS_DEFAULT.length)
+    expect(counts?.images).toBe(MOCK_IMAGES_DEFAULT.length)
+    expect(counts?.volumes).toBeGreaterThan(0)
+    expect(counts?.networks).toBeGreaterThan(0)
   })
 })
 
@@ -1117,7 +1129,7 @@ describe('角色与权限目录端点（0.1.0）', () => {
 
     const admin = roles.find((role) => role.name === 'admin')!
     expect(admin.isBuiltIn).toBe(true)
-    // 0.4.0 把目录从 16 条扩到 18 条（registry.read / registry.write）。
+    // 0.4.0 把目录从 16 条扩到 18 条（repository.read / repository.write）。
     // admin 的权限集必须覆盖**整个目录**，因此这里跟着目录长度走：
     // 写死 16 会在新增权限时拦下「admin 漏了一项」——而那正是最该拦的情况。
     expect(admin.permissions).toHaveLength(18)
@@ -1156,7 +1168,7 @@ describe('角色与权限目录端点（0.1.0）', () => {
 
     // Registry 两项是**全局**作用域：同一份凭据在所有主机上通用，
     // 挂到主机下会让同一把口令在 N 台机器上各存一份、迟早漂移。
-    for (const name of ['registry.read', 'registry.write']) {
+    for (const name of ['repository.read', 'repository.write']) {
       expect(permissions.find((item) => item.name === name)?.scope, name).toBe('global')
     }
   })
