@@ -172,7 +172,7 @@ public sealed record ImageBuildResult(
 /// </summary>
 /// <param name="ImageId">被推送镜像的完整 ID。</param>
 /// <param name="Reference">推送时使用的完整镜像引用。</param>
-/// <param name="RegistryServerAddress">实际推送到哪个 Registry（<c>host</c> 或 <c>host:port</c>）。</param>
+/// <param name="RepositoryServerAddress">实际推送到哪个仓库（<c>host</c> 或 <c>host:port</c>）。</param>
 /// <param name="Authenticated">本次推送是否带了凭据。</param>
 /// <param name="PushLog">推送输出日志。</param>
 /// <remarks>
@@ -183,6 +183,6 @@ public sealed record ImageBuildResult(
 public sealed record ImagePushResult(
     string ImageId,
     string Reference,
-    string RegistryServerAddress,
+    string RepositoryServerAddress,
     bool Authenticated,
     IReadOnlyList<string> PushLog);

@@ -27,11 +27,11 @@ import type { CurrentUser } from '../src/types/api'
  */
 
 // ===== API 层桩：渲染守卫不该发网络请求 =====
-vi.mock('../src/api/registry', () => ({
-  listRegistries: vi.fn(async () => []),
-  addRegistry: vi.fn(),
-  removeRegistry: vi.fn(async () => null),
-  testRegistry: vi.fn(async () => ({ reachable: true, authenticated: true, message: 'ok' }))
+vi.mock('../src/api/repository', () => ({
+  listRepositories: vi.fn(async () => []),
+  addRepository: vi.fn(),
+  removeRepository: vi.fn(async () => null),
+  testRepository: vi.fn(async () => ({ reachable: true, authenticated: true, message: 'ok' }))
 }))
 
 vi.mock('../src/api/image', () => ({
@@ -106,7 +106,7 @@ function templateBugs(): string[] {
 
 const routes: RouteRecordRaw[] = [
   { path: '/', name: 'overview', component: { template: '<div />' } },
-  { path: '/registries', name: 'registries', component: { template: '<div />' } },
+  { path: '/repositories', name: 'repositories', component: { template: '<div />' } },
   {
     path: '/hosts/:hostId/images',
     name: 'host-images',
@@ -162,7 +162,7 @@ async function mountSmoke(component: unknown, options: MountOptions = {}): Promi
   const pinia = createPinia()
 
   setActivePinia(pinia)
-  seedAuth(options.permissions ?? ['registry.read', 'registry.write', 'image.write'])
+  seedAuth(options.permissions ?? ['repository.read', 'repository.write', 'image.write'])
 
   const router = createRouter({ history: createWebHistory(), routes })
 
@@ -178,10 +178,10 @@ async function mountSmoke(component: unknown, options: MountOptions = {}): Promi
   })
 }
 
-describe('Registry 配置页渲染冒烟（0.4.0）', () => {
+describe('仓库配置页渲染冒烟（0.4.0）', () => {
   it('有权时正常渲染，且不是空白页', async () => {
-    const RegistriesView = (await import('../src/views/RegistriesView.vue')).default
-    const wrapper = await mountSmoke(RegistriesView)
+    const RepositoriesView = (await import('../src/views/RepositoriesView.vue')).default
+    const wrapper = await mountSmoke(RepositoriesView)
 
     await wrapper.vm.$nextTick()
 
@@ -191,9 +191,9 @@ describe('Registry 配置页渲染冒烟（0.4.0）', () => {
     wrapper.unmount()
   })
 
-  it('只有 registry.read 时不渲染写操作（新增 / 测试按钮消失）', async () => {
-    const RegistriesView = (await import('../src/views/RegistriesView.vue')).default
-    const wrapper = await mountSmoke(RegistriesView, { permissions: ['registry.read'] })
+  it('只有 repository.read 时不渲染写操作（新增 / 测试按钮消失）', async () => {
+    const RepositoriesView = (await import('../src/views/RepositoriesView.vue')).default
+    const wrapper = await mountSmoke(RepositoriesView, { permissions: ['repository.read'] })
 
     await wrapper.vm.$nextTick()
 
@@ -207,13 +207,13 @@ describe('Registry 配置页渲染冒烟（0.4.0）', () => {
 
 describe('三个对话框渲染冒烟（0.4.0）', () => {
   it('Registry 表单对话框', async () => {
-    const Dialog = (await import('../src/components/business/RegistryFormDialog.vue')).default
+    const Dialog = (await import('../src/components/business/RepositoryFormDialog.vue')).default
     const wrapper = await mountSmoke(Dialog, { props: { modelValue: true } })
 
     await wrapper.vm.$nextTick()
 
     expect(templateBugs(), '渲染期告警').toEqual([])
-    expect(wrapper.text()).toContain('新增 Registry 配置')
+    expect(wrapper.text()).toContain('新增仓库配置')
     wrapper.unmount()
   })
 

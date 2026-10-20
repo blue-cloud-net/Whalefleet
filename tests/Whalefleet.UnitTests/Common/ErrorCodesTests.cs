@@ -65,13 +65,13 @@ public class ErrorCodesTests
         [nameof(ErrorCodes.PermissionUnknown)] = 1514,
         [nameof(ErrorCodes.RoleAssignmentNotFound)] = 1515,
 
-        // Registry 与镜像构建 / 推送
-        [nameof(ErrorCodes.RegistryNotFound)] = 1800,
-        [nameof(ErrorCodes.RegistryNameAlreadyExists)] = 1801,
-        [nameof(ErrorCodes.RegistryAddressAlreadyExists)] = 1802,
-        [nameof(ErrorCodes.RegistryCredentialMissing)] = 1803,
-        [nameof(ErrorCodes.RegistryAuthFailed)] = 1804,
-        [nameof(ErrorCodes.RegistryUnreachable)] = 1805,
+        // 仓库与镜像构建 / 推送
+        [nameof(ErrorCodes.RepositoryNotFound)] = 1800,
+        [nameof(ErrorCodes.RepositoryNameAlreadyExists)] = 1801,
+        [nameof(ErrorCodes.RepositoryAddressAlreadyExists)] = 1802,
+        [nameof(ErrorCodes.RepositoryCredentialMissing)] = 1803,
+        [nameof(ErrorCodes.RepositoryAuthFailed)] = 1804,
+        [nameof(ErrorCodes.RepositoryUnreachable)] = 1805,
         [nameof(ErrorCodes.ImageBuildFailed)] = 1806,
         [nameof(ErrorCodes.ImagePushFailed)] = 1807,
 

@@ -63,12 +63,12 @@ public class ErrorHttpStatusTests
         [ErrorCodes.PermissionUnknown] = 400,
         [ErrorCodes.RoleAssignmentNotFound] = 404,
 
-        [ErrorCodes.RegistryNotFound] = 404,
-        [ErrorCodes.RegistryNameAlreadyExists] = 400,
-        [ErrorCodes.RegistryAddressAlreadyExists] = 400,
-        [ErrorCodes.RegistryCredentialMissing] = 400,
-        [ErrorCodes.RegistryAuthFailed] = 400,
-        [ErrorCodes.RegistryUnreachable] = 502,
+        [ErrorCodes.RepositoryNotFound] = 404,
+        [ErrorCodes.RepositoryNameAlreadyExists] = 400,
+        [ErrorCodes.RepositoryAddressAlreadyExists] = 400,
+        [ErrorCodes.RepositoryCredentialMissing] = 400,
+        [ErrorCodes.RepositoryAuthFailed] = 400,
+        [ErrorCodes.RepositoryUnreachable] = 502,
         [ErrorCodes.ImageBuildFailed] = 500,
         [ErrorCodes.ImagePushFailed] = 500,
 

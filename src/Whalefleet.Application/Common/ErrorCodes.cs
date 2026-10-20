@@ -18,7 +18,7 @@ namespace Whalefleet.Application.Common;
 ///   <item><term>1500-1599</term><description>资源权限</description></item>
 ///   <item><term>1800-1699</term><description>操作审计（0.9.0 起）</description></item>
 ///   <item><term>1700-1799</term><description>告警与通知（0.11.0 起）</description></item>
-///   <item><term>1800-1899</term><description>Registry 配置与镜像构建 / 推送</description></item>
+///   <item><term>1800-1899</term><description>仓库配置与镜像构建 / 推送</description></item>
 ///   <item><term>9000-9999</term><description>服务器内部错误</description></item>
 /// </list>
 /// <para><b>重要</b>：同一分段内的 HTTP 语义并不统一——例如 <see cref="DockerOperationFailed"/>
@@ -170,38 +170,38 @@ public static class ErrorCodes
     /// <summary>角色分配不存在（HTTP 404）。</summary>
     public const int RoleAssignmentNotFound = 1515;
 
-    // ==================== 1800-1899 Registry 与镜像构建 / 推送 ====================
+    // ==================== 1800-1899 仓库与镜像构建 / 推送 ====================
 
-    /// <summary>Registry 配置不存在（HTTP 404）。</summary>
+    /// <summary>仓库配置不存在（HTTP 404）。</summary>
     /// <remarks>
     /// 与 <see cref="DockerResourceNotFound"/>（1401）分开：那个是「Docker 守护进程上没有这个资源」，
-    /// 本码是「本系统没登记这条 Registry 配置」。两者要提示用户去做的事完全不同。
+    /// 本码是「本系统没登记这条 仓库配置」。两者要提示用户去做的事完全不同。
     /// </remarks>
-    public const int RegistryNotFound = 1800;
+    public const int RepositoryNotFound = 1800;
 
-    /// <summary>Registry 别名已被占用（HTTP 400）。</summary>
-    public const int RegistryNameAlreadyExists = 1801;
+    /// <summary>仓库别名已被占用（HTTP 400）。</summary>
+    public const int RepositoryNameAlreadyExists = 1801;
 
-    /// <summary>Registry 服务地址已被占用（HTTP 400）。</summary>
+    /// <summary>仓库服务地址已被占用（HTTP 400）。</summary>
     /// <remarks>
-    /// 单独成码而不是复用 <see cref="RegistryNameAlreadyExists"/>：同名与同址是两种不同的操作错误，
+    /// 单独成码而不是复用 <see cref="RepositoryNameAlreadyExists"/>：同名与同址是两种不同的操作错误，
     /// 界面需要把提示落到对应字段上。地址重复尤其危险——它会让「推镜像时用哪条凭据」变成随机行为。
     /// </remarks>
-    public const int RegistryAddressAlreadyExists = 1802;
+    public const int RepositoryAddressAlreadyExists = 1802;
 
-    /// <summary>未找到该地址对应的 Registry 凭据（HTTP 400）。</summary>
+    /// <summary>未找到该地址对应的仓库凭据（HTTP 400）。</summary>
     /// <remarks>推镜像到未登记的地址时抛出；匿名仓库除外（那要求用户显式声明「不需要凭据」）。</remarks>
-    public const int RegistryCredentialMissing = 1803;
+    public const int RepositoryCredentialMissing = 1803;
 
-    /// <summary>Registry 认证被拒（HTTP 400）。</summary>
+    /// <summary>仓库认证被拒（HTTP 400）。</summary>
     /// <remarks>
     /// 归 400 而不是 401：本系统自己的登录态是好的，是<b>对方仓库</b>拒绝了凭据。
     /// 报 401 会让前端去做「重新登录 Whalefleet」这种完全无效的事。
     /// </remarks>
-    public const int RegistryAuthFailed = 1804;
+    public const int RepositoryAuthFailed = 1804;
 
-    /// <summary>Registry 不可达（HTTP 502）。</summary>
-    public const int RegistryUnreachable = 1805;
+    /// <summary>仓库不可达（HTTP 502）。</summary>
+    public const int RepositoryUnreachable = 1805;
 
     /// <summary>镜像构建失败（HTTP 500）。</summary>
     /// <remarks>消息里带守护进程给出的构建错误（缺文件、语法错、基础镜像拉不动等）。</remarks>

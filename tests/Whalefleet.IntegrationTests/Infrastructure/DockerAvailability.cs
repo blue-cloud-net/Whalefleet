@@ -66,25 +66,25 @@ public static class DockerAvailability
     public const string RegistryHost = "registry-1.docker.io";
 
     /// <summary>
-    /// 宿主本地私有 Registry 的主机（<c>registry:2</c> 的默认监听地址）。
+    /// 宿主本地私有仓库 的主机（<c>registry:2</c> 的默认监听地址）。
     /// </summary>
     public const string DefaultRegistryHost = "127.0.0.1";
 
     /// <summary>
-    /// 宿主本地私有 Registry 的端口（<c>registry:2</c> 的默认监听端口）。
+    /// 宿主本地私有仓库 的端口（<c>registry:2</c> 的默认监听端口）。
     /// </summary>
     public const int DefaultRegistryPort = 5000;
 
     /// <summary>
-    /// 宿主本地私有 Registry 的完整地址。
+    /// 宿主本地私有仓库 的完整地址。
     /// </summary>
     public const string DefaultRegistryEndpoint = "127.0.0.1:5000";
 
     /// <summary>
-    /// 本机没有跑着私有 Registry 时的跳过原因。
+    /// 本机没有跑着私有仓库 时的跳过原因。
     /// </summary>
     public const string LocalRegistrySkipReason =
-        "本机没有跑着可推送的私有 Registry——推镜像成功路径的用例已跳过。"
+        "本机没有跑着可推送的私有仓库——推镜像成功路径的用例已跳过。"
         + "起一个即可：docker run -d --rm -p 5000:5000 --name whalefleet-test-registry registry:2";
 
     /// <summary>
@@ -98,9 +98,9 @@ public static class DockerAvailability
     /// 守护进程只走加速器、不直连 Docker Hub。若只探 Docker Hub，在这类机器上会永远判定
     /// 「不可达」，把本来能跑的成功路径用例全部跳过——比不探测更糟。</para>
     /// </remarks>
-    public static bool IsRegistryReachable => RegistryProbe.Value;
+    public static bool IsRegistryReachable => RepositoryProbe.Value;
 
-    private static readonly Lazy<bool> RegistryProbe =
+    private static readonly Lazy<bool> RepositoryProbe =
         new(ProbeRegistry, LazyThreadSafetyMode.ExecutionAndPublication);
 
     private static bool ProbeRegistry()

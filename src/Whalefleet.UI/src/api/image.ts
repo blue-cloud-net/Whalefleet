@@ -216,9 +216,9 @@ export function buildImage(
 }
 
 /**
- * 把本地镜像推送到 Registry（0.4.0）。
+ * 把本地镜像推送到仓库（0.4.0）。
  *
- * `registryId` 省略时后端**按镜像引用里的地址段自动匹配**已登记的配置。
+ * `repositoryId` 省略时后端**按镜像引用里的地址段自动匹配**已登记的配置。
  * 显式指定用于「本地标签不带仓库前缀，但就是要推到内网 Harbor」这种场景。
  *
  * 失败：`1807`（推送失败）、`1804`（凭据被拒）、`1800`（指定的配置不存在）、
@@ -226,7 +226,7 @@ export function buildImage(
  */
 export function pushImage(
   hostId: string,
-  payload: { image: string; registryId?: string; platform?: string }
+  payload: { image: string; repositoryId?: string; platform?: string }
 ): Promise<ImagePushResult> {
   return request<ImagePushResult>({
     url: `/api/v1/hosts/${encodeURIComponent(hostId)}/images/push`,

@@ -3,11 +3,11 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { pushImage } from '@/api/image'
-import { listRegistries } from '@/api/registry'
+import { listRepositories } from '@/api/repository'
 import { isDangling, stackedTagCount } from '@/utils/image-display'
-import { findRegistryForReference, registryAddressOf } from '@/utils/registry-display'
+import { findRepositoryForReference, repositoryAddressOf } from '@/utils/repository-display'
 import { useAuthStore } from '@/stores/auth'
-import type { ImagePushResult, ImageSummary, RegistrySummary } from '@/types/api'
+import type { ImagePushResult, ImageSummary, RepositorySummary } from '@/types/api'
 
 /**
  * 推送镜像对话框（0.4.0）。
@@ -39,9 +39,9 @@ const emit = defineEmits<{ pushed: [ImagePushResult] }>()
 const { t } = useI18n()
 const auth = useAuthStore()
 
-const registries = ref<RegistrySummary[]>([])
+const repositories = ref<RepositorySummary[]>([])
 /** 显式指定的配置主键；空串 = 自动匹配（`el-option` 不接受 `null` 作为值） */
-const registryId = ref('')
+const repositoryId = ref('')
 const platform = ref('')
 const submitting = ref(false)
 const errorMessage = ref<string | null>(null)
@@ -58,12 +58,12 @@ const reference = computed(() => {
 const isUntagged = computed(() => props.image === null || isDangling(props.image.repoTags))
 
 /** 自动匹配到的配置（仅用于展示，提交时仍交给后端再匹配一次）。 */
-const matchedRegistry = computed(() =>
-  reference.value.length === 0 ? null : findRegistryForReference(reference.value, registries.value)
+const matchedRepository = computed(() =>
+  reference.value.length === 0 ? null : findRepositoryForReference(reference.value, repositories.value)
 )
 
-/** 目标 Registry 地址（从引用推出来，仅用于展示）。 */
-const targetAddress = computed(() => registryAddressOf(reference.value))
+/** 目标 仓库地址（从引用推出来，仅用于展示）。 */
+const targetAddress = computed(() => repositoryAddressOf(reference.value))
 
 const canSubmit = computed(
   () => !submitting.value && !isUntagged.value && reference.value.length > 0
@@ -72,31 +72,31 @@ const canSubmit = computed(
 /**
  * 加载已登记的配置。
  *
- * 只有具备 `registry.read` 才拉：没有该权限时后端会回 `1500`，
+ * 只有具备 `repository.read` 才拉：没有该权限时后端会回 `1500`，
  * 而「推送到哪」由引用本身决定，缺这份列表不影响自动匹配（只是看不到匹配结果）。
  * 这里**不把失败抛给用户**——推送本身可能完全正常。
  */
-async function loadRegistries(): Promise<void> {
-  if (!auth.hasPermission('registry.read')) {
-    registries.value = []
+async function loadRepositories(): Promise<void> {
+  if (!auth.hasPermission('repository.read')) {
+    repositories.value = []
     return
   }
 
   try {
-    registries.value = await listRegistries()
+    repositories.value = await listRepositories()
   } catch {
-    registries.value = []
+    repositories.value = []
   }
 }
 
 watch(visible, (open) => {
   if (!open) return
 
-  registryId.value = ''
+  repositoryId.value = ''
   platform.value = ''
   errorMessage.value = null
   lastResult.value = null
-  void loadRegistries()
+  void loadRepositories()
 })
 
 async function submit(): Promise<void> {
@@ -109,7 +109,7 @@ async function submit(): Promise<void> {
     const result = await pushImage(props.hostId, {
       image: reference.value,
       // 空串不发送：交给后端按地址段自动匹配
-      registryId: registryId.value || undefined,
+      repositoryId: repositoryId.value || undefined,
       platform: platform.value.trim() || undefined
     })
 
@@ -164,11 +164,11 @@ function close(): void {
         :title="t('image.push.untagged')"
       />
 
-      <el-form-item :label="t('image.push.registry')">
-        <el-select v-model="registryId" class="w-full" :disabled="submitting || isUntagged">
+      <el-form-item :label="t('image.push.repository')">
+        <el-select v-model="repositoryId" class="w-full" :disabled="submitting || isUntagged">
           <el-option :label="t('image.push.registryAuto')" value="" />
           <el-option
-            v-for="item in registries"
+            v-for="item in repositories"
             :key="item.id"
             :label="`${item.name}（${item.serverAddress}）`"
             :value="item.id"
@@ -176,9 +176,9 @@ function close(): void {
         </el-select>
         <!-- 把自动匹配的结果摆出来：否则用户不知道自己到底会不会带凭据 -->
         <p class="mt-1 text-xs text-content-muted">
-          <template v-if="registryId !== ''">{{ t('image.push.registryManual') }}</template>
-          <template v-else-if="matchedRegistry">
-            {{ t('image.push.matched', { name: matchedRegistry.name, address: targetAddress }) }}
+          <template v-if="repositoryId !== ''">{{ t('image.push.registryManual') }}</template>
+          <template v-else-if="matchedRepository">
+            {{ t('image.push.matched', { name: matchedRepository.name, address: targetAddress }) }}
           </template>
           <template v-else>
             {{ t('image.push.unmatched', { address: targetAddress }) }}
@@ -209,8 +209,8 @@ function close(): void {
           :closable="false"
           :title="
             lastResult.authenticated
-              ? t('image.push.logTitleAuth', { address: lastResult.registryServerAddress })
-              : t('image.push.logTitleAnon', { address: lastResult.registryServerAddress })
+              ? t('image.push.logTitleAuth', { address: lastResult.repositoryServerAddress })
+              : t('image.push.logTitleAnon', { address: lastResult.repositoryServerAddress })
           "
         />
         <pre

@@ -39,18 +39,18 @@ describe('路由表', () => {
 
     // Registry 排在末尾：管理组前三项是「人」的动线（看主机 → 看人 → 缺角色再建），
     // Registry 是纯基础设施配置、一配就不动，插在中间会打断日常动线。
-    expect(manage).toEqual(['hosts', 'users', 'roles', 'registries'])
+    expect(manage).toEqual(['hosts', 'users', 'roles', 'repositories'])
   })
 
-  it('registries 用 registry.read 权限而非 requiresAdmin 把门', () => {
-    const registries = children().find((r) => r.name === 'registries')
+  it('repositories 用 repository.read 权限而非 requiresAdmin 把门', () => {
+    const repositories = children().find((r) => r.name === 'repositories')
 
-    expect(registries?.meta?.requiresPermission).toBe('registry.read')
-    // ⚠️ 不能同时标 requiresAdmin：后端这道门只看 registry.read，
+    expect(repositories?.meta?.requiresPermission).toBe('repository.read')
+    // ⚠️ 不能同时标 requiresAdmin：后端这道门只看 repository.read，
     // 自定义角色可能只带它；叠加管理面要求会比后端更严，把人挡在自己的页外。
-    expect(registries?.meta?.requiresAdmin).toBeUndefined()
-    expect(registries?.meta?.scope).toBe('global')
-    expect(registries?.path).toBe('registries')
+    expect(repositories?.meta?.requiresAdmin).toBeUndefined()
+    expect(repositories?.meta?.scope).toBe('global')
+    expect(repositories?.path).toBe('repositories')
   })
 
   it('全局作用域：overview 与 settings 存在且 scope=global', () => {

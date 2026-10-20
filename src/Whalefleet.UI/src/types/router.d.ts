@@ -7,7 +7,7 @@ declare module 'vue-router' {
     /** 需要的角色列表，包含其一即放行 */
     requiresAdmin?: boolean
     /**
-     * 进入本页所需的**权限名**（如 `registry.read`）。
+     * 进入本页所需的**权限名**（如 `repository.read`）。
      *
      * 与 `requiresAdmin` 判的不是同一套东西：`requiresAdmin` 是「管理面三项权限」
      * 的合取，而这里只要求单项。给了就**只**看它，不再叠加 `requiresAdmin`

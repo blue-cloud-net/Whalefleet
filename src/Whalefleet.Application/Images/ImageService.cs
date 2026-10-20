@@ -25,7 +25,7 @@ namespace Whalefleet.Application.Images;
 /// <para><b>日志纪律</b>：只记主机标识、镜像引用与条数，<b>不</b>记镜像的 <c>ENV</c> / <c>LABEL</c>
 /// （构建参数里常有令牌与密码——记进来等于把凭据写进日志文件）。</para>
 /// <para><b>构建与推送在 <see cref="ImageBuildPushService"/></b>：本类只管「主机上已有的镜像」，
-/// 而 build / push 要额外处理构建上下文流与 Registry 凭据，拆开是为了本类的依赖
+/// 而 build / push 要额外处理构建上下文流与 仓库凭据，拆开是为了本类的依赖
 /// 保持在两个（主机访问器 + 日志）而不膨胀到五个。</para>
 /// </remarks>
 public sealed class ImageService
@@ -182,7 +182,7 @@ public sealed class ImageService
 
         _logger.LogInformation("开始拉取镜像 {Reference}", reference);
 
-        // 认证参数传 null：0.3.0 之前没有 Registry 配置，拉的都是公开镜像。
+        // 认证参数传 null：0.3.0 之前没有 仓库配置，拉的都是公开镜像。
         // 不能传 new AuthConfig() —— 那会被当成「空用户名 + 空密码」去认证公开仓库并失败。
         await DockerErrorTranslator.ExecuteAsync(
             () => client.Images.CreateImageAsync(parameters, authConfig: null, collector, cancellationToken),

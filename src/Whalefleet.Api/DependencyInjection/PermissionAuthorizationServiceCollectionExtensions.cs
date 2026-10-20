@@ -40,8 +40,8 @@ public static class PermissionAuthorizationServiceCollectionExtensions
             AddPolicy(options, PermissionPolicies.RolesRead, Permission.RoleRead);
             AddPolicy(options, PermissionPolicies.RolesWrite, Permission.RoleWrite);
             AddPolicy(options, PermissionPolicies.HostsManage, Permission.HostManage);
-            AddPolicy(options, PermissionPolicies.RegistriesRead, Permission.RegistryRead);
-            AddPolicy(options, PermissionPolicies.RegistriesWrite, Permission.RegistryWrite);
+            AddPolicy(options, PermissionPolicies.RepositoriesRead, Permission.RepositoryRead);
+            AddPolicy(options, PermissionPolicies.RepositoriesWrite, Permission.RepositoryWrite);
             AddPolicy(options, PermissionPolicies.AuditRead, Permission.AuditRead);
         });
 

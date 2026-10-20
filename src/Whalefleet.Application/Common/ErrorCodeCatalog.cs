@@ -67,12 +67,12 @@ public static class ErrorCodeCatalog
             [ErrorCodes.PermissionUnknown] = (ErrorCategory.Validation, "未知的权限标识"),
             [ErrorCodes.RoleAssignmentNotFound] = (ErrorCategory.NotFound, "角色分配不存在"),
 
-            [ErrorCodes.RegistryNotFound] = (ErrorCategory.NotFound, "Registry 配置不存在"),
-            [ErrorCodes.RegistryNameAlreadyExists] = (ErrorCategory.Validation, "Registry 别名已被占用"),
-            [ErrorCodes.RegistryAddressAlreadyExists] = (ErrorCategory.Validation, "Registry 地址已被占用"),
-            [ErrorCodes.RegistryCredentialMissing] = (ErrorCategory.Validation, "未登记该地址的 Registry 凭据"),
-            [ErrorCodes.RegistryAuthFailed] = (ErrorCategory.Validation, "Registry 拒绝了该凭据"),
-            [ErrorCodes.RegistryUnreachable] = (ErrorCategory.UpstreamFailure, "Registry 不可达"),
+            [ErrorCodes.RepositoryNotFound] = (ErrorCategory.NotFound, "仓库配置不存在"),
+            [ErrorCodes.RepositoryNameAlreadyExists] = (ErrorCategory.Validation, "仓库别名已被占用"),
+            [ErrorCodes.RepositoryAddressAlreadyExists] = (ErrorCategory.Validation, "仓库地址已被占用"),
+            [ErrorCodes.RepositoryCredentialMissing] = (ErrorCategory.Validation, "未登记该地址的仓库凭据"),
+            [ErrorCodes.RepositoryAuthFailed] = (ErrorCategory.Validation, "仓库拒绝了该凭据"),
+            [ErrorCodes.RepositoryUnreachable] = (ErrorCategory.UpstreamFailure, "仓库不可达"),
             [ErrorCodes.ImageBuildFailed] = (ErrorCategory.Internal, "镜像构建失败"),
             [ErrorCodes.ImagePushFailed] = (ErrorCategory.Internal, "镜像推送失败"),
 

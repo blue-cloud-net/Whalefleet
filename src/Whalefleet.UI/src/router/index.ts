@@ -14,9 +14,9 @@ import { useHostStore } from '@/stores/host'
  * 路由元信息约定：
  *   - requiresAuth (默认 true)：未登录跳 /login?redirect=...
  *   - requiresAdmin：admin 限定，非 admin 跳总览
- *   - requiresPermission：指定权限限定（如 `registry.read`）。
+ *   - requiresPermission：指定权限限定（如 `repository.read`）。
  *     ⚠️ **与 requiresAdmin 不是一回事**：`requiresAdmin` 判的是「管理面三项权限」
- *     （`ADMIN_PERMISSIONS`），而 Registry 的入口由后端 `registry.read` 单独把守。
+ *     （`ADMIN_PERMISSIONS`），而 Registry 的入口由后端 `repository.read` 单独把守。
  *     自定义角色可以只带 registry 这两项而不带管理面权限——用 requiresAdmin
  *     会把它挡在门外，而后端明明允许它进来。
  *   - showInSidebar (默认 true)：侧边栏是否展示
@@ -88,21 +88,21 @@ const routes: RouteRecordRaw[] = [
         }
       },
       {
-        // 私有 Registry 配置。排在管理组**末尾**：管理组的前三项是「人」的动线
+        // 私有仓库配置。排在管理组**末尾**：管理组的前三项是「人」的动线
         // （看主机 → 看人 → 发现缺角色再建角色），Registry 是纯基础设施配置，
         // 平时一配就不动，插在中间会把日常动线打断。
         //
         // ⚠️ 用 `requiresPermission` 而不是 `requiresAdmin`：后端这道门是
-        // `registry.read`，自定义角色可能只带它。
-        path: 'registries',
-        name: 'registries',
-        component: () => import('@/views/RegistriesView.vue'),
+        // `repository.read`，自定义角色可能只带它。
+        path: 'repositories',
+        name: 'repositories',
+        component: () => import('@/views/RepositoriesView.vue'),
         meta: {
           scope: 'global',
-          requiresPermission: 'registry.read',
+          requiresPermission: 'repository.read',
           group: 'manage',
           icon: 'i-carbon-container-registry',
-          title: 'nav.registries'
+          title: 'nav.repositories'
         }
       },
       {
@@ -281,7 +281,7 @@ router.beforeEach(async (to) => {
   }
 
   // 权限型入口：与 requiresAdmin 并列而非合并——两者判的是不同的权限集，
-  // 合并会让「带 registry.read 但不带 user.write」的用户被挡在自己的页外。
+  // 合并会让「带 repository.read 但不带 user.write」的用户被挡在自己的页外。
   if (requiresPermission !== null && !auth.hasPermission(requiresPermission)) {
     return { name: 'overview' }
   }

@@ -172,7 +172,7 @@ public sealed record BuildImageRequest
 }
 
 /// <summary>
-/// 推送镜像到 Registry 的请求。
+/// 推送镜像到仓库 的请求。
 /// </summary>
 public sealed record PushImageRequest
 {
@@ -180,13 +180,13 @@ public sealed record PushImageRequest
     public string? Image { get; init; }
 
     /// <summary>
-    /// Registry 配置主键；省略时<b>按镜像引用里的地址段自动匹配</b>。
+    /// 仓库配置主键；省略时<b>按镜像引用里的地址段自动匹配</b>。
     /// </summary>
     /// <remarks>
     /// 自动匹配让「先在页面上选了仓库，再去镜像列表点 push」能成立；
     /// 显式给主键则允许「本地标签不带仓库前缀，但就是要推到内网 Harbor」这种场景。
     /// </remarks>
-    public Guid? RegistryId { get; init; }
+    public Guid? RepositoryId { get; init; }
 
     /// <summary>目标平台；省略时不带该参数。</summary>
     public string? Platform { get; init; }

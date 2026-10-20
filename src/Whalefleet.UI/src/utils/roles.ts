@@ -84,8 +84,8 @@ const PERMISSION_LABEL_KEYS: Record<string, string> = {
   'role.read': 'permission.role.read',
   'role.write': 'permission.role.write',
   'host.manage': 'permission.host.manage',
-  'registry.read': 'permission.registry.read',
-  'registry.write': 'permission.registry.write',
+  'repository.read': 'permission.repository.read',
+  'repository.write': 'permission.repository.write',
   'audit.read': 'permission.audit.read'
 }
 

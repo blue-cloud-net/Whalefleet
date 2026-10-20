@@ -25,7 +25,7 @@ namespace Whalefleet.IntegrationTests.Endpoints;
 /// 且能精确控制 Dockerfile 内容以便验证失败路径。</para>
 /// <para><b>构建用 <c>FROM scratch</c></b>：不依赖任何基础镜像，因此<b>离线也能跑</b>——
 /// 而「拉取基础镜像」是需要网络的那部分，与「验证本项目的构建参数映射」无关。</para>
-/// <para><b>推送只测失败路径</b>：真正推成功需要一台跑着的私有 Registry。
+/// <para><b>推送只测失败路径</b>：真正推成功需要一台跑着的私有仓库。
 /// 本组把「往一个不存在的地址推」的错误码钉死，而成功路径由「构建出的镜像确实落盘」
 /// 那条用例间接覆盖（它证明构建产物是真的）。</para>
 /// </remarks>
@@ -400,7 +400,7 @@ public class ImageBuildPushEndpointsTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// 指向一个<b>没有登记过</b>的 Registry 配置必须报 1800，而不是静默匿名推。
+    /// 指向一个<b>没有登记过</b>的仓库配置必须报 1800，而不是静默匿名推。
     /// </summary>
     [DockerFact]
     public async Task 推送_指定的Registry配置不存在_返回1800()
@@ -423,10 +423,10 @@ public class ImageBuildPushEndpointsTests : IAsyncLifetime
 
             using var response = await client.PostAsJsonAsync(
                 $"/api/v1/hosts/{_localHost}/images/push",
-                new { image = tag, registryId = Guid.NewGuid() });
+                new { image = tag, repositoryId = Guid.NewGuid() });
 
             response.StatusCode.Should().Be(HttpStatusCode.NotFound);
-            (await ReadCodeAsync(response)).Should().Be(ErrorCodes.RegistryNotFound);
+            (await ReadCodeAsync(response)).Should().Be(ErrorCodes.RepositoryNotFound);
         }
         finally
         {

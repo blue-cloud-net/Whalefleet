@@ -93,7 +93,7 @@ export function parseKeyValueJson(text: string): KeyValueParseResult {
  *
  * 只拦「空」与「含空白」两类：前者必填，后者在 Docker 的引用语法里非法
  * （`my app:v1` 会被拆成两个参数）。仓库名的大小写、长度、字符集由后端
- * 的 `RegistryServerAddress` 与 Docker 自己判定——前端复制一份规则必然漂移。
+ * 的 `RepositoryServerAddress` 与 Docker 自己判定——前端复制一份规则必然漂移。
  */
 export function validateBuildTag(tag: string): string | null {
   const trimmed = tag.trim()

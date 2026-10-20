@@ -278,19 +278,19 @@ public sealed class ImagesController : ControllerBase
     }
 
     /// <summary>
-    /// 把本地镜像推送到 Registry。
+    /// 把本地镜像推送到仓库。
     /// </summary>
     /// <param name="hostId">主机标识（主机名）。</param>
-    /// <param name="request">推送请求（镜像标识、可选 Registry 配置主键）。</param>
+    /// <param name="request">推送请求（镜像标识、可选 仓库配置主键）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>统一响应，<c>data</c> 为推送结果（含目标地址与是否带凭据）。</returns>
     /// <response code="200">推送成功。</response>
     /// <response code="400">
-    /// 镜像标识为空或无标签（<c>1000</c>），或 Registry 凭据被拒（<c>1804</c>）。
+    /// 镜像标识为空或无标签（<c>1000</c>），或 仓库凭据被拒（<c>1804</c>）。
     /// </response>
     /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
     /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
-    /// <response code="404">主机（<c>1300</c>）、镜像（<c>1401</c>）或 Registry 配置（<c>1800</c>）不存在。</response>
+    /// <response code="404">主机（<c>1300</c>）、镜像（<c>1401</c>）或 仓库配置（<c>1800</c>）不存在。</response>
     /// <response code="500">推送失败（<c>1807</c>，消息与 <c>pushLog</c> 带守护进程给的原因）。</response>
     /// <response code="502">主机不可达（<c>1301</c>）。</response>
     /// <remarks>

@@ -105,19 +105,19 @@ export const ErrorCode = {
   /** 角色分配不存在 */
   RoleAssignmentNotFound: 1515,
 
-  // ===== 1800-1899 Registry 与镜像构建 / 推送 =====
-  /** Registry 配置不存在 */
-  RegistryNotFound: 1800,
-  /** Registry 别名已被占用 */
-  RegistryNameAlreadyExists: 1801,
-  /** Registry 服务地址已被占用 */
-  RegistryAddressAlreadyExists: 1802,
-  /** 未登记该地址的 Registry 凭据 */
-  RegistryCredentialMissing: 1803,
-  /** Registry 拒绝了该凭据 */
-  RegistryAuthFailed: 1804,
-  /** Registry 不可达 */
-  RegistryUnreachable: 1805,
+  // ===== 1800-1899 仓库与镜像构建 / 推送 =====
+  /** 仓库配置不存在 */
+  RepositoryNotFound: 1800,
+  /** 仓库别名已被占用 */
+  RepositoryNameAlreadyExists: 1801,
+  /** 仓库服务地址已被占用 */
+  RepositoryAddressAlreadyExists: 1802,
+  /** 未登记该地址的仓库凭据 */
+  RepositoryCredentialMissing: 1803,
+  /** 仓库拒绝了该凭据 */
+  RepositoryAuthFailed: 1804,
+  /** 仓库不可达 */
+  RepositoryUnreachable: 1805,
   /** 镜像构建失败 */
   ImageBuildFailed: 1806,
   /** 镜像推送失败 */
@@ -573,8 +573,8 @@ export interface ImagePushResult {
   imageId: string
   /** 推送时使用的完整引用 */
   reference: string
-  /** 实际推到的 Registry 地址（`host` 或 `host:port`） */
-  registryServerAddress: string
+  /** 实际推到的仓库地址（`host` 或 `host:port`） */
+  repositoryServerAddress: string
   /** 本次是否带了凭据 */
   authenticated: boolean
   /** 推送输出 */
@@ -582,11 +582,11 @@ export interface ImagePushResult {
 }
 
 /* ==================================================================
- * 私有 Registry 配置（对应后端 `Whalefleet.Application.Registries`，0.4.0）
+ * 私有仓库配置（对应后端 `Whalefleet.Application.Repositories`，0.4.0）
  * ================================================================== */
 
 /**
- * Registry 配置的列表项。
+ * 仓库配置的列表项。
  *
  * ⚠️ **响应里既没有口令，也没有口令密文**（连密文都能当钥匙用）。
  * 界面要改口令时只能重新输入——所以本版**没有「编辑」功能**，
@@ -594,7 +594,7 @@ export interface ImagePushResult {
  *
  * `hasCredentials` 回答的是「这条配置带不带账号」，不是「口令是什么」。
  */
-export interface RegistrySummary {
+export interface RepositorySummary {
   id: string
   /** 别名（管理员可读的名字），全表唯一 */
   name: string
@@ -609,13 +609,13 @@ export interface RegistrySummary {
 }
 
 /**
- * Registry 连通性测试的结果。
+ * 仓库连通性测试的结果。
  *
  * **`reachable` 与 `authenticated` 是两个独立的布尔值**，不能压成一个：
  * Registry 的三种常见状态「网络不通」「连得上但没给凭据」「连得上且凭据有效」
  * 需要三种不同的处置建议（查网络 / 补凭据 / 无需动作）。
  */
-export interface RegistryTestResult {
+export interface RepositoryTestResult {
   reachable: boolean
   authenticated: boolean
   message: string

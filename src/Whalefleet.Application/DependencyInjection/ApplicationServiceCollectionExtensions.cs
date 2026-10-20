@@ -6,7 +6,7 @@ using Whalefleet.Application.Hosts;
 using Whalefleet.Application.Images;
 using Whalefleet.Application.Networks;
 using Whalefleet.Application.Permissions;
-using Whalefleet.Application.Registries;
+using Whalefleet.Application.Repositories;
 using Whalefleet.Application.Users;
 using Whalefleet.Application.Volumes;
 using Microsoft.Extensions.Configuration;
@@ -57,7 +57,7 @@ public static class ApplicationServiceCollectionExtensions
         // 镜像用例（0.0.10）。Scoped：依赖 Scoped 的主机访问器。
         services.AddScoped<ImageService>();
 
-        // 镜像构建与推送（0.4.0）。Scoped：依赖 Scoped 的主机访问器与 Registry 凭据解析器。
+        // 镜像构建与推送（0.4.0）。Scoped：依赖 Scoped 的主机访问器与 仓库凭据解析器。
         services.AddScoped<ImageBuildPushService>();
 
         // 主机分组用例（0.0.13）。Scoped：依赖 Scoped 的仓储。
@@ -76,12 +76,12 @@ public static class ApplicationServiceCollectionExtensions
         // 网络用例（0.2.0）。Scoped：同上。
         services.AddScoped<NetworkService>();
 
-        // Registry 配置用例（0.4.0）。Scoped：依赖 Scoped 的仓储与口令保护器。
-        // 同时以 IRegistryCredentialResolver 的身份暴露**同一实例**——
+        // 仓库配置用例（0.4.0）。Scoped：依赖 Scoped 的仓储与口令保护器。
+        // 同时以 IRepositoryCredentialResolver 的身份暴露**同一实例**——
         // 镜像推送去拿凭据时必须走同一套解密逻辑，不能另起一份实现。
-        services.AddScoped<RegistryService>();
-        services.AddScoped<IRegistryCredentialResolver>(static provider =>
-            provider.GetRequiredService<RegistryService>());
+        services.AddScoped<RepositoryService>();
+        services.AddScoped<IRepositoryCredentialResolver>(static provider =>
+            provider.GetRequiredService<RepositoryService>());
 
         return services;
     }

@@ -2,7 +2,7 @@ import { http, HttpResponse, delay } from 'msw'
 import { ErrorCode, fail, httpStatusOf, ok } from '../envelope'
 import { delayFor, hostsFor, type MockScenario } from '../scenarios'
 import { MOCK_IMAGE_DETAILS, MOCK_IMAGES_DEFAULT } from '../data/images'
-import { registriesFor } from './registries'
+import { repositoriesFor } from './repositories'
 import type { BatchOperationFailure, ImageDetail, ImageSummary } from '@/types/api'
 
 /**
@@ -472,7 +472,7 @@ export function imageHandlers(scenario: () => MockScenario) {
 
       const body = await readBody(request)
       const image = String(body.image ?? '').trim()
-      const registryId = String(body.registryId ?? '').trim()
+      const repositoryId = String(body.repositoryId ?? '').trim()
 
       if (image.length === 0) {
         return HttpResponse.json(fail(ErrorCode.ValidationFailed, 'image 不能为空'), {
@@ -499,38 +499,38 @@ export function imageHandlers(scenario: () => MockScenario) {
       const serverAddress = addressOf(image)
 
       if (serverAddress.length === 0) {
-        return HttpResponse.json(fail(ErrorCode.ValidationFailed, '无法从引用解析出 Registry 地址'), {
+        return HttpResponse.json(fail(ErrorCode.ValidationFailed, '无法从引用解析出 仓库地址'), {
           status: httpStatusOf(ErrorCode.ValidationFailed)
         })
       }
 
       // 显式指定的配置必须存在（1800）；不给则按地址自动匹配
-      const registries = registriesFor(scenario())
-      const explicit = registryId.length > 0
-        ? registries.find((item) => item.id === registryId)
+      const repositories = repositoriesFor(scenario())
+      const explicit = repositoryId.length > 0
+        ? repositories.find((item) => item.id === repositoryId)
         : undefined
 
-      if (registryId.length > 0 && !explicit) {
+      if (repositoryId.length > 0 && !explicit) {
         return HttpResponse.json(
-          fail(ErrorCode.RegistryNotFound, `未找到 Registry 配置 ${registryId}`),
-          { status: httpStatusOf(ErrorCode.RegistryNotFound) }
+          fail(ErrorCode.RepositoryNotFound, `未找到仓库配置 ${repositoryId}`),
+          { status: httpStatusOf(ErrorCode.RepositoryNotFound) }
         )
       }
 
       const matched =
-        explicit ?? registries.find((item) => item.serverAddress.toLowerCase() === serverAddress)
+        explicit ?? repositories.find((item) => item.serverAddress.toLowerCase() === serverAddress)
 
       // 两条失败路径：不可达 1805、凭据被拒 1804（与 registry 的 test 端点同约定）
       if (serverAddress.startsWith('unreachable')) {
-        return HttpResponse.json(fail(ErrorCode.RegistryUnreachable, 'dial tcp: connection refused'), {
-          status: httpStatusOf(ErrorCode.RegistryUnreachable)
+        return HttpResponse.json(fail(ErrorCode.RepositoryUnreachable, 'dial tcp: connection refused'), {
+          status: httpStatusOf(ErrorCode.RepositoryUnreachable)
         })
       }
 
       if (serverAddress.startsWith('denied')) {
         return HttpResponse.json(
-          fail(ErrorCode.RegistryAuthFailed, '401 Unauthorized from /v2/'),
-          { status: httpStatusOf(ErrorCode.RegistryAuthFailed) }
+          fail(ErrorCode.RepositoryAuthFailed, '401 Unauthorized from /v2/'),
+          { status: httpStatusOf(ErrorCode.RepositoryAuthFailed) }
         )
       }
 
@@ -540,7 +540,7 @@ export function imageHandlers(scenario: () => MockScenario) {
         ok({
           imageId: hit.id,
           reference: image,
-          registryServerAddress: serverAddress,
+          repositoryServerAddress: serverAddress,
           authenticated,
           pushLog: [
             `The push refers to repository [${serverAddress}/${repositoryOf(image)}]`,

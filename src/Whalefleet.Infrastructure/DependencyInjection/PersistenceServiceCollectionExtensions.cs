@@ -3,13 +3,13 @@ using Whalefleet.Application.Abstractions.Persistence;
 using Whalefleet.Core.Auth;
 using Whalefleet.Core.Hosts;
 using Whalefleet.Core.Permissions;
-using Whalefleet.Core.Registries;
+using Whalefleet.Core.Repositories;
 using Whalefleet.Core.Users;
 using Whalefleet.Infrastructure.Persistence;
 using Whalefleet.Infrastructure.Persistence.Auth;
 using Whalefleet.Infrastructure.Persistence.Hosts;
 using Whalefleet.Infrastructure.Persistence.Permissions;
-using Whalefleet.Infrastructure.Persistence.Registries;
+using Whalefleet.Infrastructure.Persistence.Repositories;
 using Whalefleet.Infrastructure.Persistence.Users;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -82,7 +82,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<IHostGroupRepository, SqliteHostGroupRepository>();
         services.AddScoped<IRefreshTokenRepository, SqliteRefreshTokenRepository>();
         services.AddScoped<IUserRoleAssignmentRepository, SqliteUserRoleAssignmentRepository>();
-        services.AddScoped<IRegistryCredentialRepository, SqliteRegistryCredentialRepository>();
+        services.AddScoped<IRepositoryCredentialRepository, SqliteRepositoryCredentialRepository>();
 
         return services;
     }

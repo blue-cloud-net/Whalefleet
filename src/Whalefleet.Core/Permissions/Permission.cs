@@ -103,11 +103,11 @@ public static class Permission
     /// </remarks>
     public const string HostManage = "host.manage";
 
-    /// <summary>查看私有 Registry 配置（地址、别名、账号；<b>不含口令</b>）。</summary>
-    public const string RegistryRead = "registry.read";
+    /// <summary>查看私有仓库配置（地址、别名、账号；<b>不含口令</b>）。</summary>
+    public const string RepositoryRead = "repository.read";
 
-    /// <summary>增删改私有 Registry 配置与凭据。</summary>
-    public const string RegistryWrite = "registry.write";
+    /// <summary>增删改私有仓库配置与凭据。</summary>
+    public const string RepositoryWrite = "repository.write";
 
     /// <summary>查看操作审计（审计能力本身排在 1.0.0 之后，此处只占位）。</summary>
     public const string AuditRead = "audit.read";
@@ -120,8 +120,8 @@ public static class Permission
         RoleRead,
         RoleWrite,
         HostManage,
-        RegistryRead,
-        RegistryWrite,
+        RepositoryRead,
+        RepositoryWrite,
         AuditRead,
     ];
 

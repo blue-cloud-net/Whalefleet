@@ -9,8 +9,8 @@ namespace Whalefleet.UnitTests.Images;
 /// <see cref="ImageReference.ExtractServerAddress"/>）的测试。
 /// </summary>
 /// <remarks>
-/// 这两个纯函数决定「推镜像时把哪个地址当成 Registry、用哪个标签推」。
-/// 判错的后果很隐蔽：把 <c>org/app:v1</c> 的 <c>org</c> 当成 Registry 地址，
+/// 这两个纯函数决定「推镜像时把哪个地址当成 仓库、用哪个标签推」。
+/// 判错的后果很隐蔽：把 <c>org/app:v1</c> 的 <c>org</c> 当成 仓库地址，
 /// 就会往一个不存在的主机上推，守护进程只回一句「unauthorized」。
 /// </remarks>
 public class ImageReferenceTests
@@ -53,7 +53,7 @@ public class ImageReferenceTests
     }
 
     /// <summary>
-    /// Docker Hub 的官方命名空间（<c>org/app</c>）里的 <c>org</c> <b>不是</b> Registry。
+    /// Docker Hub 的官方命名空间（<c>org/app</c>）里的 <c>org</c> <b>不是</b> 仓库。
     /// </summary>
     [Theory]
     [InlineData("nginx", "registry-1.docker.io")]

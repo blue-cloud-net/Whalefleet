@@ -10,7 +10,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { mockServer } from '../src/mocks/node'
 import { setMockScenario } from '../src/mocks/index'
 import { ErrorCode } from '../src/mocks/envelope'
-import { resetSessionRegistries } from '../src/mocks/handlers/registries'
+import { resetSessionRepositories } from '../src/mocks/handlers/repositories'
 import { resetSessionImages } from '../src/mocks/handlers/images'
 
 /**
@@ -36,7 +36,7 @@ afterEach(() => {
   mockServer.resetHandlers()
   setMockScenario('default')
   // handler 里的会话态（拉取 / 构建出来的镜像、新增的配置）不会被 resetHandlers 还原
-  resetSessionRegistries()
+  resetSessionRepositories()
   resetSessionImages()
 })
 afterAll(() => mockServer.close())
@@ -147,11 +147,11 @@ describe('镜像推送端点（0.4.0）', () => {
   it('指定的配置不存在 → 1800 / 404', async () => {
     const { status, json } = await post(`${HOST}/images/push`, {
       image: 'nginx:latest',
-      registryId: '00000000-0000-0000-0000-0000000000ff'
+      repositoryId: '00000000-0000-0000-0000-0000000000ff'
     })
 
     expect(status).toBe(404)
-    expect(json.code).toBe(ErrorCode.RegistryNotFound)
+    expect(json.code).toBe(ErrorCode.RepositoryNotFound)
   })
 
   it('按地址自动匹配到匿名配置 → 成功但 authenticated=false', async () => {
@@ -170,7 +170,7 @@ describe('镜像推送端点（0.4.0）', () => {
 
     expect(status).toBe(200)
     expect(json.data).toMatchObject({
-      registryServerAddress: 'registry.example.com',
+      repositoryServerAddress: 'registry.example.com',
       authenticated: false
     })
   })
@@ -195,13 +195,13 @@ describe('镜像推送端点（0.4.0）', () => {
 
     const unreachable = await post(`${HOST}/images/push`, { image: unreachableRef })
     expect(unreachable.status).toBe(502)
-    expect(unreachable.json.code).toBe(ErrorCode.RegistryUnreachable)
+    expect(unreachable.json.code).toBe(ErrorCode.RepositoryUnreachable)
 
     const deniedRef = 'denied.local:5000/app:v1'
     await build({ tag: deniedRef })
 
     const denied = await post(`${HOST}/images/push`, { image: deniedRef })
     expect(denied.status).toBe(400)
-    expect(denied.json.code).toBe(ErrorCode.RegistryAuthFailed)
+    expect(denied.json.code).toBe(ErrorCode.RepositoryAuthFailed)
   })
 })

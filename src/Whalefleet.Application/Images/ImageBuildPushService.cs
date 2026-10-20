@@ -3,7 +3,7 @@ using Docker.DotNet.Models;
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Docker;
-using Whalefleet.Application.Registries;
+using Whalefleet.Application.Repositories;
 using Microsoft.Extensions.Logging;
 
 namespace Whalefleet.Application.Images;
@@ -13,7 +13,7 @@ namespace Whalefleet.Application.Images;
 /// </summary>
 /// <remarks>
 /// <para><b>为什么与 <see cref="ImageService"/> 分开</b>：本类的两个用例各自要拖一堆
-/// 额外依赖——构建要读上传流、推送要查 Registry 凭据。合进 <see cref="ImageService"/>
+/// 额外依赖——构建要读上传流、推送要查 仓库凭据。合进 <see cref="ImageService"/>
 /// 会把它的依赖从 2 个（主机访问器 + 日志）变成 5 个，而列表 / 拉取 / 删除一个都用不上。</para>
 /// <para><b>构建失败只能从进度流里读出来</b>：与拉取同理，Docker 构建失败时
 /// HTTP 层仍是 200，错误只在进度消息里。因此 <see cref="StreamCollector"/> 与
@@ -32,31 +32,31 @@ public sealed class ImageBuildPushService
     /// 上限取一个「够看清失败原因」的值：构建失败的原因总在最后几十行。</remarks>
     private const int MaxLogLines = 500;
 
-    /// <summary>默认 Registry（Docker Hub）。</summary>
+    /// <summary>默认仓库（Docker Hub）。</summary>
     private const string DockerHubServerAddress = "registry-1.docker.io";
 
     private readonly IDockerHostAccessor _accessor;
-    private readonly IRegistryCredentialResolver _registries;
+    private readonly IRepositoryCredentialResolver _repositories;
     private readonly ILogger<ImageBuildPushService> _logger;
 
     /// <summary>
     /// 初始化用例服务。
     /// </summary>
     /// <param name="accessor">主机访问器（解析主机并取得 Docker 客户端）。</param>
-    /// <param name="registries">Registry 凭据解析器。</param>
+    /// <param name="repositories">仓库凭据解析器。</param>
     /// <param name="logger">日志。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
     public ImageBuildPushService(
         IDockerHostAccessor accessor,
-        IRegistryCredentialResolver registries,
+        IRepositoryCredentialResolver repositories,
         ILogger<ImageBuildPushService> logger)
     {
         ArgumentNullException.ThrowIfNull(accessor);
-        ArgumentNullException.ThrowIfNull(registries);
+        ArgumentNullException.ThrowIfNull(repositories);
         ArgumentNullException.ThrowIfNull(logger);
 
         _accessor = accessor;
-        _registries = registries;
+        _repositories = repositories;
         _logger = logger;
     }
 
@@ -183,22 +183,22 @@ public sealed class ImageBuildPushService
     }
 
     /// <summary>
-    /// 把本地镜像推送到 Registry。
+    /// 把本地镜像推送到仓库。
     /// </summary>
     /// <param name="hostId">主机标识（主机名）。</param>
-    /// <param name="request">推送请求（镜像标识、可选 Registry 配置主键）。</param>
+    /// <param name="request">推送请求（镜像标识、可选 仓库配置主键）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>推送结果（镜像 ID、目标地址、是否带凭据、推送日志）。</returns>
     /// <exception cref="BusinessException">
     /// 镜像标识为空（<c>1000</c>）、镜像无标签（<c>1000</c>）、
-    /// Registry 配置不存在（<c>1800</c>）、凭据被拒（<c>1804</c>）、
+    /// 仓库配置不存在（<c>1800</c>）、凭据被拒（<c>1804</c>）、
     /// 推送失败（<c>1807</c>，消息里带守护进程给的原因）或主机不可达（<c>1301</c>）。
     /// </exception>
     /// <remarks>
     /// <para><b>为什么必须带标签</b>：<c>docker push</c> 推的是「仓库:标签」，
     /// 而悬挂镜像（<c>&lt;none&gt;</lt;none&gt;</c>）没有可推的名字。
     /// 这里提前报错，而不是让守护进程回一句看不懂的 <c>refusing to push unqualified name</c>。</para>
-    /// <para><b>Registry 凭据怎么选</b>：显式给了主键就用它（配置不存在报 <c>1800</c>）；
+    /// <para><b>仓库凭据怎么选</b>：显式给了主键就用它（配置不存在报 <c>1800</c>）；
     /// 否则从镜像引用里切出地址段（如 <c>harbor.local:5000/app:v1</c> → <c>harbor.local:5000</c>）
     /// 自动匹配。两者都找不到就<b>匿名推</b>——公开仓库本来就不需要凭据，
     /// 而对着一个私有仓库匿名推，报错会由守护进程给出（<c>1807</c>）。</para>
@@ -234,7 +234,7 @@ public sealed class ImageBuildPushService
         var (repository, tag) = SplitReference(reference);
         var serverAddress = ExtractServerAddress(repository);
 
-        var credential = await this.ResolveCredentialAsync(request.RegistryId, serverAddress, cancellationToken)
+        var credential = await this.ResolveCredentialAsync(request.RepositoryId, serverAddress, cancellationToken)
             .ConfigureAwait(false);
 
         var authConfig = credential is null
@@ -299,26 +299,26 @@ public sealed class ImageBuildPushService
     /// <summary>
     /// 解析推送要用的凭据：显式主键优先，其次按地址自动匹配。
     /// </summary>
-    /// <param name="registryId">显式指定的配置主键；为空则自动匹配。</param>
+    /// <param name="repositoryId">显式指定的配置主键；为空则自动匹配。</param>
     /// <param name="serverAddress">从镜像引用里切出的地址段。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>凭据；没有可用凭据时返回 <see langword="null"/>（匿名推）。</returns>
     /// <exception cref="BusinessException">指定的主键对应的配置不存在（<c>1800</c>）。</exception>
-    private async Task<RegistryCredentialValue?> ResolveCredentialAsync(
-        Guid? registryId,
+    private async Task<RepositoryCredentialValue?> ResolveCredentialAsync(
+        Guid? repositoryId,
         string serverAddress,
         CancellationToken cancellationToken)
     {
-        if (registryId is { } id)
+        if (repositoryId is { } id)
         {
             if (id == Guid.Empty)
             {
-                throw BusinessException.Validation("registryId 不能是全零 GUID");
+                throw BusinessException.Validation("repositoryId 不能是全零 GUID");
             }
 
             // 显式指定时地址可以不一致（例如本地标签不带仓库前缀，但要推到内网 Harbor），
             // 因此这里把主键当成唯一的真相来源。
-            var resolved = await _registries.ResolveCredentialAsync(serverAddress, cancellationToken)
+            var resolved = await _repositories.ResolveCredentialAsync(serverAddress, cancellationToken)
                 .ConfigureAwait(false);
 
             if (resolved is not null)
@@ -328,11 +328,11 @@ public sealed class ImageBuildPushService
 
             // 自动匹配没命中：把主键转成「必须存在」的一次显式查找。
             throw new BusinessException(
-                ErrorCodes.RegistryNotFound,
-                $"未找到 Registry 配置 {id}，或该地址（{serverAddress}）尚未登记凭据");
+                ErrorCodes.RepositoryNotFound,
+                $"未找到仓库配置 {id}，或该地址（{serverAddress}）尚未登记凭据");
         }
 
-        return await _registries.ResolveCredentialAsync(serverAddress, cancellationToken).ConfigureAwait(false);
+        return await _repositories.ResolveCredentialAsync(serverAddress, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -349,7 +349,7 @@ public sealed class ImageBuildPushService
         ImageReference.Split(reference);
 
     /// <summary>
-    /// 从仓库名里切出 Registry 地址段。
+    /// 从仓库名里切出 仓库地址段。
     /// </summary>
     /// <param name="repository">仓库名（如 <c>nginx</c>、<c>harbor.local:5000/app</c>）。</param>
     /// <returns>地址段；<c>nginx</c> 这类无前缀的仓库返回 Docker Hub。</returns>
