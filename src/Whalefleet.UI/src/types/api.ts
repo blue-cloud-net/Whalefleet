@@ -48,7 +48,7 @@ export const ErrorCode = {
   RefreshTokenRevoked: 1102,
   /** 登录速率限制（5 次/分钟） */
   LoginRateLimited: 1103,
-  /** Terminal token 无效或已过期（0.6.0） */
+  /** Terminal token 无效或已过期（0.8.0） */
   TerminalTokenInvalid: 1104,
 
   // ===== 1200-1299 用户管理 =====
@@ -788,7 +788,7 @@ export type Permission = string
  * 决定了「在哪个 hostId 上求值这个权限」：
  * - `global`：与主机无关，全局分配就生效
  * - `host`：随主机变化，同一个用户可以在 A 机是写、在 B 机只读
- * - `container`：0.5.0 落地，当前后端尚未启用
+ * - `container`：0.12.0 落地，当前后端尚未启用
  */
 export type PermissionScope = 'global' | 'host' | 'container'
 

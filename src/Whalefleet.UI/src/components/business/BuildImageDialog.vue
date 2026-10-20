@@ -22,7 +22,7 @@ import type { ImageBuildResult } from '@/types/api'
  *
  * ## 为什么等这么久还不能取消
  * 本版构建是**一次性请求**（与 `pull` 同形态），服务端在请求内同步等完，
- * 进度推送排到 0.7.0 的 SignalR。因此这里只能给不确定态，并在文案里
+ * 进度推送排到 0.5.0 的 SignalR。因此这里只能给不确定态，并在文案里
  * 明说「可能要几分钟」——否则用户会在第 30 秒以为卡死而重复提交。
  */
 const props = defineProps<{

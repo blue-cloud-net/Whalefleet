@@ -154,12 +154,12 @@ const routes: RouteRecordRaw[] = [
         meta: { scope: 'host', icon: 'i-carbon-activity', title: 'nav.status' }
       },
       {
-        // 「编排」= Docker Compose / Stack。后端 /api/v1/stack/* 排 0.7.0，当前先占位建好菜单。
+        // 「编排」= Docker Compose / Stack。后端 /api/v1/stack/* 排 0.10.0，当前先占位建好菜单。
         //
         // 位置放在**容器 / 镜像 / 数据卷 / 网络之前**，不是按依赖排的，而是按用户的实际动线：
         // Compose 项目的日常操作是「看编排 → 看它拉起的容器 / 挂载的卷 / 接入的网络」，
         // 从编排往下点最顺手；反过来从容器找编排得先记得这个容器属于哪个项目。
-        // 依赖顺序只体现在**实现节奏**上（后端 0.7.0 才排上），不占用菜单的排列。
+        // 依赖顺序只体现在**实现节奏**上（后端 0.10.0 才排上），不占用菜单的排列。
         path: 'hosts/:hostId/stacks',
         name: 'host-stacks',
         component: () => import('@/views/StacksView.vue'),
