@@ -78,7 +78,7 @@
 | `0.1.0` | 授权基座与 MVP 收口 | 🚧 | 授权重写为带作用域的 User → Role → Permission（进行中）；批量删除 / socket-proxy / 反代示例已完成 |
 | `0.2.0` | Volume 与 Network | ✅ | 两类资源的 CRUD + 详情；列表不分页（归 0.16.0） |
 | `0.3.0` | 容器与镜像基础操作 | ⬜ | rename / update / duplicate、镜像 tag、高级创建参数、运行时挂卷 |
-| `0.4.0` | 镜像构建与私有 Registry | 🚧 | 后端全链路已完成（构建 + 凭据存储 + 管理 API + push）；前端待做 |
+| `0.4.0` | 镜像构建与私有 Registry | ✅ | 构建 + 凭据存储 + 管理 API + push，含前端（构建对话框 / Registry 配置页 / 推送） |
 | `0.5.0` | Compose / Stack 基础功能 | ⬜ | 列表 / 部署 / 更新 / 停止 / 删除 / 服务列表 |
 | `0.6.0` | 批量操作与资源清理 | ⬜ | 批量启停 / 重启 + 资源级 prune |
 | `0.7.0` | 实时通道（SignalR） | ⬜ | 日志流 / stats / 通知条；进度推送改实时 |
@@ -252,7 +252,7 @@
 
 ---
 
-### 0.4.0 🚧 — 镜像构建与私有 Registry
+### 0.4.0 ✅ — 镜像构建与私有 Registry
 
 **目标**：支持上传 Dockerfile 构建镜像，并把镜像推到私有仓库。
 
@@ -267,7 +267,7 @@
   （全局作用域，需 `registry.read` / `registry.write`）
 - ✅ **镜像 push**：`POST /api/v1/hosts/{hostId}/images/push`
   （`registryId` 省略时按镜像引用里的地址段自动匹配已登记的 Registry）
-- ⬜ **前端**：构建对话框（文件上传）、Registry 配置页、镜像列表的「push」操作
+- ✅ **前端**：构建对话框（文件上传）、Registry 配置页、镜像列表的「push」操作
 
 **验收**：上传一个 Dockerfile 能构建出镜像；配置一个私有 Registry 后能 push 成功。
 
@@ -293,8 +293,28 @@
 9. **错误码段选 `1800-1899`**：`1600-1699` 已被 `0.9.0` 预留给操作审计，
    `1700-1799` 预留给 `0.11.0` 告警——本迭代不能占用别人的段。
 
-> **前端不在本轮交付范围内**：构建对话框、Registry 配置页与 push 操作归下一轮。
-> 后端已完整可用并有集成测试覆盖（含对真实私有 Registry 的推送与拉回验证）。
+前端落地记录：
+
+10. **构建 / 推送请求必须放宽 30 秒超时**：`http` 实例的默认超时会在真实构建跑到
+    第 30 秒时返回一个与构建无关的网络超时，用户会当成「后端挂了」，而构建其实还
+    在跑。两条请求都设 `timeout: 0`。
+11. **multipart 必须显式覆盖 `Content-Type`**：实例默认头是 `application/json`，
+    而 axios 见到 FormData + JSON 头会 `JSON.stringify(formDataToJSON(data))`
+    ——**文件被静默丢掉**，服务端只报「context 是必填的」。改成
+    `multipart/form-data` 才会走 FormData 分支；浏览器随后会清掉该头自己补 boundary。
+12. **Registry 页用 `requiresPermission` 而不是 `requiresAdmin`**：后端这道门是
+    `registry.read`，自定义角色可能只带它。用 `requiresAdmin`（管理面三项权限的
+    合取）会把这类用户挡在自己的页外，比后端更严。
+13. **推送对话框必须把「会不会带凭据」提前说清**：匿名推送同样是成功，光看「推送
+    成功」无法区分「凭据生效了」与「这个仓库根本不要凭据」——后者往往意味着地址
+    配错了（推到了一个意外的公开仓库）。多标签镜像还要提示只推第一个。
+14. **前端不复刻 Registry 地址解析的第二套规则**：`utils/registry-display.ts` 的
+    `registryAddressOf` 照抄后端 `ImageReference.ExtractServerAddress`
+    （首段含 `.`/`:` 或等于 `localhost` 才算主机）。两边漂移的后果是「界面说会连
+    A、后端实际连 B」，而 B 才决定成败。
+
+> 后端与前端的验收口径一致：上传一个 Dockerfile 能构建出镜像；配置一个私有
+> Registry 后能 push 成功。后端另有对真实私有 Registry 的推送与拉回集成测试。
 
 ---
 

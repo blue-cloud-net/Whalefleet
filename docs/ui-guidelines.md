@@ -95,7 +95,7 @@ UnoCSS 默认 + 自定义：
 | 作用域 | 菜单项 | 可见角色 | 阶段 |
 |--------|--------|---------|------|
 | `global` | 总览 / 全局设置 | admin + user | 0.0.7+ |
-| `global` | 管理：主机管理 / 用户管理 | **admin only** | 0.0.8 |
+| `global` | 管理：主机管理 / 用户管理 / 角色 / Registry | **admin only**（Registry 按 `registry.read` 判） | 0.0.8 · Registry 0.4.0 |
 | `host` | 概览（落地页，单独渲染，不从路由表派生） | admin + user | 0.0.7+ |
 | `host` | 状态 / 容器 / 镜像 / 数据卷 / 网络 / 编排 / 事件 | admin + user | 0.0.7+ |
 
@@ -386,6 +386,8 @@ HOST_TONE_RAIL[tone]                // 卡片左侧色条
   /settings                         → SettingsView（主题 / 语言 / 每页条数）
   /hosts                            → HostsView        (admin, 主机 CRUD)
   /users                            → UsersView        (admin)
+  /roles                            → RolesView        (admin, 角色与权限矩阵)
+  /registries                       → RegistriesView   (需 registry.read)
 
   ─── 主机作用域（scope: 'host'）───
   /hosts/:hostId                    → redirect → /hosts/:hostId/dashboard
