@@ -20,6 +20,18 @@ import {
   type PortMapping,
   type VolumeMount
 } from '@/utils/container-input'
+import {
+  buildHealthCheck,
+  hasCapabilityConflict,
+  parseCapabilities,
+  parseCpuCores,
+  parseDevices,
+  parseLogOptions,
+  parseMemoryMiB,
+  parseSysctls,
+  parseUlimits,
+  type LineParse
+} from '@/utils/advanced-create'
 
 /**
  * 新建容器对话框（0.0.11，0.0.14 重构输入区）。
@@ -93,6 +105,33 @@ const workingDir = ref('')
 const tty = ref(false)
 const stdinOpen = ref(false)
 
+// ===== 0.3.0 高级创建参数 =====
+// 全部**默认空**：空 = 不传 = 走镜像/守护进程的默认值。给它们预设初值（如 logDriver 默认
+// json-file）看起来无害，但会让「我没改过」也变成一个显式设置，而两种情况的区别在
+// 「重建容器」时才会显现（那就是另一个话题了）。
+const user = ref('')
+const capAdd = ref('')
+const capDrop = ref('')
+const memoryInput = ref('')
+const cpusInput = ref('')
+const healthTest = ref('')
+const healthEnabled = ref(false)
+const healthInterval = ref('')
+const healthTimeout = ref('')
+const healthStartPeriod = ref('')
+const healthRetries = ref('')
+const sysctls = ref('')
+const ulimits = ref('')
+const devices = ref('')
+const logDriverType = ref('')
+const logDriverOptions = ref('')
+
+/** 是否显式**关闭**镜像自带的健康检查（0.3.0）。 */
+const healthDisabled = ref(false)
+
+/** 高级参数的字段级错误：key 是字段名，value 是错误 i18n key。 */
+const advancedErrors = ref<Record<string, string>>({})
+
 /**
  * 主机上现有的网络（0.2.0），用于把「网络名」从手打变成选。
  *
@@ -133,6 +172,24 @@ function reset(): void {
   workingDir.value = ''
   tty.value = false
   stdinOpen.value = false
+  user.value = ''
+  capAdd.value = ''
+  capDrop.value = ''
+  memoryInput.value = ''
+  cpusInput.value = ''
+  healthTest.value = ''
+  healthEnabled.value = false
+  healthInterval.value = ''
+  healthTimeout.value = ''
+  healthStartPeriod.value = ''
+  healthRetries.value = ''
+  sysctls.value = ''
+  ulimits.value = ''
+  devices.value = ''
+  logDriverType.value = ''
+  logDriverOptions.value = ''
+  healthDisabled.value = false
+  advancedErrors.value = {}
   fieldErrors.value = {}
   createdContainerId.value = null
   warnings.value = []
@@ -175,6 +232,82 @@ function validateName(value: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(trimmed)
 }
 
+/**
+ * 把一个 `LineParse` 的结果并进 payload 或 errors。
+ *
+ * ⚠️ `skip` **不写字段**：空输入发空数组/空串会被守护进程当成「显式清空」，
+ * 与「我没填」的语义完全不同。
+ */
+function merge<T>(
+  parsed: LineParse<T>,
+  key: string,
+  target: Record<string, unknown>,
+  errors: Record<string, string>,
+  errorKey: string
+): void {
+  if (parsed.kind === 'skip') return
+
+  if (parsed.kind === 'error') {
+    errors[key] = t(errorKey, parsed)
+    return
+  }
+
+  target[key] = parsed.value
+}
+
+/** 把 0.3.0 的高级参数组装进 payload，并把解析失败记到 `errors`。 */
+function withAdvancedOptions(
+  payload: CreateContainerPayload,
+  errors: Record<string, string>
+): CreateContainerPayload {
+  merge(parseCapabilities(capAdd.value), 'capAdd', payload as Record<string, unknown>, errors, 'container.advanced.capabilityInvalid')
+  merge(parseCapabilities(capDrop.value), 'capDrop', payload as Record<string, unknown>, errors, 'container.advanced.capabilityInvalid')
+  merge(parseMemoryMiB(memoryInput.value), 'memoryLimitBytes', payload as Record<string, unknown>, errors, 'container.advanced.memoryInvalid')
+  merge(parseCpuCores(cpusInput.value), 'nanoCpus', payload as Record<string, unknown>, errors, 'container.advanced.cpusInvalid')
+  merge(parseSysctls(sysctls.value), 'sysctls', payload as Record<string, unknown>, errors, 'container.advanced.sysctlInvalid')
+  merge(parseUlimits(ulimits.value), 'ulimits', payload as Record<string, unknown>, errors, 'container.advanced.ulimitInvalid')
+  merge(parseDevices(devices.value), 'devices', payload as Record<string, unknown>, errors, 'container.advanced.deviceInvalid')
+
+  const health = healthDisabled.value
+    ? ({ kind: 'ok' as const, value: { kind: 'none' as const } })
+    : buildHealthCheck(healthEnabled.value, healthTest.value, {
+        interval: healthInterval.value,
+        timeout: healthTimeout.value,
+        startPeriod: healthStartPeriod.value,
+        retries: healthRetries.value
+      })
+
+  if (health.kind === 'error') {
+    errors.healthCheck = t('container.advanced.healthInvalid')
+  } else if (health.kind === 'ok') {
+    // ⚠️ `kind: 'none'` → `test: ['NONE']`：Docker 见到它就关闭检查，
+    // 与「不传」（继承镜像里的 HEALTHCHECK）语义完全不同，必须显式区分。
+    payload.healthCheck =
+      health.value.kind === 'none'
+        ? { test: ['NONE'] }
+        : (health.value as unknown as CreateContainerPayload['healthCheck'])
+  }
+
+  if (logDriverType.value.trim().length > 0) {
+    const options = parseLogOptions(logDriverOptions.value)
+
+    if (options.kind === 'error') {
+      errors.logDriver = t('container.advanced.logDriverInvalid')
+    } else {
+      payload.logDriver = {
+        type: logDriverType.value.trim(),
+        ...(options.kind === 'ok' ? { options: options.value } : {})
+      }
+    }
+  }
+
+  if (user.value.trim().length > 0) {
+    payload.user = user.value.trim()
+  }
+
+  return payload
+}
+
 async function submit(): Promise<void> {
   const errors: Record<string, string> = {}
 
@@ -203,9 +336,35 @@ async function submit(): Promise<void> {
   if (tty.value) payload.tty = true
   if (stdinOpen.value) payload.stdinOpen = true
 
+  // ===== 0.3.0 高级参数 =====
+  const advancedErrors: Record<string, string> = {}
+  const advanced = withAdvancedOptions(payload, advancedErrors)
+
+  // 能力既增又删同一项是跨字段的错误（两个独立解析都合法），因此单独拦一道：
+  // Docker 不报错（两个列表都会发过去），生效哪一个取决于守护进程内部的合并顺序。
+  const capAddParsed = parseCapabilities(capAdd.value)
+  const capDropParsed = parseCapabilities(capDrop.value)
+
+  if (
+    capAddParsed.kind === 'ok' &&
+    capDropParsed.kind === 'ok' &&
+    hasCapabilityConflict(capAddParsed.value, capDropParsed.value)
+  ) {
+    advancedErrors.capAdd = t('container.advanced.capabilityConflict')
+  }
+
+  if (Object.keys(advancedErrors).length > 0) {
+    advancedErrors.value = advancedErrors
+    // ⚠️ 顺带**清掉旧错误**：用户改完一行后提交，提示必须跟着变。
+    // 而不清的话会一直红着，而那一行现在已经合法了。
+    return
+  }
+
+  advancedErrors.value = {}
+
   submitting.value = true
   try {
-    const result = await createContainer(props.hostId, payload)
+    const result = await createContainer(props.hostId, advanced)
 
     createdContainerId.value = result.containerId
     // ⚠️ warnings **不是错误**：创建已经成功。这些提示（例如「端口未映射」）恰恰是
@@ -361,6 +520,122 @@ function splitArgs(text: string): string[] {
                 <el-checkbox v-model="autoRemove">{{ t('container.create.autoRemove') }}</el-checkbox>
                 <el-checkbox v-model="tty">{{ t('container.create.tty') }}</el-checkbox>
                 <el-checkbox v-model="stdinOpen">{{ t('container.create.stdinOpen') }}</el-checkbox>
+              </div>
+            </el-form-item>
+          </div>
+        </el-collapse-item>
+
+        <!--
+          0.3.0 高级参数：第二个折叠块，与上面的「基本」同级。
+
+          ⚠️ **不要把高级字段平铺到主表单**：它们是低频的（多数容器一个都不用），
+          平铺后会把镜像 / 名称 / 端口这些高频字段挤到屏幕外，
+          而「创建容器」的最短路径因此变长。折叠是「常用 / 高级」两级结构的本意。
+
+          ⚠️ 行式输入（每行一条）与 EnvVarEditor / PortMappingEditor / VolumeMountEditor
+          保持一致：真实 `docker run` 就是这种命令行输入，而嵌套表单控件在对话框宽度下
+          塞不下「路径 + 权限 + 删除按钮」三列，且可读性更差。
+        -->
+        <el-collapse-item :title="t('container.create.advanced')" name="advanced">
+          <div class="flex flex-col gap-x-4">
+            <p class="mb-1 text-xs text-content-muted">
+              {{ t('container.create.advancedHint') }}
+            </p>
+
+            <div class="grid gap-x-4 sm:grid-cols-2">
+              <el-form-item :label="t('container.advanced.user')">
+                <el-input v-model="user" clearable placeholder="1000:1000" />
+              </el-form-item>
+              <el-form-item :label="t('container.advanced.memory')" :error="advancedErrors.memoryLimitBytes ? t('container.advanced.memoryInvalid') : undefined">
+                <el-input v-model="memoryInput" clearable placeholder="512" />
+              </el-form-item>
+              <el-form-item :label="t('container.advanced.cpus')" :error="advancedErrors.nanoCpus ? t('container.advanced.cpusInvalid') : undefined">
+                <el-input v-model="cpusInput" clearable placeholder="1.5" />
+              </el-form-item>
+              <el-form-item :label="t('container.advanced.logDriver')" :error="advancedErrors.logDriver ? t('container.advanced.logDriverInvalid') : undefined">
+                <el-input v-model="logDriverType" clearable placeholder="json-file" />
+              </el-form-item>
+            </div>
+
+            <el-form-item :label="t('container.advanced.logDriverOptions')">
+              <el-input
+                v-model="logDriverOptions"
+                type="textarea"
+                :rows="2"
+                placeholder="max-size=10m"
+              />
+            </el-form-item>
+
+            <div class="grid gap-x-4 sm:grid-cols-2">
+              <el-form-item :label="t('container.advanced.capAdd')" :error="advancedErrors.capAdd ? t(advancedErrors.capAdd) : undefined">
+                <el-input
+                  v-model="capAdd"
+                  type="textarea"
+                  :rows="2"
+                  placeholder="NET_ADMIN&#10;SYS_PTRACE"
+                />
+              </el-form-item>
+              <el-form-item :label="t('container.advanced.capDrop')" :error="advancedErrors.capDrop ? t(advancedErrors.capDrop) : undefined">
+                <el-input v-model="capDrop" type="textarea" :rows="2" placeholder="ALL" />
+              </el-form-item>
+            </div>
+
+            <el-form-item :label="t('container.advanced.sysctls')" :error="advancedErrors.sysctls ? t('container.advanced.sysctlInvalid') : undefined">
+              <el-input
+                v-model="sysctls"
+                type="textarea"
+                :rows="2"
+                placeholder="net.core.somaxconn=1024"
+              />
+            </el-form-item>
+
+            <el-form-item :label="t('container.advanced.ulimits')" :error="advancedErrors.ulimits ? t('container.advanced.ulimitInvalid') : undefined">
+              <el-input
+                v-model="ulimits"
+                type="textarea"
+                :rows="2"
+                placeholder="nofile=1024:4096"
+              />
+            </el-form-item>
+
+            <el-form-item :label="t('container.advanced.devices')" :error="advancedErrors.devices ? t('container.advanced.deviceInvalid') : undefined">
+              <el-input v-model="devices" type="textarea" :rows="2" placeholder="/dev/snd:/dev/snd:r" />
+              <p class="mt-1 text-xs text-status-warn">
+                {{ t('container.advanced.devicesWarning') }}
+              </p>
+            </el-form-item>
+
+            <el-form-item :label="t('container.advanced.health')" :error="advancedErrors.healthCheck ? t('container.advanced.healthInvalid') : undefined">
+              <div class="flex flex-col gap-2">
+                <el-checkbox v-model="healthDisabled">
+                  {{ t('container.advanced.healthDisable') }}
+                </el-checkbox>
+                <el-checkbox v-model="healthEnabled" :disabled="healthDisabled">
+                  {{ t('container.advanced.healthEnable') }}
+                </el-checkbox>
+
+                <template v-if="healthEnabled && !healthDisabled">
+                  <el-input
+                    v-model="healthTest"
+                    type="textarea"
+                    :rows="2"
+                    placeholder="CMD-SHELL curl -f http://localhost/ || exit 1"
+                  />
+                  <div class="grid gap-x-4 sm:grid-cols-4">
+                    <el-form-item :label="t('container.advanced.healthInterval')">
+                      <el-input v-model="healthInterval" clearable placeholder="30" />
+                    </el-form-item>
+                    <el-form-item :label="t('container.advanced.healthTimeout')">
+                      <el-input v-model="healthTimeout" clearable placeholder="5" />
+                    </el-form-item>
+                    <el-form-item :label="t('container.advanced.healthStartPeriod')">
+                      <el-input v-model="healthStartPeriod" clearable placeholder="10" />
+                    </el-form-item>
+                    <el-form-item :label="t('container.advanced.healthRetries')">
+                      <el-input v-model="healthRetries" clearable placeholder="3" />
+                    </el-form-item>
+                  </div>
+                </template>
               </div>
             </el-form-item>
           </div>

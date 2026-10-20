@@ -4,7 +4,8 @@ import type {
   ImageDetail,
   ImageListResult,
   ImagePullResult,
-  ImageRemovedResult
+  ImageRemovedResult,
+  ImageTaggedResult
 } from '@/types/api'
 
 /**
@@ -115,5 +116,34 @@ export function batchRemoveImages(
     url: `/api/v1/hosts/${encodeURIComponent(hostId)}/images/batch-remove`,
     method: 'post',
     data: { imageIds, force }
+  })
+}
+
+/**
+ * 给镜像打标签（对应 `docker tag`，0.3.0）。
+ *
+ * ⚠️ **tag 不复制镜像**：新标签与源标签指向**同一个镜像 ID**，磁盘占用不变。
+ * 因此 UI 必须把行更新成「同一镜像的另一个标签」，而**不是**新增一行镜像——
+ * 后者会让用户以为副本可以随便删（删掉最后一个标签时镜像确实会消失）。
+ *
+ * `repository` **不能含标签**：用户很容易照着「源镜像」那一栏把 `nginx:1.27` 整个粘进来，
+ * 后端会拒为 `1000`/400（而不是拼成 `nginx:1.27:alpine`）。
+ * UI 应当**在输入框就分开填仓库名与标签**，并在提交前本地拦一道。
+ *
+ * `tag` 省略或为空时后端取 `latest`。
+ *
+ * 返回的 `repoTags` 是**打标签之后**该镜像 ID 上的全部标签，
+ * 界面据此刷新那一行而不必重新拉整个列表。
+ */
+export function tagImage(
+  hostId: string,
+  imageId: string,
+  repository: string,
+  tag?: string
+): Promise<ImageTaggedResult> {
+  return request<ImageTaggedResult>({
+    url: `/api/v1/hosts/${encodeURIComponent(hostId)}/images/tag`,
+    method: 'post',
+    data: { imageId, repository, tag }
   })
 }

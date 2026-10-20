@@ -4,7 +4,10 @@ import type {
   ContainerCreatedResult,
   ContainerDetail,
   ContainerListResult,
-  ContainerLogsResult
+  ContainerLogsResult,
+  ContainerRecreatedResult,
+  ContainerRenamedResult,
+  ContainerUpdatedResult
 } from '@/types/api'
 
 /**
@@ -146,6 +149,75 @@ export interface CreateContainerPayload {
   workingDir?: string
   tty?: boolean
   stdinOpen?: boolean
+
+  // ===== 0.3.0：高级创建参数 =====
+  // 界面按「常用 / 高级」两级折叠。服务端对这组字段没有任何特殊处理
+  // （Docker 的创建接口只有一个），差别只在 UI 上。
+
+  /** 运行用户（`docker run --user`）；省略时用镜像里的 `USER` */
+  user?: string
+  capAdd?: string[]
+  capDrop?: string[]
+  /**
+   * 健康检查定义。
+   *
+   * `test` 是**数组**：Docker 有 `CMD-SHELL` / `CMD` / `NONE` 三种形态，
+   * 而它们在 API 上是同一字段的不同写法。压成字符串就得再解析回来，
+   * 而命令里本身带引号与空格——解析规则一旦与 Docker 不一致，
+   * 症状就是「配置看着对但没生效」。
+   *
+   * `['NONE']` 表示**覆盖镜像的健康检查并关闭它**（与「不传」截然不同）。
+   */
+  healthCheck?: {
+    test: string[]
+    /** 两次检查的间隔（秒）；后端下限 1 */
+    intervalSeconds?: number
+    /** 单次检查超时（秒） */
+    timeoutSeconds?: number
+    /** 启动宽限期（秒），期间失败不计入 retries */
+    startPeriodSeconds?: number
+    /** 连续失败多少次判定 unhealthy；后端下限 1 */
+    retries?: number
+  }
+  /**
+   * 设备映射（`--device`）。
+   *
+   * ⚠️ 把宿主设备映射进容器等于把那个设备的控制权交给容器，
+   * 因此 UI 不应把它当普通创建参数推荐。
+   */
+  devices?: Array<{
+    /** 宿主设备路径；必填 */
+    hostPath: string
+    /** 容器内路径；省略则与宿主路径相同 */
+    containerPath?: string
+    /** `r`(读) / `w`(写) / `m`(mknod) 的组合；省略为 `rwm` */
+    permissions?: string
+  }>
+  sysctls?: Record<string, string>
+  ulimits?: Array<{
+    /** 限制名，如 `nofile`；必填 */
+    name: string
+    /** 软限制；省略时与 hard 相同 */
+    soft?: number
+    /** 硬限制；省略时与 soft 相同 */
+    hard?: number
+  }>
+  /**
+   * 日志驱动。
+   *
+   * ⚠️ **驱动的存在性无法在服务端校验**（要读宿主守护进程的插件注册表）。
+   * 传了本机没有的驱动时，容器能创建成功、**一启动就退出**——
+   * 因此 UI 应给出「该驱动必须在目标主机上已安装」的提示。
+   */
+  logDriver?: {
+    /** `json-file` / `local` / `journald` / `syslog` / `none`；必填 */
+    type: string
+    options?: Record<string, string>
+  }
+  /** 内存上限（字节）；**下限 6 MiB**（守护进程硬性下限）。省略或 0 = 不限制 */
+  memoryLimitBytes?: number
+  /** CPU 配额（十亿分之一核，`1e9` = 1 核）；上限 1024 核。省略或 0 = 不限制 */
+  nanoCpus?: number
 }
 
 /**
@@ -236,5 +308,112 @@ export function batchRemoveContainers(
     url: `${base(hostId)}/batch-remove`,
     method: 'post',
     data: { containerIds, force }
+  })
+}
+
+/* ==================================================================
+ * 基础操作（0.3.0）
+ * ================================================================== */
+
+/**
+ * 重命名容器。
+ *
+ * 名称规则与创建相同（字母/数字开头，其后含 `_ . -`），非法 → `1000`/400；
+ * 名称已被占用 → `1404`/409（界面应提示「换个名字」，不是通用报错）。
+ */
+export function renameContainer(
+  hostId: string,
+  containerId: string,
+  name: string
+): Promise<ContainerRenamedResult> {
+  return request<ContainerRenamedResult>({
+    url: `${base(hostId)}/rename`,
+    method: 'post',
+    data: { containerId, name }
+  })
+}
+
+/** 热更新的请求体。三个字段都省略 → `1000`（那等于什么都不改）。 */
+export interface UpdateContainerPayload {
+  /** `no` / `always` / `on-failure` / `unless-stopped`；省略 = 不改 */
+  restartPolicy?: string
+  /**
+   * 内存上限（字节）；省略 = 不改。
+   *
+   * ⚠️ **`0` 会被后端拒为 `1000`**，它**不是**「取消限制」。
+   * 实测 `docker update --memory=0` 返回 200 而限制根本没变
+   * （守护进程对 update 是「字段非 0 才应用」）。
+   * 因此 UI **不应提供**「取消内存限制」的开关——那是一个点了没反应又显示成功的按钮。
+   */
+  memoryLimitBytes?: number
+  /** CPU 配额（十亿分之一核）；省略 = 不改。`0` 同样被拒 */
+  nanoCpus?: number
+}
+
+/**
+ * 热更新容器的重启策略与资源限制。
+ *
+ * **只支持真正能热改的字段**：镜像、端口、环境变量、挂载、网络改不了
+ * （Docker 不支持），UI 不应给它们「保存」按钮。
+ *
+ * 返回**更新后实际生效**的值——可直接用它刷新界面。
+ */
+export function updateContainer(
+  hostId: string,
+  containerId: string,
+  payload: UpdateContainerPayload
+): Promise<ContainerUpdatedResult> {
+  return request<ContainerUpdatedResult>({
+    url: `${base(hostId)}/update`,
+    method: 'post',
+    data: { containerId, ...payload }
+  })
+}
+
+/**
+ * 复制容器（新建一个配置相同的兄弟容器）。
+ *
+ * **原容器不受影响**：不停止、不改名、不删除。因此确认提示不应带任何警告语气。
+ *
+ * `name` 省略时后端用「原名 + `-copy`」，被占用时自动递增 `-2`/`-3`——
+ * 连点两次不会失败。
+ *
+ * ⚠️ 返回的 `recreated` 恒为 `false`，界面据此区分「复制」与「重建」。
+ */
+export function duplicateContainer(
+  hostId: string,
+  containerId: string,
+  payload: { name?: string; start?: boolean } = {}
+): Promise<ContainerRecreatedResult> {
+  return request<ContainerRecreatedResult>({
+    url: `${base(hostId)}/duplicate`,
+    method: 'post',
+    data: { containerId, ...payload }
+  })
+}
+
+/**
+ * 为已存在容器追加挂载（⚠️ **会重建容器**，容器 ID 一定变）。
+ *
+ * Docker 没有「给已存在容器加挂载」的接口，只能重建。因此：
+ * - 二次确认**必须写明会重建**；
+ * - 成功后旧容器以 `whalefleet-replaced-<短ID>` 保留（不是被删除），
+ *   `replacedContainerId` 指到它——界面要提示用户它可以删，否则没人敢动。
+ *
+ * `start` 省略时后端**沿用原容器的运行状态**（不擅自启动一个本来没运行的容器）。
+ *
+ * 请求里给的是**要新增**的挂载，原有挂载全部保留；
+ * 同一目标路径重复挂载 → `1000`。
+ */
+export function addContainerVolumes(
+  hostId: string,
+  containerId: string,
+  volumes: Array<{ source: string; destination: string; readOnly?: boolean }>,
+  start?: boolean
+): Promise<ContainerRecreatedResult> {
+  return request<ContainerRecreatedResult>({
+    url: `${base(hostId)}/add-volumes`,
+    method: 'post',
+    data: { containerId, volumes, start }
   })
 }

@@ -11,6 +11,7 @@ import IconActionButton from '@/components/common/IconActionButton.vue'
 import ListPagination from '@/components/common/ListPagination.vue'
 import BatchActionBar from '@/components/common/BatchActionBar.vue'
 import PullImageDialog from '@/components/business/PullImageDialog.vue'
+import ImageTagDialog from '@/components/business/ImageTagDialog.vue'
 import ImageSize from '@/components/business/ImageSize.vue'
 import { onActionRequest } from '@/composables/useActionBus'
 import { batchRemoveImages, listImages, removeImage, type ImageSortField } from '@/api/image'
@@ -57,6 +58,10 @@ const error = ref<string | null>(null)
 /** 正在删除的镜像 id：让对应按钮转圈，而不是整页转圈 */
 const busyIds = ref<Set<string>>(new Set())
 const pullDialogVisible = ref(false)
+
+/** 0.3.0：打标签的目标镜像与对话框开关。 */
+const tagDialogVisible = ref(false)
+const tagTarget = ref<ImageSummary | null>(null)
 
 /** 当前排序列；`null` = 不排序，后端保持守护进程返回顺序（创建时间降序） */
 const sortField = ref<ImageSortField | null>(null)
@@ -352,6 +357,36 @@ function openInspect(image: ImageSummary): void {
   })
 }
 
+/**
+ * 打开打标签对话框（0.3.0）。
+ *
+ * ⚠️ 悬挂镜像（`repoTags` 为空）不能打标签：它连一个可引用的名字都没有，
+ * 而 `docker tag` 需要一个源标识。对它开放这个入口只会得到一句看不懂的报错，
+ * 因此这里直接不打开并给出原因。
+ */
+function openTag(image: ImageSummary): void {
+  const reference = image.repoTags[0]
+
+  if (reference === undefined) {
+    ElMessage({ type: 'warning', message: t('image.tag.dangling'), showClose: true })
+    return
+  }
+
+  tagTarget.value = image
+  tagDialogVisible.value = true
+}
+
+/**
+ * 打标签成功后刷新。
+ *
+ * ⚠️ 必须整页重新拉而不是只改本地那一行：后端返回的 `repoTags` 是该镜像 ID 上的
+ * **全部**标签，而列表按「镜像」分行——只改一行会让别的镜像行的标签数对不上。
+ * 何况 tag 一个镜像会同时影响列表与详情两处。
+ */
+async function onTagged(): Promise<void> {
+  await load()
+}
+
 watch(
   hostId,
   (id) => {
@@ -492,14 +527,20 @@ watch(
           </el-table-column>
 
           <!-- 与容器列表共用 IconActionButton：图标按钮 + tooltip 文字标签。
-             `gap-0` + 64px 定宽：两个 24px 按钮 = 48px，gap-0.5 时是 50px。 -->
-          <el-table-column :label="t('container.col.actions')" width="64">
+               `gap-0` + 88px 定宽：三个 24px 按钮 = 72px，gap-0.5 时是 78px，取 88 留一点余量。 -->
+          <el-table-column :label="t('container.col.actions')" width="88">
             <template #default="{ row }">
               <div class="flex items-center">
                 <IconActionButton
                   icon="i-carbon-document-view"
                   :label="t('container.action.detail')"
                   @click="openInspect(row)"
+                />
+                <IconActionButton
+                  icon="i-carbon-tag"
+                  :label="t('image.action.tag')"
+                  :disabled="busyIds.has(row.id)"
+                  @click="openTag(row)"
                 />
                 <IconActionButton
                   icon="i-carbon-trash-can"
@@ -535,6 +576,17 @@ watch(
     </SectionCard>
 
     <PullImageDialog v-model="pullDialogVisible" :host-id="hostId" @pulled="onPulled" />
+
+    <ImageTagDialog
+      v-model="tagDialogVisible"
+      :host-id="hostId"
+      :image-id="tagTarget?.id ?? null"
+      :current-reference="tagTarget?.repoTags[0] ?? ''"
+      @tagged="onTagged"
+      @update:model-value="(open) => {
+        if (!open) tagTarget = null
+      }"
+    />
 
     <p class="mt-3 text-xs text-content-faint">
       {{ t('image.dangling.note', { label: DANGLING_IMAGE_LABEL }) }}

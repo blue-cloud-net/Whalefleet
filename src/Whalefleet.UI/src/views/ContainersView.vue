@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -11,6 +11,10 @@ import IconActionButton from '@/components/common/IconActionButton.vue'
 import ListPagination from '@/components/common/ListPagination.vue'
 import BatchActionBar from '@/components/common/BatchActionBar.vue'
 import CreateContainerDialog from '@/components/business/CreateContainerDialog.vue'
+import ContainerRenameDialog from '@/components/business/ContainerRenameDialog.vue'
+import ContainerUpdateDialog from '@/components/business/ContainerUpdateDialog.vue'
+import ContainerDuplicateDialog from '@/components/business/ContainerDuplicateDialog.vue'
+import ContainerAddVolumesDialog from '@/components/business/ContainerAddVolumesDialog.vue'
 import ContainerStatusBadge from '@/components/business/ContainerStatusBadge.vue'
 import { onActionRequest } from '@/composables/useActionBus'
 import {
@@ -68,6 +72,21 @@ const error = ref<string | null>(null)
 /** 正在执行操作的容器 id 集合：让行内按钮各自转圈，而不是整页转圈 */
 const busyIds = ref<Set<string>>(new Set())
 const createDialogVisible = ref(false)
+
+/**
+ * 0.3.0 的四个对话框共用一组「当前操作对象」状态。
+ *
+ * ⚠️ 不用四个独立的 visible + id，而是共用一个 `target`：
+ * 四个对话框分属四组状态时，会出现「A 对话框开着，B 的 id 却指到了另一个容器」的组合——
+ * 而那种状态下用户点确认，操作会作用在**错的容器**上。
+ * 一个 `target` 从构造上排除了这种组合。
+ */
+const operationTarget = ref<ContainerSummary | null>(null)
+const renameVisible = ref(false)
+const updateVisible = ref(false)
+const duplicateVisible = ref(false)
+const addVolumesVisible = ref(false)
+
 const lastSyncedAt = ref<number | null>(null)
 
 /** 当前排序列；`null` = 不排序，后端保持守护进程返回顺序（创建时间降序） */
@@ -562,6 +581,86 @@ function rowActions(container: ContainerSummary): RowAction[] {
   ]
 }
 
+/**
+ * 0.3.0 新增的四个操作（重命名 / 热更新 / 复制 / 追加挂载）。
+ *
+ * ## 为什么收进「更多」下拉而不是继续平铺图标按钮
+ * 平铺下去一行就是 9 个 24px 图标（当前 136px 的操作列要撑到 220px 以上），
+ * 而这四个都是**低频**操作——「改了配置之后才会想用」。
+ * 平铺的代价是：最常用的「启动 / 停止」被挤到离鼠标更远的位置，
+ * 且扫视时难区分哪个是可逆的、哪个会重建容器。
+ * 收进下拉后，平铺区只留高频与危险操作，而「会重建容器」的那一项
+ * 也能在菜单里单独写上警告图标与副标题。
+ *
+ * ⚠️ 下拉项的图标也必须同步 safelist（与平铺区同一个坑）。
+ */
+interface MoreAction {
+  key: string
+  icon: string
+  label: string
+  /** 副标题：用于把「会重建容器」这类后果直接写在菜单里 */
+  hint?: string
+  tone?: 'default' | 'warning'
+  disabled?: boolean
+  run: (container: ContainerSummary) => void
+}
+
+function moreActions(container: ContainerSummary): MoreAction[] {
+  const busy = busyIds.value.has(container.id)
+
+  return [
+    {
+      key: 'rename',
+      icon: 'i-carbon-text-align-left',
+      label: t('container.action.rename'),
+      disabled: busy,
+      run: (c) => openOperation(renameVisible, c)
+    },
+    {
+      key: 'update',
+      icon: 'i-carbon-settings-adjust',
+      label: t('container.action.update'),
+      disabled: busy,
+      run: (c) => openOperation(updateVisible, c)
+    },
+    {
+      key: 'duplicate',
+      icon: 'i-carbon-copy',
+      label: t('container.action.duplicate'),
+      disabled: busy,
+      run: (c) => openOperation(duplicateVisible, c)
+    },
+    {
+      key: 'add-volumes',
+      icon: 'i-carbon-add-alt',
+      label: t('container.action.addVolumes'),
+      // ⚠️ 危险色 + 副标题：它是本组里唯一会**替换**容器的操作，
+      // 而菜单里没有二次确认对话框的停留时间，必须一眼看出它不一样。
+      hint: t('container.addVolumes.warning'),
+      tone: 'warning',
+      disabled: busy,
+      run: (c) => openOperation(addVolumesVisible, c)
+    }
+  ]
+}
+
+/** 打开某个操作对话框，并把它绑定到 `container`。 */
+function openOperation(dialog: Ref<boolean>, container: ContainerSummary): void {
+  operationTarget.value = container
+  dialog.value = true
+}
+
+/** 对话框关闭后清空操作对象：否则下次打开时可能拿到上一行的容器。 */
+function closeOperation(dialog: Ref<boolean>): void {
+  dialog.value = false
+  operationTarget.value = null
+}
+
+/** 对话框里操作成功后刷新列表（各操作的影响面不同，统一走整页刷新最省心）。 */
+async function onOperationDone(): Promise<void> {
+  await load()
+}
+
 watch(
   hostId,
   (id) => {
@@ -737,6 +836,30 @@ onBeforeUnmount(stopPolling)
                   :disabled="action.disabled"
                   @click="action.run(row)"
                 />
+                <el-dropdown trigger="click">
+                  <IconActionButton
+                    icon="i-carbon-overflow-menu-horizontal"
+                    :label="t('container.action.more')"
+                    :disabled="busyIds.has(row.id)"
+                  />
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item
+                        v-for="action in moreActions(row)"
+                        :key="action.key"
+                        :disabled="action.disabled"
+                        @click="action.run(row)"
+                      >
+                        <span :class="action.icon" aria-hidden="true" />
+                        <span class="ml-2">{{ action.label }}</span>
+                        <span
+                          v-if="action.hint"
+                          class="ml-2 text-xs text-status-warn"
+                        >{{ action.hint }}</span>
+                      </el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
               </div>
             </template>
           </el-table-column>
@@ -767,6 +890,41 @@ onBeforeUnmount(stopPolling)
       v-model="createDialogVisible"
       :host-id="hostId"
       @created="onCreated"
+    />
+
+    <ContainerRenameDialog
+      v-model="renameVisible"
+      :host-id="hostId"
+      :container-id="operationTarget?.id ?? null"
+      :current-name="operationTarget?.name ?? ''"
+      @renamed="onOperationDone"
+      @update:model-value="(open) => !open && closeOperation(renameVisible)"
+    />
+
+    <ContainerUpdateDialog
+      v-model="updateVisible"
+      :host-id="hostId"
+      :container-id="operationTarget?.id ?? null"
+      @updated="onOperationDone"
+      @update:model-value="(open) => !open && closeOperation(updateVisible)"
+    />
+
+    <ContainerDuplicateDialog
+      v-model="duplicateVisible"
+      :host-id="hostId"
+      :container-id="operationTarget?.id ?? null"
+      :current-name="operationTarget?.name ?? ''"
+      @duplicated="onOperationDone"
+      @update:model-value="(open) => !open && closeOperation(duplicateVisible)"
+    />
+
+    <ContainerAddVolumesDialog
+      v-model="addVolumesVisible"
+      :host-id="hostId"
+      :container-id="operationTarget?.id ?? null"
+      :current-name="operationTarget?.name ?? ''"
+      @recreated="onOperationDone"
+      @update:model-value="(open) => !open && closeOperation(addVolumesVisible)"
     />
   </div>
 </template>
