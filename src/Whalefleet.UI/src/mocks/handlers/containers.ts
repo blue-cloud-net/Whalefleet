@@ -318,6 +318,43 @@ export function containerHandlers(scenario: () => MockScenario) {
       return HttpResponse.json(ok(detail))
     }),
 
+    /**
+     * 批量健康查询（0.6.0）。
+     *
+     * 复刻两条易忽略的语义：
+     * 1. **查不到的容器直接缺席**（多半是被删掉了），不让整批失败；
+     * 2. `healthStatus` 未配置健康检查是 `none` 而不是 null。
+     */
+    http.post('*/api/v1/hosts/:hostId/containers/health', async ({ request }) => {
+      await delay(delayFor(scenario()))
+
+      const body = await readBody(request)
+      const ids = Array.isArray(body.containerIds) ? body.containerIds.map(String) : []
+
+      if (ids.length === 0) {
+        return HttpResponse.json(fail(ErrorCode.ValidationFailed), {
+          status: httpStatusOf(ErrorCode.ValidationFailed)
+        })
+      }
+
+      const details = detailsFor(scenario())
+      const items = ids
+        .map((id) => details.find((item) => item.id === id))
+        .filter((item): item is ContainerDetail => item !== undefined)
+        .map((detail) => ({
+          containerId: detail.id,
+          name: detail.name,
+          healthStatus: detail.state.healthStatus,
+          restartCount: detail.state.restartCount,
+          // 运行中的退出码恒为 null（后端的运行中固定 0 会被读成「正常退出」）
+          exitCode: detail.state.exitCode,
+          oomKilled: detail.state.oomKilled,
+          running: detail.state.running
+        }))
+
+      return HttpResponse.json(ok({ items }))
+    }),
+
     http.post('*/api/v1/hosts/:hostId/containers/logs', async ({ request }) => {
       await delay(delayFor(scenario()))
 
@@ -978,7 +1015,8 @@ function createFixture(id: string, body: Record<string, unknown>): CreatedContai
       finishedAt: null,
       exitCode: null,
       oomKilled: false,
-      healthStatus: null
+      restartCount: 0,
+      healthStatus: 'none'
     },
     config: {
       image: String(body.image ?? ''),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { EMPTY, formatDateTime, formatDuration, formatUptime } from '../src/utils/datetime'
+import { EMPTY, formatDateTime, formatDuration, formatDurationFrom } from '../src/utils/datetime'
 
 const UNITS = { day: '天', hour: '小时', minute: '分', second: '秒' }
 
@@ -32,17 +32,17 @@ describe('formatDuration', () => {
   })
 })
 
-describe('formatUptime', () => {
+describe('formatDurationFrom', () => {
   it('按注入的 now 计算时长', () => {
     const start = '2026-10-10T00:00:00Z'
     const now = Date.parse('2026-10-11T00:00:00Z')
-    expect(formatUptime(start, UNITS, now)).toBe('1 天')
+    expect(formatDurationFrom(start, UNITS, now)).toBe('1 天')
   })
 
   it('缺失 / 非法时间戳返回占位符', () => {
-    expect(formatUptime(undefined, UNITS)).toBe(EMPTY)
-    expect(formatUptime('', UNITS)).toBe(EMPTY)
-    expect(formatUptime('not-a-date', UNITS)).toBe(EMPTY)
+    expect(formatDurationFrom(undefined, UNITS)).toBe(EMPTY)
+    expect(formatDurationFrom('', UNITS)).toBe(EMPTY)
+    expect(formatDurationFrom('not-a-date', UNITS)).toBe(EMPTY)
   })
 })
 

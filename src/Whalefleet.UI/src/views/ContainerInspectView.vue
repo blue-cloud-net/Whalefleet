@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -15,6 +15,14 @@ import { formatDateTime } from '@/utils/datetime'
 import { formatMemory, formatNetwork, formatPercent, memoryPercent } from '@/utils/log-format'
 import type { ByteUnits } from '@/utils/container-status'
 import type { ContainerDetail } from '@/types/api'
+
+/**
+ * 指标图**懒加载**：ECharts 只在容器详情页用到，放进主包会白送给所有用户。
+ * `defineAsyncComponent` 让 Vite 把它拆成单独的 chunk。
+ */
+const MetricsChart = defineAsyncComponent(
+  () => import('@/components/business/MetricsChart.vue')
+)
 
 /**
  * 容器详情页（0.0.11）。
@@ -61,6 +69,34 @@ const sample = stats.sample
 const memoryUsagePercent = computed(() =>
   sample.value ? memoryPercent(sample.value.memoryUsage, sample.value.memoryLimit) : null
 )
+
+/**
+ * 指标图的时间窗（秒）；0 = 全部缓冲（约两分钟）。
+ *
+ * 只做「从右往左切一段」：服务端环形缓冲只有 60 点，切更早的窗口本就无数据。
+ */
+const windowSeconds = ref(60)
+
+/** 按时间窗截取的采样（旧 → 新）。 */
+const visibleSamples = computed(() => {
+  const all = stats.samples.value
+  if (windowSeconds.value <= 0 || all.length === 0) return all
+
+  const latest = Date.parse(all[all.length - 1]!.timestamp)
+  if (Number.isNaN(latest)) return all
+
+  const floor = latest - windowSeconds.value * 1000
+
+  return all.filter((item) => Date.parse(item.timestamp) >= floor)
+})
+
+/** 健康状态 → i18n key（**显式映射**，不在模板里拼 key——拼错只会告警不报错）。 */
+const HEALTH_LABEL_KEY = {
+  none: 'container.health.none',
+  starting: 'container.health.starting',
+  healthy: 'container.health.healthy',
+  unhealthy: 'container.health.unhealthy'
+} as const
 
 const byteUnits = computed<ByteUnits>(() => ({
   b: t('unit.byte'),
@@ -206,7 +242,19 @@ watch(
             </div>
             <div v-if="detail.state.healthStatus">
               <dt>{{ t('container.detail.health') }}</dt>
-              <dd>{{ detail.state.healthStatus }}</dd>
+              <dd
+                :class="{
+                  'text-status-ok': detail.state.healthStatus === 'healthy',
+                  'text-status-down': detail.state.healthStatus === 'unhealthy'
+                }"
+              >
+                {{ t(HEALTH_LABEL_KEY[detail.state.healthStatus]) }}
+              </dd>
+            </div>
+            <!-- 重启计数：反复重启的容器靠这一行才能被看见（退出码为 0 时尤其如此） -->
+            <div v-if="detail.state.restartCount > 0">
+              <dt>{{ t('container.detail.restartCount') }}</dt>
+              <dd class="text-status-warn">{{ detail.state.restartCount }}</dd>
             </div>
             <div v-if="detail.state.oomKilled">
               <dt>{{ t('container.detail.oomKilled') }}</dt>
@@ -247,6 +295,23 @@ watch(
               <span class="font-mono text-sm">
                 {{ formatNetwork(sample.networkRxBytes, sample.networkTxBytes) }}
               </span>
+            </div>
+
+            <!--
+              多指标叠加图（0.6.0）：CPU / 内存走左轴（百分比），网络速率走右轴（字节/秒）。
+              量纲不同不能共用一个轴——否则网络曲线会把 CPU 压成一条直线。
+            -->
+            <div class="mt-2">
+              <div class="mb-1.5 flex items-center justify-between gap-3">
+                <span class="text-xs text-content-muted">{{ t('container.detail.metricsChart') }}</span>
+                <el-radio-group v-model="windowSeconds" size="small">
+                  <el-radio-button :value="60">1m</el-radio-button>
+                  <el-radio-button :value="120">2m</el-radio-button>
+                  <el-radio-button :value="0">{{ t('container.detail.all') }}</el-radio-button>
+                </el-radio-group>
+              </div>
+
+              <MetricsChart :samples="visibleSamples" />
             </div>
           </div>
 

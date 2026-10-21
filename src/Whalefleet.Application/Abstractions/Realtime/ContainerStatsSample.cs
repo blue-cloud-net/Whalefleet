@@ -17,7 +17,16 @@ namespace Whalefleet.Application.Abstractions.Realtime;
 /// <param name="MemoryLimit">内存上限字节数；守护进程未设限时为 0。</param>
 /// <param name="NetworkRxBytes">累计接收字节数。</param>
 /// <param name="NetworkTxBytes">累计发送字节数。</param>
+/// <param name="NetworkRxBytesPerSecond">
+/// 接收速率（字节/秒）；<b>首帧为 <see langword="null"/></b>——速率必须由相邻两帧相减得到，
+/// 第一帧没有「前一帧」，算出来要么是 0（看着像没流量）要么是天文数字。
+/// </param>
+/// <param name="NetworkTxBytesPerSecond">发送速率（字节/秒）；首帧同样为 <see langword="null"/>。</param>
 /// <param name="Timestamp">采样时刻（UTC）。</param>
+/// <remarks>
+/// <b>为什么同时保留累计值与速率</b>：详情页的数值卡展示的是「累计收发」（运维关心总量），
+/// 而图表与 sparkline 必须用速率（累计值画出来是一条单调上升的直线，看不出任何突变）。
+/// </remarks>
 public sealed record ContainerStatsSample(
     string ContainerId,
     double CpuPercent,
@@ -25,4 +34,6 @@ public sealed record ContainerStatsSample(
     long MemoryLimit,
     long NetworkRxBytes,
     long NetworkTxBytes,
+    double? NetworkRxBytesPerSecond,
+    double? NetworkTxBytesPerSecond,
     DateTimeOffset Timestamp);

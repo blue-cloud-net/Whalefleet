@@ -453,6 +453,9 @@ public sealed class ContainerStreamService : IContainerLogProvider, IContainerSt
     {
         private readonly ChannelWriter<ContainerStatsSample> _writer;
         private CPUStats? _previous;
+        private long? _previousRx;
+        private long? _previousTx;
+        private DateTimeOffset? _previousAt;
 
         /// <summary>
         /// 初始化收集器。
@@ -484,16 +487,64 @@ public sealed class ContainerStreamService : IContainerLogProvider, IContainerSt
                 return;
             }
 
+            var timestamp = DateTimeOffset.UtcNow;
+            var rx = SumNetwork(value.Networks, static network => network.RxBytes);
+            var tx = SumNetwork(value.Networks, static network => network.TxBytes);
+
+            var (rxRate, txRate) = this.CalculateRates(rx, tx, timestamp);
+
             var sample = new ContainerStatsSample(
                 value.ID ?? string.Empty,
                 CalculateCpuPercent(current, previous),
                 (long)(value.MemoryStats?.Usage ?? 0),
                 (long)(value.MemoryStats?.Limit ?? 0),
-                SumNetwork(value.Networks, static network => network.RxBytes),
-                SumNetwork(value.Networks, static network => network.TxBytes),
-                DateTimeOffset.UtcNow);
+                rx,
+                tx,
+                rxRate,
+                txRate,
+                timestamp);
 
             _writer.TryWrite(sample);
+        }
+
+        /// <summary>
+        /// 由相邻两帧计算网络速率。
+        /// </summary>
+        /// <param name="rx">本帧累计接收字节数。</param>
+        /// <param name="tx">本帧累计发送字节数。</param>
+        /// <param name="timestamp">本帧时刻。</param>
+        /// <returns>收发速率（字节/秒）；首帧（或时间差为零）时为两个 <see langword="null"/>。</returns>
+        /// <remarks>
+        /// <b>累计值不能直接画图</b>：它是一条单调上升的曲线，方向永远不变，看不出任何突发。
+        /// 速率则能直接反映「这一刻有没有流量」，sparkline 与多指标图用的都是它。
+        /// </remarks>
+        private (double? Rx, double? Tx) CalculateRates(long rx, long tx, DateTimeOffset timestamp)
+        {
+            var previousRx = _previousRx;
+            var previousTx = _previousTx;
+            var previousAt = _previousAt;
+
+            _previousRx = rx;
+            _previousTx = tx;
+            _previousAt = timestamp;
+
+            if (previousRx is null || previousTx is null || previousAt is not { } startedAt)
+            {
+                return (null, null);
+            }
+
+            var seconds = (timestamp - startedAt).TotalSeconds;
+
+            if (seconds <= 0)
+            {
+                return (null, null);
+            }
+
+            // 容器重建后累计值会回落：负差值说明计数被重置了，本帧不给速率（避免出现负值）
+            var rxRate = (rx - previousRx.Value) / seconds;
+            var txRate = (tx - previousTx.Value) / seconds;
+
+            return (rxRate >= 0 ? rxRate : null, txRate >= 0 ? txRate : null);
         }
 
         /// <summary>

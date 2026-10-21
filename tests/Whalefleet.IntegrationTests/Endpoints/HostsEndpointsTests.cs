@@ -126,7 +126,10 @@ public class HostsEndpointsTests : IAsyncLifetime
         // 列表刻意不取这几项：它们要额外调用守护进程，主机一多列表就会明显变慢。
         local.Counts.Should().BeNull();
         local.Version.Should().BeNull();
-        local.StartedAt.Should().BeNull();
+        local.Daemon.Should().BeNull();
+
+        // 标签体积很小（两个短字符串），列表里照给——界面要在行上显示「凭什么被筛出来」
+        local.Tags.Should().NotBeNull();
     }
 
     [Fact]
@@ -197,7 +200,47 @@ public class HostsEndpointsTests : IAsyncLifetime
         overview.Counts.ImagesSizeBytes.Should().NotBeNull();
         overview.Counts.ImagesSizeBytes!.Value.Should().BeGreaterThanOrEqualTo(0);
 
-        overview.StartedAt.Should().NotBeNull();
+        // 0.6.0：守护进程的静态信息（全部来自同一次 /info，不新增调用）。
+        // 本机是 Linux 上的真实守护进程，这几项必然给得出。
+        overview.Daemon.Should().NotBeNull();
+        overview.Daemon!.StorageDriver.Should().NotBeNullOrWhiteSpace("真实守护进程必然有存储驱动");
+        overview.Daemon.LoggingDriver.Should().NotBeNullOrWhiteSpace();
+        overview.Daemon.CpuCount.Should().BeGreaterThan(0);
+        overview.Daemon.MemoryBytes.Should().BeGreaterThan(0);
+        overview.Daemon.OperatingSystem.Should().NotBeNullOrWhiteSpace();
+        overview.Daemon.KernelVersion.Should().NotBeNullOrWhiteSpace();
+
+        // 新建的主机上没有任何标签：空数组而不是 null（null 会被读成「这趟没取」）
+        overview.Tags.Should().NotBeNull();
+        overview.Tags.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// 概览响应**不得**再包含 <c>startedAt</c>。
+    /// </summary>
+    /// <remarks>
+    /// 用原始 JSON 断言：反序列化会把「字段不存在」与「值为 null」抹平，
+    /// 而这次变更的全部意义就是「把假字段彻底删掉」。
+    /// </remarks>
+    [Fact]
+    public async Task 概览_不再返回主机运行时长()
+    {
+        var client = await this.CreateAuthenticatedClientAsync(_adminName);
+
+        using var response = await client.PostAsync(
+            $"/api/v1/hosts/{_localHost}/overview",
+            content: null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = await ReadAsync(response);
+        var data = body.GetProperty("data");
+
+        data.TryGetProperty("startedAt", out _).Should().BeFalse(
+            "Docker Engine API 不提供守护进程启动时刻，0.6.0 已移除该字段");
+
+        data.TryGetProperty("daemon", out var daemon).Should().BeTrue();
+        daemon.ValueKind.Should().Be(JsonValueKind.Object);
     }
 
     private async Task<HttpClient> CreateAuthenticatedClientAsync(string username)
@@ -245,8 +288,20 @@ public class HostsEndpointsTests : IAsyncLifetime
         bool Enabled,
         string Status,
         CountsPayload? Counts,
-        DateTimeOffset? StartedAt,
-        VersionPayload? Version);
+        VersionPayload? Version,
+        DaemonPayload? Daemon,
+        List<TagPayload> Tags);
+
+    private sealed record DaemonPayload(
+        string? OperatingSystem,
+        string? OsVersion,
+        string? KernelVersion,
+        string? StorageDriver,
+        string? LoggingDriver,
+        long CpuCount,
+        long MemoryBytes);
+
+    private sealed record TagPayload(Guid Id, string Name, string? Color);
 
     private sealed record CountsPayload(
         long Containers,

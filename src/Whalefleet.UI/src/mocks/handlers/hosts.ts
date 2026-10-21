@@ -1,19 +1,62 @@
 import { http, HttpResponse, delay } from 'msw'
 import { ErrorCode, fail, httpStatusOf, ok } from '../envelope'
 import { delayFor, hostsFor, type MockScenario } from '../scenarios'
-import { MOCK_HOST_GROUPS, MOCK_HOST_COUNTS } from '../data/hosts'
-import type { AdminHostSummary, HostGroup, HostOverview } from '@/types/api'
+import { MOCK_HOST_GROUPS, MOCK_HOST_COUNTS, MOCK_HOST_TAGS } from '../data/hosts'
+import { MOCK_CONTAINERS_DEFAULT } from '../data/containers'
+import { MOCK_IMAGES_DEFAULT } from '../data/images'
+import type { AdminHostSummary, HostDiskUsage, HostGroup, HostOverview, HostTag } from '@/types/api'
 
 /**
  * 列表投影：与后端 `HostQueryService.ListVisibleAsync` 一致。
  *
- * **不含 `version` / `counts` / `startedAt`**——它们要每台主机额外调守护进程，
+ * **不含 `version` / `counts` / `daemon`**——它们要每台主机额外调守护进程，
  * 由 `POST /hosts/{hostId}/overview` 按需取。mock 若在列表里带上，
  * 就会出现「mock 里一屏齐全、接上真后端四类计数全是 —」的假验收。
+ *
+ * ⚠️ **标签在列表里是要给的**：它是过滤条件，而过滤在服务端做；
+ * 列表不带标签，界面就没法在行上显示「这台主机凭什么被筛出来」。
  */
 function listProjection(host: HostOverview): HostOverview {
-  const { version: _version, counts: _counts, startedAt: _startedAt, ...rest } = host
+  const { version: _version, counts: _counts, daemon: _daemon, ...rest } = host
   return rest
+}
+
+/**
+ * 复刻后端的服务端过滤（`HostQueryService.ListVisibleAsync`）。
+ *
+ * ⚠️ **`groupId` 的三种形态必须区分**：缺失 / `null` = 不过滤，空串 = 只看未分组。
+ * 这是 JSON 分不清「没给」与「给了 null」的直接后果，也是界面最容易写错的一处。
+ * ⚠️ **标签是「任一命中」**：勾两个标签是并集，而不是交集。
+ */
+function applyFilter(hosts: HostOverview[], filter: Record<string, unknown>): HostOverview[] {
+  let result = hosts
+
+  if (typeof filter.groupId === 'string') {
+    result =
+      filter.groupId === ''
+        ? result.filter((host) => !host.groupId)
+        : result.filter((host) => host.groupId === filter.groupId)
+  }
+
+  if (Array.isArray(filter.tagIds) && filter.tagIds.length > 0) {
+    const wanted = new Set(filter.tagIds.map(String))
+    result = result.filter((host) => (host.tags ?? []).some((tag) => wanted.has(tag.id)))
+  }
+
+  if (typeof filter.status === 'string' && filter.status !== '') {
+    result = result.filter((host) => host.status === filter.status)
+  }
+
+  if (typeof filter.search === 'string' && filter.search.trim() !== '') {
+    const query = filter.search.trim().toLowerCase()
+
+    result = result.filter(
+      (host) =>
+        host.name.toLowerCase().includes(query) || host.endpoint.toLowerCase().includes(query)
+    )
+  }
+
+  return result
 }
 
 /**
@@ -36,10 +79,15 @@ function listProjection(host: HostOverview): HostOverview {
  *  - **删除分组不删主机**：组内主机回到未分组
  */
 
+/** 运行中的容器数（磁盘用量的 `activeCount` 用；与容器列表夹具同一口径）。 */
+const CONTAINER_RUNNING_COUNT = MOCK_CONTAINERS_DEFAULT.filter(
+  (container) => container.state === 'running'
+).length
+
 /** 从请求路径里取 hostId（路径形如 `/api/v1/hosts/{hostId}/overview`）。 */
 function hostIdFrom(request: Request): string {
   const m = new URL(request.url).pathname.match(/\/hosts\/([^/]+)\/overview$/)
-  return m ? decodeURIComponent(m[1]) : ''
+  return m ? decodeURIComponent(m[1] ?? '') : ''
 }
 
 /** 从路径里取某个动作前的段（`/hosts/{hostId}/group`、`/host-groups/{groupId}/delete` 共用）。 */
@@ -47,7 +95,7 @@ function segmentBefore(request: Request, action: string): string {
   // ⚠️ 结尾不能多写一个 `/`：那会让模式要求「路径结束后还有一个斜杠」，永远匹配不上
   const m = new URL(request.url).pathname.match(new RegExp(`/([^/]+)/${action}$`))
 
-  return m ? decodeURIComponent(m[1]) : ''
+  return m ? decodeURIComponent(m[1] ?? '') : ''
 }
 
 /**
@@ -69,6 +117,14 @@ const updatedGroups = new Map<string, HostGroup>()
 /** 会话内的主机归属调整（主机名 → 分组主键 | null）。 */
 const groupAssignments = new Map<string, string | null>()
 
+/** 会话内新建的标签。 */
+const createdTags: HostTag[] = []
+const removedTags = new Set<string>()
+const updatedTags = new Map<string, HostTag>()
+
+/** 会话内的标签挂载（主机名 → 标签主键集合）；初始值从主机夹具的 `tags` 来。 */
+const tagAssignments = new Map<string, Set<string>>()
+
 /** 清空会话内的主机与分组改动（供测试隔离用）。 */
 export function resetSessionHosts(): void {
   createdHosts.length = 0
@@ -77,22 +133,49 @@ export function resetSessionHosts(): void {
   removedGroups.clear()
   updatedGroups.clear()
   groupAssignments.clear()
+  createdTags.length = 0
+  removedTags.clear()
+  updatedTags.clear()
+  tagAssignments.clear()
 }
 
 export function hostHandlers(scenario: () => MockScenario) {
   /** 取当前场景下的主机，并按 id 查出单台。 */
   const findHost = (id: string) => hostsFor(scenario()).find((h) => h.id === id)
 
-  /** 可见主机列表（叠加会话内的归属调整）。 */
-  const visibleHosts = () =>
-    hostsFor(scenario()).map((host) =>
-      groupAssignments.has(host.id)
+  /** 全量标签（叠加会话内的增删改）。 */
+  const tags = (): HostTag[] =>
+    [...MOCK_HOST_TAGS, ...createdTags]
+      .filter((tag) => !removedTags.has(tag.id))
+      .map((tag) => updatedTags.get(tag.id) ?? tag)
+
+  /** 某台主机身上的标签主键（未改过则用夹具自带的那份）。 */
+  const tagIdsOf = (host: HostOverview): string[] => {
+    const assigned = tagAssignments.get(host.id)
+    if (assigned) return [...assigned]
+
+    return (host.tags ?? []).map((tag) => tag.id)
+  }
+
+  /** 把标签主键解析成对外引用（名称 / 颜色快照）。 */
+  const resolveTags = (host: HostOverview) =>
+    tagIdsOf(host)
+      .map((id) => tags().find((tag) => tag.id === id))
+      .filter((tag): tag is HostTag => tag !== undefined)
+      .map((tag) => ({ id: tag.id, name: tag.name, color: tag.color }))
+
+  /** 可见主机列表（叠加会话内的归属调整与标签）。 */
+  const visibleHosts = (): HostOverview[] =>
+    hostsFor(scenario()).map((host) => {
+      const withGroup = groupAssignments.has(host.id)
         ? { ...host, groupId: groupAssignments.get(host.id) ?? undefined }
         : host
-    )
+
+      return { ...withGroup, tags: resolveTags(host) }
+    })
 
   /** 主机列表（两个列表端点共用）。 */
-  const listResponse = async () => {
+  const listResponse = async ({ request }: { request: Request }) => {
     await delay(delayFor(scenario()))
 
     // error 场景：列表整体失败，用于验证页面的错误态 + 重试
@@ -102,7 +185,9 @@ export function hostHandlers(scenario: () => MockScenario) {
       })
     }
 
-    return HttpResponse.json(ok(visibleHosts().map(listProjection)))
+    const filter = await readBody(request)
+
+    return HttpResponse.json(ok(applyFilter(visibleHosts(), filter).map(listProjection)))
   }
 
   /** 管理端点的主机（主键 id + reachable，形状与展示列表不同）。 */
@@ -168,6 +253,75 @@ export function hostHandlers(scenario: () => MockScenario) {
     return HttpResponse.json(ok(groupsWithCounts()))
   }
 
+  /** 标签列表（`hostCount` 按当前挂载实时算，与分组同一套口径）。 */
+  const tagsWithCounts = (): HostTag[] => {
+    const hosts = visibleHosts()
+
+    return tags().map((tag) => ({
+      ...tag,
+      hostCount: hosts.filter((host) => tagIdsOf(host).includes(tag.id)).length
+    }))
+  }
+
+  const tagListResponse = async () => {
+    await delay(delayFor(scenario()))
+
+    if (scenario() === 'error') {
+      return HttpResponse.json(fail(ErrorCode.InternalError), {
+        status: httpStatusOf(ErrorCode.InternalError)
+      })
+    }
+
+    return HttpResponse.json(ok(tagsWithCounts()))
+  }
+
+  /**
+   * 批量打标 / 清标（幂等）。
+   *
+   * 复刻后端的两个关键分支：主机不存在 → `1300`；标签不存在 → `1306`。
+   * 幂等体现在「重复打同一个标签不报错」——界面允许「全选 + 批量打标」这种必然包含重复项的操作。
+   */
+  const applyTagChange = async (request: Request, action: 'assign' | 'revoke') => {
+    const body = await readBody(request)
+    const hostNames = Array.isArray(body.hostIds) ? body.hostIds.map(String) : []
+    const tagIds = Array.isArray(body.tagIds) ? body.tagIds.map(String) : []
+
+    if (hostNames.length === 0 || tagIds.length === 0) {
+      return HttpResponse.json(fail(ErrorCode.ValidationFailed), {
+        status: httpStatusOf(ErrorCode.ValidationFailed)
+      })
+    }
+
+    const known = new Set(tags().map((tag) => tag.id))
+
+    if (tagIds.some((id) => !known.has(id))) {
+      return HttpResponse.json(fail(ErrorCode.HostTagNotFound), {
+        status: httpStatusOf(ErrorCode.HostTagNotFound)
+      })
+    }
+
+    for (const hostName of hostNames) {
+      const host = visibleHosts().find((item) => item.id === hostName)
+
+      if (host === undefined) {
+        return HttpResponse.json(fail(ErrorCode.HostNotFound), {
+          status: httpStatusOf(ErrorCode.HostNotFound)
+        })
+      }
+
+      const next = new Set(tagIdsOf(host))
+
+      for (const tagId of tagIds) {
+        if (action === 'assign') next.add(tagId)
+        else next.delete(tagId)
+      }
+
+      tagAssignments.set(hostName, next)
+    }
+
+    return HttpResponse.json(ok(null))
+  }
+
   return [
     // ===== 当前用户可见主机（总览页 / 侧栏 HostSelector 都用它）=====
     http.post('*/api/v1/hosts/list', listResponse),
@@ -193,13 +347,22 @@ export function hostHandlers(scenario: () => MockScenario) {
         })
       }
 
-      // 离线主机：连不上就没有 version / counts，与真实行为一致
+      // 离线主机：连不上就没有 version / counts / daemon，与真实行为一致
       if (host.status === 'offline') {
-        return HttpResponse.json(ok({ ...host, version: undefined, counts: undefined }))
+        return HttpResponse.json(
+          ok({ ...host, version: undefined, counts: undefined, daemon: undefined })
+        )
       }
 
-      // 在线主机：计数只在概览端点下发（后端是实时问守护进程），列表永远不给
-      return HttpResponse.json(ok({ ...host, counts: host.counts ?? MOCK_HOST_COUNTS[host.id] }))
+      // 在线主机：计数与守护进程信息只在概览端点下发（后端是实时问守护进程），列表永远不给
+      return HttpResponse.json(
+        ok({
+          ...host,
+          tags: resolveTags(host),
+          counts: host.counts ?? MOCK_HOST_COUNTS[host.id],
+          daemon: host.daemon
+        })
+      )
     }),
 
     // ===== 分组：读（所有已登录用户，总览页要用）=====
@@ -461,6 +624,210 @@ export function hostHandlers(scenario: () => MockScenario) {
       groupAssignments.set(hostId, groupId)
 
       return HttpResponse.json(ok(null))
+    }),
+
+    // ===== 主机标签（0.6.0）=====
+    http.post('*/api/v1/host-tags/list', tagListResponse),
+    http.post('*/api/v1/admin/host-tags/list', tagListResponse),
+
+    http.post('*/api/v1/admin/host-tags/create', async ({ request }) => {
+      await delay(delayFor(scenario()))
+
+      const body = await readBody(request)
+      const name = String(body.name ?? '').trim()
+
+      if (name === '') {
+        return HttpResponse.json(fail(ErrorCode.ValidationFailed), {
+          status: httpStatusOf(ErrorCode.ValidationFailed)
+        })
+      }
+
+      // 重名不区分大小写（与部分唯一索引同一口径）
+      if (tags().some((tag) => tag.name.toLowerCase() === name.toLowerCase())) {
+        return HttpResponse.json(fail(ErrorCode.HostTagNameAlreadyExists), {
+          status: httpStatusOf(ErrorCode.HostTagNameAlreadyExists)
+        })
+      }
+
+      const created: HostTag = {
+        id: `10000000-0000-0000-0000-${(100 + createdTags.length).toString().padStart(12, '0')}`,
+        name,
+        description: body.description ? String(body.description) : null,
+        color: body.color ? String(body.color).toUpperCase() : null,
+        hostCount: 0
+      }
+
+      createdTags.push(created)
+
+      return HttpResponse.json(ok(created))
+    }),
+
+    http.post('*/api/v1/admin/host-tags/:tagId/update', async ({ request }) => {
+      await delay(delayFor(scenario()))
+
+      const tagId = segmentBefore(request, 'update')
+      const body = await readBody(request)
+      const current = tags().find((tag) => tag.id === tagId)
+
+      if (current === undefined) {
+        return HttpResponse.json(fail(ErrorCode.HostTagNotFound), {
+          status: httpStatusOf(ErrorCode.HostTagNotFound)
+        })
+      }
+
+      const nextName = body.name === undefined ? current.name : String(body.name).trim()
+
+      if (
+        nextName !== current.name &&
+        tags().some((tag) => tag.id !== tagId && tag.name.toLowerCase() === nextName.toLowerCase())
+      ) {
+        return HttpResponse.json(fail(ErrorCode.HostTagNameAlreadyExists), {
+          status: httpStatusOf(ErrorCode.HostTagNameAlreadyExists)
+        })
+      }
+
+      const updated: HostTag = {
+        ...current,
+        name: nextName,
+        // 空串表示清空（与后端同一口径）
+        description:
+          body.description === undefined
+            ? current.description
+            : String(body.description).trim() === ''
+              ? null
+              : String(body.description).trim(),
+        color:
+          body.color === undefined
+            ? current.color
+            : String(body.color).trim() === ''
+              ? null
+              : String(body.color).toUpperCase()
+      }
+
+      updatedTags.set(tagId, updated)
+
+      return HttpResponse.json(ok(updated))
+    }),
+
+    http.post('*/api/v1/admin/host-tags/:tagId/delete', async ({ request }) => {
+      await delay(delayFor(scenario()))
+
+      const tagId = segmentBefore(request, 'delete')
+
+      if (!tags().some((tag) => tag.id === tagId)) {
+        return HttpResponse.json(fail(ErrorCode.HostTagNotFound), {
+          status: httpStatusOf(ErrorCode.HostTagNotFound)
+        })
+      }
+
+      // 回带被解除关联的主机数：界面要据此提示「已把 N 台主机的该标签清除」
+      let affected = 0
+
+      for (const host of visibleHosts()) {
+        if (tagIdsOf(host).includes(tagId)) affected += 1
+      }
+
+      removedTags.add(tagId)
+
+      // 关联一并清除（否则「同名标签重建」会继承旧的关联）
+      for (const host of hostsFor(scenario())) {
+        tagAssignments.set(
+          host.id,
+          new Set(tagIdsOf(host).filter((id) => id !== tagId))
+        )
+      }
+
+      return HttpResponse.json(ok(affected))
+    }),
+
+    http.post('*/api/v1/admin/hosts/tags/assign', async ({ request }) => {
+      await delay(delayFor(scenario()))
+
+      return applyTagChange(request, 'assign')
+    }),
+
+    http.post('*/api/v1/admin/hosts/tags/revoke', async ({ request }) => {
+      await delay(delayFor(scenario()))
+
+      return applyTagChange(request, 'revoke')
+    }),
+
+    // ===== 磁盘用量（0.6.0）=====
+    http.post('*/api/v1/hosts/:hostId/system/df', async ({ request }) => {
+      await delay(delayFor(scenario()))
+
+      const m = new URL(request.url).pathname.match(/\/hosts\/([^/]+)\/system\/df$/)
+      const hostId = m ? decodeURIComponent(m[1] ?? '') : ''
+      const host = findHost(hostId)
+
+      if (!host) {
+        return HttpResponse.json(fail(ErrorCode.HostNotFound), {
+          status: httpStatusOf(ErrorCode.HostNotFound)
+        })
+      }
+
+      const type = new URL(request.url).searchParams.get('type')
+
+      if (type !== null && !['image', 'container', 'volume', 'build-cache'].includes(type)) {
+        return HttpResponse.json(fail(ErrorCode.ValidationFailed), {
+          status: httpStatusOf(ErrorCode.ValidationFailed)
+        })
+      }
+
+      // 「没查」与「确实是 0」必须能分开：未请求的类给 null
+      const all: HostDiskUsage = {
+        images: {
+          totalCount: MOCK_IMAGES_DEFAULT.length,
+          activeCount: MOCK_IMAGES_DEFAULT.length,
+          totalSize: MOCK_IMAGES_DEFAULT.reduce((sum, image) => sum + image.size, 0),
+          reclaimable: 0,
+          items: MOCK_IMAGES_DEFAULT.map((image) => ({
+            id: image.id,
+            name: image.repoTags[0] ?? null,
+            size: image.size,
+            inUse: true
+          }))
+        },
+        containers: {
+          totalCount: MOCK_CONTAINERS_DEFAULT.length,
+          activeCount: CONTAINER_RUNNING_COUNT,
+          totalSize: 0,
+          reclaimable: 0,
+          items: MOCK_CONTAINERS_DEFAULT.map((container) => ({
+            id: container.id,
+            name: container.name,
+            size: null,
+            inUse: true
+          }))
+        },
+        volumes: {
+          totalCount: 5,
+          activeCount: 3,
+          totalSize: 3_221_225_472,
+          reclaimable: 1_073_741_824,
+          items: []
+        },
+        buildCache: {
+          totalCount: 2,
+          activeCount: 0,
+          totalSize: 536_870_912,
+          reclaimable: 536_870_912,
+          items: []
+        }
+      }
+
+      switch (type) {
+        case 'image':
+          return HttpResponse.json(ok({ ...all, containers: null, volumes: null, buildCache: null }))
+        case 'container':
+          return HttpResponse.json(ok({ ...all, images: null, volumes: null, buildCache: null }))
+        case 'volume':
+          return HttpResponse.json(ok({ ...all, images: null, containers: null, buildCache: null }))
+        case 'build-cache':
+          return HttpResponse.json(ok({ ...all, images: null, containers: null, volumes: null }))
+        default:
+          return HttpResponse.json(ok(all))
+      }
     })
   ]
 }

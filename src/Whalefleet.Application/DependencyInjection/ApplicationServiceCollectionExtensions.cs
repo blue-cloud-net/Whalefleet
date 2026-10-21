@@ -4,6 +4,7 @@ using Whalefleet.Application.Auth;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Containers;
 using Whalefleet.Application.HostGroups;
+using Whalefleet.Application.HostTags;
 using Whalefleet.Application.Hosts;
 using Whalefleet.Application.Images;
 using Whalefleet.Application.Networks;
@@ -52,9 +53,15 @@ public static class ApplicationServiceCollectionExtensions
         // Docker 客户端本身的复用由 Singleton 的客户端池负责，不靠本服务的生命周期。
         services.AddScoped<ContainerService>();
 
+        // 容器健康与退出原因的批量查询（0.6.0 列表健康列的数据源）。Scoped：同上。
+        services.AddScoped<ContainerHealthService>();
+
         // 主机查询用例（可见主机列表 + 单台概览）。Scoped：依赖 Scoped 的仓储、
         // 权限服务与当前用户上下文。
         services.AddScoped<HostQueryService>();
+
+        // 主机磁盘用量（0.6.0）。Scoped：只依赖 Scoped 的主机访问器。
+        services.AddScoped<HostDiskUsageService>();
 
         // 镜像用例（0.0.10）。Scoped：依赖 Scoped 的主机访问器。
         services.AddScoped<ImageService>();
@@ -64,6 +71,9 @@ public static class ApplicationServiceCollectionExtensions
 
         // 主机分组用例（0.0.13）。Scoped：依赖 Scoped 的仓储。
         services.AddScoped<HostGroupService>();
+
+        // 主机标签用例（0.6.0）。Scoped：依赖 Scoped 的标签 / 主机仓储。
+        services.AddScoped<HostTagService>();
 
         // 角色管理用例（0.1.0）。Scoped：依赖 Scoped 的角色 / 分配仓储。
         services.AddScoped<RoleService>();
@@ -88,6 +98,10 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<RepositoryService>();
         services.AddScoped<IRepositoryCredentialResolver>(static provider =>
             provider.GetRequiredService<RepositoryService>());
+
+        // 容器采样共享器（0.6.0）：**Singleton**——它就是「每台容器一条 Docker 流」的复用点，
+        // 它的状态（引用计数与环形缓冲）必须在所有连接、所有请求之间共享。
+        services.AddSingleton<IContainerStatsSampler, ContainerStatsSampler>();
 
         // 容器事件总线（0.5.0）：**Singleton**——它就是一条进程内的广播通道，
         // 它的「状态」是订阅方列表。注册成 Scoped 会让每个请求拿到一个互不相识的实例，

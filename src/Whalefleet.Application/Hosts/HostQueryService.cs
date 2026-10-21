@@ -4,7 +4,9 @@ using Docker.DotNet;
 using Docker.DotNet.Models;
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
+using Whalefleet.Application.Containers;
 using Whalefleet.Application.Docker;
+using Whalefleet.Application.HostTags;
 using Whalefleet.Core.Hosts;
 using Microsoft.Extensions.Logging;
 
@@ -27,6 +29,7 @@ namespace Whalefleet.Application.Hosts;
 public sealed class HostQueryService
 {
     private readonly IHostRepository _hosts;
+    private readonly IHostTagRepository _tags;
     private readonly IDockerHostAccessor _accessor;
     private readonly IPermissionChecker _permissions;
     private readonly ICurrentUser _currentUser;
@@ -36,6 +39,7 @@ public sealed class HostQueryService
     /// 初始化主机查询用例。
     /// </summary>
     /// <param name="hosts">主机仓储。</param>
+    /// <param name="tags">标签仓储（列表与概览都要回带主机身上的标签）。</param>
     /// <param name="accessor">主机访问器（解析主机并取得 Docker 客户端）。</param>
     /// <param name="permissions">权限判定（列表过滤用）。</param>
     /// <param name="currentUser">当前登录用户（权限判定的主体）。</param>
@@ -43,18 +47,21 @@ public sealed class HostQueryService
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
     public HostQueryService(
         IHostRepository hosts,
+        IHostTagRepository tags,
         IDockerHostAccessor accessor,
         IPermissionChecker permissions,
         ICurrentUser currentUser,
         ILogger<HostQueryService> logger)
     {
         ArgumentNullException.ThrowIfNull(hosts);
+        ArgumentNullException.ThrowIfNull(tags);
         ArgumentNullException.ThrowIfNull(accessor);
         ArgumentNullException.ThrowIfNull(permissions);
         ArgumentNullException.ThrowIfNull(currentUser);
         ArgumentNullException.ThrowIfNull(logger);
 
         _hosts = hosts;
+        _tags = tags;
         _accessor = accessor;
         _permissions = permissions;
         _currentUser = currentUser;
@@ -62,22 +69,30 @@ public sealed class HostQueryService
     }
 
     /// <summary>
-    /// 列出当前用户可见的主机（含连通状态，**不含**资源计数与版本）。
+    /// 列出当前用户可见的主机（含连通状态与标签，**不含**资源计数、版本与守护进程信息）。
     /// </summary>
+    /// <param name="request">过滤条件；<see langword="null"/> 表示不过滤。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>可见主机列表，顺序与仓储约定一致（创建时间升序，同时间按名称）。</returns>
     /// <remarks>
-    /// <para><b>列表里不带 <see cref="HostOverviewSummary.Counts"/> / <see cref="HostOverviewSummary.Version"/></b>：
-    /// 取它们要额外调用守护进程（版本一次、计数四次），主机一多列表就会明显变慢甚至超时。
-    /// 这两项由概览接口按需取——列表只做每台一次的轻量探测。</para>
+    /// <para><b>列表里不带 <see cref="HostOverviewSummary.Counts"/> / <see cref="HostOverviewSummary.Version"/> /
+    /// <see cref="HostOverviewSummary.Daemon"/></b>：取它们要额外调用守护进程（版本一次、计数若干次），
+    /// 主机一多列表就会明显变慢甚至超时。这三项由概览接口按需取——列表只做每台一次的轻量探测。</para>
+    /// <para><b>过滤顺序是刻意的</b>：先按分组 / 标签 / 关键字在<b>本地</b>筛掉一批，再只对剩下的主机探测——
+    /// 探测是 N 次网络调用，把已确定被筛掉的主机也拿去探测纯属浪费。
+    /// 状态过滤因此只能在探测<b>之后</b>做。</para>
     /// <para><b>探测是并行的</b>：串行时 N 台离线主机各自等一次超时，列表页会慢到不可用。</para>
     /// <para><b>非管理员只看到被授权的主机</b>：过滤由 <see cref="IPermissionChecker"/>
     /// 一次查库完成（0.1.0 起数据来自带作用域的角色分配）。没被授权时返回<b>空列表</b>
     /// 而不是 403——列表接口一报错，前端的「主机选择器」整块就红了，而它本该显示「暂无可用主机」。</para>
     /// </remarks>
+    /// <exception cref="BusinessException">过滤条件非法（<c>1000</c>）。</exception>
     public async Task<IReadOnlyList<HostOverviewSummary>> ListVisibleAsync(
+        HostListRequest? request = null,
         CancellationToken cancellationToken = default)
     {
+        var filter = ParseFilter(request);
+
         var hosts = await _hosts.QueryAllListAsync(cancellationToken).ConfigureAwait(false);
         var userId = _currentUser.UserId ?? Guid.Empty;
 
@@ -85,25 +100,49 @@ public sealed class HostQueryService
             .FilterVisibleHostsAsync(userId, hosts, cancellationToken)
             .ConfigureAwait(false)).ToArray();
 
+        // 标签一查到底：它既是过滤条件，也要回带给界面（行上要看得出「凭什么被筛出来」）
+        var tags = visible.Length == 0
+            ? EmptyTags
+            : await _tags
+                .QueryByHostIdsAsync([.. visible.Select(static host => host.Id)], cancellationToken)
+                .ConfigureAwait(false);
+
+        var candidates = visible
+            .Where(host => Matches(host, filter, tags))
+            .ToArray();
+
         var statuses = await Task
-            .WhenAll(visible.Select(host => this.ProbeAsync(host, cancellationToken)))
+            .WhenAll(candidates.Select(host => this.ProbeAsync(host, cancellationToken)))
             .ConfigureAwait(false);
 
+        var result = new List<HostOverviewSummary>(candidates.Length);
+
+        for (var index = 0; index < candidates.Length; index++)
+        {
+            var status = statuses[index];
+
+            if (filter.Status is { } wanted && status != wanted)
+            {
+                continue;
+            }
+
+            result.Add(Map(
+                candidates[index],
+                status,
+                counts: null,
+                version: null,
+                daemon: null,
+                TagsOf(tags, candidates[index].Id)));
+        }
+
         _logger.LogDebug(
-            "列出可见主机：{Visible}/{Total} 台，在线 {Online} 台",
+            "列出可见主机：{Visible}/{Total} 台，过滤后 {Filtered} 台，在线 {Online} 台",
             visible.Length,
             hosts.Count,
-            statuses.Count(status => status == HostConnectivityStatus.Online));
+            result.Count,
+            result.Count(summary => summary.Status == HostConnectivityStatus.Online));
 
-        return
-        [
-            .. visible.Select((host, index) => Map(
-                host,
-                statuses[index],
-                counts: null,
-                startedAt: null,
-                version: null)),
-        ];
+        return result;
     }
 
     /// <summary>
@@ -188,8 +227,9 @@ public sealed class HostQueryService
                 host,
                 HostConnectivityStatus.Online,
                 counts,
-                ParseTimestamp(info.SystemTime),
-                MapVersion(version));
+                MapVersion(version),
+                MapDaemon(info),
+                await this.LoadTagsAsync(host.Id, cancellationToken).ConfigureAwait(false));
         }
         catch (BusinessException exception) when (
             exception.Code is ErrorCodes.HostUnreachable or ErrorCodes.HostDisabled)
@@ -202,16 +242,11 @@ public sealed class HostQueryService
                 host,
                 HostConnectivityStatus.Offline,
                 counts: null,
-                startedAt: null,
-                version: null);
+                version: null,
+                daemon: null,
+                await this.LoadTagsAsync(host.Id, cancellationToken).ConfigureAwait(false));
         }
     }
-
-    /// <summary>健康检查通过的标记（容器列表的 <c>Status</c> 形如 <c>Up 2 hours (healthy)</c>）。</summary>
-    private const string HealthHealthyMarker = "(healthy)";
-
-    /// <summary>健康检查失败的标记。</summary>
-    private const string HealthUnhealthyMarker = "(unhealthy)";
 
     /// <summary><c>GET /system/df</c> 的 <c>type</c> 过滤值：只要镜像，跳过容器 / 卷 / 构建缓存。</summary>
     private const string ImageUsageType = "image";
@@ -224,8 +259,8 @@ public sealed class HostQueryService
     /// <remarks>
     /// <para><b>只能读文本</b>：容器列表没有结构化的健康字段，健康状态只出现在 <c>Status</c>
     /// 的括号里（<c>Up 2 hours (healthy)</c>）。逐个 inspect 才是结构化的，但那是 N 次请求。</para>
-    /// <para><b>必须先判 <c>(unhealthy)</c></b>：<c>(healthy)</c> 是 <c>(unhealthy)</c> 的子串，
-    /// 反过来的话失败的健康检查会被算成健康——这正是这个功能最不该出的错。</para>
+    /// <para><b>解析交给 <see cref="ContainerHealth.FromStatusText"/></b>：
+    /// 「列表健康列」与「概览计数」必须用同一套判定，否则会出现「列表说不健康、概览说健康」。</para>
     /// <para>没配健康检查的容器两者都不计入：它的 <c>Status</c> 里没有括号。</para>
     /// </remarks>
     private static (long Healthy, long Unhealthy) CountHealth(IEnumerable<ContainerListResponse> containers)
@@ -235,15 +270,19 @@ public sealed class HostQueryService
 
         foreach (var container in containers)
         {
-            var status = container.Status ?? string.Empty;
+            switch (ContainerHealth.FromStatusText(container.Status))
+            {
+                case ContainerHealthStatus.Unhealthy:
+                    unhealthy++;
+                    break;
 
-            if (status.Contains(HealthUnhealthyMarker, StringComparison.OrdinalIgnoreCase))
-            {
-                unhealthy++;
-            }
-            else if (status.Contains(HealthHealthyMarker, StringComparison.OrdinalIgnoreCase))
-            {
-                healthy++;
+                case ContainerHealthStatus.Healthy:
+                    healthy++;
+                    break;
+
+                default:
+                    // Starting / None 两边都不计：「没配」既不是健康也不是不健康
+                    break;
             }
         }
 
@@ -343,15 +382,17 @@ public sealed class HostQueryService
     /// <param name="host">主机实体。</param>
     /// <param name="status">连通状态。</param>
     /// <param name="counts">资源计数。</param>
-    /// <param name="startedAt">守护进程启动时刻。</param>
     /// <param name="version">版本信息。</param>
+    /// <param name="daemon">守护进程静态信息。</param>
+    /// <param name="tags">挂在该主机上的标签。</param>
     /// <returns>主机概览。</returns>
     private static HostOverviewSummary Map(
         DockerHost host,
         HostConnectivityStatus status,
         HostResourceCounts? counts,
-        DateTimeOffset? startedAt,
-        HostVersionDetail? version) => new(
+        HostVersionDetail? version,
+        HostDaemonDetail? daemon,
+        IReadOnlyList<HostTagRef> tags) => new(
             Id: host.Name,
             Name: host.Name,
             Type: host.Type,
@@ -359,8 +400,9 @@ public sealed class HostQueryService
             Enabled: host.Enabled,
             Status: status,
             Counts: counts,
-            StartedAt: startedAt,
             Version: version,
+            Daemon: daemon,
+            Tags: tags,
             GroupId: host.GroupId);
 
     /// <summary>
@@ -376,20 +418,223 @@ public sealed class HostQueryService
         GoVersion: source.GoVersion);
 
     /// <summary>
-    /// 把守护进程的启动时刻文本解析成带时区的时刻。
+    /// 投影守护进程的静态技术信息。
     /// </summary>
-    /// <param name="value">RFC 3339 文本（如 <c>2026-01-02T03:04:05.678901234Z</c>）。</param>
-    /// <returns>解析成功时返回该时刻；否则返回 <see langword="null"/>。</returns>
+    /// <param name="source">SDK 的 <c>/info</c> 响应。</param>
+    /// <returns>精选投影。</returns>
     /// <remarks>
-    /// 解析失败返回 <see langword="null"/> 而不是抛异常：启动时间只是展示项，
-    /// 为了它让整个概览接口失败是本末倒置。
+    /// <b>只做投影，不新增调用</b>：全部字段都来自概览路径上已有的那次 <c>/info</c>。
+    /// 拿不到的可空字段一律给 <see langword="null"/>（“没取到”），
+    /// 而插件 / 运行时这类固定集合给空列表（“确实没有”）。
     /// </remarks>
-    private static DateTimeOffset? ParseTimestamp(string? value) =>
-        DateTimeOffset.TryParse(
-            value,
-            CultureInfo.InvariantCulture,
-            DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal,
-            out var parsed)
-            ? parsed
-            : null;
+    private static HostDaemonDetail MapDaemon(SystemInfoResponse source) => new(
+        OperatingSystem: source.OperatingSystem,
+        OsVersion: source.OSVersion,
+        OsType: source.OSType,
+        Architecture: source.Architecture,
+        KernelVersion: source.KernelVersion,
+        CpuCount: source.NCPU,
+        MemoryBytes: source.MemTotal,
+        StorageDriver: source.Driver,
+        StorageDriverStatus: MapDriverStatus(source.DriverStatus),
+        LoggingDriver: source.LoggingDriver,
+        CgroupDriver: source.CgroupDriver,
+        CgroupVersion: source.CgroupVersion,
+        DefaultRuntime: source.DefaultRuntime,
+        Runtimes: source.Runtimes is null ? [] : [.. source.Runtimes.Keys],
+        InitBinary: source.InitBinary,
+        ContainerdVersion: source.ContainerdCommit?.ID,
+        RuncVersion: source.RuncCommit?.ID,
+        InitVersion: source.InitCommit?.ID,
+        Plugins: MapPlugins(source.Plugins),
+        RegistryMirrors: source.RegistryConfig?.Mirrors is { } mirrors ? [.. mirrors] : [],
+        InsecureRegistries: source.RegistryConfig?.InsecureRegistryCIDRs is { } insecure ? [.. insecure] : [],
+        IndexServerAddress: source.IndexServerAddress,
+        DockerRootDir: source.DockerRootDir,
+        SecurityOptions: source.SecurityOptions is { } options ? [.. options] : [],
+        LiveRestoreEnabled: source.LiveRestoreEnabled,
+        // SDK 里 FirewallBackend 是对象（{ Driver, Info }），对外只取后端名——
+        // Info 是驱动内部细节，换一个后端就没有对应含义
+        FirewallBackend: source.FirewallBackend?.Driver,
+        CdiSpecDirs: source.CDISpecDirs is { } cdiDirs ? [.. cdiDirs] : [],
+        HttpProxy: HostProxyMask.Mask(source.HTTPProxy),
+        HttpsProxy: HostProxyMask.Mask(source.HTTPSProxy),
+        NoProxy: source.NoProxy,
+        Warnings: source.Warnings is { } warnings ? [.. warnings] : []);
+
+    private static IReadOnlyList<IReadOnlyList<string>> MapDriverStatus(
+        IEnumerable<IEnumerable<string>>? status)
+    {
+        if (status is null)
+        {
+            return [];
+        }
+
+        return [.. status.Select(static entry => (IReadOnlyList<string>)[.. entry])];
+    }
+
+    private static HostDaemonPlugins MapPlugins(PluginsInfo? plugins) => new(
+        Volume: plugins?.Volume is { } volume ? [.. volume] : [],
+        Network: plugins?.Network is { } network ? [.. network] : [],
+        Log: plugins?.Log is { } log ? [.. log] : [],
+        Authorization: plugins?.Authorization is { } authorization ? [.. authorization] : []);
+
+    /// <summary>
+    /// 读取一台主机的标签。
+    /// </summary>
+    /// <param name="hostId">主机主键。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>标签列表（按名称升序）；没有标签时为空数组。</returns>
+    private async Task<IReadOnlyList<HostTagRef>> LoadTagsAsync(
+        Guid hostId,
+        CancellationToken cancellationToken)
+    {
+        var tags = await _tags
+            .QueryByHostIdsAsync([hostId], cancellationToken)
+            .ConfigureAwait(false);
+
+        return TagsOf(tags, hostId);
+    }
+
+    private static IReadOnlyList<HostTagRef> TagsOf(
+        IReadOnlyDictionary<Guid, IReadOnlyList<HostTag>> tags,
+        Guid hostId) =>
+        tags.TryGetValue(hostId, out var forHost)
+            ? [.. forHost.Select(HostTagService.ToRef)]
+            : [];
+
+    private static readonly IReadOnlyDictionary<Guid, IReadOnlyList<HostTag>> EmptyTags =
+        new Dictionary<Guid, IReadOnlyList<HostTag>>();
+
+    /// <summary>
+    /// 解析并校验过滤条件。
+    /// </summary>
+    /// <param name="request">原始请求。</param>
+    /// <returns>已解析的过滤条件。</returns>
+    /// <exception cref="BusinessException">任一条件非法（<c>1000</c>）。</exception>
+    private static HostFilter ParseFilter(HostListRequest? request)
+    {
+        if (request is null)
+        {
+            return HostFilter.None;
+        }
+
+        // groupId：缺失 = 不过滤；空串 = 未分组（见 HostListRequest 的说明）
+        Guid? groupId = null;
+        var ungrouped = false;
+
+        if (request.GroupId is { } rawGroupId)
+        {
+            var trimmed = rawGroupId.Trim();
+
+            if (trimmed.Length == 0)
+            {
+                ungrouped = true;
+            }
+            else if (Guid.TryParse(trimmed, out var parsed))
+            {
+                groupId = parsed;
+            }
+            else
+            {
+                throw BusinessException.Validation($"groupId「{rawGroupId}」不是合法的分组标识");
+            }
+        }
+
+        HashSet<Guid>? tagIds = null;
+
+        if (request.TagIds is { Count: > 0 } rawTagIds)
+        {
+            tagIds = new HashSet<Guid>();
+
+            foreach (var rawTagId in rawTagIds)
+            {
+                if (string.IsNullOrWhiteSpace(rawTagId) || !Guid.TryParse(rawTagId.Trim(), out var tagId))
+                {
+                    throw BusinessException.Validation($"tagIds 中的「{rawTagId}」不是合法的标签标识");
+                }
+
+                _ = tagIds.Add(tagId);
+            }
+        }
+
+        HostConnectivityStatus? status = null;
+
+        if (!string.IsNullOrWhiteSpace(request.Status))
+        {
+            status = request.Status.Trim().ToLowerInvariant() switch
+            {
+                "online" => HostConnectivityStatus.Online,
+                "offline" => HostConnectivityStatus.Offline,
+                "unknown" => HostConnectivityStatus.Unknown,
+                _ => throw BusinessException.Validation(
+                    $"status「{request.Status}」不是合法取值（online / offline / unknown）"),
+            };
+        }
+
+        var search = string.IsNullOrWhiteSpace(request.Search) ? null : request.Search.Trim();
+
+        return new HostFilter(groupId, ungrouped, tagIds, status, search);
+    }
+
+    /// <summary>
+    /// 判断一台主机是否命中本地过滤条件（分组 / 标签 / 关键字）。
+    /// </summary>
+    /// <param name="host">主机实体。</param>
+    /// <param name="filter">过滤条件。</param>
+    /// <param name="tags">主机主键 → 标签。</param>
+    /// <returns>命中返回 <see langword="true"/>。</returns>
+    /// <remarks>状态过滤不在这里：它必须等探测结果出来后才能判定。</remarks>
+    private static bool Matches(
+        DockerHost host,
+        HostFilter filter,
+        IReadOnlyDictionary<Guid, IReadOnlyList<HostTag>> tags)
+    {
+        if (filter.Ungrouped && host.GroupId is not null)
+        {
+            return false;
+        }
+
+        if (filter.GroupId is { } groupId && host.GroupId != groupId)
+        {
+            return false;
+        }
+
+        if (filter.TagIds is { Count: > 0 } tagIds)
+        {
+            if (!tags.TryGetValue(host.Id, out var forHost)
+                || !forHost.Any(tag => tagIds.Contains(tag.Id)))
+            {
+                return false;
+            }
+        }
+
+        if (filter.Search is { } search
+            && !host.Name.Contains(search, StringComparison.OrdinalIgnoreCase)
+            && !host.Endpoint.Value.Contains(search, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// 已解析的过滤条件。
+    /// </summary>
+    /// <param name="GroupId">分组主键；<see langword="null"/> 表示不按分组过滤。</param>
+    /// <param name="Ungrouped">只要未分组的主机。</param>
+    /// <param name="TagIds">标签主键集合（任一命中）；<see langword="null"/> 表示不按标签过滤。</param>
+    /// <param name="Status">连通状态；<see langword="null"/> 表示不按状态过滤。</param>
+    /// <param name="Search">名称 / 端点关键字；<see langword="null"/> 表示不按关键字过滤。</param>
+    private readonly record struct HostFilter(
+        Guid? GroupId,
+        bool Ungrouped,
+        HashSet<Guid>? TagIds,
+        HostConnectivityStatus? Status,
+        string? Search)
+    {
+        /// <summary>空过滤（不过滤）。</summary>
+        public static HostFilter None { get; } = new(null, false, null, null, null);
+    }
 }

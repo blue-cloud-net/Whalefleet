@@ -45,6 +45,8 @@ public class ErrorCodesTests
         [nameof(ErrorCodes.HostNameAlreadyExists)] = 1303,
         [nameof(ErrorCodes.GroupNameAlreadyExists)] = 1304,
         [nameof(ErrorCodes.GroupNotFound)] = 1305,
+        [nameof(ErrorCodes.HostTagNotFound)] = 1306,
+        [nameof(ErrorCodes.HostTagNameAlreadyExists)] = 1307,
 
         // 资源操作
         [nameof(ErrorCodes.DockerResourceNotFound)] = 1401,

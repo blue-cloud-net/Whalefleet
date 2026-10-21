@@ -1011,7 +1011,7 @@ public sealed partial class ContainerService
         // inspect 顶层的 Image 是**镜像 ID**（sha256:…），镜像名在 Config.Image 里。
         // 对外契约里的 Image 指镜像名，故取 Config.Image。
         Image: source.Config?.Image ?? source.Image,
-        State: MapState(source.State),
+        State: MapState(source.State, source.RestartCount),
         Config: MapConfig(source.Config),
         HostConfig: MapHostConfig(source.HostConfig),
         Mounts: source.Mounts is null ? [] : [.. source.Mounts.Select(MapMount)],
@@ -1021,8 +1021,12 @@ public sealed partial class ContainerService
     /// 投影运行状态。
     /// </summary>
     /// <param name="source">SDK 状态。</param>
+    /// <param name="restartCount">
+    /// 累计重启次数。<b>取自 inspect 的根对象</b>——它不在 <c>State</c> 里，
+    /// 因此必须由调用方传入，而不是在这里读 <c>source</c>。
+    /// </param>
     /// <returns>状态投影。</returns>
-    private static ContainerState MapState(SdkState? source) => new(
+    private static ContainerState MapState(SdkState? source, long restartCount) => new(
         Status: source?.Status ?? string.Empty,
         Running: source?.Running ?? false,
         Paused: source?.Paused ?? false,
@@ -1032,21 +1036,10 @@ public sealed partial class ContainerService
         // 运行中的容器 ExitCode 恒为 0，给出去会被读成「已正常退出」，因此运行中一律返回 null。
         ExitCode: source is null || source.Running ? null : source.ExitCode,
         OomKilled: source?.OOMKilled ?? false,
-        HealthStatus: MapHealthStatus(source?.Health?.Status));
-
-    /// <summary>
-    /// 投影健康检查状态。
-    /// </summary>
-    /// <param name="status">SDK 的健康状态文本。</param>
-    /// <returns>健康状态；无健康检查时为 <see langword="null"/>。</returns>
-    /// <remarks>
-    /// 容器没配健康检查时 Docker 给的字符串是 <c>none</c>。把它透传出去，前端要么写死一个魔法字符串判断，
-    /// 要么把它渲染成一个名叫「none」的状态——都不如统一成 <see langword="null"/>：「没有这项信息」。
-    /// </remarks>
-    private static string? MapHealthStatus(string? status) =>
-        string.IsNullOrEmpty(status) || string.Equals(status, "none", StringComparison.OrdinalIgnoreCase)
-            ? null
-            : status;
+        RestartCount: restartCount,
+        // 未配健康检查时 Docker 不返回 Health 对象，统一归到 None（不是 null）——
+        // 「没配」与「查不到」是两件事，混成一个值就没法在界面上分开表达
+        HealthStatus: ContainerHealth.FromInspect(source?.Health?.Status));
 
     /// <summary>
     /// 投影启动配置。

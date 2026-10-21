@@ -2,6 +2,8 @@ import { request } from '@/api'
 import type {
   AdminHostSummary,
   CreateHostPayload,
+  HostDiskUsage,
+  HostListFilter,
   HostOverview,
   TestHostPayload,
   UpdateHostPayload
@@ -23,13 +25,22 @@ import type {
  * 它们由 `getHostOverview()` 单独取。
  */
 
-/** 当前用户可见的主机列表（含连通状态）。 */
-export function listHosts(): Promise<HostOverview[]> {
-  return request<HostOverview[]>({ url: '/api/v1/hosts/list', method: 'post' })
+/**
+ * 当前用户可见的主机列表（含连通状态与标签，可选服务端过滤）。
+ *
+ * ⚠️ **「未分组」要传 `groupId: ''`**：不传与传 `null` 都是「不过滤」（JSON 分不清），
+ * 只有空串表示「只看未分组」。
+ */
+export function listHosts(filter?: HostListFilter): Promise<HostOverview[]> {
+  return request<HostOverview[]>({
+    url: '/api/v1/hosts/list',
+    method: 'post',
+    data: filter ?? {}
+  })
 }
 
 /**
- * 单台主机的聚合信息：`version` 与 `counts`。
+ * 单台主机的聚合信息：`version` / `counts` / `daemon` / `tags`。
  *
  * 失败形态：`1300`/404（主机不存在）、`1302`/400（主机已停用）、
  * `1501`/403（无权限访问此主机）。
@@ -38,6 +49,23 @@ export function getHostOverview(hostId: string): Promise<HostOverview> {
   return request<HostOverview>({
     url: `/api/v1/hosts/${encodeURIComponent(hostId)}/overview`,
     method: 'post'
+  })
+}
+
+/**
+ * 主机磁盘用量（镜像 / 容器 / 卷 / 构建缓存）。
+ *
+ * **未查询的类为 null**：带 `type` 过滤时其余三类根本没统计，因此不能用 0 代替。
+ * 失败形态：`1000`/400（type 非法）、`1301`/502（主机不可达）。
+ */
+export function getHostDiskUsage(
+  hostId: string,
+  type?: 'image' | 'container' | 'volume' | 'build-cache'
+): Promise<HostDiskUsage> {
+  return request<HostDiskUsage>({
+    url: `/api/v1/hosts/${encodeURIComponent(hostId)}/system/df`,
+    method: 'post',
+    params: type ? { type } : undefined
   })
 }
 

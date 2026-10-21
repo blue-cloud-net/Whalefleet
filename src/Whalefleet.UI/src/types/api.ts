@@ -72,6 +72,10 @@ export const ErrorCode = {
   GroupNameAlreadyExists: 1304,
   /** 分组不存在 */
   GroupNotFound: 1305,
+  /** 主机标签不存在（0.6.0） */
+  HostTagNotFound: 1306,
+  /** 主机标签名已被占用（0.6.0） */
+  HostTagNameAlreadyExists: 1307,
 
   // ===== 1400-1499 资源操作 =====
   /** Docker 资源（容器 / 镜像 / Volume / Network）不存在 */
@@ -219,24 +223,24 @@ export interface HostVersion {
 }
 
 /**
- * 总览页用的主机视图：在 HostInfo 基础上补充连通状态、资源计数、版本与分组。
+ * 总览页用的主机视图：在 HostInfo 基础上补充连通状态、资源计数、版本、守护进程信息与标签。
  *
- * ⚠️ **列表端点只给 `status`**：`counts` / `version` / `startedAt` 要每台主机额外调守护进程，
+ * ⚠️ **列表端点只给 `status` 与 `tags`**：`counts` / `version` / `daemon` 要每台主机额外调守护进程，
  * 由 `POST /hosts/{hostId}/overview` 单独取（store 的 `loadHostDetails()`）。
  * 尚未取到、主机离线或该台请求失败时，这三个字段缺省（UI 显示「—」）。
+ *
+ * ⚠️ **没有 `startedAt`（0.6.0 移除）**：Docker Engine API 不提供守护进程启动时刻，
+ * 也不提供宿主 boot time（`/info` 的 `SystemTime` 是**当前时间**），旧字段算出来恒为「已运行 0 秒」。
  */
 export interface HostOverview extends HostInfo {
   status?: HostStatus
   counts?: HostCounts
-  /**
-   * 主机启动时间（ISO 8601 字符串）。
-   *
-   * 用字符串而非时间戳数字，避免前端时区歧义。
-   * TODO(0.0.8)：由后端 `GetInfoAsync()` 的 SystemTime 填充。
-   */
-  startedAt?: string
   /** Docker 版本信息；离线主机取不到时为 undefined */
   version?: HostVersion
+  /** 守护进程静态技术信息；离线或列表接口未取时为 undefined */
+  daemon?: HostDaemon
+  /** 挂在该主机上的标签（列表与概览都给；没有标签时为空数组） */
+  tags?: HostTagRef[]
   /**
    * 预留：Agent 版本。
    *
@@ -246,6 +250,130 @@ export interface HostOverview extends HostInfo {
   agentVersion?: string
   /** 所属分组 id；undefined = 未分组 */
   groupId?: string
+}
+
+/**
+ * 主页标签（管理页用）。
+ *
+ * **不参与授权**：授权边界只有分组与角色分配。标签只用于过滤与批量选择。
+ */
+export interface HostTag {
+  /** 标签主键 */
+  id: string
+  /** 标签名（管理员输入，原样展示） */
+  name: string
+  /** 描述；未填写时 null */
+  description: string | null
+  /** 颜色（`#RRGGBB`）；未设置时 null（界面用默认色） */
+  color: string | null
+  /** 挂了该标签的主机数（后端聚合） */
+  hostCount: number
+}
+
+/** 挂在某台主机上的标签（列表 / 概览用，不含描述与主机数） */
+export interface HostTagRef {
+  id: string
+  name: string
+  color: string | null
+}
+
+/** 守护进程已安装的插件（按类别分组） */
+export interface HostDaemonPlugins {
+  volume: string[]
+  network: string[]
+  log: string[]
+  authorization: string[]
+}
+
+/**
+ * 守护进程的静态技术信息（来自 `/info`）。
+ *
+ * ⚠️ `cpuCount` / `memoryBytes` 是**静态上限**，不是当前占用——
+ * Docker Engine API 没有宿主机级实时指标端点，界面上不得标成「当前 CPU / 内存」。
+ * ⚠️ `httpProxy` / `httpsProxy` 的 userinfo 已被服务端遮蔽。
+ */
+export interface HostDaemon {
+  operatingSystem: string | null
+  osVersion: string | null
+  osType: string | null
+  architecture: string | null
+  kernelVersion: string | null
+  cpuCount: number
+  memoryBytes: number
+  storageDriver: string | null
+  storageDriverStatus: string[][]
+  loggingDriver: string | null
+  cgroupDriver: string | null
+  cgroupVersion: string | null
+  defaultRuntime: string | null
+  runtimes: string[]
+  initBinary: string | null
+  containerdVersion: string | null
+  runcVersion: string | null
+  initVersion: string | null
+  plugins: HostDaemonPlugins
+  registryMirrors: string[]
+  insecureRegistries: string[]
+  indexServerAddress: string | null
+  dockerRootDir: string | null
+  securityOptions: string[]
+  liveRestoreEnabled: boolean
+  firewallBackend: string | null
+  cdiSpecDirs: string[]
+  httpProxy: string | null
+  httpsProxy: string | null
+  noProxy: string | null
+  warnings: string[]
+}
+
+/**
+ * 主机列表的过滤条件（服务端过滤）。
+ *
+ * ⚠️ **「未分组」用空串表达**：JSON 分不清「没给 groupId」与「给了 null」，
+ * 因此约定「缺失 / null = 不过滤，空串 = 只看未分组」。
+ */
+export interface HostListFilter {
+  /** 分组主键；空串 = 未分组；不传 = 不过滤 */
+  groupId?: string
+  /** 标签主键列表（任一命中）；空数组 = 不过滤 */
+  tagIds?: string[]
+  /** 连通状态：online / offline / unknown */
+  status?: HostStatus
+  /** 名称 / 端点模糊匹配（不区分大小写） */
+  search?: string
+}
+
+/** 一类资源的磁盘用量汇总 */
+export interface DiskUsageBucket {
+  totalCount: number | null
+  activeCount: number | null
+  totalSize: number | null
+  reclaimable: number | null
+  items: DiskUsageItem[]
+}
+
+/** 一条磁盘用量明细 */
+export interface DiskUsageItem {
+  /** 镜像 ID / 容器 ID / 名 / 构建缓存记录 ID */
+  id: string
+  /** 可读名称；取不到时 null */
+  name: string | null
+  /** 占用字节数；守护进程未给出时 null */
+  size: number | null
+  /** 是否仍被引用；未知时 null */
+  inUse: boolean | null
+}
+
+/**
+ * 主机磁盘用量（`POST /hosts/{hostId}/system/df`）。
+ *
+ * **未查询的类为 null**：带 `type` 过滤时其余三类根本没统计，给 0 会被读成「确实没有」。
+ */
+export interface HostDiskUsage {
+  images: DiskUsageBucket | null
+  containers: DiskUsageBucket | null
+  volumes: DiskUsageBucket | null
+  buildCache: DiskUsageBucket | null
 }
 
 /** 当前登录用户 */
@@ -317,8 +445,41 @@ export interface ContainerState {
   /** 退出码；**运行中恒为 null**（后端会把运行中的固定 0 抹成 null，见其类型注释） */
   exitCode: number | null
   oomKilled: boolean
-  /** 健康检查状态 `healthy` / `unhealthy` / `starting`；未配健康检查为 null */
-  healthStatus: string | null
+  /** 守护进程累计的重启次数 */
+  restartCount: number
+  /**
+   * 健康检查状态。
+   *
+   * ⚠️ **未配健康检查是 `none`，不是 null**：「没配」永远不会变，「查不到」会变，
+   * 混成一个值就没法在界面上分开表达。
+   */
+  healthStatus: ContainerHealthStatus
+}
+
+/**
+ * 容器健康检查状态（后端 `ContainerHealthStatus` 的小驼峰序列化）。
+ *
+ * 仅用于封闭集合：Docker 只给这四种。
+ */
+export type ContainerHealthStatus = 'none' | 'starting' | 'healthy' | 'unhealthy'
+
+/** 单个容器的健康与退出原因（`POST .../containers/health` 的条目） */
+export interface ContainerHealthSummary {
+  /** 完整容器 ID */
+  containerId: string
+  /** 容器名（无前导斜杠） */
+  name: string
+  healthStatus: ContainerHealthStatus
+  restartCount: number
+  /** 退出码；运行中为 null */
+  exitCode: number | null
+  oomKilled: boolean
+  running: boolean
+}
+
+/** 批量健康查询结果；**查不到的容器直接缺席**（多半是被删掉了） */
+export interface ContainerHealthResult {
+  items: ContainerHealthSummary[]
 }
 
 /** 端口映射（`publicPort` / `ip` 为 null 表示「容器内端口已暴露但未映射到宿主」） */
@@ -489,8 +650,22 @@ export interface ContainerStatsSample {
   networkRxBytes: number
   /** 累计发送字节数 */
   networkTxBytes: number
+  /** 接收速率（字节/秒）；首帧为 null（速率要由相邻两帧相减得到） */
+  networkRxBytesPerSecond: number | null
+  /** 发送速率（字节/秒）；首帧为 null */
+  networkTxBytesPerSecond: number | null
   /** 采样时刻（ISO 8601） */
   timestamp: string
+}
+
+/**
+ * 订阅时补发的一段历史采样（SignalR `OnStatsHistory`）。
+ *
+ * 顺序是**旧 → 新**：客户端直接追加即可，最新的一条同时就是「当前值」。
+ */
+export interface ContainerStatsHistoryPayload {
+  containerId: string
+  samples: ContainerStatsSample[]
 }
 
 /**

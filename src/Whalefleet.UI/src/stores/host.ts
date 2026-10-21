@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { listHostGroups } from '@/api/host-group'
 import { getHostOverview, listHosts } from '@/api/host'
-import type { HostGroup, HostInfo, HostOverview } from '@/types/api'
+import type { HostGroup, HostInfo, HostListFilter, HostOverview } from '@/types/api'
 
 /**
  * 主机 store：主机列表 + 分组 + 当前选中主机。
@@ -39,6 +39,13 @@ export const useHostStore = defineStore('host', {
     error: null as string | null,
     /** 最近一次成功同步时间（ISO 字符串），供页面显示「数据更新于…」 */
     lastSyncedAt: null as string | null,
+    /**
+     * 当前生效的过滤条件（0.6.0，服务端过滤）。
+     *
+     * ⚠️ **「未分组」用空串表达**：JSON 分不清「没给 groupId」与「给了 null」，
+     * 而两者语义不同（不过滤 vs 只看未分组）。
+     */
+    filter: {} as HostListFilter,
     /** `ensureLoaded()` 的在途 Promise，用于并发去重 */
     _inflight: null as Promise<void> | null,
     /** `loadHostDetails()` 的在途 Promise，用于并发去重 */
@@ -94,6 +101,11 @@ export const useHostStore = defineStore('host', {
       this.groups = groups
     },
 
+    /** 更新过滤条件（不自动重拉；调用方连续改多个条件时只需拉一次） */
+    setFilter(filter: HostListFilter) {
+      this.filter = filter
+    },
+
     /**
      * 拉取主机列表。
      *
@@ -105,7 +117,7 @@ export const useHostStore = defineStore('host', {
       this.error = null
       try {
         // 两个请求并行：分组与主机列表互不依赖，串行只会白等一个 RTT
-        const [hosts, groups] = await Promise.all([listHosts(), listHostGroups()])
+        const [hosts, groups] = await Promise.all([listHosts(this.filter), listHostGroups()])
 
         this.hosts = hosts
         this.groups = groups
@@ -158,7 +170,8 @@ export const useHostStore = defineStore('host', {
             ...host,
             version: detail.version ?? host.version,
             counts: detail.counts ?? host.counts,
-            startedAt: detail.startedAt ?? host.startedAt
+            daemon: detail.daemon ?? host.daemon,
+            tags: detail.tags ?? host.tags
           }
         })
       })().finally(() => {

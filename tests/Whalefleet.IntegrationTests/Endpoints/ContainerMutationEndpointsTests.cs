@@ -834,7 +834,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     }
 
     [DockerImageFact]
-    public async Task 健康检查关闭后inspect不带该配置()
+    public async Task 健康检查关闭后inspect返回none()
     {
         using var client = await CreateAuthenticatedClientAsync(_adminName);
 
@@ -854,10 +854,11 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
                     healthCheck = new { test = _noneTest },
                 })).ContainerId;
 
-            // 关掉健康检查的容器，inspect 的 HealthStatus 必须是 null 而不是 "none"：
-            // 否则前端要么写死魔法字符串判断，要么渲染出一个名叫「none」的状态
+            // 0.6.0 起：关掉健康检查时 HealthStatus 是 "none" 而不是 null。
+            // 「没配」与「查不到」是两件事——混成一个值，界面就没法把两者分开表达，
+            // 而「没配」永远不会变、「查不到」会变。
             var detail = await PostDataAsync<StatePayload>(client, "inspect", new { containerId });
-            detail.State.HealthStatus.Should().BeNull();
+            detail.State.HealthStatus.Should().Be("none");
         }
         finally
         {

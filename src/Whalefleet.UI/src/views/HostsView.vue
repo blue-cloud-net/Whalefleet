@@ -8,11 +8,14 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import IconActionButton from '@/components/common/IconActionButton.vue'
 import HostFormDialog from '@/components/business/HostFormDialog.vue'
 import GroupFormDialog from '@/components/business/GroupFormDialog.vue'
-import { deleteHost, listAdminHosts, updateHost } from '@/api/host'
+import TagManagerDialog from '@/components/business/TagManagerDialog.vue'
+import HostTagAssignDialog from '@/components/business/HostTagAssignDialog.vue'
+import { deleteHost, listAdminHosts, listHosts, updateHost } from '@/api/host'
 import { deleteHostGroup, listAdminHostGroups } from '@/api/host-group'
+import { listHostTags } from '@/api/host-tag'
 import { ApiRequestError } from '@/api'
 import { groupDescription, groupLabel } from '@/utils/group-display'
-import type { AdminHostSummary, HostGroup } from '@/types/api'
+import type { AdminHostSummary, HostGroup, HostTag } from '@/types/api'
 
 /**
  * 主机管理页（0.0.13，admin 专用）。
@@ -42,6 +45,22 @@ const editingHost = ref<AdminHostSummary | null>(null)
 const groupDialogVisible = ref(false)
 const editingGroup = ref<HostGroup | null>(null)
 
+/** 标签（0.6.0）：管理弹窗 + 单主机打标弹窗。 */
+const tagManagerVisible = ref(false)
+const tagAssignVisible = ref(false)
+const tagTarget = ref<AdminHostSummary | null>(null)
+
+/** 全量标签（下拉用）。 */
+const tags = ref<HostTag[]>([])
+
+/**
+ * 主机名 → 标签主键。
+ *
+ * 管理端的主机列表（`AdminHostSummary`）**不带标签**（它是对外标识为 Guid 的另一种形状），
+ * 而打标接口收的是主机名。因此这里额外拉一份展示用列表，按主机名对齐。
+ */
+const hostTagIds = ref<Record<string, string[]>>({})
+
 const isEmpty = computed(() => !loading.value && error.value === null && hosts.value.length === 0)
 
 /** 分组下拉的选项（后端已排好序）。 */
@@ -61,17 +80,51 @@ const groupNameById = computed(() => {
 async function load(): Promise<void> {
   loading.value = true
   try {
-    // 并行取两份：主机与分组互不依赖，串行只会白等一个 RTT
-    const [hostList, groupList] = await Promise.all([listAdminHosts(), listAdminHostGroups()])
+    // 并行取三份：主机 / 分组 / 标签互不依赖，串行只会白等两个 RTT
+    const [hostList, groupList, tagList, overview] = await Promise.all([
+      listAdminHosts(),
+      listAdminHostGroups(),
+      listHostTagsLoose(),
+      listHosts()
+    ])
 
     hosts.value = hostList
     groups.value = groupList
+    tags.value = tagList
+
+    const map: Record<string, string[]> = {}
+
+    for (const item of overview) {
+      map[item.id] = (item.tags ?? []).map((tag) => tag.id)
+    }
+
+    hostTagIds.value = map
     error.value = null
   } catch (e) {
     error.value = e instanceof ApiRequestError ? e.message : String(e)
   } finally {
     loading.value = false
   }
+}
+
+/** 标签列表拿不到时退化成空（不让整个管理页报错）。 */
+async function listHostTagsLoose(): Promise<HostTag[]> {
+  try {
+    return await listHostTags()
+  } catch {
+    return []
+  }
+}
+
+/** 打开打标弹窗。 */
+function openTagAssign(host: AdminHostSummary): void {
+  tagTarget.value = host
+  tagAssignVisible.value = true
+}
+
+/** 打标完成后重拉（标签集合与计数都会变）。 */
+async function onTagsChanged(): Promise<void> {
+  await load()
 }
 
 function markBusy(name: string, busy: boolean): void {
@@ -264,6 +317,10 @@ watch(() => t, load, { immediate: true })
     >
       <template #actions>
         <el-button :loading="loading" @click="load">{{ t('common.refresh') }}</el-button>
+        <el-button @click="tagManagerVisible = true">
+          <span class="i-carbon-tag text-base" />
+          {{ t('host.tag.manage') }}
+        </el-button>
         <el-button type="primary" @click="openCreate">{{ t('host.action.create') }}</el-button>
       </template>
     </PageHeader>
@@ -314,6 +371,33 @@ watch(() => t, load, { immediate: true })
               {{ groupNameById.get(row.groupId) ?? '—' }}
             </span>
             <span v-else class="text-xs text-content-faint">{{ t('host.group.ungrouped') }}</span>
+          </template>
+        </el-table-column>
+
+        <!--
+          标签（0.6.0）：点「打标」打开多选弹窗。
+          ⚠️ 标签与分组是两种组织方式：分组是单一归属，标签是多对多自由打标；两者都不参与授权。
+        -->
+        <el-table-column :label="t('host.tag.title')" min-width="200">
+          <template #default="{ row }">
+            <div class="flex flex-wrap items-center gap-1">
+              <span
+                v-for="tag in tags.filter((item) => (hostTagIds[row.name] ?? []).includes(item.id))"
+                :key="tag.id"
+                class="app-chip bg-surface-sunken text-content-muted ring-line-subtle"
+              >
+                <span
+                  class="h-1.5 w-1.5 rounded-full shrink-0"
+                  :style="{ backgroundColor: tag.color ?? 'var(--brand-500)' }"
+                  aria-hidden="true"
+                />
+                {{ tag.name }}
+              </span>
+
+              <el-button text size="small" class="!px-1.5" @click="openTagAssign(row)">
+                <span class="i-carbon-add-alt text-sm" />
+              </el-button>
+            </div>
           </template>
         </el-table-column>
 
@@ -415,5 +499,14 @@ watch(() => t, load, { immediate: true })
       @saved="onHostSaved"
     />
     <GroupFormDialog v-model="groupDialogVisible" :group="editingGroup" @saved="onGroupSaved" />
+
+    <TagManagerDialog v-model="tagManagerVisible" @changed="onTagsChanged" />
+
+    <HostTagAssignDialog
+      v-model="tagAssignVisible"
+      :host="tagTarget"
+      :tag-ids="tagTarget ? (hostTagIds[tagTarget.name] ?? []) : []"
+      @saved="onTagsChanged"
+    />
   </div>
 </template>

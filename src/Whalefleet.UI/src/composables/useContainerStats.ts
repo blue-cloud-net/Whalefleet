@@ -3,7 +3,12 @@ import type { HubConnection } from '@microsoft/signalr'
 import { createHubConnection, hostHubPath } from '@/realtime/connection'
 import { createMockStatsStream } from '@/realtime/mock'
 import { shouldUseMock } from '@/mocks/switch'
-import type { ContainerStatsPayload, ContainerStatsSample, RealtimeError } from '@/types/api'
+import type {
+  ContainerStatsHistoryPayload,
+  ContainerStatsPayload,
+  ContainerStatsSample,
+  RealtimeError
+} from '@/types/api'
 
 /**
  * 容器运行指标的实时订阅（0.5.0）。
@@ -39,11 +44,26 @@ export interface UseContainerStatsOptions {
  */
 export function useContainerStats(options: UseContainerStatsOptions) {
   const sample = ref<ContainerStatsSample | null>(null)
+  /**
+   * 最近一段采样（旧 → 新，最多 60 点）。
+   *
+   * 服务端在订阅成功后会先推一条历史（进程内环形缓冲），因此新打开的页面不必
+   * 从空图开始攒——这也正是「采样缓存」那条要求的目的。
+   */
+  const samples = ref<ContainerStatsSample[]>([])
   const status = ref<StatsStreamStatus>('idle')
   const error = ref<string | null>(null)
 
+  const MAX_POINTS = 60
+
   const connection = shallowRef<HubConnection | null>(null)
   let stopMock: (() => void) | null = null
+
+  /** 追加一个采样并裁剪到 60 点。 */
+  function append(value: ContainerStatsSample): void {
+    samples.value = [...samples.value, value].slice(-MAX_POINTS)
+    sample.value = value
+  }
 
   /**
    * 处理一次采样。
@@ -52,7 +72,18 @@ export function useContainerStats(options: UseContainerStatsOptions) {
    */
   function onStats(payload: ContainerStatsPayload): void {
     if (!payload?.stats) return
-    sample.value = payload.stats
+    append(payload.stats)
+  }
+
+  /**
+   * 处理订阅时补发的历史采样。
+   *
+   * @param payload 历史载荷（旧 → 新）。
+   */
+  function onStatsHistory(payload: ContainerStatsHistoryPayload): void {
+    if (!payload?.samples?.length) return
+    samples.value = payload.samples.slice(-MAX_POINTS)
+    sample.value = payload.samples[payload.samples.length - 1] ?? null
   }
 
   /**
@@ -82,7 +113,7 @@ export function useContainerStats(options: UseContainerStatsOptions) {
 
     if (import.meta.env.DEV && shouldUseMock()) {
       stopMock = createMockStatsStream().start(container, (value) => {
-        sample.value = value
+        append(value)
         status.value = 'live'
       })
       return
@@ -92,6 +123,7 @@ export function useContainerStats(options: UseContainerStatsOptions) {
     connection.value = hub
 
     hub.on('OnStats', onStats)
+    hub.on('OnStatsHistory', onStatsHistory)
     hub.on('OnStreamError', onStreamError)
     hub.onreconnected(() => {
       void subscribe(hub, container)
@@ -149,5 +181,5 @@ export function useContainerStats(options: UseContainerStatsOptions) {
     void stop()
   })
 
-  return { sample, status, error, start, stop }
+  return { sample, samples, status, error, start, stop }
 }

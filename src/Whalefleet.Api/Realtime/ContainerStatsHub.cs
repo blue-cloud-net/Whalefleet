@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Options;
@@ -33,7 +32,7 @@ public sealed class ContainerStatsHub : Hub
     private readonly RealtimeHostResolver _resolver;
     private readonly RealtimeSubscriptionRegistry _subscriptions;
     private readonly IHubContext<ContainerStatsHub> _hubContext;
-    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IContainerStatsSampler _sampler;
     private readonly IOptions<RealtimeOptions> _options;
     private readonly ILogger<ContainerStatsHub> _logger;
 
@@ -43,7 +42,7 @@ public sealed class ContainerStatsHub : Hub
     /// <param name="resolver">主机解析与权限判定。</param>
     /// <param name="subscriptions">订阅注册表。</param>
     /// <param name="hubContext">Hub 上下文（后台推送用）。</param>
-    /// <param name="scopeFactory">依赖注入作用域工厂。</param>
+    /// <param name="sampler">进程内共享的采样器（一容器一条 Docker 流）。</param>
     /// <param name="options">实时通道选项。</param>
     /// <param name="logger">日志。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
@@ -51,21 +50,21 @@ public sealed class ContainerStatsHub : Hub
         RealtimeHostResolver resolver,
         RealtimeSubscriptionRegistry subscriptions,
         IHubContext<ContainerStatsHub> hubContext,
-        IServiceScopeFactory scopeFactory,
+        IContainerStatsSampler sampler,
         IOptions<RealtimeOptions> options,
         ILogger<ContainerStatsHub> logger)
     {
         ArgumentNullException.ThrowIfNull(resolver);
         ArgumentNullException.ThrowIfNull(subscriptions);
         ArgumentNullException.ThrowIfNull(hubContext);
-        ArgumentNullException.ThrowIfNull(scopeFactory);
+        ArgumentNullException.ThrowIfNull(sampler);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(logger);
 
         _resolver = resolver;
         _subscriptions = subscriptions;
         _hubContext = hubContext;
-        _scopeFactory = scopeFactory;
+        _sampler = sampler;
         _options = options;
         _logger = logger;
     }
@@ -106,17 +105,18 @@ public sealed class ContainerStatsHub : Hub
             this.Context.ConnectionId,
             SubscriptionKind,
             containerId,
-            _options.Value.MaxSubscriptionsPerKind);
+            _options.Value.MaxStatsSubscriptionsPerConnection);
 
         if (subscription is null)
         {
             var count = _subscriptions.CountPerKind(this.Context.ConnectionId, SubscriptionKind);
+            var limit = _options.Value.MaxStatsSubscriptionsPerConnection;
 
             return new RealtimeActionResult(
                 false,
                 ErrorCodes.ValidationFailed,
-                count >= _options.Value.MaxSubscriptionsPerKind
-                    ? $"单个连接最多订阅 {_options.Value.MaxSubscriptionsPerKind} 个容器的采样，请先退订其它容器。"
+                count >= limit
+                    ? $"单个连接最多订阅 {limit} 个容器的采样，请先退订其它容器。"
                     : "该容器的采样已在订阅中。");
         }
 
@@ -168,38 +168,36 @@ public sealed class ContainerStatsHub : Hub
     private Task StartPump(RealtimeSubscription subscription, string hostId, string containerId)
     {
         var connectionId = this.Context.ConnectionId;
-        var sampleInterval = TimeSpan.FromMilliseconds(_options.Value.StatsSampleIntervalMs);
         var logger = _logger;
         var hubContext = _hubContext;
+        var sampler = _sampler;
 
         return Task.Run(async () =>
         {
-            using var scope = _scopeFactory.CreateScope();
-            var provider = scope.ServiceProvider.GetRequiredService<IContainerStatsProvider>();
-
-            var clock = Stopwatch.StartNew();
-            var lastPush = TimeSpan.MinValue;
+            // 采样器是进程内共享的：同一个容器无论多少订阅者，只占一条到 Docker 的流。
+            // 订阅时它会先给一段历史快照（环形缓冲），因此新打开的页面不必等一分钟才有图。
+            await using var source = sampler.Subscribe(hostId, containerId);
 
             try
             {
-                await foreach (var sample in provider
-                    .StreamStatsAsync(hostId, containerId, subscription.Cancellation.Token)
-                    .ConfigureAwait(false))
+                if (source.History.Count > 0)
                 {
-                    // 节流：Docker 本身约 1 秒一帧，但守护进程实现不同可能有差异。
-                    // 客户端只显示「当前值」，推得更密并不会更有用。
-                    if (clock.Elapsed - lastPush < sampleInterval)
-                    {
-                        continue;
-                    }
-
-                    lastPush = clock.Elapsed;
-
-                    var payload = new ContainerStatsPayload(containerId, sample);
-
                     await hubContext.Clients
                         .Client(connectionId)
-                        .SendAsync("OnStats", payload)
+                        .SendAsync(
+                            "OnStatsHistory",
+                            new ContainerStatsHistoryPayload(containerId, source.History),
+                            subscription.Cancellation.Token)
+                        .ConfigureAwait(false);
+                }
+
+                await foreach (var sample in source
+                    .ReadAllAsync(subscription.Cancellation.Token)
+                    .ConfigureAwait(false))
+                {
+                    await hubContext.Clients
+                        .Client(connectionId)
+                        .SendAsync("OnStats", new ContainerStatsPayload(containerId, sample))
                         .ConfigureAwait(false);
                 }
             }

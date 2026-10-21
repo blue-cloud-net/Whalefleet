@@ -175,6 +175,11 @@ internal sealed class ContainerEventWatcher : BackgroundService
                         {
                             ["die"] = true,
                             ["oom"] = true,
+
+                            // stop / kill 也必须监听：手动停止同样会产生 die 事件，
+                            // 只订 die 的话「手动停了个容器」也会弹一条「异常退出」通知
+                            ["stop"] = true,
+                            ["kill"] = true,
                         },
                     },
                 };
@@ -272,6 +277,49 @@ internal sealed class ContainerEventWatcher : BackgroundService
         private readonly ILogger _logger;
 
         /// <summary>
+        /// 「刚被主动停掉」的容器（容器 ID → 收到 stop/kill 的时刻）。
+        /// </summary>
+        /// <remarks>
+        /// Docker 的手动停止路径是 <c>stop</c> → <c>die</c>（<c>kill</c> 同理），
+        /// 而 <c>die</c> 本身<b>不说明原因</b>——它同样会为「容器自己崩了」发出。
+        /// 因此只能先记住「刚刚有人叫停」，等 <c>die</c> 到来时把它当作正常停止丢掉。
+        /// </remarks>
+        private readonly Dictionary<string, DateTimeOffset> _recentlyStopped = new(StringComparer.Ordinal);
+
+        /// <summary>
+        /// 刚刚已经发过通知的容器（容器 ID → 发布时刻），用于 <c>oom</c> + <c>die</c> 去重。
+        /// </summary>
+        /// <remarks>
+        /// 一次 OOM 死亡会连着发两条事件（<c>oom</c> 与 <c>die</c>）。不去重的话，
+        /// 用户会在铃铛里看到同一次事故的两条通知，且其中一条没有 OOM 标记。
+        /// </remarks>
+        private readonly Dictionary<string, DateTimeOffset> _recentlyPublished = new(StringComparer.Ordinal);
+
+        /// <summary>
+        /// 「主动停止」的判定窗口。
+        /// </summary>
+        /// <remarks>
+        /// 10 秒的依据：<c>stop</c> 到 <c>die</c> 在本地守护进程上通常只有几毫秒（先 SIGTERM、
+        /// 超时后再 SIGKILL，默认 10 秒）。窗口取 10 秒正好覆盖默认超时，
+        /// 又短到不会把「停完之后一分钟自己又崩了」误判成手动停止。
+        /// </remarks>
+        private static readonly TimeSpan StopWindow = TimeSpan.FromSeconds(10);
+
+        /// <summary>
+        /// <c>oom</c> 与 <c>die</c> 的去重窗口（同一次死亡的两次事件）。
+        /// </summary>
+        private static readonly TimeSpan DedupeWindow = TimeSpan.FromSeconds(2);
+
+        /// <summary>
+        /// 两个字典的修剪阈值：超过这个条目数时顺手清掉过期项。
+        /// </summary>
+        /// <remarks>
+        /// 不修剪的话，一台跑过几千个容器的机器会让这两个字典只增不减——
+        /// 而它们只是「最近几秒」的辅助状态。
+        /// </remarks>
+        private const int PruneThreshold = 64;
+
+        /// <summary>
         /// 初始化收集器。
         /// </summary>
         /// <param name="hostId">主机名。</param>
@@ -294,8 +342,9 @@ internal sealed class ContainerEventWatcher : BackgroundService
                 return;
             }
 
-            if (!string.Equals(value.Action, "die", StringComparison.Ordinal)
-                && !string.Equals(value.Action, "oom", StringComparison.Ordinal))
+            var action = value.Action;
+
+            if (action is not ("die" or "oom" or "stop" or "kill"))
             {
                 return;
             }
@@ -308,6 +357,42 @@ internal sealed class ContainerEventWatcher : BackgroundService
                 return;
             }
 
+            var occurredAt = value.Time is { } seconds
+                ? DateTimeOffset.FromUnixTimeSeconds(seconds)
+                : DateTimeOffset.UtcNow;
+
+            this.Prune(occurredAt);
+
+            // 主动停止：只记下来，不通知。紧随其后的 die 会被这条记录吞掉。
+            if (action is "stop" or "kill")
+            {
+                _recentlyStopped[containerId] = occurredAt;
+                return;
+            }
+
+            if (action == "die")
+            {
+                if (_recentlyStopped.TryGetValue(containerId, out var stoppedAt)
+                    && occurredAt - stoppedAt <= StopWindow)
+                {
+                    _recentlyStopped.Remove(containerId);
+
+                    _logger.LogDebug(
+                        "容器 {ContainerId} 为主动停止，不发通知（主机={HostId}）",
+                        containerId,
+                        _hostId);
+
+                    return;
+                }
+
+                // 同一次死亡的 oom 事件已经发过了
+                if (_recentlyPublished.TryGetValue(containerId, out var publishedAt)
+                    && occurredAt - publishedAt <= DedupeWindow)
+                {
+                    return;
+                }
+            }
+
             // 容器名取自事件属性：那是 Docker 顺手带上的，不必为每个事件再查一次 inspect。
             var name = actor?.Attributes is { } attributes
                 && attributes.TryGetValue("name", out var attributeName)
@@ -315,11 +400,9 @@ internal sealed class ContainerEventWatcher : BackgroundService
                     : string.Empty;
 
             var exitCode = ParseExitCode(actor?.Attributes);
-            var outOfMemory = string.Equals(value.Action, "oom", StringComparison.Ordinal);
+            var outOfMemory = string.Equals(action, "oom", StringComparison.Ordinal);
 
-            var occurredAt = value.Time is { } seconds
-                ? DateTimeOffset.FromUnixTimeSeconds(seconds)
-                : DateTimeOffset.UtcNow;
+            _recentlyPublished[containerId] = occurredAt;
 
             var notification = new ContainerEventNotification(
                 _hostId,
@@ -338,6 +421,36 @@ internal sealed class ContainerEventWatcher : BackgroundService
 
             // 发布是 fire-and-forget：总线满了也只是丢事件，不该拖住 Docker 的读取回调。
             _ = _bus.PublishAsync(notification).AsTask();
+        }
+
+        /// <summary>
+        /// 清掉两个辅助字典里的过期项。
+        /// </summary>
+        /// <param name="now">当前事件时刻。</param>
+        /// <returns>无。</returns>
+        private void Prune(DateTimeOffset now)
+        {
+            if (_recentlyStopped.Count < PruneThreshold && _recentlyPublished.Count < PruneThreshold)
+            {
+                return;
+            }
+
+            PruneOlderThan(_recentlyStopped, now, StopWindow);
+            PruneOlderThan(_recentlyPublished, now, DedupeWindow);
+        }
+
+        private static void PruneOlderThan(
+            Dictionary<string, DateTimeOffset> entries,
+            DateTimeOffset now,
+            TimeSpan window)
+        {
+            foreach (var (key, at) in entries.ToArray())
+            {
+                if (now - at > window)
+                {
+                    entries.Remove(key);
+                }
+            }
         }
 
         /// <summary>

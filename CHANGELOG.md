@@ -31,6 +31,55 @@ Work in progress. The next milestone is `0.1.0` — authorization baseline and M
 (its per-version notes accumulate here as internal drafts and are rewritten into the `1.0.0` entry
 before the first public release).
 
+### `0.6.0` — Observability (internal draft)
+
+#### Added
+
+- **Container metrics columns in the container list** (CPU / memory / network, **off by
+  default**): turning a column on subscribes only the containers visible on the current page,
+  capped at 20 per connection, and unsubscribes again when the column is closed, the page is
+  hidden, or the host changes.
+- **A shared container-stats sampler**: one stream per container regardless of how many
+  clients watch it, with a 60-point in-process ring buffer that is **replayed** to new
+  subscribers — a freshly opened page no longer starts from an empty chart.
+- **Network rates in every sample** (`networkRxBytesPerSecond` / `networkTxBytesPerSecond`,
+  `null` on the first frame): cumulative counters make a flat, always-rising line and hide
+  every burst.
+- **Container health and exit reasons**: `healthStatus` (`none` / `starting` / `healthy` /
+  `unhealthy`), `restartCount`, `exitCode` and `oomKilled` in `inspect`.
+  `healthStatus` is **`none`** when no health check exists — "not configured" is a fact that
+  never changes, while "could not read" is a different thing.
+- **`POST /api/v1/hosts/{hostId}/containers/health`**: batch health/exit lookup for one page
+  (≤100 ids, concurrency 8, missing containers simply absent).
+- **Host tags** (`host_tags` + `host_tag_assignments`, migration `0008`): many-to-many labels
+  for filtering and bulk selection, **never** for authorization. Assign/revoke are idempotent;
+  deleting a tag drops its links but never a host. New error codes `1306` / `1307`.
+- **Server-side host filtering** on `POST /api/v1/hosts/list`: `groupId` (empty string means
+  "ungrouped"), `tagIds` (any-of, AND-ed with the group), `status` and `search`.
+- **Disk usage** (`POST /api/v1/hosts/{hostId}/system/df`): per-class totals, reclaimable
+  bytes and per-item details; classes that were not queried come back as `null`, never as an
+  empty bucket.
+- **Daemon info** in the host overview: OS / kernel / CPU count / memory / storage, logging and
+  cgroup drivers / runtimes and component versions / plugins / registry mirrors / proxies /
+  root dir. Everything comes from the **same** `/info` call; proxy URLs have their userinfo
+  masked server-side.
+
+#### Changed
+
+- **`startedAt` removed** from the host overview, along with every "up x" label. Docker's
+  `/info` `SystemTime` is the *current* time, not the boot time, so the old field always
+  computed "0 seconds". The Docker Engine API exposes neither a daemon start time nor a host
+  boot time, so the field was deleted rather than re-labelled.
+- **Multi-metric chart** on the container detail page (CPU / memory on the left axis, network
+  on the right one, 1 m / 2 m / all-buffer windows). ECharts is loaded **on demand** — the
+  chart is a separate chunk and never ships with the main bundle.
+- **Exit notifications now distinguish "stopped by a human"**: the watcher subscribes to
+  `stop` / `kill` as well and suppresses the following `die`, and an `oom` + `die` pair is
+  reported once.
+- **New realtime option** `MaxStatsSubscriptionsPerConnection` (20). `MaxSubscriptionsPerKind`
+  stays at 5 and now governs **logs only** — one number for both made "20 containers in the
+  list" and "5 log panes" impossible to satisfy at the same time.
+
 ### `0.5.0` — Realtime channels (SignalR) (internal draft)
 
 #### Added
