@@ -16,13 +16,22 @@ namespace Whalefleet.Api.Configuration;
 /// <para><b>该排除规则成立的前提</b>：所有控制器都挂在 <c>/api/v1</c> 下，
 /// 健康检查在 <c>/healthz</c>。新增<b>非</b>这些前缀的端点时必须同步更新
 /// <see cref="ApiPathPrefixes"/>，否则它会被静默吞成前端页面。</para>
+/// <para><b><c>/hubs</c> 与 <c>/ws</c> 同样必须排除</b>（0.5.0 / 0.8.0）：它们是长连接端点，
+/// 路径里<b>没有文件扩展名</b>，正好命中回退的条件。不排除的话，SignalR 的
+/// <c>/hubs/notification/negotiate</c> 会拿到 200 + 一段 index.html，
+/// 而客户端期待的是 JSON——症状与「打错的 /api 路径」一模一样，
+/// 且日志里全是 200，几乎不可能靠读日志定位。</para>
 /// </remarks>
 internal static class SpaFallbackExtensions
 {
     /// <summary>
     /// 不参与 SPA 回退的路径前缀。
     /// </summary>
-    internal static readonly string[] ApiPathPrefixes = ["/api", "/healthz"];
+    /// <remarks>
+    /// <c>/hubs</c> 是 SignalR（0.5.0），<c>/ws</c> 是 exec 终端的原生 WebSocket（0.8.0）——
+    /// 两者都是长连接端点，<b>不排除就会被回退成前端页面</b>。
+    /// </remarks>
+    internal static readonly string[] ApiPathPrefixes = ["/api", "/healthz", "/hubs", "/ws"];
 
     /// <summary>
     /// 注册 SPA 回退。
@@ -60,7 +69,7 @@ internal static class SpaFallbackExtensions
 
             foreach (var prefix in ApiPathPrefixes)
             {
-                if (path.StartsWithSegments(prefix))
+                if (path.StartsWithSegments(prefix, StringComparison.Ordinal))
                 {
                     await next(context).ConfigureAwait(false);
                     return;
