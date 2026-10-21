@@ -80,3 +80,9 @@ docs
 # ---------- 备份 ----------
 # 宿主机上跑 backup.sh 的产物，若目录被挂进工作区就会被卷进来。
 **/backups
+
+# ---------- 本地工作树 ----------
+# `git worktree add` 的检出目录（.worktrees/<分支>），是整份源码的副本，
+# 还各自带 bin/obj，没有理由进构建上下文。
+# 注意名字带点：写成 worktrees 或前导 ./worktrees 都匹配不到。
+.worktrees
