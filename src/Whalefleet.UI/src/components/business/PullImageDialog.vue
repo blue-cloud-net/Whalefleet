@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { pullImage } from '@/api/image'
 import { splitImageReference } from '@/utils/image-display'
+import { createProgressToken, useImageProgress } from '@/composables/useImageProgress'
 import type { ImagePullResult } from '@/types/api'
 
 /**
@@ -16,10 +17,10 @@ import type { ImagePullResult } from '@/types/api'
  * 负责拆成两条参数。分两个输入框会逼用户先理解后端的参数划分，
  * 而他们脑子里想的就是一条 `nginx:1.27`。
  *
- * ## 0.0.10 的拉取是一次性请求
- * 服务端聚合进度后一次性返回，期间 HTTP 一直挂着——所以这里只能给不确定进度
- * （转圈 + 「拉取中」）。SignalR 实时进度**从 0.4.0 推到了 0.5.0**，
- * 届时换成进度条即可，本对话框的对外契约（`pulled` 事件）不需要改。
+ * ## 0.5.0 的实时进度
+ * 拉取仍然是一次**阻塞的 HTTP 请求**（后端聚合完才返回），但过程会通过
+ * 通知 Hub 推进度：客户端先生成一个进度令牌，订阅它，再把同一个令牌
+ * 放进拉取请求。进度条因此是**真实**的，而不是「转圈 + 拉取中」。
  */
 const props = defineProps<{
   /** 当前主机 id（等于主机名） */
@@ -37,6 +38,15 @@ const reference = ref('')
 const platform = ref('')
 const submitting = ref(false)
 const errorMessage = ref<string | null>(null)
+
+/** 实时进度（0.5.0）。 */
+const progress = useImageProgress()
+
+/** 当前进度百分比；`null` 表示服务端算不出总体进度。 */
+const progressPercent = computed(() => progress.progress.value?.percent ?? null)
+
+/** 最近一条状态原文。 */
+const progressStatus = computed(() => progress.progress.value?.status ?? '')
 
 /** 实时预览拆解结果：让用户提交前就看到「会去拉什么」。 */
 const preview = computed(() => {
@@ -64,11 +74,17 @@ async function submit(): Promise<void> {
 
   submitting.value = true
   errorMessage.value = null
+
+  // 先生成令牌并订阅，再发起拉取——反过来会有「拉取已经开始但还没订阅上」的窗口。
+  const token = createProgressToken()
+  progress.start(token)
+
   try {
     const result = await pullImage(props.hostId, {
       image,
       tag,
-      platform: platform.value.trim() || undefined
+      platform: platform.value.trim() || undefined,
+      progressToken: token
     })
 
     ElMessage({
@@ -84,6 +100,7 @@ async function submit(): Promise<void> {
     // 文案要能容纳「被拒绝」这种非网络原因。
     errorMessage.value = e instanceof Error ? e.message : String(e)
   } finally {
+    progress.stop()
     submitting.value = false
   }
 }
@@ -138,6 +155,19 @@ function close(): void {
       <p v-if="submitting" class="mt-3 text-xs text-content-muted">
         {{ t('image.pull.waiting') }}
       </p>
+
+      <!-- 实时进度条（0.5.0）。百分比算不出来时用不确定态条纹，而不是假装是 0%。 -->
+      <div v-if="submitting" class="mt-3 flex flex-col gap-1">
+        <el-progress
+          v-if="progressPercent !== null"
+          :percentage="progressPercent"
+          :stroke-width="8"
+        />
+        <el-progress v-else :indeterminate="true" :stroke-width="8" :show-text="false" />
+        <p v-if="progressStatus" class="truncate text-xs text-content-faint">
+          {{ progressStatus }}
+        </p>
+      </div>
     </el-form>
 
     <template #footer>

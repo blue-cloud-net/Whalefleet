@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { buildImage } from '@/api/image'
 import { isTarArchive, parseKeyValueJson, validateBuildTag } from '@/utils/image-build'
+import { createProgressToken, useImageProgress } from '@/composables/useImageProgress'
 import type { ImageBuildResult } from '@/types/api'
 
 /**
@@ -22,8 +23,8 @@ import type { ImageBuildResult } from '@/types/api'
  *
  * ## 为什么等这么久还不能取消
  * 本版构建是**一次性请求**（与 `pull` 同形态），服务端在请求内同步等完，
- * 进度推送排到 0.5.0 的 SignalR。因此这里只能给不确定态，并在文案里
- * 明说「可能要几分钟」——否则用户会在第 30 秒以为卡死而重复提交。
+ * 但过程会通过通知 Hub 推进度（0.5.0）。因此这里给**真实进度条**，
+ * 并在文案里明说「可能要几分钟」——否则用户会在第 30 秒以为卡死而重复提交。
  */
 const props = defineProps<{
   /** 当前主机 id（等于主机名） */
@@ -50,6 +51,15 @@ const submitting = ref(false)
 const errorMessage = ref<string | null>(null)
 /** 上一次成功构建的结果（含日志），用于构建后展示 */
 const lastResult = ref<ImageBuildResult | null>(null)
+
+/** 实时进度（0.5.0）。 */
+const progress = useImageProgress()
+
+/** 当前进度百分比；`null` 表示服务端算不出总体进度。 */
+const progressPercent = computed(() => progress.progress.value?.percent ?? null)
+
+/** 最近一条状态原文。 */
+const progressStatus = computed(() => progress.progress.value?.status ?? '')
 
 const fileInput = ref<HTMLInputElement | null>(null)
 
@@ -131,6 +141,11 @@ async function submit(): Promise<void> {
   submitting.value = true
   errorMessage.value = null
   lastResult.value = null
+
+  // 先生成令牌并订阅，再发起构建——反过来会有「构建已经开始但还没订阅上」的窗口。
+  const token = createProgressToken()
+  progress.start(token)
+
   try {
     const result = await buildImage(props.hostId, {
       context: contextFile.value,
@@ -143,7 +158,8 @@ async function submit(): Promise<void> {
       labels: labelResult.value ? JSON.stringify(labelResult.value) : undefined,
       target: target.value.trim() || undefined,
       platform: platform.value.trim() || undefined,
-      noCache: noCache.value || undefined
+      noCache: noCache.value || undefined,
+      progressToken: token
     })
 
     lastResult.value = result
@@ -159,6 +175,7 @@ async function submit(): Promise<void> {
     // 守护进程的响应是 200 + 进度流里的错误，由后端翻译）
     errorMessage.value = e instanceof Error ? e.message : String(e)
   } finally {
+    progress.stop()
     submitting.value = false
   }
 }
@@ -291,6 +308,19 @@ function close(): void {
       <p v-if="submitting" class="mt-3 text-xs text-content-muted">
         {{ t('image.build.waiting') }}
       </p>
+
+      <!-- 实时进度条（0.5.0）。百分比算不出来时用不确定态条纹，而不是假装是 0%。 -->
+      <div v-if="submitting" class="mt-3 flex flex-col gap-1">
+        <el-progress
+          v-if="progressPercent !== null"
+          :percentage="progressPercent"
+          :stroke-width="8"
+        />
+        <el-progress v-else :indeterminate="true" :stroke-width="8" :show-text="false" />
+        <p v-if="progressStatus" class="truncate text-xs text-content-faint">
+          {{ progressStatus }}
+        </p>
+      </div>
     </el-form>
 
     <template #footer>
