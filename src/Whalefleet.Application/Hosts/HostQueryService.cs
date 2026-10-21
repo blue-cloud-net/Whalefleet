@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Net.Sockets;
+using Docker.DotNet;
 using Docker.DotNet.Models;
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
@@ -112,9 +114,11 @@ public sealed class HostQueryService
     /// <returns>主机概览；主机离线时除基本字段外均为空。</returns>
     /// <exception cref="BusinessException">主机不存在（<c>1300</c>）。</exception>
     /// <remarks>
-    /// 四次调用（版本 / 运行信息 / 卷列表 / 网络列表）<b>串行</b>：它们是同一个守护进程上的本地调用，
-    /// 并行只会让「各自可能失败」变成「丢掉另一个的错误信息」。真到了需要压这一步延迟的规模，
-    /// 该做的是缓存，不是并行。
+    /// 六次调用（版本 / 运行信息 / 容器列表 / 卷列表 / 网络列表 / 镜像磁盘占用）<b>串行</b>：
+    /// 它们是同一个守护进程上的本地调用，并行只会让「各自可能失败」变成「丢掉另一个的错误信息」。
+    /// 真到了需要压这一步延迟的规模，该做的是缓存，不是并行。
+    /// <para>容器列表只为读健康检查计数（<c>/info</c> 不提供）；镜像磁盘占用走
+    /// <c>/system/df?type=image</c>，失败时降级为 <see langword="null"/> 而不是让整台主机变离线。</para>
     /// </remarks>
     public async Task<HostOverviewSummary> GetOverviewAsync(
         string hostId,
@@ -138,6 +142,15 @@ public sealed class HostQueryService
                 $"主机 {host.Name} 的运行信息",
                 cancellationToken).ConfigureAwait(false);
 
+            // 健康检查状态既不在 /info 也不在 /containers/{id}/json 之外的任何批量接口里，
+            // 想要「一次拿到全部容器的健康状态」只能列一遍容器（Status 文本里带 (healthy)）。
+            var containers = await DockerErrorTranslator.ExecuteAsync(
+                () => client.Containers.ListContainersAsync(
+                    new ContainersListParameters { All = true },
+                    cancellationToken),
+                $"主机 {host.Name} 的容器列表",
+                cancellationToken).ConfigureAwait(false);
+
             var volumes = await DockerErrorTranslator.ExecuteAsync(
                 () => client.Volumes.ListAsync(cancellationToken),
                 $"主机 {host.Name} 的数据卷列表",
@@ -148,17 +161,27 @@ public sealed class HostQueryService
                 $"主机 {host.Name} 的网络列表",
                 cancellationToken).ConfigureAwait(false);
 
+            var (healthy, unhealthy) = CountHealth(containers);
+            var imagesSize = await TryGetImagesSizeAsync(client, host.Name, cancellationToken)
+                .ConfigureAwait(false);
+
             var counts = new HostResourceCounts(
                 Containers: info.Containers,
                 Images: info.Images,
                 Volumes: volumes.Volumes?.Count ?? 0,
-                Networks: networks.Count);
+                Networks: networks.Count,
+                ContainersRunning: info.ContainersRunning,
+                ContainersStopped: info.ContainersStopped,
+                ContainersHealthy: healthy,
+                ContainersUnhealthy: unhealthy,
+                ImagesSizeBytes: imagesSize);
 
             _logger.LogDebug(
-                "主机 {HostName} 概览：引擎 {Version}，容器 {Containers}，镜像 {Images}",
+                "主机 {HostName} 概览：引擎 {Version}，容器 {Containers}（运行 {Running}），镜像 {Images}",
                 host.Name,
                 version.Version,
                 counts.Containers,
+                counts.ContainersRunning,
                 counts.Images);
 
             return Map(
@@ -184,8 +207,98 @@ public sealed class HostQueryService
         }
     }
 
+    /// <summary>健康检查通过的标记（容器列表的 <c>Status</c> 形如 <c>Up 2 hours (healthy)</c>）。</summary>
+    private const string HealthHealthyMarker = "(healthy)";
+
+    /// <summary>健康检查失败的标记。</summary>
+    private const string HealthUnhealthyMarker = "(unhealthy)";
+
+    /// <summary><c>GET /system/df</c> 的 <c>type</c> 过滤值：只要镜像，跳过容器 / 卷 / 构建缓存。</summary>
+    private const string ImageUsageType = "image";
+
     /// <summary>
-    /// 探测主机连通性。
+    /// 从容器列表的 <c>Status</c> 文本里统计健康检查结果。
+    /// </summary>
+    /// <param name="containers">容器列表。</param>
+    /// <returns>健康数 / 不健康数。</returns>
+    /// <remarks>
+    /// <para><b>只能读文本</b>：容器列表没有结构化的健康字段，健康状态只出现在 <c>Status</c>
+    /// 的括号里（<c>Up 2 hours (healthy)</c>）。逐个 inspect 才是结构化的，但那是 N 次请求。</para>
+    /// <para><b>必须先判 <c>(unhealthy)</c></b>：<c>(healthy)</c> 是 <c>(unhealthy)</c> 的子串，
+    /// 反过来的话失败的健康检查会被算成健康——这正是这个功能最不该出的错。</para>
+    /// <para>没配健康检查的容器两者都不计入：它的 <c>Status</c> 里没有括号。</para>
+    /// </remarks>
+    private static (long Healthy, long Unhealthy) CountHealth(IEnumerable<ContainerListResponse> containers)
+    {
+        long healthy = 0;
+        long unhealthy = 0;
+
+        foreach (var container in containers)
+        {
+            var status = container.Status ?? string.Empty;
+
+            if (status.Contains(HealthUnhealthyMarker, StringComparison.OrdinalIgnoreCase))
+            {
+                unhealthy++;
+            }
+            else if (status.Contains(HealthHealthyMarker, StringComparison.OrdinalIgnoreCase))
+            {
+                healthy++;
+            }
+        }
+
+        return (healthy, unhealthy);
+    }
+
+    /// <summary>
+    /// 查询镜像层实际占用的磁盘空间（<c>GET /system/df?type=image</c>）。
+    /// </summary>
+    /// <param name="client">该主机的 Docker 客户端。</param>
+    /// <param name="hostName">主机名（仅用于日志）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>字节数；查询失败或不支持时 <see langword="null"/>（表示「不知道」，不是「0 字节」）。</returns>
+    /// <remarks>
+    /// <para><b>为什么不走 <see cref="DockerErrorTranslator"/></b>：镜像占用是锦上添花的信息，
+    /// 取不到不该把整台主机判成离线（那会让四类资源磁贴一起变成「—」）。这里只吞掉
+    /// 「守护进程调用失败」类异常并记 Warning。</para>
+    /// <para><b><c>type=image</c> 过滤不可省</b>：不带过滤时守护进程会连带统计容器、卷与构建缓存，
+    /// 在镜像多的机器上要多等好几秒。</para>
+    /// <para><b>不缓存</b>：概览页是用户主动进来看的，30 秒级别的陈旧没有意义；
+    /// 真要压延迟应该在概览整体上加缓存。</para>
+    /// </remarks>
+    private async Task<long?> TryGetImagesSizeAsync(
+        IDockerClient client,
+        string hostName,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var usage = await client.System.GetDataUsageInfoAsync(
+                new SytemDataUsageInfoParameters { Type = [ImageUsageType] },
+                cancellationToken).ConfigureAwait(false);
+
+            return usage.ImageUsage?.TotalSize;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is DockerApiException
+            or HttpRequestException
+            or SocketException
+            or IOException
+            or TimeoutException)
+        {
+            _logger.LogWarning(
+                exception,
+                "主机 {HostName} 的镜像磁盘占用查询失败：界面将显示为未知",
+                hostName);
+
+            return null;
+        }
+    }
+
+    /// <summary>探测主机连通性。
     /// </summary>
     /// <param name="host">目标主机。</param>
     /// <param name="cancellationToken">取消令牌。</param>

@@ -60,16 +60,40 @@ public enum HostConnectivityStatus
 /// <summary>
 /// 主机上的资源计数。
 /// </summary>
-/// <param name="Containers">容器总数。</param>
+/// <param name="Containers">容器总数（含已停止）。</param>
 /// <param name="Images">镜像总数。</param>
 /// <param name="Volumes">数据卷总数。</param>
 /// <param name="Networks">网络总数（含 Docker 自建的 bridge / host / none）。</param>
+/// <param name="ContainersRunning">运行中的容器数（取自 <c>/info</c>）。</param>
+/// <param name="ContainersStopped">已停止的容器数（取自 <c>/info</c>）。</param>
+/// <param name="ContainersHealthy">健康检查通过的容器数。</param>
+/// <param name="ContainersUnhealthy">健康检查失败的容器数。</param>
+/// <param name="ImagesSizeBytes">
+/// 镜像层实际占用的磁盘字节数；守护进程不支持 <c>/system/df?type=image</c> 或查询失败时为
+/// <see langword="null"/>（「不知道」，与「0 字节」不同）。
+/// </param>
 /// <remarks>
-/// 容器与镜像数取自 <c>/info</c>（一次调用就有）；卷与网络数必须各列一次
-/// （Docker 的 <c>/info</c> 不提供这两个计数）。这四次调用都只发生在「概览」这条路径上，
-/// 列表接口不取它们——主机一多，列表若挨个拉这四项就会明显变慢。
+/// <para>容器 / 镜像总数与运行 / 停止数取自 <c>/info</c>（一次调用就有）；卷与网络数必须各列一次
+/// （Docker 的 <c>/info</c> 不提供这两个计数）。健康检查数只能从容器列表的 <c>Status</c>
+/// 文本里读（<c>Up 2 hours (healthy)</c>），镜像磁盘占用只能从 <c>/system/df</c> 取——两者都
+/// 是 <b>额外两次</b>调用。</para>
+/// <para>这些调用只发生在「概览」这条路径上，列表接口不取：主机一多，列表若挨个拉这些计数
+/// 就会明显变慢。前端的四类资源磁贴按需显示粗粒度数字，细分项（运行 / 健康 / 占用）只在
+/// 主机概况页用到。</para>
+/// <para><b><see cref="ContainersHealthy"/> 与 <see cref="ContainersUnhealthy"/> 之和通常小于
+/// <see cref="Containers"/></b>：绝大多数容器没有配健康检查，「没配」既不是健康也不是不健康，
+/// 不该被算进任何一边。</para>
 /// </remarks>
-public sealed record HostResourceCounts(long Containers, long Images, long Volumes, long Networks);
+public sealed record HostResourceCounts(
+    long Containers,
+    long Images,
+    long Volumes,
+    long Networks,
+    long ContainersRunning,
+    long ContainersStopped,
+    long ContainersHealthy,
+    long ContainersUnhealthy,
+    long? ImagesSizeBytes);
 
 /// <summary>
 /// 主机上的 Docker 版本信息。
