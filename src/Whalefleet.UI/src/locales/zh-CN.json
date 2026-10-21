@@ -425,6 +425,8 @@
   "host.tag.revoke": "清除标签",
   "host.tag.assignTitle": "给选中的主机打标签",
   "host.tag.selectHosts": "请先勾选主机",
+  "host.tag.assigned": "标签已更新",
+  "host.tag.removed": "已解除 {count} 台主机的该标签",
   "host.offline.desc": "无法连接到这台主机。下方数据来自上次成功同步的结果，可能已经过期。",
   "host.offline.retry": "重新检测",
   "host.offline.title": "主机当前离线",

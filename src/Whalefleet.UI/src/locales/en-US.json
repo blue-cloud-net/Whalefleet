@@ -425,6 +425,8 @@
   "host.tag.revoke": "Untag hosts",
   "host.tag.assignTitle": "Tag the selected hosts",
   "host.tag.selectHosts": "Select hosts first",
+  "host.tag.assigned": "Tags updated",
+  "host.tag.removed": "Removed from {count} host(s)",
   "host.offline.desc": "This host cannot be reached. The figures below come from the last successful sync and may be stale.",
   "host.offline.retry": "Check again",
   "host.offline.title": "Host is offline",
