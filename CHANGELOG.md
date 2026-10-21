@@ -31,6 +31,74 @@ Work in progress. The next milestone is `0.1.0` — authorization baseline and M
 (its per-version notes accumulate here as internal drafts and are rewritten into the `1.0.0` entry
 before the first public release).
 
+### `0.5.0` — Realtime channels (SignalR) (internal draft)
+
+#### Added
+
+- **Three SignalR hubs**: `/hubs/hosts/{hostId}/container-log`, `/hubs/hosts/{hostId}/container-stats`
+  and `/hubs/notification` (the last one is **global** — it carries no `hostId`, because
+  "a container died somewhere" is a platform-level fact and forcing the user to pick a host
+  first would hide exactly the information they need).
+  - Authentication rides on `?access_token=...`: a browser's WebSocket handshake cannot carry
+    custom headers. The server accepts that query parameter **only** under `/hubs` and rewrites
+    it into an `Authorization: Bearer` header.
+  - Subscribe / unsubscribe return `{ success, code, message }` instead of throwing
+    `HubException` — the frontend needs the **error code** to tell "not allowed" from
+    "container not found", and an exception can only carry a string.
+- **A realtime log stream** (`ContainerLogHub`): the server pushes log lines in **batches**
+  (100 lines or 200 ms), because per-line pushes turn into hundreds of frames per second under
+  a chatty container and the browser's render cost scales with frame count.
+  - A **gap in the sequence means lines were dropped** (the server drops the oldest lines when
+    its channel is full rather than blocking the push). The client surfaces that as
+    "N lines dropped" instead of silently losing them.
+- **A realtime stats stream** (`ContainerStatsHub`): CPU / memory / network sampled once per
+  second. The CPU percentage is computed **server-side** (from two consecutive samples) so every
+  client sees the same number.
+- **Container-exit notifications**: `ContainerEventWatcher` (a background service over Docker's
+  event stream) publishes `die` / `oom` events onto an in-process bus; a dispatcher pushes them
+  to the notification hub **per connection**, checking `host.read` for that user's access to that
+  host. The frontend therefore does not filter by host itself.
+- **Realtime progress for image pull and build**: the client generates a progress token,
+  subscribes to it, and passes the same token in the request. `percent` may be `null` — an
+  unknown percentage must never be reported as `0`.
+- **`POST /api/v1/hosts/{hostId}/containers/logs/download`**: streams the **complete** log as
+  `text/plain`. The one-shot endpoint is capped at 5000 lines, so a download built from it would
+  be missing its head.
+- **Three independent "live update" switches** in settings — container list refresh, detail-page
+  metrics, and the notification bell — **all on by default**. They are separate because their
+  costs differ: metrics hold a long-lived connection to the daemon, a list refresh costs
+  almost nothing, and notifications interrupt the user.
+
+#### Changed
+
+- **⚠️ Breaking: `POST .../containers/logs` now returns structured lines.**
+  `{ containerId, content }` became `{ containerId, lines: [{ seq, timestamp, line }], truncated }`.
+  - The client needs to render **per line** (with line numbers and timestamps) and to **load older
+    logs on demand** — neither is possible with one blob of text.
+  - It also fixes a real defect: the old implementation concatenated the daemon's **per-line**
+    callbacks, so every log line ended up glued to the next one (`"helloworld"`). The bug was
+    invisible in mock mode, where the fixture text was hand-written with newlines.
+- `tail` on the logs endpoint is now capped at **5000** (was 10000).
+- The container detail page shows **live metrics** (CPU, memory with a usage bar, network
+  counters) — numbers rather than charts; charts arrive with `0.6.0`.
+
+#### Fixed
+
+- Log lines are no longer concatenated into a single line (see above).
+
+#### Notes
+
+- **The log viewport is virtualised**: only about 500 rows around the viewport are rendered, and
+  scrolling up loads older pages. Scrolling up **disables** the "live follow" toggle, otherwise
+  new lines would yank the user back to the bottom while they are reading history.
+- Keyword highlighting and filtering for logs are **deferred to `0.16.0`** — the virtualised
+  viewport they need landed in this milestone.
+- SignalR's `MapHub` does **not** support route parameters: the `{hostId}` in the path takes part
+  in matching but never reaches `Request.RouteValues`. The server therefore parses the host id
+  from the request path.
+
+---
+
 ### `0.1.0` — Authorization baseline and MVP consolidation (internal draft)
 
 #### Added
