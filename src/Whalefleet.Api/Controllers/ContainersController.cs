@@ -1,3 +1,5 @@
+using System.Globalization;
+using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Containers;
 using Microsoft.AspNetCore.Authorization;
@@ -24,17 +26,21 @@ namespace Whalefleet.Api.Controllers;
 public sealed class ContainersController : ControllerBase
 {
     private readonly ContainerService _containers;
+    private readonly IContainerLogProvider _logProvider;
 
     /// <summary>
     /// 初始化容器查询控制器。
     /// </summary>
     /// <param name="containers">容器查询用例。</param>
-    /// <exception cref="ArgumentNullException"><paramref name="containers"/> 为 <see langword="null"/>。</exception>
-    public ContainersController(ContainerService containers)
+    /// <param name="logProvider">容器日志流（下载端点用）。</param>
+    /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
+    public ContainersController(ContainerService containers, IContainerLogProvider logProvider)
     {
         ArgumentNullException.ThrowIfNull(containers);
+        ArgumentNullException.ThrowIfNull(logProvider);
 
         _containers = containers;
+        _logProvider = logProvider;
     }
 
     /// <summary>
@@ -94,12 +100,12 @@ public sealed class ContainersController : ControllerBase
     }
 
     /// <summary>
-    /// 读取容器日志（一次性返回，不含实时跟随）。
+    /// 读取容器日志（一次性返回，结构化行数组）。
     /// </summary>
     /// <param name="hostId">主机标识（主机名）。</param>
-    /// <param name="request">日志请求（容器标识、行数、起始时间等）。</param>
+    /// <param name="request">日志请求（容器标识、行数、起止时间等）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>统一响应，<c>data</c> 为日志文本。</returns>
+    /// <returns>统一响应，<c>data</c> 为日志行。</returns>
     /// <response code="200">读取成功。</response>
     /// <response code="400">容器标识为空或 <c>tail</c> 越界（<c>1000</c>）。</response>
     /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
@@ -121,6 +127,87 @@ public sealed class ContainersController : ControllerBase
         var logs = await _containers.GetLogsAsync(hostId, request, cancellationToken).ConfigureAwait(false);
 
         return this.Ok(ApiResults.Ok(logs));
+    }
+
+    /// <summary>
+    /// 下载容器日志（<b>纯文本流</b>，不受行数上限约束）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">下载请求（容器标识、起始时间等）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>文本流（<c>text/plain</c> + <c>Content-Disposition</c>）。</returns>
+    /// <response code="200">下载流已开始。</response>
+    /// <response code="400">容器标识为空（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机（<c>1300</c>）或容器（<c>1401</c>）不存在。</response>
+    /// <remarks>
+    /// <para><b>为什么不是 ApiResult</b>：这是文件下载，不是业务数据。
+    /// 成功时返回 <c>text/plain</c>，失败时返回 JSON 的 <c>ApiResult</c>——
+    /// 客户端按 <c>Content-Type</c> 分辨即可，两条路径的错误码口径保持一致。</para>
+    /// <para><b>为什么不受 <c>tail</c> 上限约束</b>：<c>tail</c> 上限约束的是<b>界面首屏</b>的
+    /// 响应体大小；下载的语义是「把完整日志拿走」，
+    /// 用上限卡住它等于给用户一份被静默截断的文件——那比不给下载更糟。</para>
+    /// <para><b>为什么逐行写而不是先读进内存</b>：容器日志可能有几百 MB，
+    /// 一次性读进内存会把服务的内存吃光。逐行写并 flush，内存占用与日志大小无关。</para>
+    /// </remarks>
+    [HttpPost("logs/download")]
+    [ProducesResponseType(typeof(string), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    public async Task DownloadLogsAsync(
+        string hostId,
+        [FromBody] DownloadContainerLogsRequest request,
+        CancellationToken cancellationToken)
+    {
+        var containerId = request.ContainerId?.Trim();
+
+        if (string.IsNullOrWhiteSpace(containerId))
+        {
+            throw new ArgumentException("容器标识不能为空。", nameof(request));
+        }
+
+        Response.ContentType = "text/plain; charset=utf-8";
+        Response.Headers.ContentDisposition = BuildContentDisposition(containerId);
+
+        await foreach (var line in _logProvider
+            .ExportLogsAsync(hostId, containerId, request.Since, request.IncludeStderr ?? true, cancellationToken)
+            .ConfigureAwait(false))
+        {
+            // 每行补一个换行符：SDK 的逐行回调**不带**行尾换行符
+            // （见 ContainerLogParser 的说明），不补的话整个文件会挤成一行。
+            await Response.WriteAsync(line, cancellationToken).ConfigureAwait(false);
+            await Response.WriteAsync("\n", cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// 构造下载用的 <c>Content-Disposition</c>。
+    /// </summary>
+    /// <param name="containerId">容器标识。</param>
+    /// <returns>头部值。</returns>
+    /// <remarks>
+    /// <b>为什么用 <c>FileNameStar</c></b>：容器名可能含中文，而 HTTP 头只允许 ASCII。
+    /// <c>FileNameStar</c>（RFC 5987）专门解决这个：给出一个 ASCII 兜底名，
+    /// 浏览器优先用 <c>filename*</c> 里的 UTF-8 名。
+    /// 只写 <c>filename</c> 的话，中文容器名会变成一串乱码。
+    /// </remarks>
+    private static string BuildContentDisposition(string containerId)
+    {
+        var safeId = string.Concat(containerId.Select(character =>
+            char.IsAsciiLetterOrDigit(character) || character is '-' or '_' ? character : '_'));
+
+        if (safeId.Length == 0)
+        {
+            safeId = "container";
+        }
+
+        var stamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
+        var fileName = $"{safeId}-{stamp}.log";
+
+        return $"attachment; filename=\"{fileName}\"; filename*=UTF-8''{Uri.EscapeDataString(fileName)}";
     }
 
     /// <summary>
