@@ -789,7 +789,8 @@ POST /api/v1/hosts/{hostId}/containers/list
 | **热更新** | `POST /api/v1/hosts/{hostId}/containers/update` | **0.3.0** | Body: `{ containerId, restartPolicy?, memoryLimitBytes?, nanoCpus? }`；**只开放真能热改的字段**，镜像/端口/环境变量/挂载/网络**不支持**。省略 = 保持当前值，**传 0 是非法**（见下） |
 | **复制** | `POST /api/v1/hosts/{hostId}/containers/duplicate` | **0.3.0** | Body: `{ containerId, name?, start? }`；默认名「原名 + `-copy`」，被占用时自动递增 `-2`/`-3`。**原容器不受影响**（不停止、不改名、不删除） |
 | **追加挂载** | `POST /api/v1/hosts/{hostId}/containers/add-volumes` | **0.3.0** | Body: `{ containerId, volumes, start? }`；⚠️ **会重建容器**，容器 ID 会变。`start` 省略时**沿用原容器的运行状态** |
-| 获取日志 | `POST /api/v1/hosts/{hostId}/containers/logs` | 0.0.9 | Body: `{ containerId, tail?, since?, timestamps?, includeStderr? }`；`tail` 取值 0–10000，省略表示全部；**不支持** `follow` |
+| 获取日志 | `POST /api/v1/hosts/{hostId}/containers/logs` | 0.0.9 / 0.5.0 | Body: `{ containerId, tail?, since?, until?, includeStderr? }`；`tail` 取值 0–5000，省略表示全部；**不支持** `follow`（实时流走 SignalR） |
+| 下载日志 | `POST /api/v1/hosts/{hostId}/containers/logs/download` | 0.5.0 | Body: `{ containerId, since?, includeStderr? }`；返回 `text/plain` 全文，**不受 `tail` 上限约束** |
 | 获取详情 | `POST /api/v1/hosts/{hostId}/containers/inspect` | 0.0.9 | Body: `{ containerId }` |
 
 #### 高级创建参数（0.3.0 已实现）
@@ -1024,10 +1025,48 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
 ```jsonc
 // POST /api/v1/hosts/local/containers/logs
 // Request
-{ "containerId": "nginx", "tail": 200, "since": 1735785600, "timestamps": false }
-// Response.data
-{ "containerId": "nginx", "content": "2026/01/02 …\n" }   // 整段文本，未按行切分
+{ "containerId": "nginx", "tail": 200, "since": 1735785600, "until": 1735789200 }
+// Response.data（0.5.0 起为结构化行）
+{
+  "containerId": "nginx",
+  "lines": [
+    { "seq": 1, "timestamp": "2026-01-02T03:04:05.123456789+00:00", "line": "nginx: [emerg] …" }
+  ],
+  "truncated": false      // 是否**可能**还有更早的日志没返回
+}
 ```
+
+> ⚠️ **0.5.0 的破坏性变更**：`logs` 的 `data` 从 `{ containerId, content }`
+> （一整段文本）变成 `{ containerId, lines[], truncated }`。
+> 原因有三：① 前端要**按行**渲染并显示行号与时间戳；② 要能**向上加载更早的日志**
+> （整段文本没法增量拼接）；③ 旧实现把 Docker 的逐行回调直接拼接，
+> 所有日志会挤成一行（`"helloworld"`）——结构化行数组顺带修掉了它。
+>
+> `seq` 是**展示序号**（从 1 起，等于行在列表里的位置），不是服务端流内序号。
+>
+> **`until` 是「含边界」的**（Docker 的语义是「时间戳 ≤ until 的都返回」），
+> 因此用它加载更早的一页时，边界那一秒的行会**重复出现**——调用方需要自己去重。
+>
+> `tail` 上限为 **5000**（0.5.0 起从 10000 下调），越界返回 `1000`/400。
+> `truncated` 的判据是「请求了 N 行且正好拿回 N 行」，因此它只表示
+> **可能**还有更早的日志；再往上翻一页拿到 0 行才知道到底了。
+
+```jsonc
+// POST /api/v1/hosts/local/containers/logs/download
+// Request
+{ "containerId": "nginx", "includeStderr": true }
+// Response：200 + text/plain; charset=utf-8 + Content-Disposition
+// 正文是**原始文本**（逐行输出，不带时间戳前缀）
+nginx: [emerg] …
+nginx: [emerg] …
+```
+
+> **为什么下载要单独一个端点**：一次性接口受 `tail` 上限（5000 行）约束，
+> 导出的文件会缺头；而用户点「下载」要的通常就是**完整**日志。
+> 下载端点在服务端跟着守护进程的日志流边读边写，**不受上限约束**。
+>
+> **错误响应仍是 JSON**（`ApiResult`）：出错时正文还没开始写，
+> 响应头还能正常返回，前端因此要**先看 `Content-Type`** 再决定按文本还是按 JSON 解析。
 
 > **分页语义**：Docker 不提供容器列表的分页参数，因此 `total` 是**一次性拉全量后**的条数，
 > 切片在服务端内存完成。`pageIndex` 从 0 开始、负数按 0 处理；`pageSize` 默认 20、上限 100，
@@ -1036,8 +1075,9 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
 >
 > **默认只列运行中的容器**（与 `docker ps` 一致）；`all: true` 等价于 `docker ps -a`。
 >
-> **日志不做实时跟随**：一次性 HTTP 响应跟着日志流只会把连接挂到容器退出；实时流是 0.5.0
-> 的 SignalR 推送要解决的事。`tail` 越界（负数或 > 10000）返回 `1000`/400 而**不是**静默截断——
+> **日志不做实时跟随**：一次性 HTTP 响应跟着日志流只会把连接挂到容器退出；
+> 实时流是 SignalR 推送要解决的事（见下方「SignalR Hub 规范」）。
+> `tail` 越界（负数或 > 5000）返回 `1000`/400 而**不是**静默截断——
 > 调用方要 100 万行却只拿到 1 万行，会误以为「日志就这么多」。
 
 #### 变更端点的请求 / 响应形态（0.0.9 已实现）
@@ -1717,7 +1757,36 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
 | `ContainerStatsHub` | `/hubs/hosts/{hostId}/container-stats` | 实时监控数据（主机作用域） |
 | `NotificationHub` | `/hubs/notification` | 系统事件通知（**全局**，不含 `hostId`） |
 
-**鉴权**：JWT 通过 `?access_token=...` 查询参数传递（WebSocket 不支持自定义 Header）。
+**鉴权**：JWT 通过 `?access_token=...` 查询参数传递（WebSocket 握手不支持自定义 Header）。
+
+> ⚠️ **`access_token` 只在 `/hubs` 前缀的路径上被接受**。其它路径带了它会被**忽略**
+> （而不是被当成有效凭证）——否则任何带这个查询串的普通接口都会被「顺带」鉴权，
+> 让 CORS / 缓存 / 访问日志的行为都变得不可预测。
+> 服务端会在收到该查询参数时把它改写成 `Authorization: Bearer` 头（仅当请求尚未带该头）。
+
+> ⚠️ **SignalR 的 `MapHub` 不支持路由参数**：路径里的 `{hostId}` 只参与**路径匹配**，
+> **不会**出现在 `HttpContext.Request.RouteValues` 里（实测该字典的键集合为空）。
+> 因此 Hub 方法里拿不到主机标识，服务端改为**从请求路径解析**
+> （见 `RealtimeHostResolver.ResolveHostId`）。
+> 换句话说：**不要在 Hub 里依赖路由值**。
+
+### 通用约定
+
+**订阅 / 退订的返回值**：所有订阅方法返回同一个形状
+
+```jsonc
+{ "success": true, "code": null, "message": null }
+```
+
+失败时 `success` 为 `false`，`code` 是业务错误码、`message` 是可展示的说明。
+**不抛 `HubException`**——`HubException` 只能带一个字符串，客户端拿不到错误码，
+而前端要靠 `1502`（缺权限）与 `1401`（容器不存在）给出不同提示。
+
+**流错误事件**：任何 Hub 都可能推送
+
+| 事件 | 数据 | 说明 |
+|------|------|------|
+| `OnStreamError` | `{ code, message }` | 订阅建立后流本身出错（主机不可达、容器被删…） |
 
 ### ContainerLogHub
 
@@ -1725,14 +1794,28 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
 
 | 方法 | 参数 | 说明 |
 |------|------|------|
-| `SubscribeLogs` | `containerId: string` | 开始订阅指定容器日志 |
+| `SubscribeLogs` | `containerId: string`, `startSeq?: number = 1`, `since?: long? = null` | 开始订阅指定容器日志 |
 | `UnsubscribeLogs` | `containerId: string` | 取消订阅 |
+
+- `startSeq`：流内序号的起点。客户端拿了 N 行历史后传 `N+1`，服务端接着编。
+- `since`：Unix 秒。只推该时刻之后的行；**省略时只推新产生的行**（服务端用 `tail=0`），
+  不会把历史重推一遍。
 
 **服务端 → 客户端**
 
 | 事件 | 数据 | 说明 |
 |------|------|------|
-| `OnLog` | `{ containerId, line, timestamp }` | 推送单行日志 |
+| `OnLog` | `{ containerId, lines: [{ seq, timestamp, line }] }` | 推送**一批**日志行 |
+
+> **为什么是批量而不是逐行**：逐行推送在高频日志下会把连接变成「每秒几百帧」，
+> 而浏览器端的渲染成本与帧数成正比。攒批把帧数压到「行数 / 批量」量级
+> （默认 100 行或 200ms 触发，见 `RealtimeOptions`）。
+>
+> **序号缺口即「丢过行」**：服务端频道满了会丢最旧的行（而不是阻塞推送），
+> 丢掉的行**已经占用了序号**，因此下一批的首行序号会跳号。
+> 客户端据此提示「已丢弃 N 行」——不静默丢，也不假装没发生。
+>
+> `seq` 是**流内序号**，与 REST 接口里的**展示序号**不是一回事。
 
 ### ContainerStatsHub
 
@@ -1747,7 +1830,10 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
 
 | 事件 | 数据 | 说明 |
 |------|------|------|
-| `OnStats` | `{ containerId, cpuPercent, memoryUsage, memoryLimit, networkRx, networkTx, timestamp }` | 推送一次统计快照 |
+| `OnStats` | `{ containerId, stats: { containerId, cpuPercent, memoryUsage, memoryLimit, networkRxBytes, networkTxBytes, timestamp } }` | 推送一次统计快照 |
+
+> CPU 百分比由**服务端**算好（相邻两帧相减），因此所有客户端口径一致。
+> 采样间隔默认 1 秒（`RealtimeOptions.StatsSampleIntervalMs`）。
 
 ### NotificationHub
 
@@ -1755,14 +1841,50 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
 
 | 事件 | 数据 | 说明 |
 |------|------|------|
-| `OnContainerDied` | `{ containerId, name, exitCode, timestamp }` | 容器异常退出通知 |
+| `OnContainerDied` | `{ hostId, containerId, containerName, exitCode, outOfMemory, occurredAt }` | 容器异常退出通知 |
 
-### Image Pull 进度频道（0.5.0）
+> **可见性由服务端保证**：推送前逐个连接判「该用户对这台主机有没有 `host.read`」，
+> 无权的一律不推。前端**不需要**自己按主机过滤。
+>
+> **「异常退出」只覆盖 `die` 与 `oom`**：容器**正常停止**（`stop`）不是异常，
+> 不会推通知——那种情况由页面自己的操作触发刷新。
+> `outOfMemory` 为 `true` 时 `exitCode` 通常是 `137`。
 
-为镜像 pull 操作提供临时频道，仅本请求客户端可见：
+### Image Pull / Build 进度频道（0.5.0）
 
-- 客户端：`connection.invoke("SubscribePull", "<pullToken>")` → 服务端推送 `OnPullProgress { pullToken, percent, status, error }`
-- 后端实现：根据 `pullToken` 关联到具体 pull 请求的进度；完成后自动断开
+进度是**按请求**的（一个令牌对应一次操作），因此放在全局 Hub 上最自然。
+
+**客户端 → 服务端**
+
+| 方法 | 参数 | 说明 |
+|------|------|------|
+| `SubscribePull` | `token: string` | 订阅某次镜像操作的进度 |
+| `UnsubscribePull` | `token: string` | 取消订阅 |
+
+**令牌由客户端生成**：服务端没法凭空知道「这次拉取对应哪条连接」——
+拉取请求是一个独立的 HTTP 请求，与 Hub 连接没有天然关联。
+客户端先生成令牌，订阅它，再把它带进拉取 / 构建请求（`progressToken`），三者由此串起来。
+
+- 令牌长度 **≥ 32** 个字符，字符集限 `[A-Za-z0-9-]`（它会出现在服务端日志与异常消息里）。
+- 拉取：`POST /api/v1/hosts/{hostId}/images/pull` 的 body 加 `progressToken`。
+- 构建：`POST /api/v1/hosts/{hostId}/images/build` 的 multipart 表单加 `progressToken` 字段。
+
+**服务端 → 客户端**
+
+| 事件 | 数据 | 说明 |
+|------|------|------|
+| `OnPullProgress` | `{ token, operation, percent, status, done, error }` | 推进度 |
+
+> `percent` **可能为 `null`**——算不出总体进度时**不能给 0**（那会被读成「没进度」）。
+> `done` 为 `true` 表示操作已成功结束；失败时 `error` 给出原因。
+
+### 订阅上限
+
+单个连接每类订阅默认最多 **5** 个（`RealtimeOptions.MaxSubscriptionsPerKind`），
+超出时 `SubscribeXxx` 返回 `success: false`。
+
+> 为什么要上限：每条日志订阅在守护进程侧都是**一条长连接**。
+> 一个页面开几十条会拖垮守护进程，也会让服务端的推送任务数失控。
 
 ---
 
