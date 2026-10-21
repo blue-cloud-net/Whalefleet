@@ -54,5 +54,8 @@
 # 登录后前端把 access token 存在内存里、refresh token 存在 cookie 之外的本地存储，
 # 因此不需要 `proxy_cookie_domain` 一类改写。只要 `X-Forwarded-Proto` 传对即可。
 #
-# WebSocket 与 SignalR（0.7.0 的实时通道）需要 `Upgrade` / `Connection` 头成对透传，
+# WebSocket 与 SignalR（0.5.0 的实时通道）需要 `Upgrade` / `Connection` 头成对透传，
 # nginx 版已在 `whalefleet-proxy-params.inc` 里处理。Traefik 自动处理这两条。
+#
+# ⚠️ 漏掉这两条的症状是「普通接口正常，但实时日志连不上」——
+# 因为 HTTP/1.1 的 Upgrade 头被静默丢弃，连接停在普通响应上。
