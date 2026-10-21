@@ -173,12 +173,21 @@ public sealed record ContainerNetworkDetail(string Name, string IpAddress, strin
 /// 容器日志。
 /// </summary>
 /// <param name="ContainerId">容器标识（调用方传入的形态）。</param>
-/// <param name="Content">日志文本。</param>
+/// <param name="Lines">日志行（<b>按时间顺序</b>，序号从 1 起）。</param>
+/// <param name="Truncated">是否因行数上限而被截断。</param>
 /// <remarks>
-/// <b>为什么是整段文本而不是行数组</b>：日志里本来就有多行堆栈，按行切开再让前端拼回去只是徒增噪音；
-/// 需要结构化时是 0.4.0 的实时流要解决的问题。
+/// <para><b>为什么从「整段文本」改成行数组</b>（0.5.0）：实时流要按行推送，
+/// 而首屏与实时流必须共用一套行号——否则「第 4231 行」在两边指的是不同的行。
+/// 文本形态表达不了行号，也表达不了每行的时间戳（Docker 把时间戳作为<b>行首前缀</b>返回，
+/// 不摘出来的话前端既排不了序也定位不了）。</para>
+/// <para><b>为什么带 <c>Truncated</c></b>：请求的 <c>tail</c> 超过上限时接口会报错（不静默截断），
+/// 但「守护进程本身只有这么多日志」也是一种截断——两种情况必须能区分，
+/// 否则用户会以为「日志丢了」。</para>
 /// </remarks>
-public sealed record ContainerLogsResult(string ContainerId, string Content);
+public sealed record ContainerLogsResult(
+    string ContainerId,
+    IReadOnlyList<Abstractions.Realtime.ContainerLogLine> Lines,
+    bool Truncated);
 
 /// <summary>
 /// 创建容器的结果。
