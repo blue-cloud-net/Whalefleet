@@ -1,4 +1,4 @@
-import type { HostCounts, HostGroup, HostOverview } from '@/types/api'
+import type { HostCounts, HostDaemon, HostGroup, HostOverview, HostTag } from '@/types/api'
 import { MOCK_CONTAINER_DETAILS, MOCK_CONTAINERS_DEFAULT } from './containers'
 import { MOCK_IMAGES_DEFAULT } from './images'
 
@@ -9,7 +9,7 @@ import { MOCK_IMAGES_DEFAULT } from './images'
  * 既无法在后端未启动时验证真实数据流，也让新手以为数据本来就长这样。
  * 现在它们只是 mock 场景的默认数据集。
  *
- * ⚠️ `staging-01` 刻意**不提供** `version` / `startedAt` / `counts`：
+ * ⚠️ `staging-01` 刻意**不提供** `version` / `daemon` / `counts` / 标签：
  * 它是验证「离线 + 数据缺失」在 UI 上表现为可解释的占位而非塌版的固定夹具。
  * 改动它等于删掉这个测试用例。
  */
@@ -52,6 +52,86 @@ const LOCAL_VERSION = {
   goVersion: 'go1.22.7'
 }
 
+/**
+ * 主机标签夹具（0.6.0）。
+ *
+ * 标签不参与授权：它们只是过滤与批量选择用的自由标记。
+ * 前两个挂在 `local` 上，第三个没人用（界面要能显示 `hostCount = 0` 的标签）。
+ */
+export const MOCK_HOST_TAGS: HostTag[] = [
+  {
+    id: '10000000-0000-0000-0000-000000000001',
+    name: 'gpu',
+    description: '带 GPU 的机器',
+    color: '#8B5CF6',
+    hostCount: 1
+  },
+  {
+    id: '10000000-0000-0000-0000-000000000002',
+    name: 'internal',
+    description: null,
+    color: '#0EA5E9',
+    hostCount: 1
+  },
+  {
+    id: '10000000-0000-0000-0000-000000000003',
+    name: 'unused',
+    description: '还没有主机挂它',
+    color: null,
+    hostCount: 0
+  }
+]
+
+/**
+ * 守护进程静态信息的夹具。
+ *
+ * ⚠️ `cpuCount` / `memoryBytes` 是**静态上限**：Docker Engine API 没有宿主机级实时指标端点，
+ * 界面不得把它们标成「当前占用」。
+ */
+const MOCK_DAEMON: HostDaemon = {
+  operatingSystem: 'Ubuntu 24.04.5 LTS',
+  osVersion: '24.04',
+  osType: 'linux',
+  architecture: 'x86_64',
+  kernelVersion: '6.17.0-40-generic',
+  cpuCount: 24,
+  memoryBytes: 67_161_847_808,
+  storageDriver: 'overlayfs',
+  storageDriverStatus: [
+    ['driver-type', 'io.containerd.snapshotter.v1'],
+    ['Backing Filesystem', 'extfs']
+  ],
+  loggingDriver: 'json-file',
+  cgroupDriver: 'systemd',
+  cgroupVersion: '2',
+  defaultRuntime: 'runc',
+  runtimes: ['io.containerd.runc.v2', 'runc'],
+  initBinary: 'docker-init',
+  containerdVersion: 'b7a25261e029d68978bbf290df0a62fc819b3c51',
+  runcVersion: 'v1.5.2-0-g29dd3dc2',
+  initVersion: 'de40ad0',
+  plugins: {
+    volume: ['local'],
+    network: ['bridge', 'host', 'ipvlan', 'macvlan', 'null', 'overlay'],
+    log: ['awslogs', 'fluentd', 'json-file', 'local', 'syslog'],
+    authorization: []
+  },
+  registryMirrors: ['https://dockerhubcache.example.com/'],
+  insecureRegistries: ['127.0.0.0/8'],
+  indexServerAddress: 'https://index.docker.io/v1/',
+  dockerRootDir: '/var/lib/docker',
+  securityOptions: ['name=apparmor', 'name=seccomp,profile=builtin'],
+  liveRestoreEnabled: false,
+  firewallBackend: 'iptables',
+  cdiSpecDirs: ['/etc/cdi', '/var/run/cdi'],
+  // 代理的 userinfo 已在服务端遮蔽：mock 也只给遮蔽后的形态，
+  // 否则「界面上看不到密码」这条会被 mock 验成假的
+  httpProxy: 'http://proxy.internal:3128',
+  httpsProxy: null,
+  noProxy: 'localhost,127.0.0.1',
+  warnings: []
+}
+
 const PROD_VERSION = {
   version: '27.3.1',
   apiVersion: '1.47',
@@ -75,8 +155,12 @@ export const MOCK_HOSTS_DEFAULT: HostOverview[] = [
     enabled: true,
     status: 'online',
     groupId: '00000000-0000-0000-0000-0000000000a3',
-    startedAt: '2026-09-28T03:12:45Z',
-    version: { ...LOCAL_VERSION }
+    version: { ...LOCAL_VERSION },
+    daemon: { ...MOCK_DAEMON },
+    tags: [
+      { id: MOCK_HOST_TAGS[0]!.id, name: MOCK_HOST_TAGS[0]!.name, color: MOCK_HOST_TAGS[0]!.color },
+      { id: MOCK_HOST_TAGS[1]!.id, name: MOCK_HOST_TAGS[1]!.name, color: MOCK_HOST_TAGS[1]!.color }
+    ]
   },
   {
     id: 'prod-01',
@@ -86,11 +170,12 @@ export const MOCK_HOSTS_DEFAULT: HostOverview[] = [
     enabled: true,
     status: 'online',
     groupId: '00000000-0000-0000-0000-0000000000a1',
-    startedAt: '2026-10-06T11:40:08Z',
-    version: { ...PROD_VERSION }
+    version: { ...PROD_VERSION },
+    daemon: { ...MOCK_DAEMON, architecture: 'aarch64' },
+    tags: []
   },
   {
-    // 离线夹具：无 version / startedAt / counts
+    // 离线夹具：无 version / daemon / counts / tags
     id: 'staging-01',
     name: 'staging-01',
     type: 'tcp',

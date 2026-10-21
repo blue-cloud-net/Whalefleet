@@ -5,7 +5,6 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import type { HostOverview, HostCounts } from '@/types/api'
-import { formatUptime, EMPTY, type DurationUnits } from '@/utils/datetime'
 import { hostTone, HOST_TONE_CHIP, HOST_TONE_LABEL_KEY, HOST_TONE_RAIL } from '@/utils/host-status'
 import StatusDot from '@/components/common/StatusDot.vue'
 
@@ -88,25 +87,22 @@ function editHost() {
   ElMessage.info(t('host.actions.editSoon'))
 }
 
-/** 运行时长的单位文案走 i18n */
-const durationUnits = computed<DurationUnits>(() => ({
-  day: t('host.duration.day'),
-  hour: t('host.duration.hour'),
-  minute: t('host.duration.minute'),
-  second: t('host.duration.second')
-}))
-
-const uptime = computed(() => formatUptime(props.host.startedAt, durationUnits.value))
-
-/** 紧凑元信息：OS/Arch 与 Docker 版本；缺失时不渲染，避免塌版 */
+/** 紧凑元信息：OS/Arch 与 Docker 版本；缺失时不渲染，避免塌版。
+ *
+ * ⚠️ **不再有「已运行 x」**：Docker Engine API 不提供守护进程启动时刻，
+ * 旧字段算出来恒为 0 秒；0.6.0 直接删除而不换口径。
+ */
 const metaItems = computed(() => {
   const v = props.host.version
   const items: string[] = []
   if (v?.os) items.push(v.arch ? `${v.os}/${v.arch}` : v.os)
   if (v?.version) items.push(`Docker ${v.version}`)
-  if (uptime.value !== EMPTY) items.push(t('status.uptime', { value: uptime.value }))
   return items
 })
+
+/** 标签 chips：最多显示 3 个，其余折成「+N」——行高必须稳定，否则整个列表会跳。 */
+const visibleTags = computed(() => (props.host.tags ?? []).slice(0, 3))
+const extraTagCount = computed(() => Math.max((props.host.tags?.length ?? 0) - 3, 0))
 
 /** 键盘可达性：div 不能像 button 一样默认响应 Enter/Space */
 function onKeydown(e: KeyboardEvent) {
@@ -154,10 +150,33 @@ function onKeydown(e: KeyboardEvent) {
         {{ host.endpoint }}
       </p>
 
-      <!-- 版本 / 运行时间：缺失时整行不渲染 -->
+      <!-- 版本：缺失时整行不渲染 -->
       <p v-if="metaItems.length > 0" class="mt-1 text-xs text-content-faint app-truncate">
         {{ metaItems.join(' · ') }}
       </p>
+
+      <!--
+        标签 chips（0.6.0）：最多 3 个 + 「+N」。
+        ⚠️ 数量固定为「最多 3 个」而不是「有多少显示多少」：行高必须稳定，
+        否则筛选后整张列表会跳动。
+      -->
+      <div v-if="visibleTags.length > 0" class="mt-1.5 flex flex-wrap items-center gap-1">
+        <span
+          v-for="tag in visibleTags"
+          :key="tag.id"
+          class="app-chip bg-surface-sunken text-content-muted ring-line-subtle"
+        >
+          <span
+            class="h-1.5 w-1.5 rounded-full shrink-0"
+            :style="{ backgroundColor: tag.color ?? 'var(--brand-500)' }"
+            aria-hidden="true"
+          />
+          {{ tag.name }}
+        </span>
+        <span v-if="extraTagCount > 0" class="app-chip bg-surface-sunken text-content-faint">
+          +{{ extraTagCount }}
+        </span>
+      </div>
     </div>
 
     <!--

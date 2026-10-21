@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { subscribeContainerDied } from '@/realtime/notification'
 import { useNotificationStore, describe } from '@/stores/notifications'
@@ -24,6 +25,7 @@ import type { ContainerDiedEvent } from '@/types/api'
  * `realtime/notification.ts` 把它们复用到一条上。
  */
 const { t } = useI18n()
+const router = useRouter()
 const notifications = useNotificationStore()
 const preferences = usePreferencesStore()
 
@@ -50,6 +52,16 @@ function onContainerDied(event: ContainerDiedEvent): void {
 
   const description = describe(event)
   ElMessage.warning(t(description.key, description.params))
+}
+
+/** 点击一条通知：跳到那个容器的详情页。 */
+function openContainer(event: ContainerDiedEvent): void {
+  open.value = false
+
+  router.push({
+    name: 'host-container-inspect',
+    params: { hostId: event.hostId, id: event.containerId }
+  })
 }
 
 /** 订阅（或退订）通知事件。 */
@@ -104,8 +116,8 @@ onUnmounted(() => {
 
         <el-dropdown-item
           v-for="entry in entries"
-          :key="`${entry.event.containerId}-${entry.event.occurredAt}`"
-          disabled
+          :key="`${entry.event.hostId}-${entry.event.containerId}-${entry.event.occurredAt}`"
+          @click="openContainer(entry.event)"
         >
           <div class="flex flex-col gap-0.5 py-1">
             <span class="text-xs text-content">{{ entry.text }}</span>

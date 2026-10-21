@@ -115,6 +115,8 @@ export function createMockStatsStream(): MockStatsStream {
       const limit = 512 * 1024 * 1024
       let rx = 1024 * 1024
       let tx = 256 * 1024
+      // 速率需要「上一帧」：首帧与后端一样给 null，否则 sparkline 会以一个假值开头
+      let previous: { rx: number; tx: number; at: number } | null = null
 
       const tick = (): void => {
         // 模拟波动：CPU 在 5%–60% 之间游走，内存缓慢爬升。
@@ -123,6 +125,16 @@ export function createMockStatsStream(): MockStatsStream {
         rx += Math.round(Math.random() * 64 * 1024)
         tx += Math.round(Math.random() * 16 * 1024)
 
+        const at = Date.now()
+        const seconds = previous === null ? 0 : (at - previous.at) / 1000
+
+        const rxRate =
+          previous !== null && seconds > 0 ? Math.round((rx - previous.rx) / seconds) : null
+        const txRate =
+          previous !== null && seconds > 0 ? Math.round((tx - previous.tx) / seconds) : null
+
+        previous = { rx, tx, at }
+
         onSample({
           containerId,
           cpuPercent: Number(cpu.toFixed(1)),
@@ -130,7 +142,9 @@ export function createMockStatsStream(): MockStatsStream {
           memoryLimit: limit,
           networkRxBytes: rx,
           networkTxBytes: tx,
-          timestamp: new Date().toISOString()
+          networkRxBytesPerSecond: rxRate,
+          networkTxBytesPerSecond: txRate,
+          timestamp: new Date(at).toISOString()
         })
       }
 

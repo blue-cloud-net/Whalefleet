@@ -41,14 +41,25 @@ describe('通知 store', () => {
   it('未读数随推送增加，标记已读后清零', () => {
     const store = useNotificationStore()
 
-    store.push(makeEvent())
-    store.push(makeEvent())
+    store.push(makeEvent({ containerId: 'a' }))
+    store.push(makeEvent({ containerId: 'b' }))
     expect(store.unread).toBe(2)
     expect(store.hasUnread).toBe(true)
 
     store.markAllRead()
     expect(store.unread).toBe(0)
     expect(store.hasUnread).toBe(false)
+  })
+
+  it('同一次死亡只记一条（去重）', () => {
+    const store = useNotificationStore()
+
+    // 同一主机 + 同一容器 + 同一时刻 = 同一次事故；多个通道各自上报时不能变成两条
+    store.push(makeEvent())
+    store.push(makeEvent())
+
+    expect(store.items).toHaveLength(1)
+    expect(store.unread).toBe(1)
   })
 
   it('超过 20 条时丢最旧的', () => {

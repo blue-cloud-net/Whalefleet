@@ -63,11 +63,11 @@ export interface DurationUnits {
 /**
  * 计算「已运行」时长。
  *
- * @param startedAt 启动时间（ISO 8601）
- * @param units 单位文案（i18n）
- * @param now 参考时间，默认当前时间；测试可注入固定值
+ * ⚠️ **仅用于容器**（`inspect` 的 `State.StartedAt` 是**真实**的启动时刻）。
+ * 主机侧不再有运行时长：Docker Engine API 不提供守护进程启动时刻，
+ * 也不提供宿主 boot time（`/info` 的 `SystemTime` 是当前时间），0.6.0 已删除该字段。
  */
-export function formatUptime(
+export function formatDurationFrom(
   startedAt: string | undefined | null,
   units: DurationUnits,
   now: number = Date.now()

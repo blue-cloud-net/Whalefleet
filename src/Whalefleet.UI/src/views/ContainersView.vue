@@ -19,6 +19,7 @@ import ContainerStatusBadge from '@/components/business/ContainerStatusBadge.vue
 import { onActionRequest } from '@/composables/useActionBus'
 import {
   batchRemoveContainers,
+  getContainerHealth,
   listContainers,
   removeContainer,
   restartContainer,
@@ -29,9 +30,16 @@ import {
 import { ApiRequestError } from '@/api'
 import { containerTone, formatPort } from '@/utils/container-status'
 import { formatDateTime } from '@/utils/datetime'
+import { formatMemory, formatPercent } from '@/utils/log-format'
+import { useContainerStatsBoard } from '@/composables/useContainerStatsBoard'
 import { subscribeContainerDied } from '@/realtime/notification'
 import { PAGE_SIZE_ALL, resolvePageSize, usePreferencesStore } from '@/stores/preferences'
-import type { ContainerSummary } from '@/types/api'
+import type {
+  ContainerHealthStatus,
+  ContainerHealthSummary,
+  ContainerStatsSample,
+  ContainerSummary
+} from '@/types/api'
 
 /**
  * 容器列表页（0.0.11）。
@@ -178,6 +186,10 @@ async function load(): Promise<void> {
     if (pageSize.value !== PAGE_SIZE_ALL) pageSize.value = result.pageSize
     error.value = null
     lastSyncedAt.value = Date.now()
+
+    // 0.6.0：列表变了就要重拉健康信息，并重新对齐指标订阅集合
+    void refreshHealth()
+    void syncBoard()
   } catch (e) {
     error.value = e instanceof ApiRequestError ? e.message : String(e)
   } finally {
@@ -195,6 +207,8 @@ async function poll(): Promise<void> {
     containers.value = result.items
     total.value = result.total
     lastSyncedAt.value = Date.now()
+
+    void syncBoard()
   } catch {
     // 静默：下一轮还会试。这里不写 error，否则一次网络抖动就变成整页错误态。
   }
@@ -219,6 +233,159 @@ function markBusy(containerId: string, busy: boolean): void {
   if (busy) next.add(containerId)
   else next.delete(containerId)
   busyIds.value = next
+}
+
+/* ==================================================================
+ * 0.6.0：健康列 + 指标列
+ * ==================================================================
+ *
+ * 两者成本模型完全不同，因此分开管理：
+ * - 健康列是**一次批量 inspect**（10 秒一轮）——容器列表接口不返回结构化健康字段；
+ * - 指标列是**持续订阅**（每个容器一条到守护进程的流），默认全关，开一列就多一份成本。
+ */
+
+/** 健康信息（容器 ID → 健康与退出原因）；查不到的容器不出现（显示「—」）。 */
+const healthMap = ref<Record<string, ContainerHealthSummary>>({})
+
+/** 健康刷新间隔（毫秒）。不与 5 秒列表轮询同频：那是 N 次 inspect，太密无意义。 */
+const HEALTH_REFRESH_INTERVAL = 10_000
+
+let healthTimer: ReturnType<typeof setInterval> | null = null
+
+const columns = computed(() => prefs.containerColumns)
+const metricsEnabled = computed(
+  () => columns.value.cpu || columns.value.memory || columns.value.network
+)
+
+/** 健康状态 → i18n key（**显式映射**，模板里不拼 key）。 */
+const HEALTH_LABEL_KEY: Record<ContainerHealthStatus, string> = {
+  none: 'container.health.none',
+  starting: 'container.health.starting',
+  healthy: 'container.health.healthy',
+  unhealthy: 'container.health.unhealthy'
+}
+
+/** 一次性拉当前页的健康信息。失败时保持旧值（降级为「—」而不是报错）。 */
+async function refreshHealth(): Promise<void> {
+  if (!hostId.value || !columns.value.health) return
+
+  const ids = containers.value.map((container) => container.id)
+  if (ids.length === 0) return
+
+  try {
+    const result = await getContainerHealth(hostId.value, ids)
+    const next: Record<string, ContainerHealthSummary> = {}
+
+    for (const item of result.items) next[item.containerId] = item
+
+    healthMap.value = next
+  } catch {
+    // 单次失败不打扰用户：健康列的语义就是「有就给、没有就 —」
+  }
+}
+
+function startHealthPolling(): void {
+  stopHealthPolling()
+  void refreshHealth()
+
+  healthTimer = setInterval(() => {
+    if (!document.hidden) void refreshHealth()
+  }, HEALTH_REFRESH_INTERVAL)
+}
+
+function stopHealthPolling(): void {
+  if (healthTimer !== null) {
+    clearInterval(healthTimer)
+    healthTimer = null
+  }
+}
+
+/**
+ * 指标订阅板：**一条连接**订阅当前页的全部运行中容器。
+ *
+ * 只订「运行中」的容器：已停止的容器 stats 流会立刻结束，反复订阅只会刷日志。
+ */
+const board = useContainerStatsBoard({
+  hostId: () => hostId.value,
+  enabled: () => metricsEnabled.value
+})
+
+const series = board.series
+
+async function syncBoard(): Promise<void> {
+  const ids = metricsEnabled.value
+    ? containers.value.filter((container) => container.state === 'running').map((c) => c.id)
+    : []
+
+  await board.sync(ids)
+}
+
+/** 某容器的最新采样（没有则为 null）。 */
+function latestSample(containerId: string): ContainerStatsSample | null {
+  const points = series[containerId]
+
+  return points && points.length > 0 ? (points[points.length - 1] ?? null) : null
+}
+
+/**
+ * 把采样序列画成 SVG polyline 的 `points` 属性。
+ *
+ * 手写 SVG 而不是给每一行建一个 ECharts 实例：一页 20 行 × 3 列 = 60 个图表实例，
+ * canvas 的内存与初始化成本完全不成比例。
+ */
+function sparkline(containerId: string, pick: (sample: ContainerStatsSample) => number | null): string {
+  const points = series[containerId]
+  if (!points || points.length < 2) return ''
+
+  const values = points.map(pick)
+  const numeric = values.filter((value): value is number => value !== null)
+
+  if (numeric.length < 2) return ''
+
+  const max = Math.max(...numeric, 1)
+  const width = 80
+  const height = 18
+  const step = width / (values.length - 1)
+
+  return values
+    .map((value, index) => {
+      const y = height - ((value ?? 0) / max) * height
+
+      return `${(index * step).toFixed(1)},${y.toFixed(1)}`
+    })
+    .join(' ')
+}
+
+/** 健康列的展示值（查不到时「—」）。 */
+function healthLabel(containerId: string): string {
+  const item = healthMap.value[containerId]
+
+  return item ? t(HEALTH_LABEL_KEY[item.healthStatus]) : '—'
+}
+
+/** 健康列的色调。 */
+function healthTone(containerId: string): string {
+  const status = healthMap.value[containerId]?.healthStatus
+
+  if (status === 'healthy') return 'text-status-ok'
+  if (status === 'unhealthy') return 'text-status-down'
+  if (status === 'starting') return 'text-status-warn'
+
+  return 'text-content-faint'
+}
+
+/**
+ * 网络速率的展示。
+ *
+ * ⚠️ 不能用 `formatPercent`：速率的单位是字节/秒，百分比格式化会把它错写成 `x%`。
+ */
+function formatRate(bytesPerSecond: number | null): string {
+  if (bytesPerSecond === null) return '—'
+
+  if (bytesPerSecond >= 1024 * 1024) return `${(bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s`
+  if (bytesPerSecond >= 1024) return `${(bytesPerSecond / 1024).toFixed(0)} KB/s`
+
+  return `${Math.round(bytesPerSecond)} B/s`
 }
 
 /**
@@ -675,9 +842,32 @@ watch(
     error.value = null
     // 换主机等于换了一批完全不同的行：不清选择的话，批量删除会作用到上一台主机的容器上
     selected.value = []
-    void load().then(startPolling)
+    // 健康信息与指标缓存同样属于「上一台主机」，一并清掉
+    healthMap.value = {}
+    void board.stop()
+    void load().then(() => {
+      startPolling()
+      startHealthPolling()
+    })
   },
   { immediate: true }
+)
+
+// 指标列开关变化时重解订阅：关掉最后一列就该把所有流退掉
+watch(metricsEnabled, () => {
+  void syncBoard()
+})
+
+// 健康列关掉时停掉轮询（不白花 N 次 inspect），打开时立刻拉一次
+watch(
+  () => columns.value.health,
+  (enabled) => {
+    if (enabled) startHealthPolling()
+    else {
+      stopHealthPolling()
+      healthMap.value = {}
+    }
+  }
 )
 
 onMounted(() => {
@@ -690,6 +880,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(stopPolling)
+onBeforeUnmount(stopHealthPolling)
 
 /**
  * 事件驱动的刷新（0.5.0）。
@@ -770,6 +961,46 @@ onBeforeUnmount(() => {
       narrow
     >
       <template #actions>
+        <!--
+          列设置（0.6.0）：健康列 + 三个指标列。
+          ⚠️ 指标列默认全关：每开一列，每个可见容器就多占一条到守护进程的流。
+        -->
+        <el-popover placement="bottom-end" :width="200" trigger="click">
+          <template #reference>
+            <el-button>
+              <span class="i-carbon-column text-base" />
+              {{ t('container.columns.title') }}
+            </el-button>
+          </template>
+
+          <div class="flex flex-col gap-2">
+            <el-checkbox
+              :model-value="columns.health"
+              @change="prefs.setContainerColumn('health', $event as boolean)"
+            >
+              {{ t('container.col.health') }}
+            </el-checkbox>
+            <el-checkbox
+              :model-value="columns.cpu"
+              @change="prefs.setContainerColumn('cpu', $event as boolean)"
+            >
+              {{ t('container.col.cpu') }}
+            </el-checkbox>
+            <el-checkbox
+              :model-value="columns.memory"
+              @change="prefs.setContainerColumn('memory', $event as boolean)"
+            >
+              {{ t('container.col.memory') }}
+            </el-checkbox>
+            <el-checkbox
+              :model-value="columns.network"
+              @change="prefs.setContainerColumn('network', $event as boolean)"
+            >
+              {{ t('container.col.network') }}
+            </el-checkbox>
+          </div>
+        </el-popover>
+
         <el-switch
           :model-value="includeStopped"
           :active-text="t('container.filter.all')"
@@ -869,6 +1100,99 @@ onBeforeUnmount(() => {
               <div v-if="row.status" class="app-truncate mt-0.5 text-xs text-content-faint">
                 {{ row.status }}
               </div>
+            </template>
+          </el-table-column>
+
+          <el-table-column
+            v-if="columns.health"
+            :label="t('container.col.health')"
+            width="110"
+          >
+            <template #default="{ row }">
+              <!--
+                健康列：数据来自批量 inspect（10 秒一轮）。
+                查不到的容器显示「—」——那多半是两次刷新之间被删了。
+              -->
+              <span class="text-xs" :class="healthTone(row.id)">{{ healthLabel(row.id) }}</span>
+              <div
+                v-if="(healthMap[row.id]?.restartCount ?? 0) > 0"
+                class="mt-0.5 text-xs text-status-warn"
+                :title="t('container.detail.restartCount')"
+              >
+                ↻ {{ healthMap[row.id]?.restartCount }}
+              </div>
+            </template>
+          </el-table-column>
+
+          <el-table-column
+            v-if="columns.cpu"
+            :label="t('container.col.cpu')"
+            width="130"
+          >
+            <template #default="{ row }">
+              <div v-if="latestSample(row.id)" class="flex items-center gap-2">
+                <span class="font-mono text-xs app-tabular">
+                  {{ formatPercent(latestSample(row.id)!.cpuPercent) }}
+                </span>
+                <svg class="shrink-0" width="80" height="18" aria-hidden="true">
+                  <polyline
+                    :points="sparkline(row.id, (s) => s.cpuPercent)"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1"
+                    class="text-brand-500"
+                  />
+                </svg>
+              </div>
+              <span v-else class="text-xs text-content-faint">—</span>
+            </template>
+          </el-table-column>
+
+          <el-table-column
+            v-if="columns.memory"
+            :label="t('container.col.memory')"
+            width="150"
+          >
+            <template #default="{ row }">
+              <div v-if="latestSample(row.id)" class="flex items-center gap-2">
+                <span class="font-mono text-xs app-tabular">
+                  {{ formatMemory(latestSample(row.id)!.memoryUsage, latestSample(row.id)!.memoryLimit) }}
+                </span>
+                <svg class="shrink-0" width="80" height="18" aria-hidden="true">
+                  <polyline
+                    :points="sparkline(row.id, (s) => (s.memoryLimit > 0 ? (s.memoryUsage / s.memoryLimit) * 100 : null))"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1"
+                    class="text-surface-accent"
+                  />
+                </svg>
+              </div>
+              <span v-else class="text-xs text-content-faint">—</span>
+            </template>
+          </el-table-column>
+
+          <el-table-column
+            v-if="columns.network"
+            :label="t('container.col.network')"
+            width="130"
+          >
+            <template #default="{ row }">
+              <div v-if="latestSample(row.id)" class="flex items-center gap-2">
+                <span class="font-mono text-xs app-tabular">
+                  {{ formatRate(latestSample(row.id)!.networkRxBytesPerSecond) }}
+                </span>
+                <svg class="shrink-0" width="80" height="18" aria-hidden="true">
+                  <polyline
+                    :points="sparkline(row.id, (s) => s.networkRxBytesPerSecond)"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1"
+                    class="text-status-ok"
+                  />
+                </svg>
+              </div>
+              <span v-else class="text-xs text-content-faint">—</span>
             </template>
           </el-table-column>
 

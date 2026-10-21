@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useHostStore } from '@/stores/host'
+import { getHostDiskUsage } from '@/api/host'
 import PageHeader from '@/components/common/PageHeader.vue'
 import SectionCard from '@/components/common/SectionCard.vue'
+import { formatBytes } from '@/utils/container-status'
+import type { ByteUnits } from '@/utils/container-status'
+import type { HostDiskUsage } from '@/types/api'
 
 /**
  * 主机「状态」页。
@@ -41,10 +45,71 @@ const metrics = computed<{ label: string; icon: string; supported: boolean }[]>(
     { label: t('status.cpu'), icon: 'i-carbon-meter', supported: false },
     // 早先误写成 `i-carbon-meter--alt`（双连字符），Carbon 里只有 `meter-alt`。
     { label: t('status.memory'), icon: 'i-carbon-meter-alt', supported: false },
-    { label: t('status.network'), icon: 'i-carbon-network-4', supported: false },
-    { label: t('status.disk'), icon: 'i-carbon-data-volume', supported: true }
+    { label: t('status.network'), icon: 'i-carbon-network-4', supported: false }
   ]
 )
+
+/**
+ * 磁盘用量（0.6.0）：四类资源的占用与可回收量。
+ *
+ * `null` 表示「守护进程没给」（与「确实是 0」不同），界面必须显示「—」。
+ */
+const disk = ref<HostDiskUsage | null>(null)
+const diskLoading = ref(false)
+const diskError = ref<string | null>(null)
+
+const byteUnits = computed<ByteUnits>(() => ({
+  b: t('unit.byte'),
+  kib: t('unit.kib'),
+  mib: t('unit.mib'),
+  gib: t('unit.gib')
+}))
+
+const diskBuckets = computed(() => {
+  const value = disk.value
+  if (!value) return []
+
+  const buckets = [
+    { key: 'images', label: t('status.diskUsage.images'), bucket: value.images },
+    { key: 'containers', label: t('status.diskUsage.containers'), bucket: value.containers },
+    { key: 'volumes', label: t('status.diskUsage.volumes'), bucket: value.volumes },
+    { key: 'buildCache', label: t('status.diskUsage.buildCache'), bucket: value.buildCache }
+  ]
+
+  return buckets.map((item) => ({
+    ...item,
+    size: item.bucket ? formatBytes(item.bucket.totalSize, byteUnits.value) : '—',
+    reclaimable: item.bucket?.reclaimable
+      ? t('status.diskUsage.reclaimable', {
+          value: formatBytes(item.bucket.reclaimable, byteUnits.value)
+        })
+      : null
+  }))
+})
+
+async function loadDiskUsage(): Promise<void> {
+  if (!hostId.value) return
+
+  diskLoading.value = true
+  diskError.value = null
+
+  try {
+    disk.value = await getHostDiskUsage(hostId.value)
+  } catch (err) {
+    diskError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    diskLoading.value = false
+  }
+}
+
+onMounted(() => {
+  void loadDiskUsage()
+})
+
+// 切换主机时重拉：否则会把上一台机器的数字留在页面上
+watch(hostId, () => {
+  void loadDiskUsage()
+})
 
 function goEvents() {
   router.push({ name: 'host-events', params: { hostId: hostId.value } })
@@ -80,9 +145,39 @@ function goEvents() {
       </div>
     </SectionCard>
 
+    <!--
+      磁盘用量（0.6.0）：镜像 / 容器 / 卷 / 构建缓存。
+      `null` 表示守护进程没给（与「确实是 0」不同），显示「—」。
+    -->
+    <SectionCard
+      class="app-section"
+      :title="t('status.diskUsage')"
+      :description="t('status.diskUsage.hint')"
+      density="dense"
+    >
+      <div v-loading="diskLoading" class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div
+          v-for="item in diskBuckets"
+          :key="item.key"
+          class="rounded-lg border border-line-subtle px-3 py-4"
+        >
+          <div class="text-xs text-content-muted">{{ item.label }}</div>
+          <div class="mt-1 text-lg font-semibold app-tabular text-content-strong">
+            {{ item.size }}
+          </div>
+          <div v-if="item.reclaimable" class="mt-0.5 text-xs text-content-faint">
+            {{ item.reclaimable }}
+          </div>
+        </div>
+      </div>
+
+      <p v-if="diskError" class="mt-3 text-sm text-status-down">
+        {{ t('status.diskUsage.failed') }}：{{ diskError }}
+      </p>
+    </SectionCard>
+
     <!-- 近期事件：尚未实现，给出明确去向而不是一片空白 -->
-    <SectionCard class="app-section" :title="t('status.events')">
-      <div class="py-6 text-center">
+    <SectionCard class="app-section" :title="t('status.events')">      <div class="py-6 text-center">
         <span class="i-carbon-events text-3xl text-content-faint" aria-hidden="true" />
         <p class="mt-3 text-sm text-content-muted">{{ t('status.eventsPending') }}</p>
         <p class="mx-auto mt-1.5 max-w-md text-xs text-content-faint">

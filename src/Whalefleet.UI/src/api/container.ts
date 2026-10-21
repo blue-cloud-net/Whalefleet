@@ -3,6 +3,7 @@ import type {
   BatchOperationResult,
   ContainerCreatedResult,
   ContainerDetail,
+  ContainerHealthResult,
   ContainerListResult,
   ContainerLogsResult,
   ContainerRecreatedResult,
@@ -80,6 +81,23 @@ export function inspectContainer(hostId: string, imageId: string): Promise<Conta
     url: `${base(hostId)}/inspect`,
     method: 'post',
     data: { containerId: imageId }
+  })
+}
+
+/**
+ * 批量查询容器健康状态与退出原因（0.6.0 列表健康列的数据源）。
+ *
+ * ⚠️ **查不到的容器直接缺席**（多半是被删掉了），前端对缺失项显示「—」。
+ * 上限 100 项（与列表分页上限一致）。
+ */
+export function getContainerHealth(
+  hostId: string,
+  containerIds: string[]
+): Promise<ContainerHealthResult> {
+  return request<ContainerHealthResult>({
+    url: `${base(hostId)}/health`,
+    method: 'post',
+    data: { containerIds }
   })
 }
 

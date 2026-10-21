@@ -53,6 +53,18 @@ export const useNotificationStore = defineStore('notifications', {
      * @param event 容器异常退出事件。
      */
     push(event: ContainerDiedEvent): void {
+      // 去重（0.6.0）：同一次死亡可能被多个通道带来（
+      // 例如「列表页刷新回调」与「全局通知 Hub」同时到达）。
+      // 不去重的话铃铛里会出现两条一模一样的条目，用户会以为容器死了两次。
+      const duplicate = this.items.some(
+        (item) =>
+          item.hostId === event.hostId &&
+          item.containerId === event.containerId &&
+          item.occurredAt === event.occurredAt
+      )
+
+      if (duplicate) return
+
       this.items.unshift(event)
 
       if (this.items.length > MAX_ITEMS) {

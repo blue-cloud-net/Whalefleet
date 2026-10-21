@@ -40,6 +40,7 @@ const RUNNING: ContainerDetail = {
     // 否则前端会在运行中的容器上显示一个假的「退出码 0」。
     exitCode: null,
     oomKilled: false,
+    restartCount: 0,
     healthStatus: 'healthy'
   },
   config: {
@@ -94,7 +95,8 @@ const CRASHED: ContainerDetail = {
     finishedAt: '2026-10-10T03:00:42Z',
     exitCode: 137,
     oomKilled: true,
-    healthStatus: null
+    restartCount: 5,
+    healthStatus: 'none'
   },
   config: {
     image: 'debian:13',
@@ -135,7 +137,8 @@ const PAUSED: ContainerDetail = {
     finishedAt: null,
     exitCode: null,
     oomKilled: false,
-    healthStatus: null
+    restartCount: 0,
+    healthStatus: 'none'
   },
   config: {
     image: 'alpine:latest',
@@ -172,11 +175,13 @@ interface ContainerSeed {
   state: 'running' | 'exited' | 'paused' | 'restarting' | 'created' | 'dead'
   /** 端口：`宿主:容器`；宿主留空（`:443`）表示「已暴露但没映射到宿主」 */
   ports?: string[]
-  /** 健康检查状态；没配健康检查就写 null */
+  /** 健康检查状态；没配健康检查就不传（对外是 `none`，不是 null） */
   health?: 'healthy' | 'unhealthy' | 'starting' | null
   /** 退出码（仅 `exited` / `dead` 用） */
   exitCode?: number
   oomKilled?: boolean
+  /** 累计重启次数；省略为 0 */
+  restartCount?: number
   restart?: 'no' | 'always' | 'on-failure' | 'unless-stopped'
   autoRemove?: boolean
   /** 内存上限，支持 `512m` / `2g`；`null` 表示未限制 */
@@ -789,7 +794,10 @@ function buildDetail(seed: ContainerSeed, index: number): ContainerDetail {
       finishedAt: isRunning ? null : finished.toISOString(),
       exitCode: isRunning ? null : (seed.exitCode ?? 0),
       oomKilled: seed.oomKilled === true,
-      healthStatus: seed.health ?? null
+      // 健康检查状态：夹具不配就是 none（「没配」永远不会变，与「查不到」不同）
+      healthStatus: seed.health ?? 'none',
+      // 重启次数：只给「反复重启」那个夹具一个非零值，界面要能看出异常
+      restartCount: seed.restartCount ?? 0
     },
     config: {
       image: seed.image,

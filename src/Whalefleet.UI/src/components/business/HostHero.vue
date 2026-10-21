@@ -4,18 +4,17 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import type { HostOverview } from '@/types/api'
 import { hostTone, HOST_TONE_CHIP, HOST_TONE_LABEL_KEY } from '@/utils/host-status'
-import { formatUptime, EMPTY, type DurationUnits } from '@/utils/datetime'
 import StatusDot from '@/components/common/StatusDot.vue'
 
 /**
- * 主机落地页的头部：主机身份 + 连接端点 + 运行时长 + 刷新。
+ * 主机落地页的头部：主机身份 + 连接端点 + 刷新。
  *
  * 为什么不用通用 `PageHeader`：这页的身份信息量比别的页大（名称、状态、类型、
- * endpoint、运行时长都需要同屏可见），套用「图标 + 标题 + 副标题」会把端点和
- * 运行时长挤到折行，且没有放操作按钮的位置。
+ * endpoint 都需要同屏可见），套用「图标 + 标题 + 副标题」会把端点挤到折行，
+ * 且没有放操作按钮的位置。
  *
- * 主机名同时出现在顶栏 HostSelector 与本组件里，这是**有意保留**的：
- * 顶栏那个是「上下文切换器」（我在哪台机器），这个是「页面主标题」（这页讲的是谁）。
+ * ⚠️ **不再展示运行时长**：Docker Engine API 不提供守护进程启动时刻，
+ * 也不提供宿主 boot time（`/info` 的 `SystemTime` 是**当前时间**）。0.6.0 直接删除该字段。
  */
 const props = defineProps<{
   /** 当前主机；未知 hostId 时为 null */
@@ -37,16 +36,6 @@ const typeLabel = computed(() => {
   if (!props.host) return ''
   return props.host.type === 'socket' ? t('host.type.socket') : t('host.type.tcp')
 })
-
-const durationUnits = computed<DurationUnits>(() => ({
-  day: t('host.duration.day'),
-  hour: t('host.duration.hour'),
-  minute: t('host.duration.minute'),
-  second: t('host.duration.second')
-}))
-
-/** 运行时长：没给 startedAt 时返回 EMPTY（占位），由模板决定是否渲染 */
-const uptime = computed(() => formatUptime(props.host?.startedAt, durationUnits.value))
 
 const copied = ref(false)
 
@@ -113,10 +102,6 @@ async function copyEndpoint() {
 
         <p v-if="isMissing" class="mt-2 text-sm text-status-down">
           {{ t('host.hero.notFound') }}
-        </p>
-
-        <p v-else-if="uptime !== EMPTY" class="mt-1.5 text-xs text-content-faint">
-          {{ t('status.uptime', { value: uptime }) }}
         </p>
       </div>
 

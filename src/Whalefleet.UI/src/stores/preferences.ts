@@ -30,6 +30,14 @@ export const PAGE_SIZE_ALL = 0
 export type PageSize = (typeof PAGE_SIZE_OPTIONS)[number] | typeof PAGE_SIZE_ALL
 
 /**
+ * 容器列表可开关的列。
+ *
+ * `health` 与三个指标列分开：前者是一次批量 inspect 的结果，
+ * 后者是持续订阅 —— 两者的成本模型完全不同，不能绑在一个开关上。
+ */
+export type ContainerColumn = 'health' | 'cpu' | 'memory' | 'network'
+
+/**
  * 把界面上的每页条数换算成**可以发给后端的**真实条数。
  *
  * 「全部」（0）要换成"当前总数"——但**不能超过 `MAX_PAGE_SIZE`**：
@@ -70,6 +78,20 @@ export const usePreferencesStore = defineStore('preferences', {
     realtimeStats: true,
 
     /**
+     * 容器列表的列开关（0.6.0）。
+     *
+     * 指标三列**默认关闭**：每个开着的指标列都意味着给每个可见容器占一条到守护进程的流。
+     * 健康列默认**开启**：它只是列表页的 N 次 inspect（一次批量请求），
+     * 而 roadmap 的验收要求「健康检查失败的容器在列表里一眼可见」。
+     */
+    containerColumns: {
+      health: true,
+      cpu: false,
+      memory: false,
+      network: false
+    } as Record<ContainerColumn, boolean>,
+
+    /**
      * 顶栏铃铛的容器异常退出通知（0.5.0）。
      *
      * 开启时全局订阅通知 Hub；关闭时不连接。
@@ -84,6 +106,11 @@ export const usePreferencesStore = defineStore('preferences', {
         size === PAGE_SIZE_ALL || (PAGE_SIZE_OPTIONS as readonly number[]).includes(size)
           ? (size as PageSize)
           : 20
+    },
+
+    /** 切换容器列表某一列的显示。 */
+    setContainerColumn(column: ContainerColumn, visible: boolean) {
+      this.containerColumns = { ...this.containerColumns, [column]: visible }
     }
   },
   persist: {

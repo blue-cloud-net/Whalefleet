@@ -5,7 +5,6 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { useHostStore } from '@/stores/host'
 import type { HostOverview } from '@/types/api'
-import { formatDateTime } from '@/utils/datetime'
 import { formatBytes, type ByteUnits } from '@/utils/container-status'
 import HostHero from '@/components/business/HostHero.vue'
 import ResourceTile from '@/components/business/ResourceTile.vue'
@@ -160,12 +159,93 @@ const infoRows = computed<{ label: string; value: string }[]>(() => {
     value: v?.os ? (v.arch ? `${v.os}/${v.arch}` : v.os) : MISSING
   })
   rows.push({ label: t('host.info.goVersion'), value: v?.goVersion ?? MISSING })
-  rows.push({
-    label: t('host.info.startedAt'),
-    value: h.startedAt ? formatDateTime(h.startedAt) : MISSING
-  })
+  // 0.6.0 起不再展示「启动时间」：Docker Engine API 不提供守护进程启动时刻
+  // （`/info` 的 SystemTime 是**当前时间**），旧字段恒为「已运行 0 秒」。
   // 预留：Agent 模式排在 1.0.0 之后，届时后端才会返回 agentVersion
   if (h.agentVersion) rows.push({ label: t('host.info.agentVersion'), value: h.agentVersion })
+
+  return rows
+})
+
+/**
+ * 守护进程静态信息（0.6.0）。
+ *
+ * ⚠️ **CPU / 内存是静态上限**：Docker Engine API 没有宿主机级实时指标端点。
+ * 界面必须在标题上把这一点说清楚，否则「24 核」会被读成「当前用了 24 核」。
+ */
+const daemonRows = computed(() => {
+  const d = currentHost.value?.daemon
+  if (!d) return []
+
+  const rows: { label: string; value: string }[] = []
+
+  if (d.operatingSystem || d.osVersion || d.osType) {
+    rows.push({
+      label: t('host.daemon.os'),
+      value: [d.operatingSystem, d.osVersion, d.osType].filter(Boolean).join(' · ')
+    })
+  }
+
+  if (d.kernelVersion) rows.push({ label: t('host.daemon.kernel'), value: d.kernelVersion })
+
+  // 静态上限：带「核」「内存总量」字样，不写「当前」
+  if (d.cpuCount > 0) rows.push({ label: t('host.daemon.cpus'), value: String(d.cpuCount) })
+  if (d.memoryBytes > 0) {
+    rows.push({ label: t('host.daemon.memory'), value: formatBytes(d.memoryBytes, byteUnits.value) })
+  }
+
+  if (d.storageDriver) {
+    rows.push({
+      label: t('host.daemon.storage'),
+      value: d.storageDriverStatus.length > 0
+        ? `${d.storageDriver} (${d.storageDriverStatus.map((pair) => pair.join('=')).join(', ')})`
+        : d.storageDriver
+    })
+  }
+
+  if (d.loggingDriver) rows.push({ label: t('host.daemon.logging'), value: d.loggingDriver })
+  if (d.cgroupDriver) {
+    rows.push({
+      label: t('host.daemon.cgroup'),
+      value: d.cgroupVersion ? `${d.cgroupDriver} v${d.cgroupVersion}` : d.cgroupDriver
+    })
+  }
+  if (d.defaultRuntime) {
+    rows.push({
+      label: t('host.daemon.runtime'),
+      value: d.runtimes.length > 0
+        ? `${d.defaultRuntime} (${d.runtimes.join(', ')})`
+        : d.defaultRuntime
+    })
+  }
+
+  if (d.containerdVersion || d.runcVersion) {
+    rows.push({
+      label: t('host.daemon.components'),
+      value: [
+        d.containerdVersion ? `containerd ${d.containerdVersion}` : null,
+        d.runcVersion ? `runc ${d.runcVersion}` : null
+      ].filter(Boolean).join(' · ')
+    })
+  }
+
+  if (d.registryMirrors.length > 0) {
+    rows.push({ label: t('host.daemon.mirrors'), value: d.registryMirrors.join(', ') })
+  }
+
+  if (d.httpProxy || d.httpsProxy || d.noProxy) {
+    // 代理地址的 userinfo 已由服务端遮蔽，这里直接展示
+    rows.push({
+      label: t('host.daemon.proxy'),
+      value: [
+        d.httpProxy ? `HTTP ${d.httpProxy}` : null,
+        d.httpsProxy ? `HTTPS ${d.httpsProxy}` : null,
+        d.noProxy ? `NO_PROXY ${d.noProxy}` : null
+      ].filter(Boolean).join(' · ')
+    })
+  }
+
+  if (d.dockerRootDir) rows.push({ label: t('host.daemon.rootDir'), value: d.dockerRootDir })
 
   return rows
 })
@@ -253,6 +333,32 @@ const hasMissingInfo = computed(() => infoRows.value.some((r) => r.value === MIS
         <span class="i-carbon-information shrink-0 mt-px" aria-hidden="true" />
         <span>{{ t('host.info.pending') }}</span>
       </p>
+    </SectionCard>
+
+    <!--
+      守护进程信息（0.6.0）：全部来自同一次 /info，不新增调用。
+      ⚠️ 标题里必须写「静态上限」：Docker Engine API 没有宿主机级实时指标端点，
+      把 24 核读成「当前用了 24 核」是这套信息最容易造成的误解。
+    -->
+    <SectionCard
+      v-if="daemonRows.length > 0"
+      class="app-section"
+      :title="t('host.daemon.title')"
+      :description="t('host.daemon.hint')"
+      density="dense"
+    >
+      <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-10">
+        <div
+          v-for="row in daemonRows"
+          :key="row.label"
+          class="flex items-baseline gap-4 py-2.5 border-b border-dashed border-line-subtle last:border-0"
+        >
+          <dt class="w-24 sm:w-28 shrink-0 text-xs text-content-muted">{{ row.label }}</dt>
+          <dd class="min-w-0 text-[13px] font-mono app-truncate text-content-body" :title="row.value">
+            {{ row.value }}
+          </dd>
+        </div>
+      </dl>
     </SectionCard>
   </div>
 </template>
