@@ -29,6 +29,7 @@ import {
 import { ApiRequestError } from '@/api'
 import { containerTone, formatPort } from '@/utils/container-status'
 import { formatDateTime } from '@/utils/datetime'
+import { subscribeContainerDied } from '@/realtime/notification'
 import { PAGE_SIZE_ALL, resolvePageSize, usePreferencesStore } from '@/stores/preferences'
 import type { ContainerSummary } from '@/types/api'
 
@@ -65,6 +66,9 @@ const pageIndex = ref(0)
  * 是任意 number，写回时需要接住它。「全部」靠与 `PAGE_SIZE_ALL` 相等来判断，不靠类型。
  */
 const pageSize = ref<number>(usePreferencesStore().pageSize)
+
+/** 偏好 store（实时更新开关）。 */
+const prefs = usePreferencesStore()
 const includeStopped = ref(true)
 const loading = ref(false)
 /** 错误信息；非 null 时显示错误态 + 重试，而不是保留一份可能是陈旧的数据 */
@@ -686,6 +690,75 @@ onMounted(() => {
 })
 
 onBeforeUnmount(stopPolling)
+
+/**
+ * 事件驱动的刷新（0.5.0）。
+ *
+ * ## 为什么还需要轮询
+ * 服务端推送的是**容器异常退出**（`die` / `oom`）——「容器停了」这种**正常**
+ * 的退出不在事件流里（那属于业务动作，页面自己知道）。
+ * 所以轮询不能取消，它仍是「状态变化」的唯一可靠来源；
+ * 事件只是把「出事」的那一类**提前**告诉用户。
+ *
+ * ## 为什么去抖 500ms
+ * 守护进程可能在几秒内报出一批容器退出（一次批量重启就会）。
+ * 每次事件都刷一次列表等于把页面抽成闪烁的——去抖后只刷最后那一次。
+ */
+const REFRESH_DEBOUNCE = 500
+
+/** 去抖定时器。 */
+let refreshTimer: ReturnType<typeof setTimeout> | null = null
+
+/** 退订函数。 */
+let unsubscribeDied: (() => void) | null = null
+
+/**
+ * 去抖刷新。
+ */
+function scheduleRefresh(): void {
+  if (refreshTimer !== null) clearTimeout(refreshTimer)
+
+  refreshTimer = setTimeout(() => {
+    refreshTimer = null
+    void poll()
+  }, REFRESH_DEBOUNCE)
+}
+
+/**
+ * 处理容器退出事件。
+ *
+ * @param event 事件。
+ */
+function onContainerDied(event: { hostId: string }): void {
+  // 只关心当前主机的事件：全局通知流里包含其它主机的容器。
+  if (event.hostId !== hostId.value) return
+
+  scheduleRefresh()
+}
+
+/** 订阅（或退订）容器退出事件。 */
+function syncEventSubscription(): void {
+  unsubscribeDied?.()
+  unsubscribeDied = null
+
+  if (prefs.realtimeContainers) {
+    unsubscribeDied = subscribeContainerDied(onContainerDied)
+  }
+}
+
+watch(() => prefs.realtimeContainers, syncEventSubscription)
+
+onMounted(syncEventSubscription)
+
+onBeforeUnmount(() => {
+  unsubscribeDied?.()
+  unsubscribeDied = null
+
+  if (refreshTimer !== null) {
+    clearTimeout(refreshTimer)
+    refreshTimer = null
+  }
+})
 </script>
 
 <template>
