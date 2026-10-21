@@ -6,7 +6,39 @@ import {
   MOCK_CONTAINER_LOGS,
   MOCK_CONTAINERS_DEFAULT
 } from '../data/containers'
-import type { BatchOperationFailure, ContainerDetail, ContainerSummary } from '@/types/api'
+import type {
+  BatchOperationFailure,
+  ContainerDetail,
+  ContainerLogLine,
+  ContainerSummary
+} from '@/types/api'
+
+/**
+ * 把 mock 的整段日志拆成**结构化行**（0.5.0）。
+ *
+ * 与后端保持一致：Docker CLI 那种 `2026/10/12 22:04:11 正文` 的前缀
+ * 在后端会被剥离成独立的 `timestamp` 字段，正文里不再重复。
+ * mock 不这么做的话，前端的时间戳列会整列空白。
+ */
+function mockLogLines(): ContainerLogLine[] {
+  return MOCK_CONTAINER_LOGS.split('\n')
+    .filter((text) => text.length > 0)
+    .map((text, index) => {
+      const match = /^(\d{4})\/(\d{2})\/(\d{2}) (\d{2}:\d{2}:\d{2}) (.*)$/.exec(text)
+
+      if (!match) {
+        return { seq: index + 1, timestamp: null, line: text }
+      }
+
+      const [, year, month, day, time, rest] = match
+
+      return {
+        seq: index + 1,
+        timestamp: new Date(`${year}-${month}-${day}T${time}Z`).toISOString(),
+        line: rest ?? ''
+      }
+    })
+}
 
 /**
  * 本次会话里「创建出来」的容器。
@@ -299,12 +331,34 @@ export function containerHandlers(scenario: () => MockScenario) {
         })
       }
 
+      // 0.5.0 起日志是**结构化行**（不再是一整段 content）。
+      const all = mockLogLines()
+      const limited = tail === null ? all : all.slice(Math.max(0, all.length - tail))
+
       return HttpResponse.json(
         ok({
           containerId: String(body.containerId ?? ''),
-          content: tail === 0 ? '' : MOCK_CONTAINER_LOGS
+          lines: limited,
+          // 拿满了就认为「可能还有更早的」——与后端判据一致。
+          truncated: tail !== null && limited.length >= tail
         })
       )
+    }),
+
+    http.post('*/api/v1/hosts/:hostId/containers/logs/download', async () => {
+      await delay(delayFor(scenario()))
+
+      const text = mockLogLines()
+        .map((item) => item.line)
+        .join('\n')
+
+      return new HttpResponse(text, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Content-Disposition': `attachment; filename="container.log"; filename*=UTF-8''container.log`
+        }
+      })
     }),
 
     http.post('*/api/v1/hosts/:hostId/containers/create', async ({ request }) => {

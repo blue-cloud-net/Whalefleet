@@ -82,6 +82,18 @@ public sealed record PullImageRequest
 
     /// <summary>目标平台（如 <c>linux/amd64</c>）；省略时由守护进程按主机架构选择。</summary>
     public string? Platform { get; init; }
+
+    /// <summary>
+    /// 进度令牌（0.5.0）：客户端先生成它、在 SignalR 上订阅它，再把它带进本次请求。
+    /// </summary>
+    /// <remarks>
+    /// <b>省略时行为完全不变</b>：仍然一次性返回结果，只是不推实时进度。
+    /// 这样旧客户端与「不关心进度」的调用方不必改。
+    /// <br/>
+    /// <b>为什么由客户端生成</b>：服务端没法知道「这次拉取对应哪条连接」——
+    /// 拉取是一个独立的 HTTP 请求，与 Hub 连接没有天然关联。
+    /// </remarks>
+    public string? ProgressToken { get; init; }
 }
 
 /// <summary>
@@ -169,6 +181,14 @@ public sealed record BuildImageRequest
 
     /// <summary>是否不使用构建缓存（<c>--no-cache</c>）；省略为 <see langword="false"/>。</summary>
     public bool? NoCache { get; init; }
+
+    /// <summary>
+    /// 进度令牌（0.5.0）：与 <see cref="PullImageRequest.ProgressToken"/> 同义。
+    /// </summary>
+    /// <remarks>
+    /// 构建是 <c>multipart/form-data</c> 上传，因此这个字段是<b>表单字段</b>而不是 JSON 字段。
+    /// </remarks>
+    public string? ProgressToken { get; init; }
 }
 
 /// <summary>

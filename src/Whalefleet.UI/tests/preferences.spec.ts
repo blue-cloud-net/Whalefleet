@@ -77,3 +77,34 @@ describe('每页条数偏好 store', () => {
     expect(prefs.pageSize).toBe(20)
   })
 })
+
+/**
+ * 「实时更新」三个开关（0.5.0）。
+ *
+ * 默认**全部开启**——实时能力是本版本的主卖点，默认关掉等于「装上了但没人用」。
+ * 三者**互相独立**：指标订阅会占一条到守护进程的长连接，
+ * 列表刷新几乎没有成本，通知则会产生 toast 打扰——代价不同，不该绑在一起。
+ */
+describe('实时更新偏好', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('默认全部开启', () => {
+    const prefs = usePreferencesStore()
+
+    expect(prefs.realtimeContainers).toBe(true)
+    expect(prefs.realtimeStats).toBe(true)
+    expect(prefs.realtimeNotifications).toBe(true)
+  })
+
+  it('三个开关互相独立', () => {
+    const prefs = usePreferencesStore()
+
+    prefs.realtimeStats = false
+
+    expect(prefs.realtimeStats).toBe(false)
+    expect(prefs.realtimeContainers).toBe(true)
+    expect(prefs.realtimeNotifications).toBe(true)
+  })
+})

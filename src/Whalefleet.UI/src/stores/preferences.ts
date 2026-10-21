@@ -46,13 +46,35 @@ export function resolvePageSize(pageSize: number, total: number): number {
 }
 
 /**
- * 用户偏好 store：目前只有「列表每页条数」。
+ * 用户偏好 store：列表每页条数 + 三项「实时更新」开关。
  * 主题（stores/theme.ts）与语言（locales/index.ts）各自独立持久化，不在此重复。
  */
 export const usePreferencesStore = defineStore('preferences', {
   state: () => ({
     /** 列表每页条数，默认 20；`PAGE_SIZE_ALL` 表示「全部」 */
-    pageSize: 20 as PageSize
+    pageSize: 20 as PageSize,
+
+    /**
+     * 容器列表实时刷新（0.5.0）。
+     *
+     * 开启时列表订阅容器事件，容器一停/一死就立刻刷新；
+     * 关闭时回到 5 秒轮询。
+     */
+    realtimeContainers: true,
+
+    /**
+     * 容器详情页的运行指标（0.5.0）。
+     *
+     * 开启时详情页订阅资源采样；关闭时不订阅（不占那条到守护进程的长连接）。
+     */
+    realtimeStats: true,
+
+    /**
+     * 顶栏铃铛的容器异常退出通知（0.5.0）。
+     *
+     * 开启时全局订阅通知 Hub；关闭时不连接。
+     */
+    realtimeNotifications: true
   }),
   actions: {
     setPageSize(size: number) {

@@ -13,6 +13,7 @@ import CommandPalette from '@/components/common/CommandPalette.vue'
 import ShortcutHelpDialog from '@/components/common/ShortcutHelpDialog.vue'
 import ThemeSwitcher from '@/components/common/ThemeSwitcher.vue'
 import MockBadge from '@/components/common/MockBadge.vue'
+import NotificationBell from '@/components/common/NotificationBell.vue'
 import HostSelector from '@/components/business/HostSelector.vue'
 
 /**
@@ -245,6 +246,10 @@ function goOverview() {
         </div>
 
         <ThemeSwitcher />
+
+        <!-- 铃铛：容器异常退出通知（0.5.0）。放在用户菜单之前——
+             通知是「需要马上知道」的事，而用户菜单里的都是「主动去设置」的事。 -->
+        <NotificationBell />
 
         <UserMenu />
       </div>

@@ -72,7 +72,7 @@ export function inspectImage(hostId: string, imageId: string): Promise<ImageDeta
  */
 export function pullImage(
   hostId: string,
-  payload: { image: string; tag?: string; platform?: string }
+  payload: { image: string; tag?: string; platform?: string; progressToken?: string }
 ): Promise<ImagePullResult> {
   return request<ImagePullResult>({
     url: `/api/v1/hosts/${encodeURIComponent(hostId)}/images/pull`,
@@ -190,6 +190,8 @@ export function buildImage(
     target?: string
     platform?: string
     noCache?: boolean
+    /** 实时进度令牌（0.5.0）；带上后构建过程会向通知 Hub 推进度 */
+    progressToken?: string
   }
 ): Promise<ImageBuildResult> {
   const form = new FormData()
@@ -204,6 +206,7 @@ export function buildImage(
   if (payload.target) form.append('target', payload.target)
   if (payload.platform) form.append('platform', payload.platform)
   if (payload.noCache) form.append('noCache', 'true')
+  if (payload.progressToken) form.append('progressToken', payload.progressToken)
 
   return request<ImageBuildResult>({
     url: `/api/v1/hosts/${encodeURIComponent(hostId)}/images/build`,

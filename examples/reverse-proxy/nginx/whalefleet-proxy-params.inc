@@ -37,7 +37,7 @@ proxy_set_header X-Forwarded-Proto $scheme;
 # 宿主机名。缺它时应用无法拼出对外正确的绝对地址。
 proxy_set_header Host $host;
 
-# WebSocket / SignalR 升级（0.4.0 的实时通道依赖它）。
+# WebSocket / SignalR 升级（0.5.0 的实时通道依赖它）。
 # 这两行不能省：HTTP/1.1 的 Upgrade 头一旦被丢掉就是**静默失败**，
 # 症状是「订阅连上了但一条消息都收不到」。
 proxy_set_header Upgrade $http_upgrade;

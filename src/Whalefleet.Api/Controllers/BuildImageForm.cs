@@ -42,6 +42,14 @@ public sealed class BuildImageForm
     public bool? NoCache { get; set; }
 
     /// <summary>
+    /// 进度令牌（0.5.0）：客户端先生成它、在 SignalR 上订阅它，再把它带进本次请求。
+    /// </summary>
+    /// <remarks>
+    /// <b>省略时行为完全不变</b>：仍然一次性返回结果，只是不推实时进度。
+    /// </remarks>
+    public string? ProgressToken { get; set; }
+
+    /// <summary>
     /// 转成应用层请求。
     /// </summary>
     /// <param name="contextLength">构建上下文的长度（字节）。</param>
@@ -61,6 +69,7 @@ public sealed class BuildImageForm
         Target = this.Target,
         Platform = this.Platform,
         NoCache = this.NoCache,
+        ProgressToken = this.ProgressToken,
     };
 
     /// <summary>

@@ -69,8 +69,13 @@ public sealed record InspectContainerRequest
 /// 容器日志请求。
 /// </summary>
 /// <remarks>
-/// 0.0.9 一次性返回日志文本；逐行实时流走 SignalR（0.3.0）。因此这里刻意<b>不</b>暴露
-/// <c>Follow</c>——一次性 HTTP 响应跟着流没有意义，只会让连接挂住。
+/// 0.5.0 起日志改为<b>结构化返回</b>（行数组 + 每行时间戳），因此：
+/// <list type="bullet">
+/// <item><description>请求里的 <c>timestamps</c> 字段被<b>废除</b>——服务端恒定带上时间戳，
+/// 是否在页面上显示交给前端开关。少了这个字段，前端就无法按时间排序或定位。</description></item>
+/// <item><description>新增 <c>until</c>，供「向上加载更早的日志」分页使用
+/// （<c>since</c> 只能往前找，<c>until</c> 才能往回找）。</description></item>
+/// </list>
 /// </remarks>
 public sealed record ContainerLogsRequest
 {
@@ -83,10 +88,38 @@ public sealed record ContainerLogsRequest
     /// <summary>只取该时刻（含）之后的日志，Unix 秒。</summary>
     public long? Since { get; init; }
 
-    /// <summary>是否在每行前加时间戳。</summary>
-    public bool? Timestamps { get; init; }
+    /// <summary>
+    /// 只取该时刻（不含）之前的日志，Unix 秒。
+    /// </summary>
+    /// <remarks>
+    /// 用于「向上滚动加载更早的日志」：客户端拿当前最早一行的时刻回传，
+    /// 服务端就能把再往前的一页取回来。省略时表示不设上界。
+    /// <br/>
+    /// 与 <see cref="Since"/> 同为 Unix 秒（不是毫秒）——与 Docker 的 <c>until</c> 参数口径一致。
+    /// </remarks>
+    public long? Until { get; init; }
 
     /// <summary>是否包含 stderr；省略时包含（用户要看的就是全部输出）。</summary>
+    public bool? IncludeStderr { get; init; }
+}
+
+/// <summary>
+/// 下载容器日志的请求（0.5.0）。
+/// </summary>
+/// <remarks>
+/// <b>为什么不复用 <see cref="ContainerLogsRequest"/></b>：那个请求带 <c>tail</c>，
+/// 而下载的语义是「完整日志」——给它一个行数上限就等于给用户一份被截断的文件。
+/// 两者刻意分开，避免将来有人顺手把 <c>tail</c> 也加进下载。
+/// </remarks>
+public sealed record DownloadContainerLogsRequest
+{
+    /// <summary>容器标识。</summary>
+    public string? ContainerId { get; init; }
+
+    /// <summary>只取该时刻（含）之后的日志，Unix 秒；省略时取全部。</summary>
+    public long? Since { get; init; }
+
+    /// <summary>是否包含 stderr；省略时包含。</summary>
     public bool? IncludeStderr { get; init; }
 }
 

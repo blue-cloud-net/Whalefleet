@@ -75,6 +75,10 @@ public static class AuthenticationServiceCollectionExtensions
                     // 让 401/403 也返回统一的 ApiResult，并区分「未认证」与「已过期」。
                     OnChallenge = JwtBearerResponseEvents.OnChallengeAsync,
                     OnForbidden = JwtBearerResponseEvents.OnForbiddenAsync,
+
+                    // SignalR 握手：浏览器无法为 WebSocket 设置 Authorization 头，
+                    // 只能把令牌放进查询参数。仅 /hubs 路径生效（详见 HubTokenQueryReader）。
+                    OnMessageReceived = HubTokenQueryReader.OnMessageReceivedAsync,
                 };
             });
 

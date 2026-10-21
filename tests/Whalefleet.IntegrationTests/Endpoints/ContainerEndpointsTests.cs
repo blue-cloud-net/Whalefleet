@@ -437,6 +437,9 @@ public class ContainerEndpointsTests : IAsyncLifetime
             // 日志：容器跑过，接口必然可读（内容可能为空，因此只断言形状）。
             var logs = await PostDataAsync<LogsPayload>(client, "logs", new { containerId, tail = 10 });
             logs.ContainerId.Should().Be(containerId);
+            // 容器可能一行都没输出（命令是 sleep），因此这里只断言「序号递增」，
+            // 不断言「有行」——后者不是本用例的考点。
+            logs.Lines.Select(item => item.Seq).Should().BeInAscendingOrder();
 
             // 停止 → 再停一次（同样幂等）。
             await PostOkAsync(client, "stop", new { containerId, waitSeconds = 1 });
@@ -533,7 +536,24 @@ public class ContainerEndpointsTests : IAsyncLifetime
 
     private sealed record DetailPayload(string Id, string Name, string Image);
 
-    private sealed record LogsPayload(string ContainerId, string Content);
+    /// <summary>
+    /// 日志响应（0.5.0 起是结构化行，不再是一整段 content）。
+    /// </summary>
+    /// <param name="ContainerId">容器标识。</param>
+    /// <param name="Lines">日志行。</param>
+    /// <param name="Truncated">是否可能还有更早的日志。</param>
+    private sealed record LogsPayload(
+        string ContainerId,
+        IReadOnlyList<LogLinePayload> Lines,
+        bool Truncated);
+
+    /// <summary>
+    /// 单条日志行。
+    /// </summary>
+    /// <param name="Seq">序号。</param>
+    /// <param name="Timestamp">时间戳。</param>
+    /// <param name="Line">正文。</param>
+    private sealed record LogLinePayload(int Seq, string? Timestamp, string Line);
 
     private sealed record LoginPayload(string AccessToken);
 }

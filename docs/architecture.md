@@ -390,13 +390,42 @@ protected abstract Task<bool> ExecuteUpdateAsync(DbConnection connection, TEntit
 
 ### SignalR Hub 层（0.5.0 起）
 
-| Hub | 职责 |
-|-----|------|
-| `ContainerLogHub` | 客户端订阅指定容器的实时日志流 |
-| `ContainerStatsHub` | 客户端订阅指定容器的实时 CPU/内存/网络统计 |
-| `NotificationHub` | 推送系统事件（容器异常退出等通知） |
+| Hub | 路径 | 职责 |
+|-----|------|------|
+| `ContainerLogHub` | `/hubs/hosts/{hostId}/container-log` | 客户端订阅指定容器的实时日志流 |
+| `ContainerStatsHub` | `/hubs/hosts/{hostId}/container-stats` | 客户端订阅指定容器的实时 CPU/内存/网络统计 |
+| `NotificationHub` | `/hubs/notification` | 推送系统事件（容器异常退出等通知），**全局** |
 
 Hub 鉴权：JWT 通过 `?access_token=...` 查询参数传递（WebSocket 不支持自定义 Header）。
+
+**实时通道的依赖方向**（与项目其余部分一致）：
+
+```
+Infrastructure.ContainerEventWatcher   ← 读 Docker 事件流（SDK 适配层）
+            │  发布
+            ▼
+Application.IContainerEventBus         ← 进程内总线（Application/Common）
+            │  订阅
+            ▼
+Api.ContainerNotificationDispatcher     ← 判权限 + 推 Hub
+            │
+            ▼
+Api.NotificationHub → 浏览器
+```
+
+> **为什么中间要隔一层总线**：事件的**来源**在 Infrastructure（要读 Docker SDK），
+> **去处**在 Api（要推 Hub）。让 Infrastructure 直接引用 Hub 上下文就把依赖方向
+> 反了（Api → Infrastructure 才是本项目的方向）。总线让两边都不必认识对方。
+>
+> **日志 / 指标流不走总线**：它们是「客户端主动订阅什么就推什么」，
+> 没有「广播给所有连接」的语义，因此由 Hub 方法自己开后台任务读
+> `Application/Abstractions/Realtime` 里的 `IContainerLogProvider` /
+> `IContainerStatsProvider`。
+
+> ⚠️ **SignalR 的 `MapHub` 不支持路由参数**：路径里的 `{hostId}` 只参与路径匹配，
+> **不会**出现在 `HttpContext.Request.RouteValues` 里（实测键集合为空）。
+> 因此 `RealtimeHostResolver` 改为**从请求路径解析**主机标识。
+> 换句话说，**不要在 Hub 里依赖路由值**。
 
 ### Service 层
 
@@ -900,13 +929,24 @@ JWT 中间件默认在验证失败时**直接写 401 且不带响应体**。若�
 
 ### SignalR Hub 鉴权（0.5.0）
 
-WebSocket 不支持自定义 Header，JWT 通过 `?access_token=...` 查询参数传递：
+WebSocket 不支持自定义 Header，JWT 通过 `?access_token=...` 查询参数传递。
+
+**推荐写法**（前端 `src/realtime/connection.ts`）：把令牌放进 `accessTokenFactory`，
+而不是拼进 URL——URL 在连接建立时只算一次，而令牌会变（刷新后换新），
+工厂函数在**每次需要令牌时**被调用，重连时拿到的就是新令牌：
 
 ```typescript
 const connection = new HubConnectionBuilder()
-  .withUrl(`/hubs/hosts/${hostId}/container-log?access_token=${accessToken}`)
+  .withUrl(hubUrl, {
+    accessTokenFactory: () => useAuthStore().accessToken
+  })
+  .withAutomaticReconnect([0, 1000, 3000, 10000])
   .build()
 ```
+
+**服务端只接受 `/hubs` 前缀下的 `access_token`**（`HubTokenQueryReader`）：
+其它路径带了它会被**忽略**，而不是被当成有效凭证——否则任何带这个查询串的普通接口
+都会被「顺带」鉴权，让 CORS / 缓存 / 访问日志的行为都变得不可预测。
 
 ### WebSocket Terminal 鉴权（0.8.0）
 

@@ -8,8 +8,11 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import ContainerStatusBadge from '@/components/business/ContainerStatusBadge.vue'
 import { inspectContainer } from '@/api/container'
 import { ApiRequestError } from '@/api'
+import { useContainerStats } from '@/composables/useContainerStats'
+import { usePreferencesStore } from '@/stores/preferences'
 import { formatBytes } from '@/utils/container-status'
 import { formatDateTime } from '@/utils/datetime'
+import { formatMemory, formatNetwork, formatPercent, memoryPercent } from '@/utils/log-format'
 import type { ByteUnits } from '@/utils/container-status'
 import type { ContainerDetail } from '@/types/api'
 
@@ -30,6 +33,7 @@ import type { ContainerDetail } from '@/types/api'
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
+const preferences = usePreferencesStore()
 
 const hostId = computed(() => String(route.params.hostId ?? ''))
 const containerId = computed(() => String(route.params.id ?? ''))
@@ -37,6 +41,26 @@ const containerId = computed(() => String(route.params.id ?? ''))
 const detail = ref<ContainerDetail | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
+
+/**
+ * 实时指标（0.5.0）。
+ *
+ * 开关在「设置 → 实时更新 → 容器详情页指标」里；关掉时**根本不建连接**——
+ * 那是一条到守护进程的长连接，默认连着总归是不对。
+ */
+const stats = useContainerStats({
+  hostId: () => hostId.value,
+  containerId: () => containerId.value,
+  enabled: () => preferences.realtimeStats
+})
+
+/** 最近一次采样。 */
+const sample = stats.sample
+
+/** 内存占用百分比（上限未知时为 null）。 */
+const memoryUsagePercent = computed(() =>
+  sample.value ? memoryPercent(sample.value.memoryUsage, sample.value.memoryLimit) : null
+)
 
 const byteUnits = computed<ByteUnits>(() => ({
   b: t('unit.byte'),
@@ -113,6 +137,18 @@ function cpuQuota(nanoCpus: number | null): string {
 }
 
 watch(containerId, load, { immediate: true })
+
+// 容器变了 → 重订阅指标；开关变了 → 跟着开关建/断连接。
+watch(
+  [containerId, () => preferences.realtimeStats],
+  () => {
+    void stats.stop()
+    if (preferences.realtimeStats) {
+      void stats.start()
+    }
+  },
+  { immediate: true }
+)
 </script>
 
 <template>
@@ -177,6 +213,46 @@ watch(containerId, load, { immediate: true })
               <dd class="text-status-down">{{ t('container.detail.yes') }}</dd>
             </div>
           </dl>
+        </SectionCard>
+
+        <SectionCard
+          v-if="detail.state.running"
+          :title="t('container.detail.metrics')"
+          :description="t('container.detail.metricsHint')"
+        >
+          <div v-if="sample" class="flex flex-col gap-3">
+            <div class="flex items-center justify-between gap-4">
+              <span class="text-sm text-content-muted">{{ t('container.detail.cpu') }}</span>
+              <span class="font-mono text-sm">{{ formatPercent(sample.cpuPercent) }}</span>
+            </div>
+
+            <div class="flex flex-col gap-1">
+              <div class="flex items-center justify-between gap-4">
+                <span class="text-sm text-content-muted">{{ t('container.detail.memory') }}</span>
+                <span class="font-mono text-sm">
+                  {{ formatMemory(sample.memoryUsage, sample.memoryLimit) }}
+                </span>
+              </div>
+              <!-- ⚠️ 上限未知（守护进程没设限）时不画进度条：一条空条会被读成「没占内存」。 -->
+              <el-progress
+                v-if="memoryUsagePercent !== null"
+                :percentage="memoryUsagePercent"
+                :stroke-width="6"
+                :show-text="false"
+              />
+            </div>
+
+            <div class="flex items-center justify-between gap-4">
+              <span class="text-sm text-content-muted">{{ t('container.detail.networkIo') }}</span>
+              <span class="font-mono text-sm">
+                {{ formatNetwork(sample.networkRxBytes, sample.networkTxBytes) }}
+              </span>
+            </div>
+          </div>
+
+          <p v-else class="text-sm text-content-faint">
+            {{ stats.status.value === 'error' ? (stats.error.value ?? '—') : t('container.detail.metricsWaiting') }}
+          </p>
         </SectionCard>
 
         <SectionCard :title="t('container.detail.hostConfig')">

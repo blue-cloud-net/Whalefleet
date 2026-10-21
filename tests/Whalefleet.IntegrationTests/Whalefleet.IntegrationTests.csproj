@@ -26,6 +26,12 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+
+    <!--
+      SignalR 客户端：0.5.0 起集成测试要连真实的 Hub（通知 / 日志 / 指标）。
+      服务端不需要 NuGet 包——SignalR 属于 ASP.NET Core 共享框架。
+    -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
   </ItemGroup>
 
   <ItemGroup>

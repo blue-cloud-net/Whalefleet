@@ -22,6 +22,17 @@ const themeColors: { value: ThemeColor; label: string; swatch: string }[] = [
   { value: 'purple', label: 'theme.color.purple', swatch: 'bg-[rgb(122_64_184)]' }
 ]
 
+/**
+ * 语言选项。
+ *
+ * 标签是各语言的**自称**，不走 i18n：把「简体中文」翻译成 "Chinese" 会让中文用户
+ * 在英文界面里找不到自己的语言，而这类语言选择器在所有产品里都是自称。
+ */
+const locales: { value: AppLocale; label: string }[] = [
+  { value: 'zh-CN', label: '简体中文' },
+  { value: 'en-US', label: 'English' }
+]
+
 function onLocaleChange(next: AppLocale) {
   setLocale(next)
 }
@@ -75,14 +86,24 @@ function onLocaleChange(next: AppLocale) {
       <SectionCard :title="t('settings.locale')">
         <div class="flex items-center justify-between gap-4 flex-wrap">
           <span class="text-sm text-content-body">{{ t('settings.language') }}</span>
-          <el-radio-group
+          <!--
+            下拉框而不是并排单选：语言是「选一个」的封闭集合，选项文字长短不一
+            （简体中文 / English），并排按钮会把右侧撑成一块不对称的按钮组；
+            下拉框宽度固定，将来加语种也不用重排布局。
+          -->
+          <el-select
             :model-value="locale"
             size="small"
+            class="w-40"
             @update:model-value="(v: any) => onLocaleChange(v as AppLocale)"
           >
-            <el-radio-button value="zh-CN">简体中文</el-radio-button>
-            <el-radio-button value="en-US">English</el-radio-button>
-          </el-radio-group>
+            <el-option
+              v-for="item in locales"
+              :key="item.value"
+              :value="item.value"
+              :label="item.label"
+            />
+          </el-select>
         </div>
       </SectionCard>
 
@@ -105,6 +126,36 @@ function onLocaleChange(next: AppLocale) {
         <p class="mt-3 text-xs text-content-faint">
           {{ t('settings.pageSizeHint') }}
         </p>
+      </SectionCard>
+
+      <!--
+        实时更新（0.5.0）。
+
+        三个开关**互相独立**、默认全开：
+        - 容器列表实时刷新：容器一停 / 一死就立刻刷新列表
+        - 容器详情页指标：订阅资源采样
+        - 铃铛通知：容器异常退出时弹提示
+
+        独立而不是一个总开关，是因为它们的代价不同：指标订阅会占一条到守护进程的长连接，
+        列表刷新几乎没有成本，通知则会产生 toast 打扰。
+      -->
+      <SectionCard :title="t('settings.realtime')" :description="t('settings.realtimeHint')">
+        <div class="space-y-4">
+          <div class="flex items-center justify-between gap-4 flex-wrap">
+            <span class="text-sm text-content-body">{{ t('settings.realtimeContainers') }}</span>
+            <el-switch v-model="prefs.realtimeContainers" />
+          </div>
+
+          <div class="flex items-center justify-between gap-4 flex-wrap">
+            <span class="text-sm text-content-body">{{ t('settings.realtimeStats') }}</span>
+            <el-switch v-model="prefs.realtimeStats" />
+          </div>
+
+          <div class="flex items-center justify-between gap-4 flex-wrap">
+            <span class="text-sm text-content-body">{{ t('settings.realtimeNotifications') }}</span>
+            <el-switch v-model="prefs.realtimeNotifications" />
+          </div>
+        </div>
       </SectionCard>
     </div>
   </div>

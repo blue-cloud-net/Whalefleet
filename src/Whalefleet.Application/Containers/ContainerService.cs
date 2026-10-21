@@ -38,10 +38,14 @@ public sealed partial class ContainerService
 
     /// <summary><c>tail</c> 上限。</summary>
     /// <remarks>
-    /// 日志是一次性整体返回的，<c>tail</c> 多大响应就多大。这里<b>报错</b>而不是悄悄夹紧：
-    /// 调用方要 100 万行却只拿到 1 万行，会以为「日志就这么多」——错误比静默截断诚实。
+    /// <para>日志是一次性整体返回的，<c>tail</c> 多大响应就多大。这里<b>报错</b>而不是悄悄夹紧：
+    /// 调用方要 100 万行却只拿到 1 万行，会以为「日志就这么多」——错误比静默截断诚实。</para>
+    /// <para><b>0.5.0 从 10000 收紧到 5000</b>：日志改为结构化行数组后，
+    /// 单行还要带时间戳与序号，响应体比纯文本大了一截。
+    /// 而一次首屏加载 5000 行已经远超「看清问题」的需要——
+    /// 真要更多，前端可以用 <c>until</c> 逐页往前翻，下载端点则完全不受此上限约束。</para>
     /// </remarks>
-    private const int MaxLogTail = 10000;
+    private const int MaxLogTail = 5000;
 
     /// <summary><c>waitSeconds</c> 上限。</summary>
     private const int MaxWaitSeconds = 300;
@@ -227,19 +231,24 @@ public sealed partial class ContainerService
     }
 
     /// <summary>
-    /// 读取容器日志。
+    /// 读取容器日志（一次性返回，结构化行数组）。
     /// </summary>
     /// <param name="hostId">主机标识（主机名）。</param>
-    /// <param name="request">日志请求（容器标识、行数、起始时间等）。</param>
+    /// <param name="request">日志请求（容器标识、行数、起止时间等）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>日志文本。</returns>
+    /// <returns>日志行（序号从 1 起）。</returns>
     /// <exception cref="BusinessException">
     /// 容器标识为空或 <c>tail</c> 越界（<c>1000</c>）、容器不存在（<c>1401</c>）、
     /// 主机不可达（<c>1301</c>）或 Docker 调用失败（<c>1402</c>）。
     /// </exception>
     /// <remarks>
-    /// <b>为什么不支持 follow</b>：一次性 HTTP 响应跟着日志流没有意义（连接会一直挂到容器退出）。
-    /// 实时日志是 0.4.0 的 SignalR 推送要解决的事。
+    /// <para><b>为什么仍然不支持 follow</b>：一次性 HTTP 响应跟着日志流没有意义
+    /// （连接会一直挂到容器退出）。实时日志走 0.5.0 的 SignalR 推送
+    /// （<c>ContainerLogHub</c>）。</para>
+    /// <para><b>为什么恒定请求时间戳</b>：客户端要按时间排序、要定位到具体时刻，
+    /// 而 Docker 只在 <c>timestamps=1</c> 时才给行首前缀。
+    /// 「页面上要不要显示时间戳」是<b>展示</b>决策，不该由<b>取数</b>决定——
+    /// 否则同一个接口在两个页面下会给出不同形状的数据。</para>
     /// </remarks>
     public async Task<ContainerLogsResult> GetLogsAsync(
         string hostId,
@@ -258,27 +267,49 @@ public sealed partial class ContainerService
             // stdout 与 stderr 都是用户要看的输出，默认全给；只要 stderr 是排查场景里的例外需求。
             ShowStdout = true,
             ShowStderr = request.IncludeStderr ?? true,
-            Timestamps = request.Timestamps ?? false,
+            Timestamps = true,
             Tail = tail?.ToString(CultureInfo.InvariantCulture),
             Since = request.Since?.ToString(CultureInfo.InvariantCulture),
+            Until = request.Until?.ToString(CultureInfo.InvariantCulture),
         };
 
         var collector = new LogCollector();
+        var parser = new ContainerLogParser(stripTimestampPrefix: true);
+        var lines = new List<Abstractions.Realtime.ContainerLogLine>();
+        var seq = 1;
 
         await DockerErrorTranslator.ExecuteAsync(
             () => client.Containers.GetContainerLogsAsync(containerId, parameters, collector, cancellationToken),
             $"容器 {containerId} 的日志",
             cancellationToken).ConfigureAwait(false);
 
+        // 逐行回调 → 逐行产出。SDK 每次给的是一整行（不含换行符），
+        // 详见 ContainerLogParser 的说明——直接拼接会得到「所有日志挤成一行」。
+        foreach (var chunk in collector.Chunks)
+        {
+            foreach (var parsed in parser.Append(chunk))
+            {
+                lines.Add(new Abstractions.Realtime.ContainerLogLine(seq++, parsed.Timestamp, parsed.Content));
+            }
+        }
+
         _logger.LogInformation(
-            "读取主机 {HostId} 上容器 {ContainerId} 的日志：{Length} 字符（tail={Tail}，since={Since}）",
+            "读取主机 {HostId} 上容器 {ContainerId} 的日志：{LineCount} 行（tail={Tail}，since={Since}，until={Until}）",
             hostId,
             containerId,
-            collector.Length,
+            lines.Count,
             parameters.Tail ?? "全部",
-            parameters.Since ?? "不限");
+            parameters.Since ?? "不限",
+            parameters.Until ?? "不限");
 
-        return new ContainerLogsResult(containerId, collector.ToString());
+        // 「被截断」= 守护进程手上可能还有更早的日志没给我们。
+        // 判据是「请求了 N 行且正好拿回 N 行」——拿回不足 N 行说明日志总共就这么多。
+        // 这只是**可能**而非确定（容器恰好写了 N 行时也会为 true），
+        // 但它足以让前端决定要不要显示「向上加载更多」：
+        // 万一没有更多，向上加载一次拿到 0 行就知道到底了。
+        var truncated = tail is { } requested && lines.Count >= requested;
+
+        return new ContainerLogsResult(containerId, lines, truncated);
     }
 
     /// <summary>
@@ -1130,7 +1161,7 @@ public sealed partial class ContainerService
     };
 
     /// <summary>
-    /// 同步收集日志文本的 <see cref="IProgress{T}"/> 实现。
+    /// 同步收集日志块的 <see cref="IProgress{T}"/> 实现。
     /// </summary>
     /// <remarks>
     /// <para><b>为什么不用 <c>System.Progress&lt;string&gt;</c></b>：它把回调 <c>Post</c> 到线程池，
@@ -1138,18 +1169,34 @@ public sealed partial class ContainerService
     /// 日志会偶尔缺尾巴，且缺在哪一次请求完全随机。同步实现没有这个时间窗。</para>
     /// <para><b>为什么可以不上锁</b>：SDK 在单条读取循环里顺序回调，不存在并发进入。
     /// 这是依赖库行为的前提，因此写在这里而不是靠猜。</para>
+    /// <para><b>为什么逐块保存而不是拼成一个字符串</b>（0.5.0）：SDK 逐行回调且<b>不带换行符</b>，
+    /// 拼起来会得到「所有日志挤成一行」。详见 <see cref="ContainerLogParser"/> 的说明。
+    /// 保留分块才能让解析器把行切开。</para>
     /// </remarks>
     private sealed class LogCollector : IProgress<string>
     {
-        private readonly StringBuilder _builder = new();
+        private readonly List<string> _chunks = [];
 
         /// <summary>已收集的字符数（用长度代替把内容整体取出来做统计，避免多一次大字符串分配）。</summary>
-        public int Length => _builder.Length;
+        public int Length
+        {
+            get
+            {
+                var total = 0;
+
+                foreach (var chunk in _chunks)
+                {
+                    total += chunk.Length;
+                }
+
+                return total;
+            }
+        }
+
+        /// <summary>已收集的块（顺序与回调顺序一致）。</summary>
+        public IReadOnlyList<string> Chunks => _chunks;
 
         /// <inheritdoc />
-        public void Report(string value) => _builder.Append(value);
-
-        /// <inheritdoc />
-        public override string ToString() => _builder.ToString();
+        public void Report(string value) => _chunks.Add(value);
     }
 }
