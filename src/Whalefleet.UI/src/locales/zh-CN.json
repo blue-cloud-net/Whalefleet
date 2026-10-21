@@ -309,6 +309,7 @@
   "host.confirm.delete.message": "即将删除主机「{name}」。",
   "host.confirm.delete.soft": "删除是软删除：主机名会被释放，可重新注册同名主机。",
   "host.confirm.delete.title": "删除主机",
+  "host.counts.runningTotal": "运行中 {running} / 共 {total}",
   "host.counts.unavailable": "主机离线，资源数量暂不可用",
   "host.delete.done": "主机「{name}」已删除",
   "host.disable.done": "已停用「{name}」",

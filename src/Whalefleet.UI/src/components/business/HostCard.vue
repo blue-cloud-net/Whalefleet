@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
-import type { HostOverview } from '@/types/api'
+import type { HostOverview, HostCounts } from '@/types/api'
 import { formatUptime, EMPTY, type DurationUnits } from '@/utils/datetime'
 import { hostTone, HOST_TONE_CHIP, HOST_TONE_LABEL_KEY, HOST_TONE_RAIL } from '@/utils/host-status'
 import StatusDot from '@/components/common/StatusDot.vue'
@@ -27,6 +27,39 @@ const stats = computed(() => [
   { key: 'volumes', label: t('nav.volumes'), icon: 'i-carbon-data-volume' },
   { key: 'networks', label: t('nav.networks'), icon: 'i-carbon-network-3' }
 ])
+
+/**
+ * 磁贴数值。
+ *
+ * 容器磁贴显示「运行 / 总数」而不是总数：单看 `37` 无法判断这台机器是不是已经挂了
+ * 一大半容器，`12/37` 一眼就能看出来。运行数缺失时（离线主机 / 旧版后端响应）
+ * 退回只显示总数，**绝不**拼出 `undefined/37`。
+ */
+function statValue(key: string): string {
+  const counts = props.host.counts
+  if (!counts) return '—'
+
+  if (key === 'containers') {
+    return typeof counts.containersRunning === 'number'
+      ? `${counts.containersRunning}/${counts.containers}`
+      : String(counts.containers)
+  }
+
+  const value = counts[key as keyof HostCounts]
+
+  return typeof value === 'number' ? String(value) : '—'
+}
+
+/** 磁贴 tooltip：把「12/37」展开成完整语义，屏幕阅读器与悬停都能读到 */
+function statTitle(key: string): string {
+  const counts = props.host.counts
+  if (!counts || key !== 'containers') return ''
+
+  return t('host.counts.runningTotal', {
+    running: counts.containersRunning,
+    total: counts.containers
+  })
+}
 
 /** 状态语义：ok / down / idle，配色与文案统一从 utils/host-status 取 */
 const tone = computed(() => hostTone(props.host.status))
@@ -139,10 +172,13 @@ function onKeydown(e: KeyboardEvent) {
         v-for="s in stats"
         :key="s.key"
         class="app-stat-tile w-16 sm:w-24 flex flex-col items-center justify-center gap-0.5 sm:gap-1"
+        :title="statTitle(s.key)"
       >
         <span class="text-base sm:text-lg leading-none text-content-faint" :class="s.icon" />
-        <span class="text-sm sm:text-base font-semibold leading-tight app-tabular text-content-body">
-          {{ host.counts ? host.counts[s.key as keyof typeof host.counts] : '—' }}
+        <span
+          class="text-sm sm:text-base font-semibold leading-tight app-tabular text-content-body whitespace-nowrap"
+        >
+          {{ statValue(s.key) }}
         </span>
         <span class="text-xs leading-none text-content-faint">{{ s.label }}</span>
       </div>

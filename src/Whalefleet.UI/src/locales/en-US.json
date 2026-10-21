@@ -309,6 +309,7 @@
   "host.confirm.delete.message": "About to delete host \\\"{name}\\\".",
   "host.confirm.delete.soft": "Deletion is soft: the name is released and can be registered again.",
   "host.confirm.delete.title": "Delete host",
+  "host.counts.runningTotal": "{running} running of {total}",
   "host.counts.unavailable": "Resource counts are unavailable while the host is offline",
   "host.delete.done": "Host \\\"{name}\\\" deleted",
   "host.disable.done": "\\\"{name}\\\" disabled",
