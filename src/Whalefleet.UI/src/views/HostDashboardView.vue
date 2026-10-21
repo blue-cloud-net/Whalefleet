@@ -6,6 +6,7 @@ import { ElMessage } from 'element-plus'
 import { useHostStore } from '@/stores/host'
 import type { HostOverview } from '@/types/api'
 import { formatDateTime } from '@/utils/datetime'
+import { formatBytes, type ByteUnits } from '@/utils/container-status'
 import HostHero from '@/components/business/HostHero.vue'
 import ResourceTile from '@/components/business/ResourceTile.vue'
 import SectionCard from '@/components/common/SectionCard.vue'
@@ -51,6 +52,78 @@ const missingHint = computed(() =>
 function countOf(key: ResourceKey): number | null {
   return currentHost.value?.counts?.[key] ?? null
 }
+
+/**
+ * 容器磁贴的状态明细：运行 / 停止 / 健康 / 不健康。
+ *
+ * 与「容器总数」并列显示而不是塞进 tooltip：这四个数字回答的是不同问题——
+ * 运行 + 停止 = 总量（这台机器上有没有挂掉的），健康 + 不健康只覆盖**配了健康检查**
+ * 的那部分（服务真的还活着吗）。只看总数会把「37 个都在跑，但 1 个已经不健康」
+ * 完全藏起来。
+ *
+ * 计数缺失（离线主机 / 概览未取到）时返回 null，磁贴退回「—」占位，不显示一排 0。
+ */
+const containerBreakdown = computed<
+  { key: string; icon: string; tone: string; value: number; label: string }[] | null
+>(() => {
+  const counts = currentHost.value?.counts
+  if (!counts) return null
+
+  return [
+    {
+      key: 'running',
+      icon: 'i-carbon-power',
+      tone: 'text-status-ok',
+      value: counts.containersRunning,
+      label: t('container.state.running')
+    },
+    {
+      key: 'stopped',
+      icon: 'i-carbon-power',
+      tone: 'text-status-down',
+      value: counts.containersStopped,
+      label: t('container.state.stopped')
+    },
+    {
+      key: 'healthy',
+      icon: 'i-carbon-favorite',
+      tone: 'text-status-ok',
+      value: counts.containersHealthy,
+      label: t('container.health.healthy')
+    },
+    {
+      key: 'unhealthy',
+      icon: 'i-carbon-favorite',
+      tone: 'text-status-down',
+      value: counts.containersUnhealthy,
+      label: t('container.health.unhealthy')
+    }
+  ]
+})
+
+/** 字节单位走 i18n：与镜像 / 卷体积的展示口径一致 */
+const byteUnits = computed<ByteUnits>(() => ({
+  b: t('unit.byte'),
+  kib: t('unit.kib'),
+  mib: t('unit.mib'),
+  gib: t('unit.gib')
+}))
+
+/**
+ * 镜像磁贴的副信息：镜像层占用的磁盘空间。
+ *
+ * 只显示大小、不写「磁盘占用」四个字：磁贴本身就在「镜像」下面，右侧的数字只可能是
+ * 体积；多一行文案反而要挤占宽度。单位已自带语义，无须再解释。
+ *
+ * 取 `null`（守护进程查不到）时交给 `formatBytes` 显示「—」——**不能显示 0**：
+ * 0 字节会被读成「这台机器上没有镜像」。
+ */
+const imagesDiskUsage = computed(() => {
+  const counts = currentHost.value?.counts
+  if (!counts) return null
+
+  return formatBytes(counts.imagesSizeBytes, byteUnits.value)
+})
 
 function goResource(key: ResourceKey) {
   router.push({ name: `host-${key}`, params: { hostId: hostId.value } })
@@ -115,7 +188,41 @@ const hasMissingInfo = computed(() => infoRows.value.some((r) => r.value === MIS
         :value="countOf(r.key)"
         :missing-hint="missingHint"
         @click="goResource(r.key)"
-      />
+      >
+        <!--
+          容器磁贴的副信息是 2×2 明细（运行 / 停止 / 健康 / 不健康），排在数值**右侧**：
+          左边是「一共多少」，右边是「分别什么状态」，横向读才连得起来。
+        -->
+        <template v-if="r.key === 'containers' && containerBreakdown" #side>
+          <span class="grid grid-cols-2 gap-x-3 gap-y-1 border-l border-line-subtle pl-3">
+            <span
+              v-for="item in containerBreakdown"
+              :key="item.key"
+              class="flex min-w-0 items-center gap-1"
+            >
+              <span
+                class="shrink-0 text-xs leading-none"
+                :class="[item.icon, item.tone]"
+                aria-hidden="true"
+              />
+              <span class="text-xs font-semibold app-tabular text-content-body">
+                {{ item.value }}
+              </span>
+              <span class="app-truncate text-xs">{{ item.label }}</span>
+            </span>
+          </span>
+        </template>
+
+        <!-- 镜像磁贴：右侧只给大小（单位自带语义，不写「磁盘占用」） -->
+        <template v-else-if="r.key === 'images' && imagesDiskUsage" #side>
+          <span
+            class="flex items-center gap-1.5 border-l border-line-subtle pl-3 text-xs text-content-muted"
+          >
+            <span class="i-carbon-data-base shrink-0 text-sm text-content-faint" aria-hidden="true" />
+            <span class="whitespace-nowrap app-tabular">{{ imagesDiskUsage }}</span>
+          </span>
+        </template>
+      </ResourceTile>
     </div>
 
     <!-- 技术信息 -->
