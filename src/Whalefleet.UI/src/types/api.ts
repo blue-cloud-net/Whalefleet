@@ -392,9 +392,127 @@ export interface ContainerDetail {
 }
 
 /** 容器日志（**整段文本**，不是行数组——见后端类型注释） */
+/**
+ * 展示用的容器日志行。
+ *
+ * `seq` 是**展示序号**（从 1 起，等于它在列表里的位置），
+ * 向上加载更早的日志后会重新编号。
+ */
+export interface ContainerLogLine {
+  /** 展示序号（从 1 起） */
+  seq: number
+  /** 该行的时间戳（ISO 8601）；守护进程未提供时为 null */
+  timestamp: string | null
+  /** 日志正文（不含时间戳前缀） */
+  line: string
+}
+
+/**
+ * Hub 推送的容器日志行。
+ *
+ * ⚠️ `seq` 是**流内序号**（服务端那条订阅里的序号），**不是展示序号**。
+ * 它的用途是**检测丢行**：服务端频道拥塞时会丢最旧的行，
+ * 丢掉的行已经占用了序号 → 下一批的首行序号会跳号。
+ */
+export interface ContainerLogStreamLine {
+  /** 流内序号（服务端分配） */
+  seq: number
+  /** 该行的时间戳（ISO 8601）；守护进程未提供时为 null */
+  timestamp: string | null
+  /** 日志正文（不含时间戳前缀） */
+  line: string
+}
+
+/**
+ * Hub 推送的一批日志行（SignalR `OnLog` 的载荷）。
+ */
+export interface ContainerLogPayload {
+  containerId: string
+  lines: ContainerLogStreamLine[]
+}
+
+/**
+ * 容器日志（0.5.0 起结构化）。
+ *
+ * ⚠️ **破坏性变更**：0.5.0 之前是 `{ containerId, content }`（一整段文本），
+ * 现在是行数组。理由见后端 `ContainerLogsResult` 的说明。
+ */
 export interface ContainerLogsResult {
   containerId: string
-  content: string
+  /** 日志行（按时间顺序，序号从 1 起） */
+  lines: ContainerLogLine[]
+  /** 是否可能还有更早的日志未返回（前端据此决定要不要显示「向上加载更多」） */
+  truncated: boolean
+}
+
+/**
+ * 一次容器资源采样（SignalR `OnStats` 的载荷）。
+ *
+ * CPU 百分比由服务端算好（相邻两帧相减），因此所有客户端口径一致。
+ */
+export interface ContainerStatsSample {
+  containerId: string
+  /** CPU 占用百分比（0–100×核数） */
+  cpuPercent: number
+  /** 内存占用字节数 */
+  memoryUsage: number
+  /** 内存上限字节数；守护进程未设限时为 0 */
+  memoryLimit: number
+  /** 累计接收字节数 */
+  networkRxBytes: number
+  /** 累计发送字节数 */
+  networkTxBytes: number
+  /** 采样时刻（ISO 8601） */
+  timestamp: string
+}
+
+/**
+ * Hub 推送的一次资源采样（SignalR `OnStats` 的载荷）。
+ */
+export interface ContainerStatsPayload {
+  containerId: string
+  stats: ContainerStatsSample
+}
+
+/**
+ * 容器异常退出通知（SignalR `OnContainerDied` 的载荷）。
+ */
+export interface ContainerDiedEvent {
+  hostId: string
+  containerId: string
+  containerName: string
+  exitCode: number
+  /** 是否因内存不足被杀死（OOM） */
+  outOfMemory: boolean
+  occurredAt: string
+}
+
+/**
+ * 镜像操作进度（SignalR `OnPullProgress` 的载荷）。
+ */
+export interface ImageOperationProgress {
+  /** 进度令牌（与订阅时用的同一个） */
+  token: string
+  /** 操作类型：`pull` / `build` / `push` */
+  operation: string
+  /** 总体进度百分比（0–100）；**无法确定时为 null**（不是 0） */
+  percent: number | null
+  /** 最近一条状态原文 */
+  status: string
+  /** 操作是否已成功结束 */
+  done: boolean
+  /** 失败原因；成功时为 null */
+  error: string | null
+}
+
+/**
+ * 实时通道的错误通知（SignalR `OnStreamError` 的载荷）。
+ */
+export interface RealtimeError {
+  /** 业务错误码 */
+  code: number
+  /** 可展示的消息 */
+  message: string
 }
 
 /** 创建容器的结果 */

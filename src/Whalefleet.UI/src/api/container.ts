@@ -1,4 +1,4 @@
-import { request } from '@/api'
+import { http, request } from '@/api'
 import type {
   BatchOperationResult,
   ContainerCreatedResult,
@@ -85,12 +85,12 @@ export function inspectContainer(hostId: string, imageId: string): Promise<Conta
 
 /** 容器日志的查询参数。 */
 export interface ContainerLogsParams {
-  /** 只取最后 N 行；省略表示全部。后端上限 10000，越界返回 1000。 */
+  /** 只取最后 N 行；省略表示全部。**0.5.0 起上限 5000**（越界返回 1000）。 */
   tail?: number
   /** 只取该 Unix 秒（含）之后的日志 */
   since?: number
-  /** 是否给每行加时间戳 */
-  timestamps?: boolean
+  /** 只取该 Unix 秒（不含）之前的日志；用于「向上加载更早的日志」 */
+  until?: number
   /** 是否包含 stderr；省略时包含 */
   includeStderr?: boolean
 }
@@ -111,6 +111,65 @@ export function getContainerLogs(
     method: 'post',
     data: { containerId, ...params }
   })
+}
+
+/**
+ * 下载容器日志（0.5.0 新增）。
+ *
+ * ## 为什么不用 `getContainerLogs` 的结果拼成文件
+ * 一次性接口受 **tail 上限（5000 行）**约束，导出的文件会缺头；
+ * 而用户点「下载」要的通常就是完整日志。
+ * 本端点在服务端直接跟着守护进程的日志流边读边写，**不受 tail 上限约束**。
+ *
+ * ## 返回的是原始文本而不是 JSON
+ * 响应体是 `text/plain`，逐行输出。`responseType: 'blob'` 让浏览器把整个响应
+ * 当二进制收下，再由前端 `URL.createObjectURL` 触发下载。
+ *
+ * ⚠️ **错误响应仍是 JSON**（`ApiResult`）：后端在开始写正文之前才知道
+ * 主机不可达 / 容器不存在，这时候响应头还没发出去，可以正常返回 JSON 错误体。
+ * 前端因此要**先看 content-type** 再决定按文本还是按 JSON 解析。
+ *
+ * @param hostId 主机标识。
+ * @param containerId 容器 ID。
+ * @param params 可选参数（`since` / `includeStderr`）。
+ * @returns 日志文件名（后端生成）。
+ */
+export async function downloadContainerLogs(
+  hostId: string,
+  containerId: string,
+  params: Omit<ContainerLogsParams, 'tail' | 'until'> = {}
+): Promise<{ blob: Blob; fileName: string }> {
+  const response = await http.post(`${base(hostId)}/logs/download`, { containerId, ...params }, {
+    responseType: 'blob'
+  })
+
+  return {
+    blob: response.data as Blob,
+    fileName: fileNameFromDisposition(response.headers['content-disposition'])
+  }
+}
+
+/**
+ * 从 `Content-Disposition` 里取文件名。
+ *
+ * 后端同时给出 ASCII 回退名（`filename=`）与 UTF-8 名（`filename*=`），
+ * 优先取后者。
+ *
+ * @param disposition 响应头原值。
+ * @returns 文件名；取不到时返回默认名。
+ */
+function fileNameFromDisposition(disposition: string | undefined): string {
+  if (!disposition) {
+    return 'container.log'
+  }
+
+  const star = /filename\*=(?:UTF-8'')?([^;]+)/i.exec(disposition)
+  if (star?.[1]) {
+    return decodeURIComponent(star[1].trim())
+  }
+
+  const plain = /filename="?([^";]+)"?/i.exec(disposition)
+  return plain?.[1]?.trim() || 'container.log'
 }
 
 /** 创建容器的请求体。字段与后端 `CreateContainerRequest` 逐字对应。 */
