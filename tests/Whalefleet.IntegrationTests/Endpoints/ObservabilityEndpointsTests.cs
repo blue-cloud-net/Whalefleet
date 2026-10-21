@@ -38,6 +38,9 @@ public class ObservabilityEndpointsTests : IAsyncLifetime
     /// <summary>容器启动命令：足够长，保证它在测试期间一直运行。</summary>
     private static readonly string[] _sleepCommand = ["sleep", "300"];
 
+    /// <summary>必然不存在的容器 ID，用于验证「查不到就缺席」。</summary>
+    private static readonly string[] _noSuchContainerIds = ["no-such-container"];
+
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -167,7 +170,7 @@ public class ObservabilityEndpointsTests : IAsyncLifetime
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/health",
-            new { containerIds = new[] { "no-such-container" } });
+            new { containerIds = _noSuchContainerIds });
 
         // 容器可能在两次刷新之间被删掉，那是列表页的正常竞态：
         // 单条失败不该让整批请求变成错误
