@@ -494,7 +494,14 @@ POST /api/v1/hosts/{hostId}/containers/list
   "endpoint": "/var/run/docker.sock",
   "enabled": true,
   "status": "online",                  // online | offline | unknown
-  "counts": { "containers": 12, "images": 30, "volumes": 5, "networks": 4 },  // 列表接口为 null
+  "counts": {                          // 列表接口为 null（离线时也为 null）
+    "containers": 37, "images": 30, "volumes": 5, "networks": 4,
+    "containersRunning": 35,           // 取自 /info 的 ContainersRunning
+    "containersStopped": 2,            // 取自 /info 的 ContainersStopped
+    "containersHealthy": 15,           // 容器列表 Status 文本里的 (healthy)
+    "containersUnhealthy": 1,          // 同上，(unhealthy)
+    "imagesSizeBytes": 4294967296      // /system/df?type=image 的 TotalSize；查不到为 null
+  },
   "startedAt": "2026-01-02T03:04:05.678+00:00",                                // 列表接口为 null；**0.6.0 移除**
   "version": {                         // 列表接口为 null（离线时也为 null）
     "version": "27.3.1", "apiVersion": "1.47",
@@ -544,9 +551,15 @@ POST /api/v1/hosts/{hostId}/containers/list
 > 把 Guid 放进来会立刻多出一个「界面上的 id 与 URL 里的 hostId 不是同一个东西」的坑。
 > Guid 只用于权限外键与审计。
 >
-> **列表刻意不含 `counts` / `version` / `daemon`**：取它们要额外调用守护进程（版本一次、计数四次），
+> **列表刻意不含 `counts` / `version` / `daemon`**：取它们要额外调用守护进程（版本一次、计数若干次），
 > 主机一多列表就会明显变慢甚至超时。列表只对每台主机做一次轻量探测（`/version`），
 > 那两项由概览接口按需取。
+>
+> **`counts` 里的细分项口径**：`containersRunning` / `containersStopped` 取自 `/info`（一次调用）；
+> 健康与不健康只能从容器列表的 `Status` 文本里读（`Up 2 hours (healthy)`），因此概览会多列一次容器；
+> `imagesSizeBytes` 取自 `/system/df?type=image` 的 `TotalSize`（镜像层**去重后**的实际占用），
+> 查不到时是 `null` 而非 `0`——前端必须把它渲染成「—」，0 字节会被读成「没有镜像」。
+> `containersHealthy + containersUnhealthy` **通常小于** `containers`：没配健康检查的容器两边都不计。
 >
 > **`status` 有三态**：`online` / `offline` / `unknown`。探测失败但原因不属于「连不上」
 > （凭据过期、TLS 握手异常、守护进程返回无法解释的错误）记 `unknown`——
