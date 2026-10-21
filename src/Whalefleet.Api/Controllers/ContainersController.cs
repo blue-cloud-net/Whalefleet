@@ -27,20 +27,27 @@ public sealed class ContainersController : ControllerBase
 {
     private readonly ContainerService _containers;
     private readonly IContainerLogProvider _logProvider;
+    private readonly ContainerHealthService _health;
 
     /// <summary>
     /// 初始化容器查询控制器。
     /// </summary>
     /// <param name="containers">容器查询用例。</param>
     /// <param name="logProvider">容器日志流（下载端点用）。</param>
+    /// <param name="health">容器健康与退出原因的批量查询。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
-    public ContainersController(ContainerService containers, IContainerLogProvider logProvider)
+    public ContainersController(
+        ContainerService containers,
+        IContainerLogProvider logProvider,
+        ContainerHealthService health)
     {
         ArgumentNullException.ThrowIfNull(containers);
         ArgumentNullException.ThrowIfNull(logProvider);
+        ArgumentNullException.ThrowIfNull(health);
 
         _containers = containers;
         _logProvider = logProvider;
+        _health = health;
     }
 
     /// <summary>
@@ -97,6 +104,44 @@ public sealed class ContainersController : ControllerBase
         var detail = await _containers.InspectAsync(hostId, request, cancellationToken).ConfigureAwait(false);
 
         return this.Ok(ApiResults.Ok(detail));
+    }
+
+    /// <summary>
+    /// 批量查询容器健康状态与退出原因（列表健康列的数据源）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">请求（容器标识列表，最多 100 项）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>
+    /// 统一响应，<c>data.items</c> 为查到的容器健康信息；<b>查不到的容器直接缺席</b>
+    /// （多半是被删掉了，前端显示「—」）。
+    /// </returns>
+    /// <response code="200">查询成功（部分容器查不到也是 200）。</response>
+    /// <response code="400">列表为空、含空白项或超过 100 项（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机不存在（<c>1300</c>）。</response>
+    /// <response code="502">主机不可达（<c>1301</c>）。</response>
+    /// <remarks>
+    /// <b>为什么不塞进 <c>list</c></b>：容器列表接口不返回健康与重启计数，取它们只能逐个 inspect；
+    /// 而列表每 5 秒刷新一次，若把 N 次 inspect 绑进列表，刷新成本会被放大 N 倍。
+    /// 拆成独立端点后，界面可以按「只在这一页、且健康列开着」时才去查。
+    /// </remarks>
+    [HttpPost("health")]
+    [ProducesResponseType(typeof(ApiResult<ContainerHealthResult>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> HealthAsync(
+        string hostId,
+        [FromBody] ContainerHealthRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _health.GetAsync(hostId, request, cancellationToken).ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok(result));
     }
 
     /// <summary>

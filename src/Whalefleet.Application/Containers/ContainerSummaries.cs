@@ -94,7 +94,11 @@ public sealed record ContainerDetail(
 /// <param name="FinishedAt">本次结束时间；未结束为 <see langword="null"/>。</param>
 /// <param name="ExitCode">退出码；仍在运行或从未运行过为 <see langword="null"/>。</param>
 /// <param name="OomKilled">是否因内存不足被杀。</param>
-/// <param name="HealthStatus">健康检查状态（<c>healthy</c> / <c>unhealthy</c> / <c>starting</c>）；无健康检查为 <see langword="null"/>。</param>
+/// <param name="RestartCount">守护进程累计的重启次数。</param>
+/// <param name="HealthStatus">
+/// 健康检查状态；<b>未配置健康检查是 <see cref="ContainerHealthStatus.None"/>，不是 <see langword="null"/></b>——
+/// 「没配」与「查不到」是两件事，混成一个值就没法在界面上分开表达。
+/// </param>
 public sealed record ContainerState(
     string Status,
     bool Running,
@@ -104,7 +108,8 @@ public sealed record ContainerState(
     DateTimeOffset? FinishedAt,
     long? ExitCode,
     bool OomKilled,
-    string? HealthStatus);
+    long RestartCount,
+    ContainerHealthStatus HealthStatus);
 
 /// <summary>
 /// 容器启动配置（精选）。

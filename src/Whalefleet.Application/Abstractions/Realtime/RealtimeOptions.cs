@@ -28,8 +28,41 @@ public sealed class RealtimeOptions
     /// 一个写错的客户端（循环调用 <c>SubscribeLogs</c>）就能把守护进程拖垮。
     /// <br/>
     /// 5 的依据：一个人同时盯着 5 个容器的日志是合理上限；再多应该用「切到下一个容器」代替。
+    /// <para><b>本项只管日志与进度推送</b>：统计（stats）有自己的上限，见
+    /// <see cref="MaxStatsSubscriptionsPerConnection"/>——列表页要把「当前页的每个容器」都订上，
+    /// 与「同时看 5 份日志」是两种完全不同的用法。</para>
     /// </remarks>
     public int MaxSubscriptionsPerKind { get; set; } = 5;
+
+    /// <summary>
+    /// 单个连接最多订阅多少个容器的资源采样（stats）。
+    /// </summary>
+    /// <remarks>
+    /// <para><b>为什么与 <see cref="MaxSubscriptionsPerKind"/> 分开</b>：列表指标列要按「可见容器」订阅，
+    /// 一页就有 20 个；沿用 5 会让「开启指标列后只有前 5 个容器有数据」，
+    /// 而 5 也确实是日志的合理上限。两者绑在一起的后果是「要么放开日志上限、要么指标列形同虚设」。</para>
+    /// <para><b>为什么是 20</b>：它与容器列表的默认页大小一致；超出的容器进队列等下一批，
+    /// 而进程内的采样器会复用同一条到 Docker 的流（不随订阅者数线性增长）。</para>
+    /// </remarks>
+    public int MaxStatsSubscriptionsPerConnection { get; set; } = 20;
+
+    /// <summary>
+    /// 每个容器在进程内保留的采样点数（环形缓冲）。
+    /// </summary>
+    /// <remarks>
+    /// 60 的依据：按 1 秒一帧约等于最近两分钟，足够画出 sparkline 与「最近两分钟」曲线；
+    /// 再长既没必要（历史指标本来就是非目标），也会让内存随「同时订阅的容器数」线性增长。
+    /// </remarks>
+    public int StatsHistoryPoints { get; set; } = 60;
+
+    /// <summary>
+    /// 最后一个订阅者离开后，采样泵继续运行的宽限期（秒）。
+    /// </summary>
+    /// <remarks>
+    /// 界面上的订阅天然抖动（切换列、翻页、路由跳转都会先退订再订阅）。
+    /// 立刻停泵会让每次抖动都重开一条 Docker 流，采样也从零开始攒——sparkline 会一直闪成空图。
+    /// </remarks>
+    public int StatsSamplerIdleGraceSeconds { get; set; } = 10;
 
     /// <summary>
     /// 日志批次最大行数。
@@ -102,6 +135,9 @@ public sealed class RealtimeOptions
     /// </remarks>
     public bool IsValid() =>
         MaxSubscriptionsPerKind > 0
+        && MaxStatsSubscriptionsPerConnection > 0
+        && StatsHistoryPoints > 0
+        && StatsSamplerIdleGraceSeconds >= 0
         && LogBatchLines > 0
         && LogFlushIntervalMs > 0
         && LogChannelCapacity >= LogBatchLines

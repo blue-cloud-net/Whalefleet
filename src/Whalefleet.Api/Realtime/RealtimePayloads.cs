@@ -65,3 +65,18 @@ public sealed record ContainerLogPayload(string ContainerId, IReadOnlyList<Conta
 /// <param name="ContainerId">容器标识。</param>
 /// <param name="Stats">采样内容。</param>
 public sealed record ContainerStatsPayload(string ContainerId, ContainerStatsSample Stats);
+
+/// <summary>
+/// 订阅时补发的一批历史采样（0.6.0）。
+/// </summary>
+/// <param name="ContainerId">容器标识。</param>
+/// <param name="Samples">历史采样（旧 → 新）。</param>
+/// <remarks>
+/// <para><b>为什么单独一条消息</b>：sparkline 与图表要一次拿到整段历史才能成型；
+/// 逐条补发会让「先画一段、再补一段」，在慢网络下看起来像卡顿。</para>
+/// <para><b>为什么顺序是旧 → 新</b>：客户端直接按追加处理（并在超过上限时从头裁掉），
+/// 不必再排序——而通道里最新的一条恰好也是「当前值」。</para>
+/// </remarks>
+public sealed record ContainerStatsHistoryPayload(
+    string ContainerId,
+    IReadOnlyList<ContainerStatsSample> Samples);
