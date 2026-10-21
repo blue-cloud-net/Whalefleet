@@ -36,11 +36,22 @@ dotnet test  -c Release                    # 一次跑完单测 + 集成测试
 
 ````bash
 pnpm install
-pnpm typecheck    # vue-tsc --noEmit
+pnpm typecheck    # vue-tsc --noEmit（⚠️ 目前是**空跑**，见下方说明）
 pnpm lint         # eslint . --max-warnings 0
 pnpm test         # vitest run
 pnpm build        # typecheck + 生产构建
-````
+
+# ⚠️ 真正做类型检查（`pnpm typecheck` 目前不检查任何文件）：
+npx vue-tsc -p tsconfig.app.json --noEmit
+```
+
+> ⚠️ **`pnpm typecheck` 是空跑**：根 `tsconfig.json` 是 solution 形态
+> （`files: []` + `references`），`vue-tsc --noEmit` **一个文件都不检查**
+> （只有 `--build` 模式才会走 references）。因此 `pnpm build` 的第一步也是空跑，
+> **类型错误要到运行时才暴露**。
+> 改前端代码后请用上面那条 `npx vue-tsc -p tsconfig.app.json --noEmit`——
+> 但注意它会暴露一批**既存**错误，所以要**与基线对比**（逐文件计数 diff），
+> 而不是看错误的绝对数。`
 
 ### 零警告铁律
 
@@ -152,6 +163,14 @@ DDD 战术模式（聚合根 / 领域事件 / 领域服务）**已整体移除**
   提交时再转 `null`
 - mock 必须**复刻易忽略的语义**（pageSize 夹紧、409/1404、tail 越界、创建后能接着 start），
   否则前端分支测不到
+- **实时通道在 mock 模式下走的是另一条通路**：SignalR 是 WebSocket / 长轮询，
+  **MSW 拦不住**。因此 mock 的实时数据由 `src/realtime/mock.ts` 用定时器造，
+  而**门控必须写在调用点**（`import.meta.env.DEV && shouldUseMock()`），
+  否则那段代码会进生产产物
+- **虚拟滚动的行高不能交给 UnoCSS 的行高类**：行高必须精确等于常量，
+  否则位置计算整体偏移。`LogViewport.vue` 因此把行高写在 scoped CSS 里
+- **通知文案只给 i18n key + 参数**（`stores/notifications.ts` 的 `describe`），
+  不要在 store 里拼死文案——同一件事会出现在 toast 与铃铛下拉两处
 
 ---
 
@@ -176,7 +195,7 @@ DDD 战术模式（聚合根 / 领域事件 / 领域服务）**已整体移除**
 
 | 15 | **`.NET 8+ 的 aspnet 基础镜像自带 `app` 用户，UID 是 1654** | `groupadd --gid 10001 app` 会以 `group 'app' already exists` 失败，把镜像构建卡死。改用 `groupmod --gid` / `usermod --uid` |
 | 16 | **aspnet 运行时镜像不含 `curl` 与 `sqlite3`** | 健康检查会退化成「进程还在」（挡不住「进程活着但 SQLite 打不开」）；README 让人在容器内跑备份脚本也会失败。两者都要在 runtime 阶段显式装 |
-| 17 | **`MapFallbackToFile` 会吞掉打错的 `/api` 路径** | 症状是「接口返回 200 + HTML、日志里全是成功」，前端表现为 JSON 解析失败，几乎不可能靠读日志定位。SPA 回退必须显式排除 `/api` 与 `/healthz` |
+| 17 | **`MapFallbackToFile` 会吞掉打错的 `/api` 路径** | 症状是「接口返回 200 + HTML、日志里全是成功」，前端表现为 JSON 解析失败，几乎不可能靠读日志定位。SPA 回退必须显式排除 `/api` 与 `/healthz`。**0.5.0 起还要排除 `/hubs` 与 `/ws`**——排除漏了 `/hubs` 的症状是「实时通道连不上，但日志里全是 200」：回退中间件跑在端点**之前**，它把响应写成 index.html，Hub 根本轮不到处理 |
 | 18 | **SPA 回退必须挂在 `UseCurrentHost` 之前** | 前端 `/hosts/{hostId}/...` 与接口 `/api/v1/hosts/{hostId}/...` 同前缀，而 `UseCurrentHost` 会把任何请求的 `hostId` 路由值当主机查库。放在它之后，每次刷新深链都先抛「主机不存在」 |
 | 19 | **`AddHealthChecks().AddCheck<T>(name)` 里的 `name` 不能省** | 直接注册 `IHealthCheck` 会以**实现类全名**作为注册项名字，而 `HealthCheckService` 按名字索引结果——结果是 `/healthz` 永远查不到该项，只能回退成 unhealthy |
 | 20 | **`apiFactory.WithSetting` 是就地修改（返回 `this`）** | 打在类共享的 `IClassFixture` 上会把配置留给本类**其他**用例，表现为「随机顺序下某条用例莫名失败」。需要坏配置时必须 `new ApiFactory()` |
@@ -196,6 +215,11 @@ DDD 战术模式（聚合根 / 领域事件 / 领域服务）**已整体移除**
 | 34 | **组件渲染错误只有 mount 才暴露** | 模板引用了 `<script setup>` 没导出的函数 → Vue 只 console 告警，该段渲染成空白、退出码 0（即陷阱 14）。`tests/render-smoke.spec.ts` 用 `@vue/test-utils` mount + 收集 `console.warn` 守卫。两个搭架子要点：① `ElementPlus` 必须作为插件注册，否则 `el-table` 解析失败会被当原生元素渲染，`#default="{ row }"` 抛 `Cannot destructure property 'row' of undefined`（错看着像业务代码坏了）；② 必须**先 `router.push()` 再 `router.isReady()`**，否则首次导航没被触发，测试直接超时 |
 | 35 | **`GET /volumes` 不返回 `UsageData`**（实测） | 占用 / 引用数只能从 `GET /system/df?type=volume` 取，列表接口里每一项都**没有**该键——读它永远是 0，界面就只剩「—」。`type=volume` 过滤不能省（否则顺带统计镜像层，慢好几秒）。用量查询失败要降级成 `null`（「不知道」），**不能给 0**（那是「确实是 0」）。同理：**下拉框用的列表要显式要 `pageSize: 100`**，默认 20 条会让选项悄悄缺一大截 |
 | 36 | **`/info` 的 `SystemTime` 是「当前时间」不是「启动时间」** | moby `daemon/info.go` 里就是 `SystemTime: time.Now().Format(time.RFC3339Nano)`，官方 API 文档写的是 "Current system-time"——**每次调用都返回当下时刻**。拿它算「已运行 x」恒为 0 秒。**Docker Engine API 不提供守护进程启动时刻，也不提供宿主 boot time**（`/info` 无、`/version` 无、`/events` 只是内存环形缓冲），所以这不是「映射错字段」而是「信息根本不存在」——换任何字段都换不出真的。⚠️ 反向陷阱：**容器级**的 `State.StartedAt` 是真的启动时刻，不要一并删掉。`0.6.0` 移除主机侧的 `startedAt` |
+
+| 37 | **SignalR 的 `MapHub` 不支持路由参数** | 路径里的 `{hostId}` 只参与**路径匹配**，**不会**出现在 `HttpContext.Request.RouteValues` 里（实测该字典的键集合为空）。症状是「Hub 方法里读 `RouteValues["hostId"]` 永远是 null」，而连接本身完全正常（连接建立、鉴权都过了）——极难联想到是路由值的问题。**只能从请求路径解析**（见 `RealtimeHostResolver.ResolveHostId`）。推论：**不要在 Hub 里依赖路由值** |
+| 38 | **Docker 的日志回调是「逐行」且「不含换行符」** | `GetContainerLogsAsync` 的 `IProgress<string>` 回调**每次给一整行，行尾没有 `\n`**（实测：块长 6 = `"line-2"`）。把回调内容直接拼接会得到 `"helloworld"`——所有日志挤成一行。旧实现正是如此，且**在 mock 模式下完全看不出来**（mock 数据是手工写的带换行文本）。配套两条：① 回调必须**同步**实现——`System.Progress<T>` 会把回调扔到线程池，**重排顺序**；② 跟随任务只在**流结束**时完成，**不能 await** 它（await 等于把枚举卡死） |
+| 39 | **`pnpm typecheck` 目前是空跑** | 根 `tsconfig.json` 是 solution 形态（`files: []` + `references`），`vue-tsc --noEmit` **不检查任何文件**（`--build` 模式才会走 references）。因此 `pnpm build` 的第一步也是空跑——**类型错误要到运行时才暴露**。要真正检查：`npx vue-tsc -p tsconfig.app.json --noEmit`（注意它会暴露一批**既存**错误，改代码前后要**对比基线**而不是看绝对数） |
+| 40 | **`?access_token=` 只在 `/hubs` 前缀下被接受** | 服务端只在 `/hubs` 开头的路径上把查询参数改写成 `Authorization: Bearer` 头。其它路径带了它会被**忽略**（而不是被当成有效凭证）——这是刻意的：否则任何带这个查询串的普通接口都会被「顺带」鉴权，CORS / 缓存 / 访问日志的行为都变得不可预测。前端**推荐**用 `accessTokenFactory` 而不是把令牌拼进 URL：URL 在连接建立时只算一次，而令牌会变 |
 
 > **Dapper 物化能力（已核实，勿再沿用旧判断）**：Dapper **可以**物化「非公开构造 + 非公开 setter」
 > 的充血实体，用 `skipVisibility` 动态方法。**不需要** Row DTO，**不需要** `InternalsVisibleTo`。
