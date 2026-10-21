@@ -180,6 +180,23 @@ public class HostsEndpointsTests : IAsyncLifetime
         overview.Counts.Volumes.Should().BeGreaterThan(0);
         overview.Counts.Networks.Should().BeGreaterThan(0);
 
+        // 运行 + 停止 必然不超过总数（暂停中的容器两边都不算，因此可能严格小于）。
+        overview.Counts.ContainersRunning.Should().BeGreaterThanOrEqualTo(0);
+        overview.Counts.ContainersStopped.Should().BeGreaterThanOrEqualTo(0);
+        (overview.Counts.ContainersRunning + overview.Counts.ContainersStopped)
+            .Should().BeLessThanOrEqualTo(overview.Counts.Containers);
+
+        // 健康 / 不健康只覆盖「配了健康检查」的容器，同样不可能超过总数。
+        overview.Counts.ContainersHealthy.Should().BeGreaterThanOrEqualTo(0);
+        overview.Counts.ContainersUnhealthy.Should().BeGreaterThanOrEqualTo(0);
+        (overview.Counts.ContainersHealthy + overview.Counts.ContainersUnhealthy)
+            .Should().BeLessThanOrEqualTo(overview.Counts.Containers);
+
+        // 镜像磁盘占用来自 /system/df：本机守护进程支持，因此必须给得出数字
+        // （给 null 会让界面显示「—」，而这个断言能拦住「调用写错了被静默吞掉」）。
+        overview.Counts.ImagesSizeBytes.Should().NotBeNull();
+        overview.Counts.ImagesSizeBytes!.Value.Should().BeGreaterThanOrEqualTo(0);
+
         overview.StartedAt.Should().NotBeNull();
     }
 
@@ -231,7 +248,16 @@ public class HostsEndpointsTests : IAsyncLifetime
         DateTimeOffset? StartedAt,
         VersionPayload? Version);
 
-    private sealed record CountsPayload(long Containers, long Images, long Volumes, long Networks);
+    private sealed record CountsPayload(
+        long Containers,
+        long Images,
+        long Volumes,
+        long Networks,
+        long ContainersRunning,
+        long ContainersStopped,
+        long ContainersHealthy,
+        long ContainersUnhealthy,
+        long? ImagesSizeBytes);
 
     private sealed record VersionPayload(string? Version, string? ApiVersion, string? Os, string? Arch);
 
