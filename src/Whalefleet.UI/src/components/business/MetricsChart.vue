@@ -152,12 +152,33 @@ function resize(): void {
   chart?.resize()
 }
 
+/**
+ * 容器尺寸观察者。
+ *
+ * ⚠️ **只监听 `window.resize` 是不够的**：侧栏折叠、详情页从单栏切到双栏、
+ * 图片加载导致布局回流——这些都会改变容器宽度却**不**触发 window resize，
+ * 图表会停在旧宽度（右侧留白或左侧被裁）。`ResizeObserver` 观察容器本身，覆盖全部情形。
+ */
+let observer: ResizeObserver | null = null
+
 onMounted(() => {
   render()
+
+  if (typeof ResizeObserver !== 'undefined' && host.value) {
+    observer = new ResizeObserver(resize)
+    observer.observe(host.value)
+
+    return
+  }
+
+  // 兜底：极老的环境没有 ResizeObserver（jsdom 也没有），退回窗口级监听
   window.addEventListener('resize', resize)
 })
 
 onBeforeUnmount(() => {
+  observer?.disconnect()
+  observer = null
+
   window.removeEventListener('resize', resize)
   chart?.dispose()
   chart = null
