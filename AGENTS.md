@@ -220,6 +220,12 @@ DDD 战术模式（聚合根 / 领域事件 / 领域服务）**已整体移除**
 | 38 | **Docker 的日志回调是「逐行」且「不含换行符」** | `GetContainerLogsAsync` 的 `IProgress<string>` 回调**每次给一整行，行尾没有 `\n`**（实测：块长 6 = `"line-2"`）。把回调内容直接拼接会得到 `"helloworld"`——所有日志挤成一行。旧实现正是如此，且**在 mock 模式下完全看不出来**（mock 数据是手工写的带换行文本）。配套两条：① 回调必须**同步**实现——`System.Progress<T>` 会把回调扔到线程池，**重排顺序**；② 跟随任务只在**流结束**时完成，**不能 await** 它（await 等于把枚举卡死） |
 | 39 | **`pnpm typecheck` 目前是空跑** | 根 `tsconfig.json` 是 solution 形态（`files: []` + `references`），`vue-tsc --noEmit` **不检查任何文件**（`--build` 模式才会走 references）。因此 `pnpm build` 的第一步也是空跑——**类型错误要到运行时才暴露**。要真正检查：`npx vue-tsc -p tsconfig.app.json --noEmit`（注意它会暴露一批**既存**错误，改代码前后要**对比基线**而不是看绝对数） |
 | 40 | **`?access_token=` 只在 `/hubs` 前缀下被接受** | 服务端只在 `/hubs` 开头的路径上把查询参数改写成 `Authorization: Bearer` 头。其它路径带了它会被**忽略**（而不是被当成有效凭证）——这是刻意的：否则任何带这个查询串的普通接口都会被「顺带」鉴权，CORS / 缓存 / 访问日志的行为都变得不可预测。前端**推荐**用 `accessTokenFactory` 而不是把令牌拼进 URL：URL 在连接建立时只算一次，而令牌会变 |
+| 41 | **日志与统计的订阅上限必须分开** | 两者共用 `RealtimeOptions.MaxSubscriptionsPerKind`（5）时，「列表里 20 个容器加指标列」只能有前 5 个有数据。统计独立为 `MaxStatsSubscriptionsPerConnection`（20）；共用上限的症状是**界面不报错、只是大部分行永远是「—」** |
+| 42 | **容器列表接口不返回健康与重启计数** | `/containers/json` 只把健康写在 `status` 文本里，`restartCount` / `exitCode` / `oomKilled` 只有 inspect 才有。因此列表健康列走批量端点 `POST .../containers/health`（≤100 项、并发 8）：把 N 次 inspect 绑进每 5 秒的列表刷新等于把刷新成本放大 N 倍 |
+| 43 | **`healthStatus` 的 `none` 不是 `null`** | 「没配健康检查」是永远不会变的事实，「查不到」是另一件事。返回 `null` 会让界面把两者混为一谈；`none` 是**契约值**，mock 与前端类型必须跟着改 |
+| 44 | **ECharts 必须懒加载，且颜色不能硬编码** | 直接 `import 'echarts'` 会让整包进主 bundle（实测按需引入后仍是 ~176KB gz）。另外 canvas **不继承 CSS 变量**：颜色要在运行时 `getComputedStyle` 读取，并在主题切换时重新 `setOption`，否则暗色下网格与文字看不清 |
+| 45 | **删除标签要先删关联** | `host_tag_assignments` 对 `host_tags` 有外键，软删标签不删关联会让「同名标签重建」继承旧关联。打标/清标用 `INSERT OR IGNORE` / `DELETE` 实现幂等；`host_id` 存的是 `hosts.id`（Guid 小写 36 位），**不是主机名**——主机名可改 |
+| 46 | **手动 `stop` 也会产生 `die` 事件** | 只订 `die` / `oom` 时，`docker stop` 也会弹「异常退出」。必须同时订 `stop` / `kill`，并用 10 秒窗口吞掉随后的 `die`；`oom` + `die` 是**同一次死亡的两条事件**，要去重 |
 
 > **Dapper 物化能力（已核实，勿再沿用旧判断）**：Dapper **可以**物化「非公开构造 + 非公开 setter」
 > 的充血实体，用 `skipVisibility` 动态方法。**不需要** Row DTO，**不需要** `InternalsVisibleTo`。

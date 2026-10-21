@@ -478,7 +478,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 
 | 操作 | 路径 | 角色 | 说明 |
 |------|------|------|------|
-| 可见主机列表 | `POST /api/v1/hosts/list` | 任意已登录 | 返回**当前用户可见**的主机（含 `status`）；全局持有内置 `admin` 角色者返回全部，其余按**带作用域的角色分配**过滤（判定标准是是否具备 `host.read`） |
+| 可见主机列表 | `POST /api/v1/hosts/list` | 任意已登录 | 返回**当前用户可见**的主机（含 `status` 与 `tags`）；全局持有内置 `admin` 角色者返回全部，其余按**带作用域的角色分配**过滤（判定标准是是否具备 `host.read`）。可选 body 见下方「主机列表过滤」 |
 | 单台概览 | `POST /api/v1/hosts/{hostId}/overview` | 任意已登录 | 返回单台主机的 `version` / `counts` / `daemon`（`startedAt` **0.6.0 移除**）；失败形态 `1300`/404、`1501`/403 |
 
 **两个端点共用同一个响应形状**（列表里取不到的字段为 `null`，对应界面上的「—」占位）：
@@ -523,6 +523,7 @@ POST /api/v1/hosts/{hostId}/containers/list
     "dockerRootDir": "/var/lib/docker",
     "securityOptions": ["name=apparmor,profile=default", "name=seccomp,profile=builtin"],
     "liveRestoreEnabled": false, "firewallBackend": "iptables",
+    "cdiSpecDirs": ["/etc/cdi", "/var/run/cdi"],
     "httpProxy": null, "httpsProxy": null, "noProxy": null,
     "warnings": []
   }
@@ -542,6 +543,8 @@ POST /api/v1/hosts/{hostId}/containers/list
 > - **`cpuCount` / `memoryBytes` 是静态上限，不是实时指标**（`/info` 只给 `NCPU` / `MemTotal`）；
 >   界面上不得标成「当前 CPU / 内存」
 > - **代理 URL 强制遮蔽 userinfo**：`http://user:pass@host` 里的密码不得进入响应体
+> - **`firewallBackend` 是驱动名字符串**：SDK 4.3.3 里 `/info` 的该字段是对象
+>   （`{ Driver, Info }`），这里只取 `Driver`——`Info` 是驱动内部细节，换一个后端就没有对应含义
 > - **不新增 Docker 调用**：全部字段来自已有的那次 `/info`
 
 > **两个端点为什么共用一个形状**：前端把「主机列表」与「单台概览」都装进同一个 `HostOverview` 类型，
@@ -738,21 +741,38 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 磁盘用量 | `POST /api/v1/hosts/{hostId}/system/df` | 无 Body；**`type` 可选**（`image` / `container` / `volume` / `build-cache`），省略则返回全部 |
 
 ```jsonc
-// POST /api/v1/hosts/{hostId}/system/df  →  Response.data
+// POST /api/v1/hosts/{hostId}/system/df?type=volume  →  Response.data
+// （不带 type 时四类全查；带 type 时**未查询的类为 null**）
 {
-  "layersSize": 10737418240,             // 已用层大小
-  "images":    [ { "id": "…", "size": 123456, "reclaimable": 0 } ],
-  "containers":[ { "id": "…", "size": 0,     "reclaimable": 0 } ],
-  "volumes":   [ { "name": "…", "size": 3221225472, "reclaimable": 0 } ],
-  "buildCache":[ { "id": "…", "size": 0,     "reclaimable": 0 } ]
+  "images": {
+    "totalCount": 30, "activeCount": 12,
+    "totalSize": 10737418240, "reclaimable": 3221225472,
+    "items": [ { "id": "sha256:…", "name": "nginx:latest", "size": 123456, "inUse": true } ]
+  },
+  "containers": { "totalCount": 0, "activeCount": 0, "totalSize": 0, "reclaimable": 0, "items": [] },
+  "volumes": {
+    "totalCount": 5, "activeCount": 3,
+    "totalSize": 3221225472, "reclaimable": 0,
+    "items": [ { "id": "app-data", "name": "app-data", "size": 1048576, "inUse": true } ]
+  },
+  "buildCache": { "totalCount": 2, "activeCount": 0, "totalSize": 536870912, "reclaimable": 536870912, "items": [] }
 }
 ```
 
-> **`type` 过滤不能省**：不指定时守护进程会顺带统计镜像层，慢好几秒。
+> **`type` 白名单**：`image` / `container` / `volume` / `build-cache`（注意带连字符）。
+> 其它值 → `1000`/400，**不**静默忽略（忽略会让用户以为自己筛选了）。
 >
-> **`reclaimable` 与 `size` 可为 `null`**：`null` = 守护进程没给用量（老版本守护进程、
-> 第三方驱动，或用量查询失败），`0` = 确实是 0。界面必须分别渲染——
-> 统一显示「—」会丢掉「确实是 0」这个信息。
+> **`type` 过滤不能省**：不指定时守护进程会同时统计四类，在镜像多的机器上要多等好几秒。
+>
+> **未查询的类是 `null` 而不是空桶**：空桶会被读成「这台机器上没有卷」，
+> 而真相是「这趟没查」——与 `imagesSizeBytes` 查不到时给 `null` 同源。
+>
+> **`totalSize` / `reclaimable` 可为 `null`**：`null` = 守护进程没给用量
+> （老版本守护进程、第三方驱动，或用量查询失败），`0` = 确实是 0。
+> 界面必须分别渲染——统一显示「—」会丢掉「确实是 0」这个信息。
+>
+> **条目里的 `inUse` 也可为 `null`**（未知）：镜像按「被至少一个容器引用」判，
+> 容器恒为 `true`，卷看 `UsageData.RefCount`，构建缓存看缓存记录的 `InUse`。
 
 #### 容器健康与退出原因
 
@@ -766,11 +786,45 @@ POST /api/v1/hosts/{hostId}/containers/list
 
 > **健康状态只从 inspect 取**：列表接口不返回它——`docker ps` 没有健康检查列，
 > 要拿到就得逐个 inspect，与「每 5 秒刷一次列表」的代价不成比例。
-> 因此列表页的健康列由**单独的一次批量查询**供给，查询失败时降级为「—」而不是报错。
+> 因此列表页的健康列走**单独的批量端点**（见下），查询失败时降级为「—」而不是报错。
 >
 > **`healthStatus` 不用 `null` 表示「未配置」**：那是两种不同的事——
 > `none`（没配健康检查，永远不会变）与 `null`（取不到）。混成一个值，
 > 界面就没法把「没配」与「查不到」分开表达。
+
+#### 批量健康查询
+
+| 操作 | 路径 | 角色 | 说明 |
+|------|------|------|------|
+| 批量健康与退出原因 | `POST /api/v1/hosts/{hostId}/containers/health` | 任意已登录（需 `container.read`） | Body: `{ containerIds: string[] }`（≤100 项，服务端去重） |
+
+```jsonc
+// POST /api/v1/hosts/local/containers/health
+// Request: { "containerIds": ["abc123…", "def456…"] }
+// Response.data
+{
+  "items": [
+    {
+      "containerId": "abc123…",
+      "name": "web",
+      "healthStatus": "unhealthy",   // none | starting | healthy | unhealthy
+      "restartCount": 7,
+      "exitCode": 137,              // 运行中恒为 null
+      "oomKilled": true,
+      "running": false
+    }
+  ]
+}
+```
+
+> **查不到的容器直接缺席**（不从 `items` 返回）：容器可能在两次刷新之间被删掉，
+> 那是列表页的正常竞态；单条失败不该让整批请求变成错误。前端对缺失项显示「—」。
+>
+> **上限 100 项**（= 列表一页上限），服务端并发 inspect 8 条：串行时 100 个容器
+> 在远程主机上要等好几秒，并发太高又会把小型守护进程打满。
+>
+> **为什么不塞进 `list`**：列表每 5 秒刷一次，把 N 次 inspect 绑进去等于把刷新成本放大 N 倍。
+> 拆成独立端点后，界面可以只在「健康列开着、且只查当前页」时才去查。
 
 #### 明确不做
 
