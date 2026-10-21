@@ -1,6 +1,7 @@
 using Docker.DotNet;
 using Docker.DotNet.Models;
 using Whalefleet.Application.Abstractions;
+using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Docker;
 using Microsoft.Extensions.Logging;
@@ -45,20 +46,26 @@ public sealed class ImageService
 
     private readonly IDockerHostAccessor _accessor;
     private readonly ILogger<ImageService> _logger;
+    private readonly IOperationProgressPublisher? _progressPublisher;
 
     /// <summary>
     /// 初始化镜像用例。
     /// </summary>
     /// <param name="accessor">主机访问器（解析主机并取得 Docker 客户端）。</param>
     /// <param name="logger">日志。</param>
+    /// <param name="progressPublisher">进度发布器（0.5.0）；为 <see langword="null"/> 时不推实时进度。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
-    public ImageService(IDockerHostAccessor accessor, ILogger<ImageService> logger)
+    public ImageService(
+        IDockerHostAccessor accessor,
+        ILogger<ImageService> logger,
+        IOperationProgressPublisher? progressPublisher = null)
     {
         ArgumentNullException.ThrowIfNull(accessor);
         ArgumentNullException.ThrowIfNull(logger);
 
         _accessor = accessor;
         _logger = logger;
+        _progressPublisher = progressPublisher;
     }
 
     /// <summary>
@@ -178,7 +185,7 @@ public sealed class ImageService
             Platform = string.IsNullOrWhiteSpace(request.Platform) ? null : request.Platform.Trim(),
         };
 
-        var collector = new PullCollector(_logger, hostId, reference);
+        var collector = new PullCollector(_logger, hostId, reference, _progressPublisher, request.ProgressToken);
 
         _logger.LogInformation("开始拉取镜像 {Reference}", reference);
 
@@ -193,7 +200,21 @@ public sealed class ImageService
         // 「镜像 / 仓库不存在」由 SDK 抛异常（走翻译器的 1401），
         // 而「仓库不让你拉」「网络中断」只在进度流里带一条 error，SDK 毫不知情。
         // 不检查这一条，后一类就会被报成「成功但什么也没拉到」。
-        collector.ThrowIfFailed();
+        try
+        {
+            collector.ThrowIfFailed();
+        }
+        catch (BusinessException exception)
+        {
+            await this.PublishTerminalAsync(
+                request.ProgressToken,
+                "pull",
+                percent: null,
+                status: "拉取失败",
+                error: exception.Message).ConfigureAwait(false);
+
+            throw;
+        }
 
         // 验收标准要求「返回镜像 ID 与大小」：这两项只能从 inspect 拿。这次 inspect 顺带确认
         // 镜像确实落盘了（拉取流结束不等于所有层都写完了）。
@@ -209,11 +230,51 @@ public sealed class ImageService
             inspected.Size,
             collector.LayerCount);
 
+        // 终态推送（0.5.0）：界面靠它把进度条收尾，而不是停在某个中间值。
+        await this.PublishTerminalAsync(
+            request.ProgressToken,
+            "pull",
+            percent: 100,
+            status: "拉取完成",
+            error: null).ConfigureAwait(false);
+
         return new ImagePullResult(
             inspected.ID,
             reference,
             inspected.Size,
             MapReferences(inspected.RepoTags));
+    }
+
+    /// <summary>
+    /// 推送一个终态进度（完成或失败）。
+    /// </summary>
+    /// <param name="progressToken">进度令牌。</param>
+    /// <param name="operation">操作类型。</param>
+    /// <param name="percent">总体百分比。</param>
+    /// <param name="status">状态文案。</param>
+    /// <param name="error">失败原因；成功时为 <see langword="null"/>。</param>
+    /// <returns>表示异步操作的任务。</returns>
+    private async Task PublishTerminalAsync(
+        string? progressToken,
+        string operation,
+        double? percent,
+        string status,
+        string? error)
+    {
+        if (_progressPublisher is null || string.IsNullOrWhiteSpace(progressToken))
+        {
+            return;
+        }
+
+        var progress = new Abstractions.Realtime.ImageOperationProgress(
+            progressToken,
+            operation,
+            percent,
+            status,
+            Done: error is null,
+            Error: error);
+
+        await _progressPublisher.PublishAsync(progress).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -787,6 +848,10 @@ public sealed class ImageService
         private readonly ILogger _logger;
         private readonly string _hostId;
         private readonly string _reference;
+        private readonly ImageProgressAggregator _aggregator = new();
+        private readonly IOperationProgressPublisher? _publisher;
+        private readonly string? _progressToken;
+        private readonly ProgressPublishThrottle _throttle = new(TimeSpan.FromMilliseconds(200));
         private string? _failure;
 
         /// <summary>
@@ -795,11 +860,20 @@ public sealed class ImageService
         /// <param name="logger">日志（逐层进度记 Debug，完成与失败记 Information / Warning）。</param>
         /// <param name="hostId">主机标识（写进日志便于定位是哪台主机）。</param>
         /// <param name="reference">镜像引用（写进日志便于定位是哪个镜像）。</param>
-        public PullCollector(ILogger logger, string hostId, string reference)
+        /// <param name="publisher">进度发布器；为 <see langword="null"/> 时不推实时进度。</param>
+        /// <param name="progressToken">进度令牌（与 <paramref name="publisher"/> 配套）。</param>
+        public PullCollector(
+            ILogger logger,
+            string hostId,
+            string reference,
+            IOperationProgressPublisher? publisher = null,
+            string? progressToken = null)
         {
             _logger = logger;
             _hostId = hostId;
             _reference = reference;
+            _publisher = publisher;
+            _progressToken = progressToken;
         }
 
         /// <summary>已见到的层数（按带层 ID 的进度消息计）。</summary>
@@ -831,6 +905,11 @@ public sealed class ImageService
                 LayerCount++;
             }
 
+            // 聚合总体进度并转发（0.5.0）。失败与完成消息也要转发：
+            // 「拉取失败」必须让界面立刻停下来，而不是停在 87% 一直转。
+            this._aggregator.Update(message);
+            this.Publish(message);
+
             // Digest 那条是最后一条成功标记；其余逐层进度只进 Debug，避免刷屏。
             if (status.StartsWith("Digest:", StringComparison.OrdinalIgnoreCase))
             {
@@ -849,6 +928,36 @@ public sealed class ImageService
                 _reference,
                 message.ID ?? "-",
                 status);
+        }
+
+        /// <summary>
+        /// 转发一次进度。
+        /// </summary>
+        /// <param name="message">原始进度消息。</param>
+        private void Publish(JSONMessage message)
+        {
+            if (_publisher is null || string.IsNullOrWhiteSpace(_progressToken))
+            {
+                return;
+            }
+
+            if (!_throttle.ShouldPublish())
+            {
+                return;
+            }
+
+            var failure = message.Error?.Message;
+
+            var progress = new Abstractions.Realtime.ImageOperationProgress(
+                _progressToken,
+                "pull",
+                this._aggregator.Percent,
+                this._aggregator.LastStatus ?? string.Empty,
+                Done: false,
+                Error: failure);
+
+            // fire-and-forget：进度推送失败不能影响拉取本身。
+            _ = _publisher.PublishAsync(progress).AsTask();
         }
 
         /// <summary>

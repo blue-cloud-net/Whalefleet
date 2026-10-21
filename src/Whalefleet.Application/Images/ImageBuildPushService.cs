@@ -1,6 +1,7 @@
 using Docker.DotNet;
 using Docker.DotNet.Models;
 using Whalefleet.Application.Abstractions;
+using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Docker;
 using Whalefleet.Application.Repositories;
@@ -38,6 +39,7 @@ public sealed class ImageBuildPushService
     private readonly IDockerHostAccessor _accessor;
     private readonly IRepositoryCredentialResolver _repositories;
     private readonly ILogger<ImageBuildPushService> _logger;
+    private readonly IOperationProgressPublisher? _progressPublisher;
 
     /// <summary>
     /// 初始化用例服务。
@@ -45,11 +47,13 @@ public sealed class ImageBuildPushService
     /// <param name="accessor">主机访问器（解析主机并取得 Docker 客户端）。</param>
     /// <param name="repositories">仓库凭据解析器。</param>
     /// <param name="logger">日志。</param>
+    /// <param name="progressPublisher">进度发布器（0.5.0）；为 <see langword="null"/> 时不推实时进度。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
     public ImageBuildPushService(
         IDockerHostAccessor accessor,
         IRepositoryCredentialResolver repositories,
-        ILogger<ImageBuildPushService> logger)
+        ILogger<ImageBuildPushService> logger,
+        IOperationProgressPublisher? progressPublisher = null)
     {
         ArgumentNullException.ThrowIfNull(accessor);
         ArgumentNullException.ThrowIfNull(repositories);
@@ -58,6 +62,7 @@ public sealed class ImageBuildPushService
         _accessor = accessor;
         _repositories = repositories;
         _logger = logger;
+        _progressPublisher = progressPublisher;
     }
 
     /// <summary>
@@ -118,7 +123,11 @@ public sealed class ImageBuildPushService
             Platform = string.IsNullOrWhiteSpace(request.Platform) ? null : request.Platform.Trim(),
         };
 
-        var collector = new StreamCollector(MaxLogLines);
+        var collector = new StreamCollector(
+            MaxLogLines,
+            _progressPublisher,
+            request.ProgressToken,
+            "build");
 
         _logger.LogInformation(
             "主机 {HostId} 开始构建镜像 {Reference}（Dockerfile={Dockerfile}，构建参数 {BuildArgCount} 个，标签 {LabelCount} 个，不用缓存={NoCache}）",
@@ -159,7 +168,21 @@ public sealed class ImageBuildPushService
 
         // 必须查进度消息：构建失败时 HTTP 层仍可能是 200，错误只在流里。
         // 不检查这一条，「Dockerfile 语法错」会被报成「构建成功但什么也没产出」。
-        collector.ThrowIfFailed(ErrorCodes.ImageBuildFailed, $"构建镜像 {reference}:{tag}");
+        try
+        {
+            collector.ThrowIfFailed(ErrorCodes.ImageBuildFailed, $"构建镜像 {reference}:{tag}");
+        }
+        catch (BusinessException exception)
+        {
+            await this.PublishTerminalAsync(
+                request.ProgressToken,
+                "build",
+                percent: null,
+                status: "构建失败",
+                error: exception.Message).ConfigureAwait(false);
+
+            throw;
+        }
 
         var fullReference = $"{reference}:{tag}";
         var inspected = await DockerErrorTranslator.ExecuteAsync(
@@ -174,12 +197,52 @@ public sealed class ImageBuildPushService
             inspected.Size,
             collector.Count);
 
+        // 终态推送（0.5.0）：界面靠它把进度条收尾。
+        await this.PublishTerminalAsync(
+            request.ProgressToken,
+            "build",
+            percent: 100,
+            status: "构建完成",
+            error: null).ConfigureAwait(false);
+
         return new ImageBuildResult(
             inspected.ID ?? string.Empty,
             fullReference,
             inspected.Size,
             ImageService.MapReferences(inspected.RepoTags),
             collector.Lines);
+    }
+
+    /// <summary>
+    /// 推送一个终态进度（完成或失败）。
+    /// </summary>
+    /// <param name="progressToken">进度令牌。</param>
+    /// <param name="operation">操作类型。</param>
+    /// <param name="percent">总体百分比。</param>
+    /// <param name="status">状态文案。</param>
+    /// <param name="error">失败原因；成功时为 <see langword="null"/>。</param>
+    /// <returns>表示异步操作的任务。</returns>
+    private async Task PublishTerminalAsync(
+        string? progressToken,
+        string operation,
+        double? percent,
+        string status,
+        string? error)
+    {
+        if (_progressPublisher is null || string.IsNullOrWhiteSpace(progressToken))
+        {
+            return;
+        }
+
+        var progress = new Abstractions.Realtime.ImageOperationProgress(
+            progressToken,
+            operation,
+            percent,
+            status,
+            Done: error is null,
+            Error: error);
+
+        await _progressPublisher.PublishAsync(progress).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -398,16 +461,31 @@ public sealed class ImageBuildPushService
     {
         private readonly int _maxLines;
         private readonly List<string> _lines;
+        private readonly ImageProgressAggregator _aggregator = new();
+        private readonly IOperationProgressPublisher? _publisher;
+        private readonly string? _progressToken;
+        private readonly string _operation;
+        private readonly ProgressPublishThrottle _throttle = new(TimeSpan.FromMilliseconds(200));
         private string? _failure;
 
         /// <summary>
         /// 初始化收集器。
         /// </summary>
         /// <param name="maxLines">保留的日志行数上限。</param>
-        public StreamCollector(int maxLines)
+        /// <param name="publisher">进度发布器；为 <see langword="null"/> 时不推实时进度。</param>
+        /// <param name="progressToken">进度令牌（与 <paramref name="publisher"/> 配套）。</param>
+        /// <param name="operation">操作类型（<c>build</c> / <c>push</c>）。</param>
+        public StreamCollector(
+            int maxLines,
+            IOperationProgressPublisher? publisher = null,
+            string? progressToken = null,
+            string operation = "build")
         {
             _maxLines = maxLines;
             _lines = new List<string>(Math.Min(maxLines, 64));
+            _publisher = publisher;
+            _progressToken = progressToken;
+            _operation = operation;
         }
 
         /// <summary>已收集的日志行（最多 <c>maxLines</c> 行，失败时含原因行）。</summary>
@@ -436,6 +514,38 @@ public sealed class ImageBuildPushService
             }
 
             this.Append(status);
+
+            // 聚合总体进度并转发（0.5.0）。
+            this._aggregator.Update(message);
+            this.Publish(message);
+        }
+
+        /// <summary>
+        /// 转发一次进度。
+        /// </summary>
+        /// <param name="message">原始进度消息。</param>
+        private void Publish(JSONMessage message)
+        {
+            if (_publisher is null || string.IsNullOrWhiteSpace(_progressToken))
+            {
+                return;
+            }
+
+            if (!_throttle.ShouldPublish())
+            {
+                return;
+            }
+
+            var progress = new Abstractions.Realtime.ImageOperationProgress(
+                _progressToken,
+                _operation,
+                this._aggregator.Percent,
+                this._aggregator.LastStatus ?? string.Empty,
+                Done: false,
+                Error: message.Error?.Message);
+
+            // fire-and-forget：进度推送失败不能影响构建本身。
+            _ = _publisher.PublishAsync(progress).AsTask();
         }
 
         /// <summary>
