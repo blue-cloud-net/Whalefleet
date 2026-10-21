@@ -144,10 +144,37 @@ export type HostStatus = 'online' | 'offline' | 'unknown'
 
 /** 单台主机的资源计数（列表端点不给；由 `getHostOverview()` 提供，未取到或主机离线时缺省） */
 export interface HostCounts {
+  /** 容器总数（含已停止） */
   containers: number
+  /** 镜像总数 */
   images: number
   volumes: number
   networks: number
+  /**
+   * 运行中的容器数（后端 `/info` 的 `ContainersRunning`）。
+   *
+   * 与 `containers` 一起构成总览页的「运行 / 总数」——只给总数看不出这台机器是不是
+   * 已经「挂了一半容器」。
+   */
+  containersRunning: number
+  /** 已停止的容器数（后端 `/info` 的 `ContainersStopped`） */
+  containersStopped: number
+  /**
+   * 健康检查通过的容器数。
+   *
+   * ⚠️ 与 `containersUnhealthy` 之和**通常小于** `containers`：绝大多数容器没配健康检查，
+   * 「没配」既不是健康也不是不健康。
+   */
+  containersHealthy: number
+  /** 健康检查失败的容器数 */
+  containersUnhealthy: number
+  /**
+   * 镜像层占用的磁盘字节数（后端 `/system/df?type=image` 的 `TotalSize`）。
+   *
+   * `null` 表示**查不到**（守护进程不支持或调用失败），界面应显示占位符而不是「0」——
+   * 0 字节会被读成「这台机器上没有镜像」。
+   */
+  imagesSizeBytes: number | null
 }
 
 /**

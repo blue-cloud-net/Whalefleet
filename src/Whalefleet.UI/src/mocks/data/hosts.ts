@@ -1,5 +1,5 @@
 import type { HostCounts, HostGroup, HostOverview } from '@/types/api'
-import { MOCK_CONTAINERS_DEFAULT } from './containers'
+import { MOCK_CONTAINER_DETAILS, MOCK_CONTAINERS_DEFAULT } from './containers'
 import { MOCK_IMAGES_DEFAULT } from './images'
 
 /**
@@ -102,9 +102,43 @@ export const MOCK_HOSTS_DEFAULT: HostOverview[] = [
 ]
 
 /**
+ * 容器细分计数：运行 / 停止 / 健康 / 不健康。
+ *
+ * **由容器夹具算出**，不手写：主机概况卡片上的「12 运行 / 1 不健康」与容器列表里
+ * 实际列出来的条数对不上，是那种会被当成前端 bug 报上来的幽灵问题。
+ *
+ * 口径与后端一致：
+ * - 运行 / 停止取自容器状态（后端取自 `/info` 的 `ContainersRunning` / `ContainersStopped`）
+ * - 健康 / 不健康只算**配了健康检查**的容器；`starting` 与没配的都两边都不计
+ */
+const CONTAINER_BREAKDOWN = {
+  // ⚠️ `ContainerDetail.state` 是**对象**（`{ status, running, paused, healthStatus… }`），
+  // 不是字符串——写成 `c.state === 'running'` 会恒为 false，界面上四个数全是 0。
+  running: MOCK_CONTAINER_DETAILS.filter((c) => c.state.status === 'running').length,
+  stopped: MOCK_CONTAINER_DETAILS.filter(
+    (c) => c.state.status === 'exited' || c.state.status === 'dead'
+  ).length,
+  healthy: MOCK_CONTAINER_DETAILS.filter((c) => c.state.healthStatus === 'healthy').length,
+  unhealthy: MOCK_CONTAINER_DETAILS.filter((c) => c.state.healthStatus === 'unhealthy').length
+}
+
+/**
+ * 镜像层占用的磁盘字节数。
+ *
+ * 后端取的是 `/system/df?type=image` 的 `TotalSize`（**去重后**的实际占用）。
+ * mock 只能近似：`size` 是逻辑大小、`sharedSize` 是与别的镜像共享的部分，
+ * 逐条相减再求和即「每条镜像独占的层」之和——与去重后的真实占用同量级，
+ * 但**不会**精确相等（Docker 的层共享是图结构，不是简单减法）。
+ */
+const IMAGES_SIZE_BYTES = MOCK_IMAGES_DEFAULT.reduce(
+  (sum, image) => sum + Math.max(image.size - image.sharedSize, 0),
+  0
+)
+
+/**
  * 每台主机在**单台概览端点**（`POST /hosts/{hostId}/overview`）返回的资源计数。
  *
- * ⚠️ 列表端点**不带计数**（后端刻意如此：每台要额外四次守护进程调用）。
+ * ⚠️ 列表端点**不带计数**（后端刻意如此：每台要额外若干次守护进程调用）。
  * 计数只经概览端点下发——早先 mock 把计数挂在列表上，于是 `?mock=counts` 里磁贴有值、
  * 一接真后端全变「—」，等于用 mock 验收了一个假状态。
  *
@@ -117,13 +151,23 @@ export const MOCK_HOST_COUNTS: Record<string, HostCounts> = {
     containers: MOCK_CONTAINERS_DEFAULT.length,
     images: MOCK_IMAGES_DEFAULT.length,
     volumes: 5,
-    networks: 4
+    networks: 4,
+    containersRunning: CONTAINER_BREAKDOWN.running,
+    containersStopped: CONTAINER_BREAKDOWN.stopped,
+    containersHealthy: CONTAINER_BREAKDOWN.healthy,
+    containersUnhealthy: CONTAINER_BREAKDOWN.unhealthy,
+    imagesSizeBytes: IMAGES_SIZE_BYTES
   },
   'prod-01': {
     containers: MOCK_CONTAINERS_DEFAULT.length,
     images: MOCK_IMAGES_DEFAULT.length,
     volumes: 11,
-    networks: 7
+    networks: 7,
+    containersRunning: CONTAINER_BREAKDOWN.running,
+    containersStopped: CONTAINER_BREAKDOWN.stopped,
+    containersHealthy: CONTAINER_BREAKDOWN.healthy,
+    containersUnhealthy: CONTAINER_BREAKDOWN.unhealthy,
+    imagesSizeBytes: IMAGES_SIZE_BYTES
   }
 }
 
