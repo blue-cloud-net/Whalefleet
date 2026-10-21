@@ -97,6 +97,16 @@ public static class ErrorCodes
     /// <summary>分组不存在（HTTP 404）。</summary>
     public const int GroupNotFound = 1305;
 
+    /// <summary>主机标签不存在（HTTP 404）。</summary>
+    /// <remarks>
+    /// 标签与分组是两种不同的组织方式（多对多自由打标 vs 单一归属），错误码不复用：
+    /// 界面需要把提示落在「标签」这个字段上，合并码之后就再也分不开了。
+    /// </remarks>
+    public const int HostTagNotFound = 1306;
+
+    /// <summary>主机标签名已被占用（HTTP 400）。</summary>
+    public const int HostTagNameAlreadyExists = 1307;
+
     // ==================== 1400-1499 资源操作 ====================
 
     /// <summary>Docker 资源（容器 / 镜像 / Volume / Network）不存在（HTTP 404）。</summary>

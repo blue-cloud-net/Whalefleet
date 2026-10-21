@@ -49,6 +49,8 @@ public static class ErrorCodeCatalog
             [ErrorCodes.HostNameAlreadyExists] = (ErrorCategory.Validation, "主机名已被占用"),
             [ErrorCodes.GroupNameAlreadyExists] = (ErrorCategory.Validation, "分组名已被占用"),
             [ErrorCodes.GroupNotFound] = (ErrorCategory.NotFound, "分组不存在"),
+            [ErrorCodes.HostTagNotFound] = (ErrorCategory.NotFound, "主机标签不存在"),
+            [ErrorCodes.HostTagNameAlreadyExists] = (ErrorCategory.Validation, "主机标签名已被占用"),
 
             [ErrorCodes.DockerResourceNotFound] = (ErrorCategory.NotFound, "容器 / 镜像 / Volume / Network 不存在"),
             [ErrorCodes.DockerApiFailed] = (ErrorCategory.Internal, "Docker API 调用失败"),

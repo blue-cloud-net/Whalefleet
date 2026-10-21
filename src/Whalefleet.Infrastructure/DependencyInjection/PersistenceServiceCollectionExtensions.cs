@@ -80,6 +80,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<IUserRepository, SqliteUserRepository>();
         services.AddScoped<IHostRepository, SqliteHostRepository>();
         services.AddScoped<IHostGroupRepository, SqliteHostGroupRepository>();
+        services.AddScoped<IHostTagRepository, SqliteHostTagRepository>();
         services.AddScoped<IRefreshTokenRepository, SqliteRefreshTokenRepository>();
         services.AddScoped<IUserRoleAssignmentRepository, SqliteUserRoleAssignmentRepository>();
         services.AddScoped<IRepositoryCredentialRepository, SqliteRepositoryCredentialRepository>();

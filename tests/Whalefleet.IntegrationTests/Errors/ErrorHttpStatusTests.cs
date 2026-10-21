@@ -45,6 +45,8 @@ public class ErrorHttpStatusTests
         [ErrorCodes.HostNameAlreadyExists] = 400,
         [ErrorCodes.GroupNameAlreadyExists] = 400,
         [ErrorCodes.GroupNotFound] = 404,
+        [ErrorCodes.HostTagNotFound] = 404,
+        [ErrorCodes.HostTagNameAlreadyExists] = 400,
 
         [ErrorCodes.DockerResourceNotFound] = 404,
         [ErrorCodes.DockerApiFailed] = 500,
