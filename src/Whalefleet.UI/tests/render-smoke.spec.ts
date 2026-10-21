@@ -49,6 +49,33 @@ vi.mock('../src/api/auth', () => ({
   refreshSession: vi.fn()
 }))
 
+// ===== 0.5.0：容器日志端点与实时通道 =====
+// 日志页会真的去拉日志并建立 SignalR 连接；渲染守卫不该发网络请求，
+// 也不该在 jsdom 里连 WebSocket。
+vi.mock('../src/api/container', () => ({
+  getContainerLogs: vi.fn(async () => ({
+    containerId: 'smoke-container',
+    lines: [
+      { seq: 1, timestamp: '2026-10-20T10:00:00Z', line: 'hello from smoke' },
+      { seq: 2, timestamp: '2026-10-20T10:00:01Z', line: 'second line' }
+    ],
+    truncated: false
+  })),
+  downloadContainerLogs: vi.fn(async () => ({ blob: new Blob(['x']), fileName: 'smoke.log' }))
+}))
+
+vi.mock('../src/realtime/connection', () => ({
+  createHubConnection: vi.fn(() => ({
+    on: vi.fn(),
+    onreconnected: vi.fn(),
+    start: vi.fn(async () => undefined),
+    stop: vi.fn(async () => undefined),
+    invoke: vi.fn(async () => ({ success: true, code: null, message: null }))
+  })),
+  hubUrl: vi.fn((path: string) => `/hubs/${path}`),
+  hostHubPath: vi.fn((hostId: string, kind: string) => `hosts/${hostId}/${kind}`)
+}))
+
 // ===== element-plus 的消息组件是副作用调用，桩掉以免污染测试输出 =====
 vi.mock('element-plus', async (importOriginal) => {
   const actual = await importOriginal<typeof import('element-plus')>()
@@ -311,6 +338,109 @@ describe('镜像列表页渲染冒烟（0.4.0 改过模板）', () => {
     // 这次给 ImagesView 加了按钮与对话框 import，改过的模板行必须能真的渲染
     expect(wrapper.text()).toContain('构建镜像')
     expect(wrapper.text()).toContain('拉取镜像')
+    wrapper.unmount()
+  })
+})
+
+describe('0.5.0 实时通道组件渲染冒烟', () => {
+  it('日志视口（虚拟滚动）渲染出序号与正文', async () => {
+    const LogViewport = (await import('../src/components/business/LogViewport.vue')).default
+
+    const wrapper = await mountSmoke(LogViewport, {
+      props: {
+        lines: [
+          { seq: 1, timestamp: '2026-10-20T10:00:00Z', line: 'hello from smoke' },
+          { seq: 2, timestamp: '2026-10-20T10:00:01Z', line: 'second line' }
+        ],
+        mutation: { version: 1, kind: 'reset', count: 2 },
+        follow: true,
+        paused: false,
+        hasMore: false,
+        loadingOlder: false,
+        wrap: true,
+        showTimestamp: true,
+        dropped: 0
+      }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    expect(wrapper.text()).toContain('hello from smoke')
+    expect(wrapper.text()).toContain('second line')
+    wrapper.unmount()
+  })
+
+  it('日志视口：丢了行时要提示', async () => {
+    const LogViewport = (await import('../src/components/business/LogViewport.vue')).default
+
+    const wrapper = await mountSmoke(LogViewport, {
+      props: {
+        lines: [{ seq: 1, timestamp: null, line: 'only one' }],
+        mutation: { version: 1, kind: 'reset', count: 1 },
+        follow: true,
+        paused: false,
+        hasMore: false,
+        loadingOlder: false,
+        wrap: true,
+        showTimestamp: false,
+        dropped: 7
+      }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    expect(wrapper.text()).toContain('已丢弃 7 行')
+    wrapper.unmount()
+  })
+
+  it('通知铃铛渲染出未读标记', async () => {
+    const NotificationBell = (await import('../src/components/common/NotificationBell.vue')).default
+
+    const wrapper = await mountSmoke(NotificationBell)
+
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    // 无未读时不该有红点；有通知时要有。
+    expect(wrapper.find('.bg-danger').exists()).toBe(false)
+
+    const { useNotificationStore } = await import('../src/stores/notifications')
+    useNotificationStore().push({
+      hostId: 'local',
+      containerId: 'abc123',
+      containerName: 'web',
+      exitCode: 137,
+      outOfMemory: true,
+      occurredAt: '2026-10-20T10:00:00Z'
+    })
+
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    expect(wrapper.find('.bg-danger').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('容器日志页渲染出工具条与日志内容', async () => {
+    const ContainerLogsView = (await import('../src/views/ContainerLogsView.vue')).default
+
+    const wrapper = await mountSmoke(ContainerLogsView, {
+      path: '/hosts/prod-01/containers/abc123/logs'
+    })
+
+    await wrapper.vm.$nextTick()
+    // 等日志请求的 promise 落定
+    await Promise.resolve()
+    await Promise.resolve()
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    // 工具条上的开关必须在（模板改过最容易在这里炸）
+    expect(wrapper.text()).toContain('实时跟随')
+    expect(wrapper.text()).toContain('自动换行')
+    expect(wrapper.text()).toContain('下载日志')
     wrapper.unmount()
   })
 })
