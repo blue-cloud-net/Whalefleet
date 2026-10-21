@@ -3,6 +3,7 @@ using Whalefleet.Api.Development;
 using Whalefleet.Api.Configuration;
 using Whalefleet.Api.Errors;
 using Whalefleet.Api.Middleware;
+using Whalefleet.Api.Realtime;
 using Whalefleet.Api.Serialization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.FileProviders;
@@ -37,6 +38,10 @@ builder.Services.AddApiCurrentHost();
 
 // CORS 白名单（默认空 = 完全拒绝跨域；开发环境走 Vite 代理，无需放行）
 builder.Services.AddApiCors(builder.Configuration);
+
+// 实时通道（0.5.0）：SignalR、Hub、订阅表与 Realtime 配置节。
+// 必须在 AddInfrastructure 之后：Hub 要用主机访问器与权限判定（都由基础设施层注册）。
+builder.Services.AddApiRealtime(builder.Configuration);
 
 // ASP.NET Core MVC（Controller 风格）
 // 统一 JSON 编码策略（中文原样输出而非 \uXXXX），与错误响应序列化器共用同一套默认值。
@@ -161,6 +166,22 @@ app.UseCurrentHost();
 
 app.MapControllers();
 app.MapHealthChecks("/healthz");
+
+// ============================== 实时通道（0.5.0） ==============================
+// 三条 Hub：
+//   /hubs/hosts/{hostId}/container-log    容器日志逐行推送（主机作用域）
+//   /hubs/hosts/{hostId}/container-stats  容器资源采样推送（主机作用域）
+//   /hubs/notification                    全局通知（容器异常退出、镜像操作进度）
+//
+// ⚠️ 路径里带 {hostId} 的两条：CurrentHostMiddleware 会按路由值解析主机并校验可见性，
+//    因此**不需要**为 Hub 另写一套主机解析。但「能不能读这台主机的容器」是更细的权限，
+//    仍在 Hub 方法里逐次校验（见 RealtimeHostResolver）。
+//
+// ⚠️ 顺序：必须与 MapControllers 同一段（端点映射区），在 UseCurrentHost 之后——
+//    UseCurrentHost 是中间件，读的是路由值，与端点映射的先后无关，但放在同一段更清楚。
+app.MapHub<ContainerLogHub>(RealtimeHubRoutes.ContainerLog);
+app.MapHub<ContainerStatsHub>(RealtimeHubRoutes.ContainerStats);
+app.MapHub<NotificationHub>(RealtimeHubRoutes.Notification);
 
 // 8) 开发专用故障注入端点：仅 Development 环境注册，生产环境不存在该路由。
 //    用于验证「异常 → 统一 ApiResult 错误响应」，并供集成测试复用。
