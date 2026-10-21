@@ -71,6 +71,10 @@ public static class InfrastructureServiceCollectionExtensions
 
         services.AddHostedService<DockerClientPoolReaper>();
 
+        // 容器事件监听（0.5.0）：后台服务，每台主机一条 Docker events 长连接。
+        // 依赖 Scoped 的主机仓储与访问器 → 内部自开作用域。
+        services.AddHostedService<Realtime.ContainerEventWatcher>();
+
         // 主机访问器是 Scoped（依赖 Scoped 的主机仓储）；池是 Singleton——
         // 二者生命周期不同，故「解析主机」与「池化客户端」分属两层。
         services.AddScoped<IDockerHostAccessor, DockerHostAccessor>();
