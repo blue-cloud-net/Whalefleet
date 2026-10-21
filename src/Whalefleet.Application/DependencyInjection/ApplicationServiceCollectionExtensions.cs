@@ -1,5 +1,7 @@
 using Whalefleet.Application.Abstractions;
+using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Auth;
+using Whalefleet.Application.Common;
 using Whalefleet.Application.Containers;
 using Whalefleet.Application.HostGroups;
 using Whalefleet.Application.Hosts;
@@ -86,6 +88,29 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<RepositoryService>();
         services.AddScoped<IRepositoryCredentialResolver>(static provider =>
             provider.GetRequiredService<RepositoryService>());
+
+        // 容器事件总线（0.5.0）：**Singleton**——它就是一条进程内的广播通道，
+        // 它的「状态」是订阅方列表。注册成 Scoped 会让每个请求拿到一个互不相识的实例，
+        // 事件根本传不出去。
+        services.AddSingleton<IContainerEventBus, InProcessContainerEventBus>();
+
+        // 实时通道选项（0.5.0）的**形状**定义在应用层（应用服务与 Hub 都要读它：
+        // 订阅上限是 Hub 的约束，而频道容量 / 采样间隔是流服务的约束），
+        // 但**绑定与校验放在 Api 层**——配置绑定是入站适配器的职责，
+        // 而应用层不引入配置绑定相关的包。
+        // 详见 Api/DependencyInjection/RealtimeServiceCollectionExtensions.cs。
+        //
+        // 这里仍然注册一次「空」的选项类型：保证只用应用层时
+        // IOptions<RealtimeOptions> 也能解析（拿到默认值），而不是在 DI 里报「找不到服务」。
+        services.AddOptions<RealtimeOptions>();
+
+        // 容器日志流与资源采样流（0.5.0）。Scoped：依赖 Scoped 的主机访问器。
+        // 流的生命周期由订阅者的连接决定，与 HTTP 请求无关。
+        services.AddScoped<ContainerStreamService>();
+        services.AddScoped<IContainerLogProvider>(static provider =>
+            provider.GetRequiredService<ContainerStreamService>());
+        services.AddScoped<IContainerStatsProvider>(static provider =>
+            provider.GetRequiredService<ContainerStreamService>());
 
         return services;
     }
