@@ -272,7 +272,7 @@
     "health": {
       "healthy": "健康",
       "none": "未配置",
-      "starting": "启动中",
+      "starting": "检查中",
       "unhealthy": "不健康"
     },
     "id": "标识",
