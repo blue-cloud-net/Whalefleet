@@ -38,7 +38,7 @@ function cycle() {
     <el-button
       text
       class="!w-8 !h-8 !p-0 rounded-md"
-      :aria-label="t('theme.mode')"
+      :aria-label="t('theme.mode.title')"
       @click="cycle"
     >
       <span class="text-lg leading-none" :class="themeModeIcon(mode)" />

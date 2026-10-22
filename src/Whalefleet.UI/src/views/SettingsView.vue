@@ -47,7 +47,7 @@ function onLocaleChange(next: AppLocale) {
       <SectionCard :title="t('settings.appearance')">
         <div class="space-y-5">
           <div class="flex items-center justify-between gap-4 flex-wrap">
-            <span class="text-sm text-content-body">{{ t('theme.mode') }}</span>
+            <span class="text-sm text-content-body">{{ t('theme.mode.title') }}</span>
             <el-radio-group
               :model-value="theme.mode"
               size="small"
@@ -60,7 +60,7 @@ function onLocaleChange(next: AppLocale) {
           </div>
 
           <div class="flex items-center justify-between gap-4 flex-wrap">
-            <span class="text-sm text-content-body">{{ t('theme.color') }}</span>
+            <span class="text-sm text-content-body">{{ t('theme.color.title') }}</span>
             <!-- 色板选择比单选按钮更直观 -->
             <div class="flex items-center gap-2">
               <button

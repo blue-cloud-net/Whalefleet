@@ -151,7 +151,7 @@ function goEvents() {
     -->
     <SectionCard
       class="app-section"
-      :title="t('status.diskUsage')"
+      :title="t('status.diskUsage.title')"
       :description="t('status.diskUsage.hint')"
       density="dense"
     >
