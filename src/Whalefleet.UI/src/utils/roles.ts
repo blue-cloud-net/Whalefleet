@@ -103,7 +103,10 @@ const DOMAIN_LABEL_KEYS: Record<string, string> = {
   volume: 'permission.domain.volume',
   user: 'permission.domain.user',
   role: 'permission.domain.role',
-  registry: 'permission.domain.registry',
+  // ⚠️ 键名必须与**后端发的域标识**逐字一致：`repository.read` 取第一段得到的是
+  // `repository`（见 src/Whalefleet.Core/Permissions/Permission.cs）。写成 `registry`
+  // 会让 `domainLabelKey()` 返回 null，权限矩阵的分组标题回退显示英文原词。
+  repository: 'permission.domain.repository',
   audit: 'permission.domain.audit'
 }
 

@@ -53,8 +53,8 @@ export const MOCK_PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { name: 'host.manage', domain: 'host', level: 'manage', scope: 'global' },
   // 仓库配置是全局的（同一份凭据在多台主机上通用），
   // 因此不用 host.manage 把它挤进主机域：那样会变成「管得了主机才配得了仓库」
-  { name: 'repository.read', domain: 'registry', level: 'read', scope: 'global' },
-  { name: 'repository.write', domain: 'registry', level: 'write', scope: 'global' },
+  { name: 'repository.read', domain: 'repository', level: 'read', scope: 'global' },
+  { name: 'repository.write', domain: 'repository', level: 'write', scope: 'global' },
   { name: 'audit.read', domain: 'audit', level: 'read', scope: 'global' }
 ]
 
