@@ -809,6 +809,12 @@
       "allTags": "All tags",
       "clear": "Clear filters",
       "empty": "No hosts match the filters.",
+      "field": {
+        "group": "Group",
+        "keyword": "Keyword",
+        "status": "Status",
+        "tags": "Tags"
+      },
       "search": "Search name or endpoint",
       "status": "Any status",
       "ungrouped": "Ungrouped"

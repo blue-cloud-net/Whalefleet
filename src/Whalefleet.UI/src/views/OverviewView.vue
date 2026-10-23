@@ -144,49 +144,82 @@ const stats = computed(() => [
       过滤栏（0.6.0）：分组 / 标签 / 状态 / 关键字。
       ⚠️ 「未分组」用空串（`:value="''"`），不要给 `null`——`el-option` 不接受 null 作为 value，
       而且 JSON 也分不清「没给」与「给了 null」。
+
+      每个条件都配一个**常驻短标签**：选项一旦选中，placeholder 就被替换掉了，
+      剩下的只有「prod」这样的值——没有标签就分不清它筛的是分组还是标签。
+
+      ⚠️ el-select / el-input 的宽度必须写 `!w-*`：Element Plus 把这两者的宽度写死成
+      `var(--el-select-width)` / `var(--el-input-width)`（默认都是 100%），而它的样式表
+      排在 UnoCSS **之后**，同特异度下它赢——`w-40` 之类的工具类会被**静默吃掉**，
+      控件因此撑满整行（一行一个），筛选栏看起来像被拉坏了。
     -->
-    <div class="app-card mb-4 flex flex-wrap items-center gap-2 px-3 py-2.5">
-      <el-select
-        v-model="filter.groupId"
-        size="small"
-        class="w-40"
-        @change="applyFilter"
-      >
-        <el-option :label="t('overview.filter.all')" value="__all__" />
-        <el-option :label="t('overview.filter.ungrouped')" value="" />
-        <el-option v-for="group in host.groups" :key="group.id" :label="group.name" :value="group.id" />
-      </el-select>
+    <div class="app-card mb-4 flex flex-wrap items-center gap-x-5 gap-y-2.5 px-4 py-3">
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-content-muted">{{ t('overview.filter.field.group') }}</span>
+        <el-select
+          v-model="filter.groupId"
+          size="small"
+          class="!w-36"
+          :aria-label="t('overview.filter.field.group')"
+          @change="applyFilter"
+        >
+          <el-option :label="t('overview.filter.all')" value="__all__" />
+          <el-option :label="t('overview.filter.ungrouped')" value="" />
+          <el-option v-for="group in host.groups" :key="group.id" :label="group.name" :value="group.id" />
+        </el-select>
+      </div>
 
-      <el-select
-        v-model="filter.tagIds"
-        size="small"
-        multiple
-        collapse-tags
-        class="w-44"
-        :placeholder="t('overview.filter.allTags')"
-        @change="applyFilter"
-      >
-        <el-option v-for="tag in tags" :key="tag.id" :label="tag.name" :value="tag.id" />
-      </el-select>
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-content-muted">{{ t('overview.filter.field.tags') }}</span>
+        <el-select
+          v-model="filter.tagIds"
+          size="small"
+          multiple
+          collapse-tags
+          class="!w-40"
+          :placeholder="t('overview.filter.allTags')"
+          :aria-label="t('overview.filter.field.tags')"
+          @change="applyFilter"
+        >
+          <el-option v-for="tag in tags" :key="tag.id" :label="tag.name" :value="tag.id" />
+        </el-select>
+      </div>
 
-      <el-select v-model="filter.status" size="small" class="w-32" @change="applyFilter">
-        <el-option :label="t('overview.filter.status')" value="" />
-        <el-option label="Online" value="online" />
-        <el-option label="Offline" value="offline" />
-        <el-option label="Unknown" value="unknown" />
-      </el-select>
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-content-muted">{{ t('overview.filter.field.status') }}</span>
+        <el-select
+          v-model="filter.status"
+          size="small"
+          class="!w-32"
+          :aria-label="t('overview.filter.field.status')"
+          @change="applyFilter"
+        >
+          <el-option :label="t('overview.filter.status')" value="" />
+          <el-option :label="t('host.status.online')" value="online" />
+          <el-option :label="t('host.status.offline')" value="offline" />
+          <el-option :label="t('host.status.unknown')" value="unknown" />
+        </el-select>
+      </div>
 
-      <el-input
-        v-model="filter.search"
-        size="small"
-        clearable
-        class="w-52"
-        :placeholder="t('overview.filter.search')"
-        @keyup.enter="applyFilter"
-        @clear="applyFilter"
-      />
+      <div class="flex min-w-[12rem] flex-1 items-center gap-2">
+        <span class="text-xs text-content-muted">{{ t('overview.filter.field.keyword') }}</span>
+        <el-input
+          v-model="filter.search"
+          size="small"
+          clearable
+          class="!w-full"
+          :placeholder="t('overview.filter.search')"
+          :aria-label="t('overview.filter.field.keyword')"
+          @keyup.enter="applyFilter"
+          @clear="applyFilter"
+        />
+      </div>
 
-      <el-button v-if="filtering" size="small" text @click="clearFilter">
+      <!--
+        「清除过滤」常驻而不是按需出现：按需出现会让筛选栏在选中条件时**整个跳一下**，
+        视线要重新定位。没条件时置灰即可。
+      -->
+      <el-button size="small" text class="!ml-auto" :disabled="!filtering" @click="clearFilter">
         <span class="i-carbon-close text-sm" />
         {{ t('overview.filter.clear') }}
       </el-button>
