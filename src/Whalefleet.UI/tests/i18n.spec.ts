@@ -218,4 +218,37 @@ describe('i18n 词条一致性', () => {
 
     expect(failures).toEqual([])
   })
+
+  /**
+   * 容器创建表单三个编辑器的提示词条曾经**根本没有登记**。
+   *
+   * `EnvVarEditor.vue` / `PortMappingEditor.vue` / `VolumeMountEditor.vue` 引用了
+   * 下面这 6 个 key，语言包里却没有——用户填错时界面直接显示
+   * `container.create.envInvalid` 这样的字面 key 路径。
+   *
+   * 「中英 key 集合一致」与「每条词条都能编译」这两道都拦不住它：
+   * 缺的 key 在两个语言包里同时缺，集合照样一致；少一条也不会触发任何编译错误。
+   * 只有真正渲染到那一句才会暴露，所以这里把 6 个 key 显式列出来守着。
+   */
+  it('容器创建表单三个编辑器的 6 条提示词条都已登记', () => {
+    const editorKeys = [
+      'container.create.envHint',
+      'container.create.envInvalid',
+      'container.create.portHint',
+      'container.create.portInvalid',
+      'container.create.volumeHint',
+      'container.create.volumeInvalid'
+    ]
+
+    for (const key of editorKeys) {
+      expect(zhFlat[key], `zh 缺少 ${key}`).toBeTruthy()
+      expect(enFlat[key], `en 缺少 ${key}`).toBeTruthy()
+    }
+
+    // 错误提示要带行号占位符，否则「第几行错了」这个信息丢了
+    for (const key of editorKeys.filter((k) => k.endsWith('Invalid'))) {
+      expect(zhFlat[key], `zh:${key} 缺少 {line} 占位符`).toContain('{line}')
+      expect(enFlat[key], `en:${key} 缺少 {line} 占位符`).toContain('{line}')
+    }
+  })
 })
