@@ -42,6 +42,15 @@ public sealed class ContainerRealtimeEndpointTests : IAsyncLifetime
     // **不断言具体输出内容**（镜像里跑的是什么不是本用例的考点）。
     private static readonly string[] _keepAliveCommand = ["sleep", "30"];
 
+    /// <summary>
+    /// 覆盖入口点，让容器只输出一行然后继续存活。
+    /// </summary>
+    /// <remarks>
+    /// <c>cmd</c> 会被追加在 <c>Entrypoint</c> 之后，因此 <c>sh -c</c> 收到的额外参数只是
+    /// <c>$0</c> / <c>$1</c>，不影响脚本本身。
+    /// </remarks>
+    private static readonly string[] _singleLineEntrypoint = ["/bin/sh", "-c", "echo line-one; sleep 30"];
+
     private ApiFactory _factory = null!;
 
     /// <inheritdoc />
@@ -136,21 +145,25 @@ public sealed class ContainerRealtimeEndpointTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
-    [DockerImageFact]
+    [DockerShellImageFact]
     public async Task 日志_返回结构化行()
     {
         using var client = await CreateAuthenticatedClientAsync();
 
-        var image = DockerAvailability.ImageReference!;
+        var image = DockerAvailability.ShellImageReference!;
         var name = $"dm-rt-{Guid.NewGuid():N}"[..16];
         string? containerId = null;
 
         try
         {
+            // 显式覆盖入口点，让容器**恰好输出一行**。
+            // 宿主上第一张有标签的镜像的默认入口点不可控：没有入口点的镜像跑 sleep 时一行都不输出，
+            // 而本项目自己的镜像（入口点是 API 宿主）会输出上百行启动日志——
+            // 两种情况都让「按行返回」这件事无从断言。
             var created = await PostDataAsync<CreatedPayload>(
                 client,
                 "create",
-                new { image, name, cmd = _keepAliveCommand });
+                new { image, name, cmd = _keepAliveCommand, entrypoint = _singleLineEntrypoint });
 
             containerId = created.ContainerId;
 
