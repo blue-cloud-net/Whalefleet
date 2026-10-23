@@ -79,3 +79,46 @@ public sealed record RemoveNetworkRequest
     /// </remarks>
     public string? NetworkId { get; init; }
 }
+
+/// <summary>
+/// 把容器接入网络请求（对应 <c>docker network connect</c>）。
+/// </summary>
+/// <remarks>
+/// <para><b>幂等</b>：容器已经在该网络上时视为成功，不报错。
+/// 理由与批量删除的「重复项先去重」同源——用户点了两次、或两个界面同时操作，
+/// 得到的应该是同一个结果，而不是一次莫名其妙的失败。</para>
+/// <para><b>容器必须处于运行中</b>：守护进程只允许接入运行中的容器
+/// （停止的容器没有网络命名空间可接入）。</para>
+/// </remarks>
+public sealed record ConnectNetworkRequest
+{
+    /// <summary>容器标识（容器 ID 或容器名）；必填。</summary>
+    public string? ContainerId { get; init; }
+
+    /// <summary>网络标识（网络 ID 或网络名）；必填。</summary>
+    public string? NetworkId { get; init; }
+}
+
+/// <summary>
+/// 把容器从网络断开请求（对应 <c>docker network disconnect</c>）。
+/// </summary>
+/// <remarks>
+/// <para><b>幂等</b>：容器本来就不在该网络上时视为成功（它已经是「断开」的状态）。</para>
+/// <para><b>断开会让容器立刻失去该网络的连通性</b>，因此界面必须二次确认。</para>
+/// </remarks>
+public sealed record DisconnectNetworkRequest
+{
+    /// <summary>容器标识（容器 ID 或容器名）；必填。</summary>
+    public string? ContainerId { get; init; }
+
+    /// <summary>网络标识（网络 ID 或网络名）；必填。</summary>
+    public string? NetworkId { get; init; }
+
+    /// <summary>是否强制断开；省略为 <see langword="false"/>。</summary>
+    /// <remarks>
+    /// <b>强制会连累别人</b>：Docker 的 <c>network disconnect --force</c> 会把
+    /// <b>共用同一个网络命名空间</b>的容器一起踢掉——那可能是另一个业务容器。
+    /// 因此默认不强制，需要时由用户显式勾选。
+    /// </remarks>
+    public bool? Force { get; init; }
+}

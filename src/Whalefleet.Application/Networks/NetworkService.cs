@@ -270,6 +270,188 @@ public sealed class NetworkService
     }
 
     /// <summary>
+    /// 把容器接入网络（对应 <c>docker network connect</c>，**幂等**）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">接入请求（容器标识、网络标识）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <exception cref="BusinessException">
+    /// 标识为空或非法（<c>1000</c>）、容器或网络不存在（<c>1401</c>）、
+    /// 容器未运行（<c>1404</c>）或 Docker 调用失败（<c>1402</c>）。
+    /// </exception>
+    /// <remarks>
+    /// <para><b>幂等必须自己实现</b>：守护进程对「容器已经在这个网络上」的行为
+    /// 在不同版本上并不一致（有的回 403「已接入」，有的当作成功），
+    /// 照搬它的行为就等于把版本差异暴露给用户。因此这里先读一次容器与网络的实际状态，
+    /// 已经在网上了就<b>直接返回成功</b>。</para>
+    /// <para><b>为什么先 inspect 两次</b>：容器的 <c>NetworkSettings.Networks</c> 是
+    /// <b>按网络名</b>索引的（不是按 ID），而用户可能拿着网络 ID 来请求；
+    /// 要判断「是否已接入」，就必须先知道这个 ID 对应的网络叫什么。
+    /// 两次 inspect 换来的是确定的幂等语义，值得。</para>
+    /// </remarks>
+    public async Task ConnectContainerAsync(
+        string hostId,
+        ConnectNetworkRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var containerId = RequireContainerId(request.ContainerId);
+        var networkId = DockerResourceName.Require(request.NetworkId, nameof(request.NetworkId), "网络");
+        var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
+
+        var network = await DockerErrorTranslator.ExecuteAsync(
+            () => client.Networks.InspectNetworkAsync(networkId, cancellationToken),
+            $"网络 {networkId}",
+            cancellationToken).ConfigureAwait(false);
+
+        var container = await DockerErrorTranslator.ExecuteAsync(
+            () => client.Containers.InspectContainerAsync(containerId, cancellationToken),
+            $"容器 {containerId}",
+            cancellationToken).ConfigureAwait(false);
+
+        if (IsAttached(container, network))
+        {
+            _logger.LogInformation(
+                "主机 {HostId} 容器 {ContainerId} 已在网络 {NetworkId} 上，无需重复接入",
+                hostId,
+                containerId,
+                network.Name);
+
+            return;
+        }
+
+        await DockerErrorTranslator.ExecuteAsync(
+            () => client.Networks.ConnectNetworkAsync(
+                networkId,
+                new NetworkConnectParameters { Container = container.ID },
+                cancellationToken),
+            $"容器 {containerId} 接入网络 {network.Name}",
+            cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation(
+            "主机 {HostId} 容器 {ContainerId} 接入网络 {NetworkId}",
+            hostId,
+            containerId,
+            network.Name);
+    }
+
+    /// <summary>
+    /// 把容器从网络断开（对应 <c>docker network disconnect</c>，**幂等**）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">断开请求（容器标识、网络标识、是否强制）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <exception cref="BusinessException">
+    /// 标识为空或非法（<c>1000</c>）、容器或网络不存在（<c>1401</c>）或 Docker 调用失败（<c>1402</c>）。
+    /// </exception>
+    /// <remarks>
+    /// <para><b>幂等必须自己实现</b>：守护进程对「容器本来就不在这个网络上」回
+    /// 404（<c>is not connected to network</c>），那会让「本来就没接」与
+    /// 「网络不存在」变成同一个错误码。因此这里先读实际状态，
+    /// 不在该网络上就<b>直接返回成功</b>。</para>
+    /// <para><b>强制断开会连累别的容器</b>：<c>force</c> 会把共用同一网络命名空间的
+    /// 容器一起踢掉，而那些容器用户可能根本不知道存在。默认值是关的。</para>
+    /// </remarks>
+    public async Task DisconnectContainerAsync(
+        string hostId,
+        DisconnectNetworkRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var containerId = RequireContainerId(request.ContainerId);
+        var networkId = DockerResourceName.Require(request.NetworkId, nameof(request.NetworkId), "网络");
+        var force = request.Force ?? false;
+        var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
+
+        var network = await DockerErrorTranslator.ExecuteAsync(
+            () => client.Networks.InspectNetworkAsync(networkId, cancellationToken),
+            $"网络 {networkId}",
+            cancellationToken).ConfigureAwait(false);
+
+        var container = await DockerErrorTranslator.ExecuteAsync(
+            () => client.Containers.InspectContainerAsync(containerId, cancellationToken),
+            $"容器 {containerId}",
+            cancellationToken).ConfigureAwait(false);
+
+        if (!IsAttached(container, network))
+        {
+            _logger.LogInformation(
+                "主机 {HostId} 容器 {ContainerId} 本就不在网络 {NetworkId} 上，无需断开",
+                hostId,
+                containerId,
+                network.Name);
+
+            return;
+        }
+
+        await DockerErrorTranslator.ExecuteAsync(
+            () => client.Networks.DisconnectNetworkAsync(
+                networkId,
+                new NetworkDisconnectParameters { Container = container.ID, Force = force },
+                cancellationToken),
+            $"容器 {containerId} 断开网络 {network.Name}",
+            cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation(
+            "主机 {HostId} 容器 {ContainerId} 断开网络 {NetworkId}（强制={Force}）",
+            hostId,
+            containerId,
+            network.Name,
+            force);
+    }
+
+    /// <summary>
+    /// 判断容器是否已接入某个网络。
+    /// </summary>
+    /// <param name="container">容器详情。</param>
+    /// <param name="network">网络详情。</param>
+    /// <returns>已接入时为 <see langword="true"/>。</returns>
+    /// <remarks>
+    /// <para><b>按网络名比对，再按网络 ID 兜底</b>：容器的
+    /// <c>NetworkSettings.Networks</c> 是<b>按网络名</b>索引的
+    /// （Docker 的 inspect 就是这么给的），每个值里另有一个 <c>NetworkID</c>。
+    /// 两个都比是因为不同守护进程版本在「默认网」这类场景下给出的字段并不完全一致，
+    /// 只比一个会漏判。</para>
+    /// </remarks>
+    private static bool IsAttached(ContainerInspectResponse container, NetworkResponse network)
+    {
+        var networks = container.NetworkSettings?.Networks;
+
+        if (networks is not { Count: > 0 })
+        {
+            return false;
+        }
+
+        if (networks.ContainsKey(network.Name))
+        {
+            return true;
+        }
+
+        return networks.Values.Any(
+            endpoint => string.Equals(endpoint?.NetworkID, network.ID, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// 容器标识必填校验。
+    /// </summary>
+    /// <param name="containerId">请求里的容器标识。</param>
+    /// <returns>去首尾空白后的容器标识。</returns>
+    /// <exception cref="BusinessException">为空时抛 <c>1000</c>。</exception>
+    /// <remarks>
+    /// <b>刻意不套 <c>DockerResourceName</c> 的名字规则</b>：那条规则是给卷与网络名用的
+    /// （字母数字开头），而容器标识可以是 64 位十六进制 ID，也可以是含其它字符的容器名。
+    /// 只要非空就交给守护进程判断——它认得的标识形式比我们多。
+    /// </remarks>
+    private static string RequireContainerId(string? containerId) =>
+        string.IsNullOrWhiteSpace(containerId)
+            ? throw new BusinessException(ErrorCodes.ValidationFailed, "containerId 不能为空")
+            : containerId.Trim();
+
+    /// <summary>
     /// 调用创建接口，并把 Docker 的 <c>403</c> 改写成 <c>1404</c>。
     /// </summary>
     /// <param name="client">该主机的 Docker 客户端。</param>
