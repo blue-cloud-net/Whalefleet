@@ -7,7 +7,8 @@ import type {
   ImagePullResult,
   ImagePushResult,
   ImageRemovedResult,
-  ImageTaggedResult
+  ImageTaggedResult,
+  PruneResult
 } from '@/types/api'
 
 /**
@@ -237,5 +238,32 @@ export function pushImage(
     data: payload,
     // 大镜像推送是分钟级，理由同 buildImage
     timeout: 0
+  })
+}
+
+/**
+ * 清理未被使用的镜像（0.7.0，**不可逆**）。
+ *
+ * ⚠️ **请求里没有「要删哪些」**：选哪些由守护进程按「没有被任何容器使用」判断，
+ * 而**是否只清悬空镜像**由 `danglingOnly` 决定：
+ * - 省略或 `true` = 只清**悬空镜像**（一个标签都不剩的）；
+ * - `false` = **不止悬空**（等价 `docker image prune -a`），
+ *   任何未被容器使用的镜像都是候选。
+ *
+ * ⚠️ **`false` 的语义不是「只要非悬空」**——写反会让用户以为只会删掉无标签的那一批。
+ *
+ * `label` 把范围收窄到带该标签的镜像（`key` 或 `key=value`）。
+ * ⚠️ **省略它就等于「清掉本机全部悬空镜像」**——在共享的开发机上那是别人的构建产物。
+ *
+ * 返回的 `deleted` 是**实际**删掉的（可能与预览的候选清单不一致）。
+ */
+export function pruneImages(
+  hostId: string,
+  payload: { danglingOnly?: boolean; label?: string } = {}
+): Promise<PruneResult> {
+  return request<PruneResult>({
+    url: `/api/v1/hosts/${encodeURIComponent(hostId)}/images/prune`,
+    method: 'post',
+    data: payload
   })
 }

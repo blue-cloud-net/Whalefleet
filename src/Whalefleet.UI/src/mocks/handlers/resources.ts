@@ -329,6 +329,47 @@ export function resourceHandlers(scenario: () => MockScenario) {
       return HttpResponse.json(ok({ requested: names.length, succeeded, failures }))
     }),
 
+    http.post('*/api/v1/hosts/:hostId/volumes/prune', async ({ request }) => {
+      await delay(delayFor(scenario()))
+
+      const body = await readBody(request)
+      const label = String(body.label ?? '').trim()
+
+      if (label.length > MAX_LABEL_LENGTH) {
+        return HttpResponse.json(
+          fail(ErrorCode.ValidationFailed, `label 最长 ${MAX_LABEL_LENGTH} 个字符`),
+          { status: httpStatusOf(ErrorCode.ValidationFailed) }
+        )
+      }
+
+      if (hasControlCharacter(label)) {
+        return HttpResponse.json(fail(ErrorCode.ValidationFailed, 'label 不能包含控制字符'), {
+          status: httpStatusOf(ErrorCode.ValidationFailed)
+        })
+      }
+
+      // 候选口径与守护进程一致：**未被引用** + **本地驱动**（nfs 那些不是本地卷，回收不了空间）
+      const candidates = volumesFor(scenario()).filter((volume) => {
+        if ((volume.refCount ?? 0) !== 0) return false
+        if (volume.driver !== 'local') return false
+        if (label.length > 0 && !matchesLabel(volume.labels, label)) return false
+
+        return true
+      })
+
+      for (const volume of candidates) {
+        removedVolumes.add(volume.name)
+        createdVolumes.delete(volume.name)
+      }
+
+      return HttpResponse.json(
+        ok({
+          deleted: candidates.map((volume) => volume.name),
+          reclaimedBytes: candidates.reduce((sum, volume) => sum + (volume.size ?? 0), 0)
+        })
+      )
+    }),
+
     /* ==================== 网络 ==================== */
 
     http.post('*/api/v1/hosts/:hostId/networks/list', async ({ request }) => {
@@ -454,6 +495,40 @@ export function resourceHandlers(scenario: () => MockScenario) {
       return HttpResponse.json(ok())
     })
   ]
+}
+
+/** 标签过滤表达式的最大长度（与后端 `PruneFilter.MaxLabelLength` 一致）。 */
+const MAX_LABEL_LENGTH = 256
+
+/**
+ * 标签表达式匹配（`key` 或 `key=value`）。
+ *
+ * ⚠️ 语义**原样照搬守护进程**：只写键表示「带这个键即可」，
+ * 写 `键=值` 表示「键与值都相等」。mock 不重新解释一遍——
+ * 两套规则一旦漂移，症状是「我明明选了它却没被清理」。
+ */
+function matchesLabel(labels: Record<string, string>, expression: string): boolean {
+  const index = expression.indexOf('=')
+
+  if (index < 0) {
+    return Object.prototype.hasOwnProperty.call(labels, expression)
+  }
+
+  return labels[expression.slice(0, index)] === expression.slice(index + 1)
+}
+
+
+/**
+ * 标签表达式里是否含控制字符。
+ *
+ * ⚠️ 刻意**不用正则**：控制字符类在正则里会被 ESLint 的 `no-control-regex` 拦下，
+ * 而这里要的就是「逐字符判定」，用 `charCodeAt` 更直白。
+ */
+function hasControlCharacter(value: string): boolean {
+  return Array.from(value).some((character) => {
+    const code = character.charCodeAt(0)
+    return code < 32 || code === 127
+  })
 }
 
 /** 网络详情 → 列表项（列表没有容器数与 IPAM 之外的额外信息）。 */

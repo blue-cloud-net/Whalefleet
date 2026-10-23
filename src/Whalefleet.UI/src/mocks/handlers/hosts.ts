@@ -4,6 +4,7 @@ import { delayFor, hostsFor, type MockScenario } from '../scenarios'
 import { MOCK_HOST_GROUPS, MOCK_HOST_COUNTS, MOCK_HOST_TAGS } from '../data/hosts'
 import { MOCK_CONTAINERS_DEFAULT } from '../data/containers'
 import { MOCK_IMAGES_DEFAULT } from '../data/images'
+import { MOCK_VOLUMES_DEFAULT } from '../data/resources'
 import type { AdminHostSummary, HostDiskUsage, HostGroup, HostOverview, HostTag } from '@/types/api'
 
 /**
@@ -778,14 +779,20 @@ export function hostHandlers(scenario: () => MockScenario) {
       const all: HostDiskUsage = {
         images: {
           totalCount: MOCK_IMAGES_DEFAULT.length,
-          activeCount: MOCK_IMAGES_DEFAULT.length,
+          activeCount: MOCK_IMAGES_DEFAULT.filter((image) => image.containerCount > 0).length,
           totalSize: MOCK_IMAGES_DEFAULT.reduce((sum, image) => sum + image.size, 0),
-          reclaimable: 0,
+          // 可回收量 = 没人用的那些（悬空镜像）——清理入口的「预计可回收」就靠它
+          reclaimable: MOCK_IMAGES_DEFAULT.filter((image) => image.containerCount === 0).reduce(
+            (sum, image) => sum + image.size,
+            0
+          ),
           items: MOCK_IMAGES_DEFAULT.map((image) => ({
             id: image.id,
+            // 悬空镜像没有标签 → name 为 null（**不是**空串）
             name: image.repoTags[0] ?? null,
             size: image.size,
-            inUse: true
+            // 被至少一个容器引用即算「在用」——清理入口据此区分「能删」与「删了会影响容器」
+            inUse: image.containerCount > 0
           }))
         },
         containers: {
@@ -801,11 +808,20 @@ export function hostHandlers(scenario: () => MockScenario) {
           }))
         },
         volumes: {
-          totalCount: 5,
-          activeCount: 3,
-          totalSize: 3_221_225_472,
-          reclaimable: 1_073_741_824,
-          items: []
+          totalCount: MOCK_VOLUMES_DEFAULT.length,
+          activeCount: MOCK_VOLUMES_DEFAULT.filter((volume) => (volume.refCount ?? 0) > 0).length,
+          totalSize: MOCK_VOLUMES_DEFAULT.reduce((sum, volume) => sum + (volume.size ?? 0), 0),
+          reclaimable: MOCK_VOLUMES_DEFAULT.filter(
+            (volume) => volume.refCount === 0 && volume.driver === 'local'
+          ).reduce((sum, volume) => sum + (volume.size ?? 0), 0),
+          items: MOCK_VOLUMES_DEFAULT.map((volume) => ({
+            id: volume.name,
+            name: volume.name,
+            size: volume.size,
+            // refCount 为 0 才是「没人用」；拿不到时给 null（不知道）——
+            // 「不知道」与「确实是 0」在界面上必须能分开
+            inUse: volume.refCount === null ? null : volume.refCount > 0
+          }))
         },
         buildCache: {
           totalCount: 2,

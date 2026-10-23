@@ -925,6 +925,40 @@
       "write": "管理数据卷"
     }
   },
+  "prune": {
+    "action": {
+      "dangling": "清理悬空镜像",
+      "all": "清理所有未使用镜像",
+      "volumes": "清理未使用数据卷"
+    },
+    "title": {
+      "images": "清理镜像",
+      "volumes": "清理数据卷"
+    },
+    "subtitle": {
+      "images": "将被清理的是**没有被任何容器使用**的镜像。此操作不可撤销。",
+      "volumes": "将被清理的是**没有被任何容器引用**的数据卷。此操作不可撤销。"
+    },
+    "candidates": "将被清理（{count} 项）",
+    "reclaimable": "预计可回收 {size}",
+    "empty": "没有可清理的资源。",
+    "unknown": "另有 {count} 项用量未知，未计入上面的清单（守护进程没给出是否被引用）。",
+    "bindMount": "带挂载选项（bind）的数据卷不会被清理——它们其实不是本地卷。",
+    "advanced": "高级",
+    "label": {
+      "title": "标签过滤",
+      "placeholder": "key 或 key=value（留空表示不过滤）",
+      "hint": "只清理带该标签的资源。",
+      "previewNote": "已按标签收窄清理范围：上面的清单是**全量候选**，实际只会清理带该标签的资源。"
+    },
+    "confirm": "确认清理",
+    "done": "已清理 {count} 项",
+    "close": "关闭",
+    "result": {
+      "count": "实际清理了 {count} 项",
+      "reclaimed": "回收空间 {size}"
+    }
+  },
   "repository": {
     "action": {
       "add": "新增配置",

@@ -26,6 +26,22 @@ const untaggedInSession = new Map<string, ImageSummary>()
 /** 本次会话里被**删除**的夹具镜像 id。 */
 const removedInSession = new Set<string>()
 
+/** 标签过滤表达式的最大长度（与后端 `PruneFilter.MaxLabelLength` 一致）。 */
+const MAX_LABEL_LENGTH = 256
+
+/**
+ * 标签表达式里是否含控制字符。
+ *
+ * ⚠️ 刻意**不用正则**：控制字符类在正则里会被 ESLint 的 `no-control-regex` 拦下，
+ * 而这里要的就是「逐字符判定」，用 `charCodeAt` 更直白。
+ */
+function hasControlCharacter(value: string): boolean {
+  return Array.from(value).some((character) => {
+    const code = character.charCodeAt(0)
+    return code < 32 || code === 127
+  })
+}
+
 /** 清空会话内的镜像改动（供测试隔离用）。 */
 export function resetSessionImages(): void {
   pulledInSession.clear()
@@ -324,6 +340,53 @@ export function imageHandlers(scenario: () => MockScenario) {
       // 批量响应**不含**每条镜像解绑了哪些标签——那会让响应体随选中数量膨胀，
       // 而用户在批量场景下需要知道的只有「删没删掉」。
       return HttpResponse.json(ok({ requested: requested.length, succeeded, failures }))
+    }),
+
+    http.post('*/api/v1/hosts/:hostId/images/prune', async ({ request }) => {
+      await delay(delayFor(scenario()))
+
+      const body = await readBody(request)
+      const label = String(body.label ?? '').trim()
+      // 省略 = 只清悬空镜像（与 Docker 一致）；false = 不止悬空（等价 prune -a）
+      const danglingOnly = body.danglingOnly === undefined ? true : body.danglingOnly === true
+
+      if (label.length > MAX_LABEL_LENGTH) {
+        return HttpResponse.json(
+          fail(ErrorCode.ValidationFailed, `label 最长 ${MAX_LABEL_LENGTH} 个字符`),
+          { status: httpStatusOf(ErrorCode.ValidationFailed) }
+        )
+      }
+
+      if (hasControlCharacter(label)) {
+        return HttpResponse.json(fail(ErrorCode.ValidationFailed, 'label 不能包含控制字符'), {
+          status: httpStatusOf(ErrorCode.ValidationFailed)
+        })
+      }
+
+      const candidates = imagesFor(scenario()).filter((image) => {
+        // 被容器引用的镜像一律不动
+        if (image.containerCount > 0) return false
+        // 「只清悬空」= 一个标签都不剩
+        if (danglingOnly && image.repoTags.length > 0) return false
+        // ⚠️ mock 的镜像**没有标签**（后端的 ImageSummary 也不返回标签），
+        // 因此带标签过滤时必然一条都匹配不到——这正是真实行为，不是 mock 的偷懒。
+        if (label.length > 0) return false
+
+        return true
+      })
+
+      for (const image of candidates) {
+        removedInSession.add(image.id)
+        pulledInSession.delete(image.id)
+      }
+
+      return HttpResponse.json(
+        ok({
+          // 优先给标签（用户看得懂），悬空镜像没有标签时退回 ID
+          deleted: candidates.map((image) => image.repoTags[0] ?? image.id),
+          reclaimedBytes: candidates.reduce((sum, image) => sum + image.size, 0)
+        })
+      )
     }),
 
     http.post('*/api/v1/hosts/:hostId/images/tag', async ({ request }) => {

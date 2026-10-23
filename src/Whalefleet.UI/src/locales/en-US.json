@@ -925,6 +925,40 @@
       "write": "Manage volumes"
     }
   },
+  "prune": {
+    "action": {
+      "dangling": "Clean up dangling images",
+      "all": "Clean up all unused images",
+      "volumes": "Clean up unused volumes"
+    },
+    "title": {
+      "images": "Clean up images",
+      "volumes": "Clean up volumes"
+    },
+    "subtitle": {
+      "images": "Images **not used by any container** will be removed. This cannot be undone.",
+      "volumes": "Volumes **not referenced by any container** will be removed. This cannot be undone."
+    },
+    "candidates": "Will be removed ({count})",
+    "reclaimable": "Estimated reclaimable {size}",
+    "empty": "Nothing to clean up.",
+    "unknown": "{count} more item(s) have unknown usage and are not listed above (the daemon did not report whether they are referenced).",
+    "bindMount": "Volumes with mount options (bind) are not removed — they are not local volumes to begin with.",
+    "advanced": "Advanced",
+    "label": {
+      "title": "Label filter",
+      "placeholder": "key or key=value (empty means no filter)",
+      "hint": "Only resources carrying this label are removed.",
+      "previewNote": "The cleanup range is narrowed by label: the list above is the **full set of candidates**, but only resources with that label are actually removed."
+    },
+    "confirm": "Clean up",
+    "done": "Cleaned up {count} item(s)",
+    "close": "Close",
+    "result": {
+      "count": "Actually removed {count} item(s)",
+      "reclaimed": "Reclaimed {size}"
+    }
+  },
   "repository": {
     "action": {
       "add": "Add repository",

@@ -11,6 +11,7 @@ import IconActionButton from '@/components/common/IconActionButton.vue'
 import ListPagination from '@/components/common/ListPagination.vue'
 import ImageSize from '@/components/business/ImageSize.vue'
 import BatchActionBar from '@/components/common/BatchActionBar.vue'
+import PruneDialog from '@/components/business/PruneDialog.vue'
 import {
   batchRemoveVolumes,
   createVolume,
@@ -66,6 +67,9 @@ const tableRef = ref<TableInstance | null>(null)
 
 /** 创建对话框 */
 const createVisible = ref(false)
+
+/** 清理对话框（0.7.0）：清理未被引用的数据卷，不可逆。 */
+const pruneDialogVisible = ref(false)
 const createBusy = ref(false)
 const createFormRef = ref<FormInstance>()
 const createForm = ref({ name: '', driver: '', labels: '' })
@@ -408,6 +412,10 @@ watch(
     >
       <template #actions>
         <el-button :loading="loading" @click="load">{{ t('common.refresh') }}</el-button>
+        <!-- 清理是不可逆操作，因此单独一个按钮而不是挂在行内操作里 -->
+        <el-button @click="pruneDialogVisible = true">
+          {{ t('prune.action.volumes') }}
+        </el-button>
         <el-button type="primary" @click="openCreate">{{ t('volume.action.create') }}</el-button>
       </template>
     </PageHeader>
@@ -614,5 +622,12 @@ watch(
         </div>
       </div>
     </el-drawer>
+
+    <PruneDialog
+      v-model="pruneDialogVisible"
+      :host-id="hostId"
+      resource="volumes"
+      @done="load"
+    />
   </div>
 </template>
