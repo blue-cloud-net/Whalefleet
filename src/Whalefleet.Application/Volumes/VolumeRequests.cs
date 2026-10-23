@@ -84,3 +84,25 @@ public sealed record BatchRemoveVolumesRequest
     /// <remarks>语义与 <see cref="RemoveVolumeRequest.Force"/> 完全相同，同样<b>不能</b>删掉仍被引用的卷。</remarks>
     public bool? Force { get; init; }
 }
+
+/// <summary>
+/// 清理数据卷请求（对应 <c>docker volume prune</c>）。
+/// </summary>
+/// <remarks>
+/// <para><b>没有「只清匿名卷」的开关</b>：守护进程自 Engine API 1.42 起默认只清
+/// 「匿名卷」（那些没有名字的），而本项目的预览（<c>GET /system/df</c>）列的是
+/// <b>全部</b>未被引用的卷。两者对不上时，用户会看到「清单里有 5 个，删完还在」。
+/// 因此服务端固定按「连具名卷一起清」下发（<c>all=true</c>），
+/// 让预览与实际清理是同一套口径。</para>
+/// </remarks>
+public sealed record PruneVolumesRequest
+{
+    /// <summary>
+    /// 标签过滤表达式（<c>key</c> 或 <c>key=value</c>）；省略表示不按标签过滤。
+    /// </summary>
+    /// <remarks>
+    /// 既能用于「只清某类卷」，也让集成测试可以把范围限制在自己建的卷上，
+    /// 而不必真的清掉开发机上所有闲置的卷。
+    /// </remarks>
+    public string? Label { get; init; }
+}
