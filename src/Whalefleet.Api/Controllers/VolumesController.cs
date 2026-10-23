@@ -188,4 +188,43 @@ public sealed class VolumesController : ControllerBase
 
         return this.Ok(ApiResults.Ok(result));
     }
+
+    /// <summary>
+    /// 清理未被引用的数据卷（**不可逆**）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">清理请求（标签过滤）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应，<c>data</c> 为实际删除的卷名与回收字节数。</returns>
+    /// <response code="200">清理完成（可能一个都没删——没有可清理的卷时也是成功）。</response>
+    /// <response code="400">标签过滤表达式非法（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机不存在（<c>1300</c>）。</response>
+    /// <response code="409">另一项清理正在进行中（<c>1404</c>）。</response>
+    /// <response code="502">主机不可达（<c>1301</c>）。</response>
+    /// <remarks>
+    /// <para><b>范围由守护进程决定</b>：它清理「没有被任何容器引用」的卷，
+    /// 并会跳过带挂载选项的卷（那些其实不是本地卷）。</para>
+    /// <para><b>界面必须先展示清单再确认</b>：本端点不可逆，
+    /// 而请求里没有「要删哪些」——安全阀是调用前用
+    /// <c>POST /hosts/{hostId}/system/df</c> 拉出候选清单。</para>
+    /// </remarks>
+    [HttpPost("prune")]
+    [ProducesResponseType(typeof(ApiResult<PruneResult>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> PruneAsync(
+        string hostId,
+        [FromBody] PruneVolumesRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _volumes.PruneAsync(hostId, request, cancellationToken).ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok(result));
+    }
 }
