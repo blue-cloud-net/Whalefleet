@@ -372,22 +372,6 @@
       "runningTotal": "运行中 {running} / 共 {total}",
       "unavailable": "主机离线，资源数量暂不可用"
     },
-    "daemon": {
-      "cgroup": "Cgroup",
-      "components": "组件版本",
-      "cpus": "CPU 核数",
-      "hint": "CPU 核数与内存总量是静态上限（Docker API 不提供宿主机级实时指标）；代理地址中的用户名与口令已被遮蔽。",
-      "kernel": "内核",
-      "logging": "日志驱动",
-      "memory": "内存总量",
-      "mirrors": "镜像加速器",
-      "os": "操作系统",
-      "proxy": "代理",
-      "rootDir": "Docker 根目录",
-      "runtime": "运行时",
-      "storage": "存储驱动",
-      "title": "守护进程信息"
-    },
     "delete": {
       "done": "主机「{name}」已删除"
     },
@@ -400,6 +384,35 @@
     "empty": "还没有注册任何主机，先添加一台吧。",
     "enable": {
       "done": "已启用「{name}」"
+    },
+    "engine": {
+      "agentVersion": "Agent 版本",
+      "apiVersion": "API 版本",
+      "components": "组件版本",
+      "cgroup": "Cgroup 驱动",
+      "disabled": "未启用",
+      "enabled": "已启用",
+      "firewall": "防火墙后端",
+      "goVersion": "Go 版本",
+      "groupPlugins": "插件",
+      "groupRuntime": "运行时与组件",
+      "groupStorage": "存储与驱动",
+      "groupVersion": "版本",
+      "hint": "全部来自守护进程的 /version 与 /info 响应，不新增 Docker 调用。",
+      "init": "init 组件",
+      "liveRestore": "实时恢复",
+      "logging": "日志驱动",
+      "none": "无",
+      "pluginAuth": "授权插件",
+      "pluginLog": "日志插件",
+      "pluginNetwork": "网络插件",
+      "pluginVolume": "卷插件",
+      "rootDir": "Docker 根目录",
+      "runtime": "运行时",
+      "storage": "存储驱动",
+      "title": "引擎信息",
+      "version": "Docker 版本",
+      "warnings": "引擎告警"
     },
     "form": {
       "auth": "认证方式",
@@ -472,8 +485,13 @@
     "info": {
       "agentVersion": "Agent 版本",
       "apiVersion": "API 版本",
+      "arch": "架构",
+      "cpus": "CPU 核数",
       "goVersion": "Go 版本",
-      "os": "系统 / 架构",
+      "hint": "CPU 核数与内存总量是静态上限（Docker API 不提供宿主机级实时指标）。",
+      "kernel": "内核",
+      "memory": "内存总量",
+      "os": "操作系统",
       "pending": "显示为「—」表示尚未从这台主机同步到该字段。",
       "title": "主机信息",
       "version": "Docker 版本"
@@ -488,6 +506,16 @@
       "offline": "连不上",
       "online": "可连接",
       "unknown": "未探测"
+    },
+    "security": {
+      "cdiDirs": "CDI 目录",
+      "hint": "代理地址中的用户名与口令已被遮蔽。",
+      "indexServer": "索引服务",
+      "insecureRegistries": "不安全仓库",
+      "mirrors": "镜像加速器",
+      "proxy": "代理",
+      "securityOptions": "安全选项",
+      "title": "仓库与安全"
     },
     "selector": {
       "noHosts": "暂无可用主机",

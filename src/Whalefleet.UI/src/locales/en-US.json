@@ -372,22 +372,6 @@
       "runningTotal": "{running} running of {total}",
       "unavailable": "Resource counts are unavailable while the host is offline"
     },
-    "daemon": {
-      "cgroup": "Cgroup",
-      "components": "Components",
-      "cpus": "vCPUs",
-      "hint": "CPU count and total memory are static limits (the Docker API exposes no host-level live metrics); credentials in proxy URLs are masked.",
-      "kernel": "Kernel",
-      "logging": "Logging driver",
-      "memory": "Memory",
-      "mirrors": "Registry mirrors",
-      "os": "OS",
-      "proxy": "Proxy",
-      "rootDir": "Docker root",
-      "runtime": "Runtimes",
-      "storage": "Storage driver",
-      "title": "Daemon info"
-    },
     "delete": {
       "done": "Host \\\"{name}\\\" deleted"
     },
@@ -400,6 +384,35 @@
     "empty": "No hosts registered yet — add the first one.",
     "enable": {
       "done": "\\\"{name}\\\" enabled"
+    },
+    "engine": {
+      "agentVersion": "Agent version",
+      "apiVersion": "API version",
+      "components": "Components",
+      "cgroup": "Cgroup driver",
+      "disabled": "Disabled",
+      "enabled": "Enabled",
+      "firewall": "Firewall backend",
+      "goVersion": "Go version",
+      "groupPlugins": "Plugins",
+      "groupRuntime": "Runtime & components",
+      "groupStorage": "Storage & drivers",
+      "groupVersion": "Version",
+      "hint": "All of it comes from the daemon’s /version and /info responses — no extra Docker call.",
+      "init": "Init binary",
+      "liveRestore": "Live restore",
+      "logging": "Logging driver",
+      "none": "None",
+      "pluginAuth": "Auth plugins",
+      "pluginLog": "Log plugins",
+      "pluginNetwork": "Network plugins",
+      "pluginVolume": "Volume plugins",
+      "rootDir": "Docker root",
+      "runtime": "Runtimes",
+      "storage": "Storage driver",
+      "title": "Engine info",
+      "version": "Docker version",
+      "warnings": "Engine warnings"
     },
     "form": {
       "auth": "Authentication",
@@ -472,8 +485,13 @@
     "info": {
       "agentVersion": "Agent version",
       "apiVersion": "API version",
+      "arch": "Architecture",
+      "cpus": "vCPUs",
       "goVersion": "Go version",
-      "os": "OS / Arch",
+      "hint": "CPU count and total memory are static limits (the Docker API exposes no host-level live metrics).",
+      "kernel": "Kernel",
+      "memory": "Memory",
+      "os": "Operating system",
       "pending": "A dash means this field has not been synced from this host yet.",
       "title": "Host information",
       "version": "Docker version"
@@ -488,6 +506,16 @@
       "offline": "Unreachable",
       "online": "Reachable",
       "unknown": "Not probed"
+    },
+    "security": {
+      "cdiDirs": "CDI spec dirs",
+      "hint": "Credentials in proxy URLs are masked.",
+      "indexServer": "Index server",
+      "insecureRegistries": "Insecure registries",
+      "mirrors": "Registry mirrors",
+      "proxy": "Proxy",
+      "securityOptions": "Security options",
+      "title": "Registry & security"
     },
     "selector": {
       "noHosts": "No host available",

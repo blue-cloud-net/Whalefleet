@@ -162,104 +162,208 @@ async function onRefresh(): Promise<void> {
 /** 缺失值的统一占位符，避免各处各写一个长得不一样的破折号 */
 const MISSING = '—'
 
+/** 一行「标签 → 值」 */
+type InfoRow = { label: string; value: string }
+
+/** 一组行；`title` 用于在同一张卡里区分内容层次（如「仓库与安全」） */
+interface InfoGroup {
+  title?: string
+  rows: InfoRow[]
+}
+
+/** 一张信息卡 */
+interface InfoSection {
+  key: string
+  title: string
+  description?: string
+  groups: InfoGroup[]
+  /** 末尾给出「字段尚未同步」的统一说明 */
+  pendingNote?: boolean
+}
+
 /**
- * 主机信息行：**恒显**，缺字段用占位符而非跳过整行。
+ * 主机信息：**这台机器本身**（操作系统 / 架构 / 内核 / CPU / 内存）。
  *
- * 早先的写法是「字段缺失就整行不 push」，于是离线主机这块直接消失、
- * 页面只剩四个破折号。现在缺失以弱化占位呈现，并在卡片末尾统一说明原因。
+ * 早先这些字段与存储驱动、运行时、插件混在同一张卡里，看上去像是
+ * 「Docker 引擎的配置」——其实它们描述的是**宿主操作系统**。
+ * 守护进程只是**恰好知道**这些值（`/info` 顺带返回），并不代表它们属于引擎配置：
+ * 把「24 核」「62.5 GiB」放在「引擎信息」里，读者的第一反应是「引擎用了多少核」。
+ *
+ * 缺失字段用占位符而非跳过整行：离线主机这块直接消失、页面只剩四个破折号，
+ * 看起来像加载失败。
  */
-const infoRows = computed<{ label: string; value: string }[]>(() => {
+const hostRows = computed<InfoRow[]>(() => {
   const h = currentHost.value
   if (!h) return []
 
-  const rows: { label: string; value: string }[] = []
+  const d = h.daemon
   const v = h.version
 
-  rows.push({ label: t('host.info.version'), value: v?.version ?? MISSING })
-  rows.push({ label: t('host.info.apiVersion'), value: v?.apiVersion ?? MISSING })
-  rows.push({
-    label: t('host.info.os'),
-    value: v?.os ? (v.arch ? `${v.os}/${v.arch}` : v.os) : MISSING
-  })
-  rows.push({ label: t('host.info.goVersion'), value: v?.goVersion ?? MISSING })
-  // 0.6.0 起不再展示「启动时间」：Docker Engine API 不提供守护进程启动时刻
-  // （`/info` 的 SystemTime 是**当前时间**），旧字段恒为「已运行 0 秒」。
-  // 预留：Agent 模式排在 1.0.0 之后，届时后端才会返回 agentVersion
-  if (h.agentVersion) rows.push({ label: t('host.info.agentVersion'), value: h.agentVersion })
+  // 守护进程给的是完整发行版串（Ubuntu 24.04.5 LTS · 24.04 · linux）；
+  // 取不到时退回 /version 的 `os`（linux）。
+  const osText = d
+    ? [d.operatingSystem, d.osVersion, d.osType].filter(Boolean).join(' · ')
+    : ''
 
-  return rows
+  return [
+    { label: t('host.info.os'), value: osText || v?.os || MISSING },
+    { label: t('host.info.arch'), value: d?.architecture || v?.arch || MISSING },
+    { label: t('host.info.kernel'), value: d?.kernelVersion ?? MISSING },
+    {
+      label: t('host.info.cpus'),
+      value: d && d.cpuCount > 0 ? String(d.cpuCount) : MISSING
+    },
+    {
+      label: t('host.info.memory'),
+      value: d && d.memoryBytes > 0 ? formatBytes(d.memoryBytes, byteUnits.value) : MISSING
+    }
+  ]
 })
 
 /**
- * 守护进程静态信息（0.6.0）。
+ * 引擎信息：**Docker 引擎自身**的版本与配置。
  *
- * ⚠️ **CPU / 内存是静态上限**：Docker Engine API 没有宿主机级实时指标端点。
- * 界面必须在标题上把这一点说清楚，否则「24 核」会被读成「当前用了 24 核」。
+ * 全部来自 `/version` 与 `/info`，不新增任何 Docker 调用。
+ *
+ * ⚠️ **CPU / 内存不在这里**：它们是宿主机的静态上限，不是引擎配置
+ * （见上方 `hostRows`）。
+ *
+ * 卡内分四个小组：版本 / 存储与驱动 / 运行时与组件 / 插件。
+ * 不平铺成一长串，是因为「Docker 版本 27.3.1」与「网络插件 bridge, host, …」
+ * 回答的是完全不同的问题，混排时后者会被挤到最后一行。
  */
-const daemonRows = computed(() => {
-  const d = currentHost.value?.daemon
-  if (!d) return []
+const engineGroups = computed<InfoGroup[]>(() => {
+  const h = currentHost.value
+  if (!h) return []
 
-  const rows: { label: string; value: string }[] = []
+  const d = h.daemon
+  const v = h.version
 
-  if (d.operatingSystem || d.osVersion || d.osType) {
-    rows.push({
-      label: t('host.daemon.os'),
-      value: [d.operatingSystem, d.osVersion, d.osType].filter(Boolean).join(' · ')
+  // ===== 版本 =====
+  const versionRows: InfoRow[] = [
+    { label: t('host.engine.version'), value: v?.version ?? MISSING },
+    { label: t('host.engine.apiVersion'), value: v?.apiVersion ?? MISSING },
+    { label: t('host.engine.goVersion'), value: v?.goVersion ?? MISSING }
+  ]
+  // 预留：Agent 模式排在 1.0.0 之后，届时后端才会返回 agentVersion
+  if (h.agentVersion) {
+    versionRows.push({ label: t('host.engine.agentVersion'), value: h.agentVersion })
+  }
+
+  // ===== 存储与驱动 =====
+  const storageRows: InfoRow[] = []
+  if (d?.storageDriver) {
+    storageRows.push({
+      label: t('host.engine.storage'),
+      value:
+        d.storageDriverStatus.length > 0
+          ? `${d.storageDriver} (${d.storageDriverStatus.map((pair) => pair.join('=')).join(', ')})`
+          : d.storageDriver
     })
   }
-
-  if (d.kernelVersion) rows.push({ label: t('host.daemon.kernel'), value: d.kernelVersion })
-
-  // 静态上限：带「核」「内存总量」字样，不写「当前」
-  if (d.cpuCount > 0) rows.push({ label: t('host.daemon.cpus'), value: String(d.cpuCount) })
-  if (d.memoryBytes > 0) {
-    rows.push({ label: t('host.daemon.memory'), value: formatBytes(d.memoryBytes, byteUnits.value) })
-  }
-
-  if (d.storageDriver) {
-    rows.push({
-      label: t('host.daemon.storage'),
-      value: d.storageDriverStatus.length > 0
-        ? `${d.storageDriver} (${d.storageDriverStatus.map((pair) => pair.join('=')).join(', ')})`
-        : d.storageDriver
-    })
-  }
-
-  if (d.loggingDriver) rows.push({ label: t('host.daemon.logging'), value: d.loggingDriver })
-  if (d.cgroupDriver) {
-    rows.push({
-      label: t('host.daemon.cgroup'),
+  if (d?.loggingDriver) storageRows.push({ label: t('host.engine.logging'), value: d.loggingDriver })
+  if (d?.cgroupDriver) {
+    storageRows.push({
+      label: t('host.engine.cgroup'),
       value: d.cgroupVersion ? `${d.cgroupDriver} v${d.cgroupVersion}` : d.cgroupDriver
     })
   }
-  if (d.defaultRuntime) {
-    rows.push({
-      label: t('host.daemon.runtime'),
-      value: d.runtimes.length > 0
-        ? `${d.defaultRuntime} (${d.runtimes.join(', ')})`
-        : d.defaultRuntime
+  if (d?.dockerRootDir) storageRows.push({ label: t('host.engine.rootDir'), value: d.dockerRootDir })
+
+  // ===== 运行时与组件 =====
+  const runtimeRows: InfoRow[] = []
+  if (d?.defaultRuntime) {
+    runtimeRows.push({
+      label: t('host.engine.runtime'),
+      value:
+        d.runtimes.length > 0 ? `${d.defaultRuntime} (${d.runtimes.join(', ')})` : d.defaultRuntime
     })
   }
-
-  if (d.containerdVersion || d.runcVersion) {
-    rows.push({
-      label: t('host.daemon.components'),
+  if (d && (d.containerdVersion || d.runcVersion)) {
+    runtimeRows.push({
+      label: t('host.engine.components'),
       value: [
         d.containerdVersion ? `containerd ${d.containerdVersion}` : null,
         d.runcVersion ? `runc ${d.runcVersion}` : null
       ].filter(Boolean).join(' · ')
     })
   }
+  if (d && (d.initBinary || d.initVersion)) {
+    runtimeRows.push({
+      label: t('host.engine.init'),
+      value: [d.initBinary ?? null, d.initVersion ?? null].filter(Boolean).join(' ')
+    })
+  }
+  if (d?.firewallBackend) {
+    runtimeRows.push({ label: t('host.engine.firewall'), value: d.firewallBackend })
+  }
+  // 布尔量恒显：「未启用」也是确定的事实，不该被当成「没取到」
+  if (d) {
+    runtimeRows.push({
+      label: t('host.engine.liveRestore'),
+      value: d.liveRestoreEnabled ? t('host.engine.enabled') : t('host.engine.disabled')
+    })
+  }
+
+  // ===== 插件 =====
+  // 空列表写「无」而不是「—」——「没装授权插件」是确定的事实，
+  // 而「—」在这套界面里表示「没取到」，两者不能混。
+  const pluginRows: InfoRow[] = []
+  if (d) {
+    const pluginGroups: { label: string; list: string[] }[] = [
+      { label: t('host.engine.pluginVolume'), list: d.plugins.volume },
+      { label: t('host.engine.pluginNetwork'), list: d.plugins.network },
+      { label: t('host.engine.pluginLog'), list: d.plugins.log },
+      { label: t('host.engine.pluginAuth'), list: d.plugins.authorization }
+    ]
+    for (const group of pluginGroups) {
+      pluginRows.push({
+        label: group.label,
+        value: group.list.length > 0 ? group.list.join(', ') : t('host.engine.none')
+      })
+    }
+  }
+
+  return [
+    { title: t('host.engine.groupVersion'), rows: versionRows },
+    { title: t('host.engine.groupStorage'), rows: storageRows },
+    { title: t('host.engine.groupRuntime'), rows: runtimeRows },
+    { title: t('host.engine.groupPlugins'), rows: pluginRows }
+  ].filter((group) => group.rows.length > 0)
+})
+
+/**
+ * 仓库与安全：**镜像仓库与网络 / 安全配置**。
+ *
+ * 独立成卡而不是并进引擎信息：这几项是**运维要经常改的配置**
+ * （换镜像加速器、加不安全仓库、调代理），混在一堆只读的引擎版本信息里会被淹没。
+ *
+ * ⚠️ 代理 URL 的 userinfo 已由服务端遮蔽，这里直接展示。
+ */
+const securityRows = computed<InfoRow[]>(() => {
+  const d = currentHost.value?.daemon
+  if (!d) return []
+
+  const rows: InfoRow[] = []
 
   if (d.registryMirrors.length > 0) {
-    rows.push({ label: t('host.daemon.mirrors'), value: d.registryMirrors.join(', ') })
+    rows.push({ label: t('host.security.mirrors'), value: d.registryMirrors.join(', ') })
+  }
+
+  if (d.insecureRegistries.length > 0) {
+    rows.push({
+      label: t('host.security.insecureRegistries'),
+      value: d.insecureRegistries.join(', ')
+    })
+  }
+
+  if (d.indexServerAddress) {
+    rows.push({ label: t('host.security.indexServer'), value: d.indexServerAddress })
   }
 
   if (d.httpProxy || d.httpsProxy || d.noProxy) {
-    // 代理地址的 userinfo 已由服务端遮蔽，这里直接展示
     rows.push({
-      label: t('host.daemon.proxy'),
+      label: t('host.security.proxy'),
       value: [
         d.httpProxy ? `HTTP ${d.httpProxy}` : null,
         d.httpsProxy ? `HTTPS ${d.httpsProxy}` : null,
@@ -268,13 +372,83 @@ const daemonRows = computed(() => {
     })
   }
 
-  if (d.dockerRootDir) rows.push({ label: t('host.daemon.rootDir'), value: d.dockerRootDir })
+  if (d.securityOptions.length > 0) {
+    rows.push({
+      label: t('host.security.securityOptions'),
+      value: d.securityOptions.join(', ')
+    })
+  }
+
+  if (d.cdiSpecDirs.length > 0) {
+    rows.push({ label: t('host.security.cdiDirs'), value: d.cdiSpecDirs.join(', ') })
+  }
 
   return rows
 })
 
-/** 只要有任意字段缺失，就在卡片末尾给出统一说明 */
-const hasMissingInfo = computed(() => infoRows.value.some((r) => r.value === MISSING))
+/**
+ * 「字段尚未同步」的说明只出现在**最后一张**有缺失字段的卡上。
+ *
+ * 每张卡各写一遍会出现两段一模一样的文字（离线主机：主机信息卡与引擎信息卡
+ * 都有占位符），像是重复渲染出了 bug。
+ */
+const lastPendingKey = computed(() => {
+  const pending = infoSections.value.filter((section) => section.pendingNote)
+  return pending.length > 0 ? pending[pending.length - 1]!.key : null
+})
+
+/** 引擎自报的告警；单独成块，因为它们要的是「被看见」而不是「被查到」 */
+const engineWarnings = computed(() => currentHost.value?.daemon?.warnings ?? [])
+
+/**
+ * 信息卡：**主机信息** / **引擎信息** / **仓库与安全**，三张。
+ *
+ * 分界依据是**「这条信息描述的是谁」**：
+ * - 主机信息 = 这台机器（操作系统、内核、架构、CPU、内存）
+ * - 引擎信息 = Docker 引擎（版本、驱动、运行时、插件）
+ * - 仓库与安全 = 引擎与外部世界的连接配置（镜像仓库、代理、安全选项）
+ *
+ * 早先按**数据来源**分（`/version` vs `/info`），结果宿主操作系统的字段
+ * 落进了「引擎信息」——来源相同不等于语义相同。
+ *
+ * 卡内按**单列**排：每个字段独占一行。两列网格在宽屏下会把「标签」与「值」
+ * 拉到两半，读者必须横跨半屏才能把它们配对——技术字段一多，这种扫描成本
+ * 立刻变成负担。
+ */
+const infoSections = computed<InfoSection[]>(() => {
+  const sections: InfoSection[] = []
+
+  if (currentHost.value) {
+    sections.push({
+      key: 'host',
+      title: t('host.info.title'),
+      description: t('host.info.hint'),
+      groups: [{ rows: hostRows.value }],
+      pendingNote: hostRows.value.some((r) => r.value === MISSING)
+    })
+  }
+
+  if (engineGroups.value.length > 0) {
+    sections.push({
+      key: 'engine',
+      title: t('host.engine.title'),
+      description: t('host.engine.hint'),
+      groups: engineGroups.value,
+      pendingNote: engineGroups.value.some((g) => g.rows.some((r) => r.value === MISSING))
+    })
+  }
+
+  if (securityRows.value.length > 0) {
+    sections.push({
+      key: 'security',
+      title: t('host.security.title'),
+      description: t('host.security.hint'),
+      groups: [{ rows: securityRows.value }]
+    })
+  }
+
+  return sections
+})
 </script>
 
 <template>
@@ -328,60 +502,75 @@ const hasMissingInfo = computed(() => infoRows.value.some((r) => r.value === MIS
       </ResourceTile>
     </div>
 
-    <!-- 技术信息 -->
-    <SectionCard v-if="currentHost" :title="t('host.info.title')" density="dense">
-      <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-10">
-        <!--
-          标签定宽、值紧随其后（而非 justify-between 右对齐）：
-          两列布局下每列约 520px，右对齐会让「标签」到「值」隔出四百多像素，
-          眼睛必须横跨整列才能把两者关联起来。这里按定义列表的常规形态排布。
-        -->
-        <div
-          v-for="row in infoRows"
-          :key="row.label"
-          class="flex items-baseline gap-4 py-2.5 border-b border-dashed border-line-subtle last:border-0"
-        >
-          <dt class="w-24 sm:w-28 shrink-0 text-xs text-content-muted">{{ row.label }}</dt>
-          <dd
-            class="min-w-0 text-[13px] font-mono app-truncate"
-            :class="row.value === MISSING ? 'text-content-faint' : 'text-content-body'"
-            :title="row.value === MISSING ? t('host.info.pending') : row.value"
-          >
-            {{ row.value }}
-          </dd>
-        </div>
-      </dl>
+    <!--
+      信息卡：主机信息 / 引擎信息 / 仓库与安全三张，由 infoSections 驱动
+      而不是写三段重复的 `dl`。
 
-      <p v-if="hasMissingInfo" class="mt-3 flex items-start gap-1.5 text-xs text-content-faint">
+      ⚠️ **单列**：每个字段独占一行。两列网格在宽屏下会把「标签」与「值」拉到
+      相距半屏的地方，读者得横跨半屏才能把它们配对——技术字段一多，这种扫描
+      成本立刻变成负担。
+
+      ⚠️ 值**允许折行**而不是截断：存储驱动、组件版本、镜像加速器这些值本来就长，
+      截断等于没给（`overlayfs (driver-type:io.containerd.snapsh…` 就是这么来的）。
+    -->
+    <SectionCard
+      v-for="(section, index) in infoSections"
+      :key="section.key"
+      :class="index > 0 ? 'app-section' : ''"
+      :title="section.title"
+      :description="section.description"
+      density="dense"
+    >
+      <div v-for="group in section.groups" :key="group.title ?? '_'" class="mt-4 first:mt-0">
+        <!-- 分组标题：同一张卡里区分内容层次（如「仓库与安全」） -->
+        <h3 v-if="group.title" class="mb-1 text-xs font-medium text-content-muted">
+          {{ group.title }}
+        </h3>
+
+        <dl>
+          <!--
+            标签定宽、值紧随其后（而非 justify-between 右对齐）：
+            右对齐会让「标签」到「值」隔出几百像素，眼睛必须横跨整行才能把两者
+            关联起来。这里按定义列表的常规形态排布。
+          -->
+          <div
+            v-for="row in group.rows"
+            :key="row.label"
+            class="flex items-baseline gap-4 py-2.5 border-b border-dashed border-line-subtle last:border-0"
+          >
+            <dt class="w-24 sm:w-32 shrink-0 text-xs text-content-muted">{{ row.label }}</dt>
+            <dd
+              class="min-w-0 flex-1 text-[13px] font-mono break-words"
+              :class="row.value === MISSING ? 'text-content-faint' : 'text-content-body'"
+              :title="row.value === MISSING ? t('host.info.pending') : row.value"
+            >
+              {{ row.value }}
+            </dd>
+          </div>
+        </dl>
+      </div>
+
+      <p
+        v-if="section.key === lastPendingKey"
+        class="mt-3 flex items-start gap-1.5 text-xs text-content-faint"
+      >
         <span class="i-carbon-information shrink-0 mt-px" aria-hidden="true" />
         <span>{{ t('host.info.pending') }}</span>
       </p>
     </SectionCard>
 
-    <!--
-      守护进程信息（0.6.0）：全部来自同一次 /info，不新增调用。
-      ⚠️ 标题里必须写「静态上限」：Docker Engine API 没有宿主机级实时指标端点，
-      把 24 核读成「当前用了 24 核」是这套信息最容易造成的误解。
-    -->
-    <SectionCard
-      v-if="daemonRows.length > 0"
-      class="app-section"
-      :title="t('host.daemon.title')"
-      :description="t('host.daemon.hint')"
-      density="dense"
+    <!-- 引擎自报的告警：单独成块，样式上区别于普通信息卡 -->
+    <div
+      v-if="engineWarnings.length > 0"
+      class="app-section rounded-lg border border-status-warn/40 bg-status-warn-soft/60 px-4 py-3"
     >
-      <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-10">
-        <div
-          v-for="row in daemonRows"
-          :key="row.label"
-          class="flex items-baseline gap-4 py-2.5 border-b border-dashed border-line-subtle last:border-0"
-        >
-          <dt class="w-24 sm:w-28 shrink-0 text-xs text-content-muted">{{ row.label }}</dt>
-          <dd class="min-w-0 text-[13px] font-mono app-truncate text-content-body" :title="row.value">
-            {{ row.value }}
-          </dd>
-        </div>
-      </dl>
-    </SectionCard>
+      <p class="flex items-center gap-2 text-sm font-semibold text-status-warn">
+        <span class="i-carbon-warning-alt" aria-hidden="true" />
+        {{ t('host.engine.warnings') }}
+      </p>
+      <ul class="mt-2 space-y-1 text-xs text-content-body">
+        <li v-for="(warning, i) in engineWarnings" :key="i" class="break-words">{{ warning }}</li>
+      </ul>
+    </div>
   </div>
 </template>
