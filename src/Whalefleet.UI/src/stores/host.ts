@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { listHostGroups } from '@/api/host-group'
 import { getHostOverview, listHosts } from '@/api/host'
-import type { HostGroup, HostInfo, HostListFilter, HostOverview } from '@/types/api'
+import type { HostGroup, HostListFilter, HostOverview } from '@/types/api'
 
 /**
  * 主机 store：主机列表 + 分组 + 当前选中主机。
@@ -53,7 +53,7 @@ export const useHostStore = defineStore('host', {
   }),
   getters: {
     /** 当前主机；全局作用域返回 null（不再回退到 local，避免"看起来像选中了某台机器"） */
-    currentHost(state): HostInfo | null {
+    currentHost(state): HostOverview | null {
       if (!state.currentId) return null
       return state.hosts.find((h) => h.id === state.currentId) ?? null
     },
