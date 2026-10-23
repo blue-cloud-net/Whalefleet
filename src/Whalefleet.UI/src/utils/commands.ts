@@ -117,7 +117,7 @@ export function buildCommands(actions: CommandActions = {}): CommandItem[] {
       id: 'nav-containers',
       label: 'nav.containers',
       group: 'navigation',
-      icon: 'i-carbon-container-software',
+      icon: 'i-carbon-cube',
       routeName: 'host-containers',
       requiresHost: true,
       keywords: ['容器', 'containers', 'docker ps', 'ps']
@@ -126,7 +126,7 @@ export function buildCommands(actions: CommandActions = {}): CommandItem[] {
       id: 'nav-images',
       label: 'nav.images',
       group: 'navigation',
-      icon: 'i-carbon-image',
+      icon: 'i-carbon-archive',
       routeName: 'host-images',
       requiresHost: true,
       keywords: ['镜像', 'images', 'docker images']

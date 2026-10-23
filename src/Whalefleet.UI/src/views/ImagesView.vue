@@ -434,7 +434,7 @@ watch(
 <template>
   <div>
     <PageHeader
-      icon="i-carbon-image"
+      icon="i-carbon-archive"
       :title="t('nav.images')"
       :subtitle="t('page.images.subtitle')"
       narrow
@@ -596,7 +596,7 @@ watch(
 
         <EmptyState
           v-if="isEmpty"
-          icon="i-carbon-image"
+          icon="i-carbon-archive"
           :description="search ? t('image.empty.filtered') : t('image.empty.title')"
         >
           <el-button v-if="!search" type="primary" @click="pullDialogVisible = true">

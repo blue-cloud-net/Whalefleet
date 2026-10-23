@@ -955,7 +955,7 @@ onBeforeUnmount(() => {
 <template>
   <div>
     <PageHeader
-      icon="i-carbon-container-software"
+      icon="i-carbon-cube"
       :title="t('nav.containers')"
       :subtitle="t('page.containers.subtitle')"
       narrow
@@ -1264,7 +1264,7 @@ onBeforeUnmount(() => {
 
         <EmptyState
           v-if="!loading && containers.length === 0"
-          :icon="includeStopped ? 'i-carbon-container-software' : 'i-carbon-search'"
+          :icon="includeStopped ? 'i-carbon-cube' : 'i-carbon-search'"
           :title="includeStopped ? t('container.empty.title') : t('container.empty.filtered')"
           :description="includeStopped ? t('container.empty.hint') : t('container.empty.filteredHint')"
         />

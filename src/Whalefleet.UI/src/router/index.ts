@@ -169,7 +169,7 @@ const routes: RouteRecordRaw[] = [
         path: 'hosts/:hostId/containers',
         name: 'host-containers',
         component: () => import('@/views/ContainersView.vue'),
-        meta: { scope: 'host', icon: 'i-carbon-container-software', title: 'nav.containers' }
+        meta: { scope: 'host', icon: 'i-carbon-cube', title: 'nav.containers' }
       },
       {
         // 容器详情。两级而非一级：列表页要先能进，详情才有意图可循。
@@ -191,7 +191,7 @@ const routes: RouteRecordRaw[] = [
         path: 'hosts/:hostId/images',
         name: 'host-images',
         component: () => import('@/views/ImagesView.vue'),
-        meta: { scope: 'host', icon: 'i-carbon-image', title: 'nav.images' }
+        meta: { scope: 'host', icon: 'i-carbon-archive', title: 'nav.images' }
       },
       {
         // 镜像详情：与容器详情的安排一致——从列表跳进去的下级页，不进侧边栏。

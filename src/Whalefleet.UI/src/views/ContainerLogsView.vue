@@ -136,7 +136,7 @@ onMounted(load)
 <template>
   <div>
     <PageHeader
-      icon="i-carbon-container-software"
+      icon="i-carbon-cube"
       :title="t('container.logs.title')"
       :subtitle="t('container.logs.subtitle')"
       narrow

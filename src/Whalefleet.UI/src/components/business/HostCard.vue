@@ -37,8 +37,8 @@ const groupOptions = computed(() =>
  * 列表端点刻意不带计数，因此刚进页面时短暂为空 → 显示「—」。
  */
 const stats = computed(() => [
-  { key: 'containers', label: t('nav.containers'), icon: 'i-carbon-container-software' },
-  { key: 'images', label: t('nav.images'), icon: 'i-carbon-image' },
+  { key: 'containers', label: t('nav.containers'), icon: 'i-carbon-cube' },
+  { key: 'images', label: t('nav.images'), icon: 'i-carbon-archive' },
   { key: 'volumes', label: t('nav.volumes'), icon: 'i-carbon-data-volume' },
   { key: 'networks', label: t('nav.networks'), icon: 'i-carbon-network-3' }
 ])

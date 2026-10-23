@@ -190,7 +190,7 @@ watch(
 <template>
   <div v-loading="loading">
     <PageHeader
-      icon="i-carbon-container-software"
+      icon="i-carbon-cube"
       :title="t('container.detail.title')"
       :subtitle="detail ? `${detail.name} · ${detail.image}` : undefined"
       narrow

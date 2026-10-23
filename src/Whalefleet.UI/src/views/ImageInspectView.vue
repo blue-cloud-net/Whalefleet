@@ -69,7 +69,7 @@ watch(imageId, load, { immediate: true })
 
 <template>
   <div v-loading="loading">
-    <PageHeader icon="i-carbon-image" :title="t('image.detail.title')" narrow>
+    <PageHeader icon="i-carbon-archive" :title="t('image.detail.title')" narrow>
       <template #actions>
         <el-button @click="backToList">{{ t('image.backToList') }}</el-button>
         <el-button :loading="loading" type="primary" @click="load">

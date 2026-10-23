@@ -36,8 +36,8 @@ type ResourceKey = 'containers' | 'images' | 'volumes' | 'networks'
 
 /** 四类资源磁贴的图标与文案；顺序即页面顺序 */
 const resources = computed<{ key: ResourceKey; label: string; icon: string }[]>(() => [
-  { key: 'containers', label: t('nav.containers'), icon: 'i-carbon-container-software' },
-  { key: 'images', label: t('nav.images'), icon: 'i-carbon-image' },
+  { key: 'containers', label: t('nav.containers'), icon: 'i-carbon-cube' },
+  { key: 'images', label: t('nav.images'), icon: 'i-carbon-archive' },
   { key: 'volumes', label: t('nav.volumes'), icon: 'i-carbon-data-volume' },
   { key: 'networks', label: t('nav.networks'), icon: 'i-carbon-network-3' }
 ])
