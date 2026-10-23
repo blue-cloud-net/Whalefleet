@@ -163,7 +163,12 @@ onMounted(load)
 
           <label class="flex items-center gap-1.5 text-xs whitespace-nowrap text-content-muted">
             <span>{{ t('container.logs.tail') }}</span>
-            <el-select v-model="tail" size="small" class="w-28" @change="load">
+            <!--
+              ⚠️ 宽度必须写 `!w-28`：Element Plus 把 `.el-select` 的宽度写死成
+              `var(--el-select-width)`（默认 100%），样式表又排在 UnoCSS 之后——
+              `w-28` 会被静默吃掉，下拉框撑满整行。
+            -->
+            <el-select v-model="tail" size="small" class="!w-28" @change="load">
               <el-option
                 v-for="option in [200, 500, 1000, 5000]"
                 :key="option"

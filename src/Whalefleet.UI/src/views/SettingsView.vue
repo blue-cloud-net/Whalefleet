@@ -90,11 +90,16 @@ function onLocaleChange(next: AppLocale) {
             下拉框而不是并排单选：语言是「选一个」的封闭集合，选项文字长短不一
             （简体中文 / English），并排按钮会把右侧撑成一块不对称的按钮组；
             下拉框宽度固定，将来加语种也不用重排布局。
+
+            ⚠️ 宽度必须写 `!w-40`：Element Plus 把 `.el-select` 的宽度写死成
+            `var(--el-select-width)`（默认 100%），而它的样式表排在 UnoCSS **之后**，
+            同特异度下它赢——`w-40` 会被**静默吃掉**，下拉框撑满整行，
+            「界面语言」标签与下拉框因此被挤到两行。
           -->
           <el-select
             :model-value="locale"
             size="small"
-            class="w-40"
+            class="!w-40"
             @update:model-value="(v: any) => onLocaleChange(v as AppLocale)"
           >
             <el-option
