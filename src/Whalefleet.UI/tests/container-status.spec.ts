@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  CONTAINER_DISPLAY_LABEL_KEY,
+  CONTAINER_DISPLAY_TONE,
   CONTAINER_TONE_LABEL_KEY,
+  containerDisplayState,
   containerTone,
   formatBytes,
   formatPort
@@ -42,6 +45,74 @@ describe('containerTone', () => {
   it('每一档都有文案 key（漏一个就会渲染出空白药丸）', () => {
     for (const tone of ['ok', 'down', 'warn', 'idle'] as const) {
       expect(CONTAINER_TONE_LABEL_KEY[tone]).toBeTruthy()
+    }
+  })
+})
+
+/**
+ * 状态与健康的合成（0.6.0）。
+ *
+ * 合成逻辑是「一眼就知道对不对」但最容易改错的那种：
+ * 把「先判 running」写成「先判健康」，停掉的容器就会显示成「健康」——
+ * 而停掉的容器健康状态是 `none`，它会显示成「运行中」，更糟。
+ */
+describe('containerDisplayState', () => {
+  it('运行中 + 健康检查通过 → 健康', () => {
+    expect(containerDisplayState('running', 'healthy')).toBe('healthy')
+  })
+
+  it('运行中 + 健康检查失败 → 不健康', () => {
+    expect(containerDisplayState('running', 'unhealthy')).toBe('unhealthy')
+  })
+
+  it('运行中 + 没配健康检查 → 运行中（不是「无」）', () => {
+    expect(containerDisplayState('running', 'none')).toBe('running')
+    expect(containerDisplayState('running', 'starting')).toBe('running')
+    expect(containerDisplayState('running', null)).toBe('running')
+  })
+
+  it('已停止优先于健康：停掉的容器没有健康检查可言', () => {
+    // 健康状态是 none，若先判健康就会误显示成「运行中」。
+    expect(containerDisplayState('exited', 'none')).toBe('stopped')
+    expect(containerDisplayState('exited', 'healthy')).toBe('stopped')
+    expect(containerDisplayState('dead', null)).toBe('stopped')
+  })
+
+  it('过渡态仍是过渡态，不被健康覆盖', () => {
+    expect(containerDisplayState('paused', 'healthy')).toBe('transition')
+    expect(containerDisplayState('restarting', 'unhealthy')).toBe('transition')
+  })
+
+  it('大小写不敏感', () => {
+    expect(containerDisplayState('RUNNING', 'healthy')).toBe('healthy')
+    expect(containerDisplayState('Exited', null)).toBe('stopped')
+  })
+
+  it('未登记状态与空值 → 未知', () => {
+    expect(containerDisplayState('some-future-state', 'healthy')).toBe('unknown')
+    expect(containerDisplayState(undefined, null)).toBe('unknown')
+    expect(containerDisplayState(null, null)).toBe('unknown')
+    expect(containerDisplayState('', null)).toBe('unknown')
+  })
+
+  it('不健康是黄（warn）不是红（down）', () => {
+    // 容器还在跑。红色会让人以为它已经挂了，把「重启它」变成「立刻处理」。
+    expect(CONTAINER_DISPLAY_TONE.unhealthy).toBe('warn')
+    expect(CONTAINER_DISPLAY_TONE.healthy).toBe('ok')
+    expect(CONTAINER_DISPLAY_TONE.running).toBe('ok')
+    expect(CONTAINER_DISPLAY_TONE.stopped).toBe('down')
+  })
+
+  it('每一档都有文案 key（漏一个就会渲染出空白药丸）', () => {
+    for (const state of [
+      'healthy',
+      'unhealthy',
+      'running',
+      'stopped',
+      'transition',
+      'unknown'
+    ] as const) {
+      expect(CONTAINER_DISPLAY_LABEL_KEY[state]).toBeTruthy()
     }
   })
 })

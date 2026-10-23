@@ -55,6 +55,79 @@ export const CONTAINER_TONE_LABEL_KEY: Record<ContainerTone, string> = {
 }
 
 /**
+ * 容器在列表里的**展示状态**：把 Docker 原始状态与健康检查结果合成一个。
+ *
+ * ## 为什么要合成
+ * 容器列表里「运行中」和「健康」是**两件事**，但它们回答的是同一个问题——
+ * 「这个服务还好吗」。分成两列时，一行里出现「运行中 / 不健康」两个词，
+ * 读者得自己判断哪个才是结论；合成一列后只有一个结论。
+ *
+ * 合成后的取值与 Docker 原始状态**不是一一对应**：`running` 可能是
+ * 「运行中」（没配健康检查）也可能是「健康」（配了且通过）。
+ */
+export type ContainerDisplayState =
+  | 'healthy'
+  | 'unhealthy'
+  | 'running'
+  | 'stopped'
+  | 'transition'
+  | 'unknown'
+
+/** 健康检查结果（与 `types/api.ts` 的 `ContainerHealthStatus` 同值，独立声明避免 util 依赖 API 层） */
+export type ContainerHealthState = 'none' | 'starting' | 'healthy' | 'unhealthy'
+
+/**
+ * 合成「运行状态 + 健康检查」→ 展示状态。
+ *
+ * ⚠️ **先判是否在运行**：停掉的容器没有健康检查可言（健康状态是 `none`），
+ * 先判 `running` 才不会把一个停掉的容器显示成「运行中」。
+ * 反过来，**运行中**的容器才谈得上健康：健康 / 不健康只覆盖配了健康检查的那部分。
+ *
+ * @param state Docker 原始状态文本（如 `running` / `exited`）
+ * @param health 健康检查结果；`null` 表示「还没查到」
+ */
+export function containerDisplayState(
+  state?: string | null,
+  health?: ContainerHealthState | null
+): ContainerDisplayState {
+  const normalized = String(state ?? '').toLowerCase()
+
+  if (normalized === 'running') {
+    if (health === 'healthy') return 'healthy'
+    // ⚠️ 不健康是**黄**不是红：容器还在跑，红会让人以为它已经挂了。
+    // 「不健康」是「有问题但还活着」，红色会把「重启它」变成「立刻处理」。
+    if (health === 'unhealthy') return 'unhealthy'
+    return 'running'
+  }
+
+  const tone = containerTone(state)
+  if (tone === 'down') return 'stopped'
+  if (tone === 'warn') return 'transition'
+
+  return 'unknown'
+}
+
+/** 展示状态 → 语义色调 */
+export const CONTAINER_DISPLAY_TONE: Record<ContainerDisplayState, ContainerTone> = {
+  healthy: 'ok',
+  unhealthy: 'warn',
+  running: 'ok',
+  stopped: 'down',
+  transition: 'warn',
+  unknown: 'idle'
+}
+
+/** 展示状态 → 文案的 i18n key */
+export const CONTAINER_DISPLAY_LABEL_KEY: Record<ContainerDisplayState, string> = {
+  healthy: 'container.health.healthy',
+  unhealthy: 'container.health.unhealthy',
+  running: 'container.state.running',
+  stopped: 'container.state.stopped',
+  transition: 'container.state.transition',
+  unknown: 'container.state.unknown'
+}
+
+/**
  * 端口的展示文本。
  *
  * 三种形态缺一不可，少一种就会误导：

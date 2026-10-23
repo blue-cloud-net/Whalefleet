@@ -35,7 +35,6 @@ import { useContainerStatsBoard } from '@/composables/useContainerStatsBoard'
 import { subscribeContainerDied } from '@/realtime/notification'
 import { PAGE_SIZE_ALL, resolvePageSize, usePreferencesStore } from '@/stores/preferences'
 import type {
-  ContainerHealthStatus,
   ContainerHealthSummary,
   ContainerStatsSample,
   ContainerSummary
@@ -236,15 +235,15 @@ function markBusy(containerId: string, busy: boolean): void {
 }
 
 /* ==================================================================
- * 0.6.0：健康列 + 指标列
+ * 0.6.0：健康（并入状态列） + 指标列
  * ==================================================================
  *
  * 两者成本模型完全不同，因此分开管理：
- * - 健康列是**一次批量 inspect**（10 秒一轮）——容器列表接口不返回结构化健康字段；
+ * - 健康是**一次批量 inspect**（10 秒一轮）——容器列表接口不返回结构化健康字段；
  * - 指标列是**持续订阅**（每个容器一条到守护进程的流），默认全关，开一列就多一份成本。
  */
 
-/** 健康信息（容器 ID → 健康与退出原因）；查不到的容器不出现（显示「—」）。 */
+/** 健康信息（容器 ID → 健康与退出原因）；查不到的容器不出现（状态退回「运行中」）。 */
 const healthMap = ref<Record<string, ContainerHealthSummary>>({})
 
 /** 健康刷新间隔（毫秒）。不与 5 秒列表轮询同频：那是 N 次 inspect，太密无意义。 */
@@ -257,17 +256,9 @@ const metricsEnabled = computed(
   () => columns.value.cpu || columns.value.memory || columns.value.network
 )
 
-/** 健康状态 → i18n key（**显式映射**，模板里不拼 key）。 */
-const HEALTH_LABEL_KEY: Record<ContainerHealthStatus, string> = {
-  none: 'container.health.none',
-  starting: 'container.health.starting',
-  healthy: 'container.health.healthy',
-  unhealthy: 'container.health.unhealthy'
-}
-
-/** 一次性拉当前页的健康信息。失败时保持旧值（降级为「—」而不是报错）。 */
+/** 一次性拉当前页的健康信息。失败时保持旧值（降级为「运行中」而不是报错）。 */
 async function refreshHealth(): Promise<void> {
-  if (!hostId.value || !columns.value.health) return
+  if (!hostId.value) return
 
   const ids = containers.value.map((container) => container.id)
   if (ids.length === 0) return
@@ -280,7 +271,7 @@ async function refreshHealth(): Promise<void> {
 
     healthMap.value = next
   } catch {
-    // 单次失败不打扰用户：健康列的语义就是「有就给、没有就 —」
+    // 单次失败不打扰用户：健康信息的语义就是「有就给、没有就退回运行中」
   }
 }
 
@@ -354,24 +345,6 @@ function sparkline(containerId: string, pick: (sample: ContainerStatsSample) => 
       return `${(index * step).toFixed(1)},${y.toFixed(1)}`
     })
     .join(' ')
-}
-
-/** 健康列的展示值（查不到时「—」）。 */
-function healthLabel(containerId: string): string {
-  const item = healthMap.value[containerId]
-
-  return item ? t(HEALTH_LABEL_KEY[item.healthStatus]) : '—'
-}
-
-/** 健康列的色调。 */
-function healthTone(containerId: string): string {
-  const status = healthMap.value[containerId]?.healthStatus
-
-  if (status === 'healthy') return 'text-status-ok'
-  if (status === 'unhealthy') return 'text-status-down'
-  if (status === 'starting') return 'text-status-warn'
-
-  return 'text-content-faint'
 }
 
 /**
@@ -858,18 +831,6 @@ watch(metricsEnabled, () => {
   void syncBoard()
 })
 
-// 健康列关掉时停掉轮询（不白花 N 次 inspect），打开时立刻拉一次
-watch(
-  () => columns.value.health,
-  (enabled) => {
-    if (enabled) startHealthPolling()
-    else {
-      stopHealthPolling()
-      healthMap.value = {}
-    }
-  }
-)
-
 onMounted(() => {
   // 从后台切回来时立刻补一轮：否则用户会盯着暂停前那一份数据，而空白可能长达几分钟。
   const onVisible = () => {
@@ -962,8 +923,11 @@ onBeforeUnmount(() => {
     >
       <template #actions>
         <!--
-          列设置（0.6.0）：健康列 + 三个指标列。
+          显示列（0.6.0）：三个指标列。
           ⚠️ 指标列默认全关：每开一列，每个可见容器就多占一条到守护进程的流。
+          ⚠️ 健康**不在这里**：它已并入「状态」列（见 ContainerStatusBadge），
+          再给一个独立开关等于让人以为「关掉就不看健康了」——实际上关不掉。
+
         -->
         <el-popover placement="bottom-end" :width="200" trigger="click">
           <template #reference>
@@ -974,12 +938,6 @@ onBeforeUnmount(() => {
           </template>
 
           <div class="flex flex-col gap-2">
-            <el-checkbox
-              :model-value="columns.health"
-              @change="prefs.setContainerColumn('health', $event as boolean)"
-            >
-              {{ t('container.col.health') }}
-            </el-checkbox>
             <el-checkbox
               :model-value="columns.cpu"
               @change="prefs.setContainerColumn('cpu', $event as boolean)"
@@ -1094,32 +1052,30 @@ onBeforeUnmount(() => {
             </template>
           </el-table-column>
 
-          <el-table-column prop="state" :label="t('container.col.state')" width="160" sortable="custom">
+          <!--
+            状态列：**状态与健康合成一列**。
+            「运行中」和「健康」回答的是同一个问题——「这个服务还好吗」，
+            分成两列时一行里会出现「运行中 / 不健康」两个词，读者得自己判断哪个才是结论。
+            合成后只有四种结论：健康 / 不健康（黄）/ 运行中 / 已停止。
+          -->
+          <el-table-column prop="state" :label="t('container.col.state')" width="170" sortable="custom">
             <template #default="{ row }">
-              <ContainerStatusBadge :status="row.state" />
+              <div class="flex items-center gap-2">
+                <ContainerStatusBadge
+                  :status="row.state"
+                  :health="healthMap[row.id]?.healthStatus ?? null"
+                />
+                <!-- 重启次数：健康信息自带的副产品，丢了可惜；跟着状态一起显示 -->
+                <span
+                  v-if="(healthMap[row.id]?.restartCount ?? 0) > 0"
+                  class="text-xs text-status-warn app-tabular"
+                  :title="t('container.detail.restartCount')"
+                >
+                  ↻ {{ healthMap[row.id]?.restartCount }}
+                </span>
+              </div>
               <div v-if="row.status" class="app-truncate mt-0.5 text-xs text-content-faint">
                 {{ row.status }}
-              </div>
-            </template>
-          </el-table-column>
-
-          <el-table-column
-            v-if="columns.health"
-            :label="t('container.col.health')"
-            width="110"
-          >
-            <template #default="{ row }">
-              <!--
-                健康列：数据来自批量 inspect（10 秒一轮）。
-                查不到的容器显示「—」——那多半是两次刷新之间被删了。
-              -->
-              <span class="text-xs" :class="healthTone(row.id)">{{ healthLabel(row.id) }}</span>
-              <div
-                v-if="(healthMap[row.id]?.restartCount ?? 0) > 0"
-                class="mt-0.5 text-xs text-status-warn"
-                :title="t('container.detail.restartCount')"
-              >
-                ↻ {{ healthMap[row.id]?.restartCount }}
               </div>
             </template>
           </el-table-column>

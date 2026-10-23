@@ -32,10 +32,14 @@ export type PageSize = (typeof PAGE_SIZE_OPTIONS)[number] | typeof PAGE_SIZE_ALL
 /**
  * 容器列表可开关的列。
  *
- * `health` 与三个指标列分开：前者是一次批量 inspect 的结果，
- * 后者是持续订阅 —— 两者的成本模型完全不同，不能绑在一个开关上。
+ * ⚠️ **健康不再是可开关的列**：它已并入「状态」列（见 `ContainerStatusBadge`）——
+ * 状态与健康回答的是同一个问题，分成两列时一行里会出现「运行中 / 不健康」两个词。
+ * 留着 `health` 开关等于让人以为「关掉就不看健康了」，而实际上关不掉。
+ *
+ * 三个指标列共用一个开关：它们都是**持续订阅**（每个容器一条到守护进程的流），
+ * 成本模型相同。
  */
-export type ContainerColumn = 'health' | 'cpu' | 'memory' | 'network'
+export type ContainerColumn = 'cpu' | 'memory' | 'network'
 
 /**
  * 把界面上的每页条数换算成**可以发给后端的**真实条数。
@@ -81,11 +85,12 @@ export const usePreferencesStore = defineStore('preferences', {
      * 容器列表的列开关（0.6.0）。
      *
      * 指标三列**默认关闭**：每个开着的指标列都意味着给每个可见容器占一条到守护进程的流。
-     * 健康列默认**开启**：它只是列表页的 N 次 inspect（一次批量请求），
-     * 而 roadmap 的验收要求「健康检查失败的容器在列表里一眼可见」。
+     *
+     * ⚠️ 这里**没有** `health`：健康已并入状态列（见 `ContainerColumn` 的说明）。
+     * 旧版本持久化下来的 `health: true` 会被 `setContainerColumn` 一并丢弃——
+     * 用「显式列出三个键」而不是展开旧对象，才能真正把它清掉。
      */
     containerColumns: {
-      health: true,
       cpu: false,
       memory: false,
       network: false
@@ -108,9 +113,20 @@ export const usePreferencesStore = defineStore('preferences', {
           : 20
     },
 
-    /** 切换容器列表某一列的显示。 */
+    /**
+     * 切换容器列表某一列的显示。
+     *
+     * ⚠️ **显式列出三个键**而不是 `{ ...旧对象, [column]: visible }`：
+     * 展开旧对象会把旧版本持久化下来的 `health` 键一直带下去，
+     * 而它已经不对应任何列了。
+     */
     setContainerColumn(column: ContainerColumn, visible: boolean) {
-      this.containerColumns = { ...this.containerColumns, [column]: visible }
+      this.containerColumns = {
+        cpu: this.containerColumns.cpu,
+        memory: this.containerColumns.memory,
+        network: this.containerColumns.network,
+        [column]: visible
+      }
     }
   },
   persist: {
