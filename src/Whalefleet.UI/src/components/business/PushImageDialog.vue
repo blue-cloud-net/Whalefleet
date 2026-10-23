@@ -166,7 +166,7 @@ function close(): void {
 
       <el-form-item :label="t('image.push.repository')">
         <el-select v-model="repositoryId" class="w-full" :disabled="submitting || isUntagged">
-          <el-option :label="t('image.push.registryAuto')" value="" />
+          <el-option :label="t('image.push.repositoryAuto')" value="" />
           <el-option
             v-for="item in repositories"
             :key="item.id"
@@ -176,7 +176,7 @@ function close(): void {
         </el-select>
         <!-- 把自动匹配的结果摆出来：否则用户不知道自己到底会不会带凭据 -->
         <p class="mt-1 text-xs text-content-muted">
-          <template v-if="repositoryId !== ''">{{ t('image.push.registryManual') }}</template>
+          <template v-if="repositoryId !== ''">{{ t('image.push.repositoryManual') }}</template>
           <template v-else-if="matchedRepository">
             {{ t('image.push.matched', { name: matchedRepository.name, address: targetAddress }) }}
           </template>
