@@ -91,3 +91,47 @@ export function removeNetwork(hostId: string, networkId: string): Promise<void> 
  * 而两个名字在各自的版本上都是内置的。只列一个的话，新旧机器上各有一个会漏掉。
  */
 export const BUILT_IN_NETWORKS: readonly string[] = ['bridge', 'host', 'none', 'null']
+
+/**
+ * 把容器接入网络（0.7.0）。
+ *
+ * **幂等**：容器已经在该网络上时后端直接返回成功（它先读实际状态再决定要不要调守护进程），
+ * 因此重复点击不会得到一个含义不明的错误。
+ *
+ * ⚠️ **容器必须处于运行中**：守护进程只允许接入运行中的容器
+ * （停止的容器没有网络命名空间可接入）。
+ */
+export function connectNetwork(
+  hostId: string,
+  containerId: string,
+  networkId: string
+): Promise<void> {
+  return request<void>({
+    url: `/api/v1/hosts/${encodeURIComponent(hostId)}/networks/connect`,
+    method: 'post',
+    data: { containerId, networkId }
+  })
+}
+
+/**
+ * 把容器从网络断开（0.7.0）。
+ *
+ * **幂等**：容器本来就不在该网络上时后端直接返回成功。
+ *
+ * ⚠️ **断开会让容器立刻失去该网络的连通性**，界面必须二次确认。
+ *
+ * ⚠️ **`force` 会连累别人**：Docker 的强制断开会把**共用同一网络命名空间**的容器
+ * 一起踢掉，而那些容器用户可能根本不知道存在。因此默认不强制。
+ */
+export function disconnectNetwork(
+  hostId: string,
+  containerId: string,
+  networkId: string,
+  force = false
+): Promise<void> {
+  return request<void>({
+    url: `/api/v1/hosts/${encodeURIComponent(hostId)}/networks/disconnect`,
+    method: 'post',
+    data: { containerId, networkId, force }
+  })
+}

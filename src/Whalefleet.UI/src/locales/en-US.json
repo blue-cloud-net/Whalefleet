@@ -738,7 +738,20 @@
       "subnet": "Subnet"
     },
     "created": "Network \"{name}\" created",
+    "connect": {
+      "action": "Connect",
+      "placeholder": "Select a container to connect",
+      "truncated": "{count} containers on this host; only the first 100 are listed."
+    },
+    "connected": "Container connected to the network",
+    "disconnect": {
+      "action": "Disconnect",
+      "confirm": "Container \"{name}\" will immediately lose connectivity on this network. Continue?",
+      "title": "Disconnect from network"
+    },
+    "disconnected": "Container disconnected from the network",
     "detail": {
+      "actions": "Actions",
       "containerName": "Container",
       "containers": "Attached containers",
       "gatewayLabel": "Gateway",

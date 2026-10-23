@@ -1947,3 +1947,60 @@ describe('资源清理端点（0.7.0）', () => {
     expect(data.deleted).not.toContain('redis:7-alpine')
   })
 })
+
+describe('网络接入端点（0.7.0）', () => {
+  it('networks/connect：幂等，重复接入仍是 200 且端点只有一个', async () => {
+    const first = await post('/api/v1/hosts/local/networks/connect', {
+      containerId: 'whalefleet-ui',
+      networkId: 'app-internal'
+    })
+    expect(first.status).toBe(200)
+
+    const second = await post('/api/v1/hosts/local/networks/connect', {
+      containerId: 'whalefleet-ui',
+      networkId: 'app-internal'
+    })
+    expect(second.status).toBe(200)
+
+    const inspected = await post('/api/v1/hosts/local/networks/inspect', {
+      networkId: 'app-internal'
+    })
+
+    const containers = (inspected.json.data as { containers: { name: string }[] }).containers
+    const matched = containers.filter((item) => item.name === 'whalefleet-ui')
+
+    expect(matched).toHaveLength(1)
+  })
+
+  it('networks/disconnect：本来没接入也返回 200（幂等）', async () => {
+    const { status } = await post('/api/v1/hosts/local/networks/disconnect', {
+      containerId: 'whalefleet-ui',
+      networkId: 'lan-macvlan'
+    })
+
+    expect(status).toBe(200)
+  })
+
+  it('networks/disconnect：断开后该网络就能删了', async () => {
+    await post('/api/v1/hosts/local/networks/disconnect', {
+      containerId: 'order-api',
+      networkId: 'app-internal'
+    })
+
+    const removed = await post('/api/v1/hosts/local/networks/remove', {
+      networkId: 'app-internal'
+    })
+
+    expect(removed.status).toBe(200)
+  })
+
+  it('networks/connect：网络不存在 → 1401 / 404', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/networks/connect', {
+      containerId: 'whalefleet-ui',
+      networkId: 'no-such-network'
+    })
+
+    expect(status).toBe(404)
+    expect(json.code).toBe(ErrorCode.DockerResourceNotFound)
+  })
+})

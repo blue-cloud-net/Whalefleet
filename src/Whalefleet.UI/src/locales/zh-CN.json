@@ -738,7 +738,20 @@
       "subnet": "子网"
     },
     "created": "网络「{name}」已创建",
+    "connect": {
+      "action": "接入",
+      "placeholder": "选择要接入的容器",
+      "truncated": "本机共 {count} 个容器，仅列出前 100 个。"
+    },
+    "connected": "容器已接入网络",
+    "disconnect": {
+      "action": "断开",
+      "confirm": "断开后，容器「{name}」将立即失去该网络的连通性。确定吗？",
+      "title": "断开网络"
+    },
+    "disconnected": "容器已断开网络",
     "detail": {
+      "actions": "操作",
       "containerName": "容器",
       "containers": "已接入的容器",
       "gatewayLabel": "网关",

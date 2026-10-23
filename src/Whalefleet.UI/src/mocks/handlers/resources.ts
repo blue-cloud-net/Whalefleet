@@ -7,6 +7,7 @@ import {
   MOCK_VOLUME_DETAILS,
   MOCK_VOLUMES_DEFAULT
 } from '../data/resources'
+import { MOCK_CONTAINERS_DEFAULT } from '../data/containers'
 import type {
   BatchOperationResult,
   NetworkDetail,
@@ -33,6 +34,14 @@ const removedVolumes = new Set<string>()
 /** 本次会话里被**删除**的夹具网络名。 */
 const removedNetworks = new Set<string>()
 
+/**
+ * 本次会话里每个网络的容器端点（网络 ID → 端点列表）。
+ *
+ * 夹具是模块级常量，**刻意不原地改**（与镜像那边的覆盖层同一个理由）：
+ * 原地改会让「跑一次走查后夹具变了」，下一轮看到的数据与初始态不一致。
+ */
+const networkContainers = new Map<string, NetworkDetail['containers']>()
+
 /** Docker 内置网络（不可删除）。与 `api/network.ts` 的常量同源。 */
 const BUILT_IN = new Set(['bridge', 'host', 'none', 'null'])
 
@@ -45,6 +54,7 @@ export function resetSessionResources(): void {
   createdNetworks.clear()
   removedVolumes.clear()
   removedNetworks.clear()
+  networkContainers.clear()
 }
 
 /**
@@ -151,6 +161,22 @@ export function resourceHandlers(scenario: () => MockScenario) {
     return MOCK_NETWORK_DETAILS.find((network) => network.id === id || network.name === id)
   }
 
+  /**
+   * 某网络当前的容器端点（夹具 + 会话内接入 / 断开）。
+   *
+   * 首次访问时用夹具播种，之后一直返回**同一个数组**——
+   * 接入 / 断开直接改它，inspect 与删除判定读到的就是最新状态。
+   */
+  function containersOf(detail: NetworkDetail): NetworkDetail['containers'] {
+    const existing = networkContainers.get(detail.id)
+    if (existing) return existing
+
+    const seeded: NetworkDetail['containers'] = [...detail.containers]
+    networkContainers.set(detail.id, seeded)
+
+    return seeded
+  }
+
   return [
     /* ==================== 数据卷 ==================== */
 
@@ -244,7 +270,7 @@ export function resourceHandlers(scenario: () => MockScenario) {
 
       if (!existing) {
         // force 的**唯一**作用：让「不存在」变成成功（幂等）
-        if (force) return HttpResponse.json(ok())
+        if (force) return HttpResponse.json(ok(null))
 
         return HttpResponse.json(fail(ErrorCode.DockerResourceNotFound), {
           status: httpStatusOf(ErrorCode.DockerResourceNotFound)
@@ -265,7 +291,7 @@ export function resourceHandlers(scenario: () => MockScenario) {
       removedVolumes.add(name)
       createdVolumes.delete(name)
 
-      return HttpResponse.json(ok())
+      return HttpResponse.json(ok(null))
     }),
 
     http.post('*/api/v1/hosts/:hostId/volumes/batch-remove', async ({ request }) => {
@@ -401,7 +427,80 @@ export function resourceHandlers(scenario: () => MockScenario) {
         })
       }
 
-      return HttpResponse.json(ok(detail))
+      // 容器端点取**会话内**的状态：接入 / 断开之后详情必须立刻反映出来
+      return HttpResponse.json(ok({ ...detail, containers: containersOf(detail) }))
+    }),
+
+    http.post('*/api/v1/hosts/:hostId/networks/connect', async ({ request }) => {
+      await delay(delayFor(scenario()))
+
+      const body = await readBody(request)
+      const containerId = String(body.containerId ?? '').trim()
+      const networkId = String(body.networkId ?? '').trim()
+
+      if (containerId.length === 0 || networkId.length === 0) {
+        return HttpResponse.json(
+          fail(ErrorCode.ValidationFailed, 'containerId 与 networkId 都不能为空'),
+          { status: httpStatusOf(ErrorCode.ValidationFailed) }
+        )
+      }
+
+      const detail = networkDetailFor(scenario(), networkId)
+
+      if (!detail) {
+        return HttpResponse.json(fail(ErrorCode.DockerResourceNotFound), {
+          status: httpStatusOf(ErrorCode.DockerResourceNotFound)
+        })
+      }
+
+      const endpoints = containersOf(detail)
+      const resolvedId = resolveContainerId(containerId)
+
+      // ⚠️ **幂等**：已经在网上了直接成功（后端先读实际状态再决定要不要调守护进程，
+      // 不同守护进程版本对「重复接入」的行为并不一致）
+      if (!endpoints.some((endpoint) => endpoint.id === resolvedId)) {
+        endpoints.push(toEndpoint(resolvedId))
+      }
+
+      return HttpResponse.json(ok(null))
+    }),
+
+    http.post('*/api/v1/hosts/:hostId/networks/disconnect', async ({ request }) => {
+      await delay(delayFor(scenario()))
+
+      const body = await readBody(request)
+      const containerId = String(body.containerId ?? '').trim()
+      const networkId = String(body.networkId ?? '').trim()
+
+      if (containerId.length === 0 || networkId.length === 0) {
+        return HttpResponse.json(
+          fail(ErrorCode.ValidationFailed, 'containerId 与 networkId 都不能为空'),
+          { status: httpStatusOf(ErrorCode.ValidationFailed) }
+        )
+      }
+
+      const detail = networkDetailFor(scenario(), networkId)
+
+      if (!detail) {
+        return HttpResponse.json(fail(ErrorCode.DockerResourceNotFound), {
+          status: httpStatusOf(ErrorCode.DockerResourceNotFound)
+        })
+      }
+
+      const endpoints = containersOf(detail)
+      const resolvedId = resolveContainerId(containerId)
+      // 同时按 ID 与**名字**匹配：夹具里的端点可能用的是容器名之外的标识，
+      // 而用户手里常常只有名字。
+      const index = endpoints.findIndex(
+        (endpoint) => endpoint.id === resolvedId || endpoint.name === containerId
+      )
+
+      // ⚠️ **幂等**：本来就不在网中也算成功（守护进程会回 404，后端自己先读状态绕开）
+      if (index >= 0) {
+        endpoints.splice(index, 1)
+      }
+
+      return HttpResponse.json(ok(null))
     }),
 
     http.post('*/api/v1/hosts/:hostId/networks/create', async ({ request }) => {
@@ -479,11 +578,12 @@ export function resourceHandlers(scenario: () => MockScenario) {
       }
 
       // 没有 force：Docker 删除网络不提供该参数，有容器接入必然失败
-      if (detail.containers.length > 0) {
+      const attached = containersOf(detail)
+      if (attached.length > 0) {
         return HttpResponse.json(
           fail(
             ErrorCode.DockerResourceConflict,
-            `网络「${detail.name}」上还有 ${detail.containers.length} 个容器，先断开或删除它们再删除网络`
+            `网络「${detail.name}」上还有 ${attached.length} 个容器，先断开或删除它们再删除网络`
           ),
           { status: httpStatusOf(ErrorCode.DockerResourceConflict) }
         )
@@ -492,7 +592,7 @@ export function resourceHandlers(scenario: () => MockScenario) {
       removedNetworks.add(detail.name)
       createdNetworks.delete(detail.name)
 
-      return HttpResponse.json(ok())
+      return HttpResponse.json(ok(null))
     })
   ]
 }
@@ -517,6 +617,35 @@ function matchesLabel(labels: Record<string, string>, expression: string): boole
   return labels[expression.slice(0, index)] === expression.slice(index + 1)
 }
 
+/**
+ * 把容器标识（ID 或**名字**）解析成容器 ID。
+ *
+ * ⚠️ **必须先解析再做幂等判定**：端点上记的是**容器 ID**，
+ * 而用户（与夹具）手里常常是容器名。拿名字直接比 id 会比不相等，
+ * 于是「重复接入」被当成两次接入——幂等就失效了。
+ */
+function resolveContainerId(containerId: string): string {
+  const container = MOCK_CONTAINERS_DEFAULT.find(
+    (item) => item.id === containerId || item.name === containerId
+  )
+
+  return container?.id ?? containerId
+}
+
+/** 把容器标识变成网络端点（接入网络时用）。 */
+function toEndpoint(containerId: string): NetworkDetail['containers'][number] {
+  const container = MOCK_CONTAINERS_DEFAULT.find(
+    (item) => item.id === containerId || item.name === containerId
+  )
+
+  return {
+    id: container?.id ?? containerId,
+    name: container?.name ?? containerId,
+    macAddress: '02:42:ac:14:00:99',
+    ipv4Address: '172.20.0.99/16',
+    ipv6Address: null
+  }
+}
 
 /**
  * 标签表达式里是否含控制字符。
