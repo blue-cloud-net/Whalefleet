@@ -230,6 +230,11 @@ DDD 战术模式（聚合根 / 领域事件 / 领域服务）**已整体移除**
 | 48 | **图标名要对上「概念」，不能对上「形状」** | Carbon 的 `i-carbon-image` 是**照片**（picture），不是「镜像 / 制品」。Docker 镜像是打包产物，用 `i-carbon-archive`（压缩包）；容器用 `i-carbon-cube`（方盒子）。`uno.config.ts` 只校验图标**是否存在**，不校验它**是否对题**——写错了照样编译通过，只是界面上挂着一个画风不对的图形。选图标前先想「这东西在现实世界里长什么样」，而不是「我要画个什么形状」 |
 | 49 | **`el-popover` 的 reference 插槽里不能放组件** | EP 的 `el-popover` 内部就是 `el-tooltip`：它用 `ElOnlyChild` 取插槽里的**第一个节点**，把 forwardRef **运行时指令**挂到那个节点上，靠指令的 `mounted` 钩子拿真正的 DOM 元素。若第一个节点是**组件**（如 `el-tooltip`），指令挂到了组件上，Vue 告警 `Runtime directive used on component with non-element root node`，popover 拿不到触发元素 → **点击触发器永远绑不上**。症状极具迷惑性：**tooltip 正常，菜单点不开**。正确写法：reference 槽里放**按钮本身**，tooltip 挂按钮**内部**的图标上；且 tooltip 与面板**别放在同一侧**（否则浮层会盖住面板、吃掉落在那儿的点击）。⚠️ **jsdom 复现不出点击失效**（渲染与属性透传与浏览器不一致），只能守结构与那条告警 |
 
+| 50 | **网络接入 / 断开的幂等只能自己实现** | 守护进程对「容器已在这个网络上」在不同版本上行为不一致：有的回 **403**（already connected），有的回 **404**（not connected）。直接透传会让「重复接入」变成报错。正确做法：**先 inspect 网络与容器**再决定要不要调守护进程。顺带：**容器的 `NetworkSettings.Networks` 是按网络「名字」索引的**（`EndpointSettings.NetworkID` 才是 ID），而用户可能拿着网络 ID 来请求——判断「是否已接入」必须先知道这个 ID 对应什么名字。`Disconnect` 的 `force` 会**连累共用同一网络命名空间的其它容器** |
+| 51 | **`POST /volumes/prune` 默认只清「匿名卷」** | 自 Engine API **1.42** 起，不带 `all=true` 时守护进程只删**没有名字**的卷。要清具名未使用卷必须带 `all=true`。不补的后果很隐蔽：**预览列出 5 个、实删 0 个**（预览走 `system/df`，删除走守护进程，两套口径）。→ 清理卷时**固定下发 `all=true`** |
+| 52 | **prune 会跳过带挂载选项的卷** | `bind` 卷其实不是本地卷，回收不了空间，守护进程直接跳过（有 `len(Options()) == 0` 的判断）。界面必须写明「带挂载选项的卷不会被清理」，否则就是承诺了做不到的事。镜像侧另有 **「`dangling=false` 的语义是不止悬空」**（等价 `docker image prune -a`），不是「只要非悬空」 |
+| 53 | **prune 的集成测试必须带 `label` 过滤** | 不带 `label` 的 `volumes/prune` 会删掉本机**全部**未被引用的卷、`images/prune` 会删掉全部悬空镜像——在共享开发机上等于删掉别的项目的数据。测试固定用 `whalefleet.test=<值>` 这类专属 label 做筛选。另外⚠️ **本机 Docker 用的可能是 containerd image store**：移除最后一个 tag 会**连内容一起删**（`docker rmi` 同时打印 Untagged + Deleted），因此**造不出悬空镜像**——测试要改成「带 tag 的未被引用镜像」来验 |
+
 > **Dapper 物化能力（已核实，勿再沿用旧判断）**：Dapper **可以**物化「非公开构造 + 非公开 setter」
 > 的充血实体，用 `skipVisibility` 动态方法。**不需要** Row DTO，**不需要** `InternalsVisibleTo`。
 > 实体给一个非公开无参构造即可。IVT 仅在 Infrastructure 需以强类型代码直接调非公开成员时才要。

@@ -420,7 +420,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 主机打标 / 去标 | `POST /api/v1/admin/hosts/tags/{assign,revoke}` | 0.6.0 |
 | 磁盘用量 | `POST /api/v1/hosts/{hostId}/system/df` | 0.6.0 |
 | 容器批量启停 | `POST /api/v1/hosts/{hostId}/containers/batch-{start,stop,restart}` | 0.7.0 |
-| 资源级清理 | `POST /api/v1/hosts/{hostId}/{images,volumes}/prune` | 0.7.0 |
+| 资源级清理 | `POST /api/v1/hosts/{hostId}/{images,volumes}/prune` | 0.7.0（已交付） |
 | 容器接入 / 断开网络 | `POST /api/v1/hosts/{hostId}/networks/{connect,disconnect}` | 0.7.0 |
 | 认证日志列表 | `POST /api/v1/admin/logs/authentication/list` | 0.9.0 |
 | 活动日志列表 | `POST /api/v1/admin/logs/activity/list` | 0.9.0 |
@@ -850,9 +850,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 重启 | `POST /api/v1/hosts/{hostId}/containers/restart` | 0.0.9 | Body: `{ containerId }` |
 | 删除 | `POST /api/v1/hosts/{hostId}/containers/remove` | 0.0.9 | Body: `{ containerId, force? }`；不带 `force` 删运行中的容器返回 `1404`/409 |
 | **批量删除** | `POST /api/v1/hosts/{hostId}/containers/batch-remove` | **0.1.0** | Body: `{ containerIds: string[], force? }`；响应为汇总结果，**部分成功也是 200**（见下） |
-| **批量启停** | `POST /api/v1/hosts/{hostId}/containers/batch-start` | **0.7.0** | Body: `{ containerIds: string[] }`；响应与 `batch-remove` **同形状**（`succeeded` / `failed` / `failures`），**部分成功也是 200** |
-| **批量启停** | `POST /api/v1/hosts/{hostId}/containers/batch-stop` | **0.7.0** | Body: `{ containerIds: string[], waitSeconds? }`；`waitSeconds` 取值 0–300（默认 10） |
-| **批量启停** | `POST /api/v1/hosts/{hostId}/containers/batch-restart` | **0.7.0** | Body: `{ containerIds: string[] }`；响应形状同上 |
+| **批量启停** | — | **0.7.0 不做** | 前端逐条调用 `start` / `stop` / `restart` 并**汇总失败原因**。启停是幂等操作，逐条调用的代价只是几个来回；服务端批量端点会多出「带哪几个 ID」「上限多少」「逐条错误码怎么排」一整套契约。**批量删除仍走服务端**（`batch-remove`），因为删除不可逆，必须留出逐条汇报失败的空间 |
 | **重命名** | `POST /api/v1/hosts/{hostId}/containers/rename` | **0.3.0** | Body: `{ containerId, name }`；名称规则同 `create`（字母/数字开头，其后含 `_ . -`）；名称已被占用返回 `1404`/409 |
 | **热更新** | `POST /api/v1/hosts/{hostId}/containers/update` | **0.3.0** | Body: `{ containerId, restartPolicy?, memoryLimitBytes?, nanoCpus? }`；**只开放真能热改的字段**，镜像/端口/环境变量/挂载/网络**不支持**。省略 = 保持当前值，**传 0 是非法**（见下） |
 | **复制** | `POST /api/v1/hosts/{hostId}/containers/duplicate` | **0.3.0** | Body: `{ containerId, name?, start? }`；默认名「原名 + `-copy`」，被占用时自动递增 `-2`/`-3`。**原容器不受影响**（不停止、不改名、不删除） |
@@ -1289,7 +1287,7 @@ nginx: [emerg] …
 | 获取详情 | `POST /api/v1/hosts/{hostId}/images/inspect` | 0.0.10 | Body: `{ imageId }` |
 | **构建镜像** | `POST /api/v1/hosts/{hostId}/images/build` | **0.4.0** | `multipart/form-data`：文件字段 `context`（tar 包，**必须带 filename**）+ 表单字段 `tag` / `dockerfile` / `buildArgs` / `labels` / `target` / `platform` / `noCache`；本版一次性返回（进度推送随 0.5.0 改 SignalR） |
 | **Push 镜像** | `POST /api/v1/hosts/{hostId}/images/push` | **0.4.0** | Body: `{ image, repositoryId?, platform? }`；`repositoryId` 省略时按镜像引用里的地址段自动匹配已登记的仓库 |
-| **清理** | `POST /api/v1/hosts/{hostId}/images/prune` | **0.7.0** | Body: `{ danglingOnly? }`；返回回收量；**不是** `system/prune` |
+| **清理** | `POST /api/v1/hosts/{hostId}/images/prune` | **0.7.0** | Body: `{ danglingOnly?, label? }`；返回 `{ deleted: string[], reclaimedBytes: number }`；**不是** `system/prune`。`danglingOnly` 省略为 `true`（只清悬空镜像），`false` 的语义是**不止悬空**（等价 `docker image prune -a`）。`label` 为 `key` 或 `key=value` |
 
 #### 查询端点的请求 / 响应形态（0.0.10 已实现）
 
@@ -1500,7 +1498,7 @@ nginx: [emerg] …
 | 创建 | `POST /api/v1/hosts/{hostId}/volumes/create` | Body: `{ name, driver?, driverOptions?, labels? }` |
 | 删除 | `POST /api/v1/hosts/{hostId}/volumes/remove` | Body: `{ name, force? }` |
 | **批量删除** | `POST /api/v1/hosts/{hostId}/volumes/batch-remove` | Body: `{ names: [...], force? }` |
-| **清理** | `POST /api/v1/hosts/{hostId}/volumes/prune` | Body: `{ dryRun? }`；返回**将删除的清单**与回收量。`dryRun=true` 时只列不删 |
+| **清理** | `POST /api/v1/hosts/{hostId}/volumes/prune` | Body: `{ label? }`；返回 `{ deleted: string[], reclaimedBytes: number }`。**没有 `dryRun`**：预览清单来自 `POST /hosts/{hostId}/system/df`，是策略级候选，与实际删除不是同一套判断 |
 | 获取详情 | `POST /api/v1/hosts/{hostId}/volumes/inspect` | Body: `{ name }` |
 
 > **列表分页与容器 / 镜像同一套口径**：响应 `{ items, total, pageIndex, pageSize, warnings }`，
@@ -1514,6 +1512,18 @@ nginx: [emerg] …
 > 否则守护进程会顺带统计镜像层，慢好几秒）。
 > 两个字段是**可空**的：`null` 表示「守护进程没给用量」（老版本守护进程、第三方驱动、
 > 或用量查询失败），界面显示「—」；`0` 是确切答案（空卷 / 没人引用），如实显示。
+>
+> **清理端点的语义（0.7.0 已交付）**
+>
+> - **请求里没有「要删哪些」**：选哪些由守护进程按「未被任何容器使用 / 引用」判断。
+>   因此界面**必须**在调用前用 `POST /hosts/{hostId}/system/df` 展示候选清单——那是唯一的安全阀。
+> - **`label` 是唯一的范围收窄手段**：省略它，`volumes/prune` 会清掉本机**全部**未被引用的卷，
+>   `images/prune` 会清掉全部悬空镜像。`label` 传 `key` 或 `key=value`。
+> - **卷清理固定按「连具名卷一起清」下发**：守护进程自 Engine API 1.42 起默认只清匿名卷，
+>   而预览列的是全部未被引用的卷；不补 `all=true` 会出现「清单里有 5 个，删完还在」。
+> - **prune 会跳过带挂载选项的卷**（`bind` 卷）：它们其实不是本地卷，回收不了空间。
+> - **并发 prune 回 409**（`a prune operation is already running`）→ 本项目映射为 `1404`/409。
+> - **响应里的 `deleted` 是事实**：它可能与预览的候选清单不一致，界面要显示实际结果。
 >
 > **`force` 不是「强制删除」**（实测，勿照字面理解）：
 > 只要还有容器挂着这个卷，守护进程就拒绝删除，**带不带 `force` 都一样**（`1404`/409），
@@ -1551,8 +1561,8 @@ nginx: [emerg] …
 | 获取列表 | `POST /api/v1/hosts/{hostId}/networks/list` | Body: `{ pageIndex?, pageSize? }`；分页在服务端**内存**完成，`pageSize` 默认 20 / 上限 100 |
 | 创建 | `POST /api/v1/hosts/{hostId}/networks/create` | Body: `{ name, driver?, subnet?, gateway?, ipRange?, attachable?, labels? }` |
 | 删除 | `POST /api/v1/hosts/{hostId}/networks/remove` | Body: `{ networkId }` |
-| **接入网络** | `POST /api/v1/hosts/{hostId}/networks/connect` | Body: `{ containerId, networkId }`；容器已接入时**幂等返回成功** |
-| **断开网络** | `POST /api/v1/hosts/{hostId}/networks/disconnect` | Body: `{ containerId, networkId, force? }`；容器未接入时**幂等返回成功** |
+| **接入网络** | `POST /api/v1/hosts/{hostId}/networks/connect` | Body: `{ containerId, networkId }`；容器已接入时**幂等返回成功**（服务端先读实际状态再决定要不要调守护进程）。容器须**运行中** |
+| **断开网络** | `POST /api/v1/hosts/{hostId}/networks/disconnect` | Body: `{ containerId, networkId, force? }`；容器未接入时**幂等返回成功**。`force` 会连累**共用同一网络命名空间**的其它容器 |
 | 获取详情 | `POST /api/v1/hosts/{hostId}/networks/inspect` | Body: `{ networkId }` |
 
 > **列表分页**（与卷同口径）：响应 `{ items, total, pageIndex, pageSize }`。
