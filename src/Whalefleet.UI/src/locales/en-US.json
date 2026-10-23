@@ -41,11 +41,9 @@
     "delete": "Delete",
     "edit": "Edit",
     "empty": "No data",
-    "error": "Something went wrong",
     "loading": "Loading…",
     "menu": "Menu",
     "next": "Next",
-    "no": "No",
     "pageSize": "Page size",
     "pageSizeAll": "All",
     "pageSizeAllCapped": "All (max {max})",
@@ -57,9 +55,7 @@
     "search": "Search",
     "selected": "{count} selected",
     "sidebar": "Toggle sidebar",
-    "sizeSharedHint": "Actual size {virtual} (includes layers shared with other images)",
-    "total": "{total} total",
-    "yes": "Yes"
+    "sizeSharedHint": "Actual size {virtual} (includes layers shared with other images)"
   },
   "container": {
     "action": {
@@ -77,11 +73,6 @@
       "start": "Start",
       "stop": "Stop",
       "update": "Update"
-    },
-    "actionHint": {
-      "removeStopped": "Remove a stopped container",
-      "start": "Start a stopped container",
-      "stop": "Stop a running container"
     },
     "addVolumes": {
       "done": "Mounts added",
@@ -123,8 +114,6 @@
       "ulimits": "Ulimits (name or name=soft:hard per line)",
       "user": "User"
     },
-    "autoRefresh": "Auto refresh",
-    "autoRefreshOn": "every {seconds}s",
     "backToList": "Back to containers",
     "batch": {
       "confirm": {
@@ -152,7 +141,6 @@
       "title": "Columns"
     },
     "confirm": {
-      "forceRemove": "Force remove (skips the graceful stop)",
       "remove": {
         "force": "Force remove",
         "message": "About to remove “{name}”. Its volumes are kept.",
@@ -272,8 +260,7 @@
       "title": "No containers"
     },
     "filter": {
-      "all": "Include stopped",
-      "allHint": "By default only running containers are listed"
+      "all": "Include stopped"
     },
     "health": {
       "healthy": "Healthy",
@@ -285,10 +272,7 @@
     "inspect": {
       "failed": "Failed to load details"
     },
-    "loadFailed": "Failed to load",
-    "loading": "Loading…",
     "logs": {
-      "autoScroll": "Auto scroll",
       "backToBottom": "Back to bottom",
       "download": "Download logs",
       "dropped": "{count} lines dropped (server pushed too fast)",
@@ -296,8 +280,6 @@
       "emptyHint": "Output appears here in real time once the container starts",
       "follow": "Live follow",
       "includeStderr": "Include stderr",
-      "loadFailed": "Failed to load logs",
-      "notFollow": "Live tailing arrives in 0.4.0; this is a one-shot read for now",
       "pause": "Pause",
       "paused": "Receiving paused; new output is being buffered",
       "resume": "Resume",
@@ -309,7 +291,6 @@
       },
       "subtitle": "Follow container output in real time",
       "tail": "Lines",
-      "tailAll": "All",
       "timestamps": "Timestamps",
       "title": "Container logs",
       "wrap": "Wrap lines"
@@ -334,7 +315,6 @@
       "transition": "Transitioning",
       "unknown": "Unknown"
     },
-    "total": "{total} total",
     "update": {
       "cpus": "CPU quota (cores)",
       "cpusInvalid": "Enter a positive number (decimals allowed), up to 1024 cores",
@@ -349,19 +329,6 @@
       "title": "Update container settings"
     }
   },
-  "dashboard": {
-    "placeholder": "Dashboard placeholder — waiting for stats API (0.4.0)",
-    "welcome": "Welcome to Whalefleet"
-  },
-  "error": {
-    "1000": "Invalid request parameters",
-    "1001": "Resource not found",
-    "1100": "Invalid username or password",
-    "1101": "Session expired, please sign in again",
-    "1103": "Too many login attempts, please try again later",
-    "1200": "Docker host unreachable",
-    "9999": "Internal server error"
-  },
   "events": {
     "col": {
       "action": "Action",
@@ -369,9 +336,7 @@
       "result": "Result",
       "target": "Target",
       "time": "Time"
-    },
-    "hint": "The menu entry and table skeleton are in place; functionality ships with audit logging (after 1.0.0).",
-    "subtitle": "Audit log: who did what to which resource, and when."
+    }
   },
   "host": {
     "action": {
@@ -381,7 +346,6 @@
     },
     "actions": {
       "edit": "Edit host",
-      "editSoon": "Host editing becomes available once the host management API ships",
       "enterLabel": "Open host {name}",
       "status": "Status chart"
     },
@@ -413,7 +377,7 @@
       "cgroup": "Cgroup",
       "components": "Components",
       "cpus": "vCPUs",
-      "hint": "CPU count and total memory are **static limits** (the Docker API exposes no host-level live metrics); credentials in proxy URLs are masked.",
+      "hint": "CPU count and total memory are static limits (the Docker API exposes no host-level live metrics); credentials in proxy URLs are masked.",
       "kernel": "Kernel",
       "logging": "Logging driver",
       "memory": "Memory",
@@ -433,12 +397,6 @@
       "impact": "Once disabled, every resource request targeting this host is rejected (1302) and its container / image pages become unavailable.",
       "message": "About to disable \\\"{name}\\\".",
       "title": "Disable host"
-    },
-    "duration": {
-      "day": "d",
-      "hour": "h",
-      "minute": "m",
-      "second": "s"
     },
     "empty": "No hosts registered yet — add the first one.",
     "enable": {
@@ -468,7 +426,7 @@
       "saved": "Saved",
       "testFailed": "Cannot connect: check the endpoint, the credentials and whether the target host is reachable.",
       "testOk": "Connected: this configuration reaches the daemon.",
-      "tlsNote": "These are **file paths visible inside the container**, not certificate contents; all three are required (a missing CA means accepting any server certificate).",
+      "tlsNote": "These are file paths visible inside the container, not certificate contents; all three are required (a missing CA means accepting any server certificate).",
       "type": "Connection type"
     },
     "group": {
@@ -493,7 +451,7 @@
       "editTitle": "Edit group",
       "empty": "No groups yet.",
       "hostCount": "Hosts",
-      "listHint": "Groups only affect how the overview page is laid out — they grant nothing.",
+      "listHint": "Groups affect how the overview page is laid out and where selection / filtering boundaries fall, but they play no part in authorization — which hosts someone may touch is decided only by scoped role assignments.",
       "listTitle": "Host groups",
       "local": "Local machine",
       "localDesc": "The Whalefleet host itself",
@@ -508,11 +466,9 @@
       "ungrouped": "Ungrouped"
     },
     "hero": {
-      "copied": "Endpoint copied to clipboard",
       "copyEndpoint": "Copy endpoint",
       "notFound": "Host not found — it may have been removed",
-      "refresh": "Refresh",
-      "refreshSoon": "Refreshing becomes available once the host list API ships; the list is demo data for now"
+      "refresh": "Refresh"
     },
     "info": {
       "agentVersion": "Agent version",
@@ -527,9 +483,7 @@
       "title": "Hosts"
     },
     "offline": {
-      "desc": "This host cannot be reached. The figures below come from the last successful sync and may be stale.",
-      "retry": "Check again",
-      "title": "Host is offline"
+      "desc": "This host cannot be reached. The figures below come from the last successful sync and may be stale."
     },
     "reachable": {
       "offline": "Unreachable",
@@ -547,19 +501,14 @@
     },
     "tag": {
       "assign": "Tag hosts",
-      "assignTitle": "Tag the selected hosts",
       "assigned": "Tags updated",
-      "color": "Color",
       "create": "New tag",
       "deleteConfirm": "Deleting a tag removes it from every host, but never deletes a host. Continue?",
-      "description": "Description",
       "empty": "No tags yet.",
       "hostCount": "Hosts",
       "manage": "Manage tags",
       "name": "Name",
       "removed": "Removed from {count} host(s)",
-      "revoke": "Untag hosts",
-      "selectHosts": "Select hosts first",
       "title": "Host tags"
     },
     "total": "{total} hosts",
@@ -584,8 +533,7 @@
         "title": "Remove images"
       },
       "done": "Removed {count} image(s)",
-      "partial": "Removed {done}, {failed} failed: {names}",
-      "untaggedOnly": "Untagged: {tags}. The image itself is still referenced by other tags, so it was kept."
+      "partial": "Removed {done}, {failed} failed: {names}"
     },
     "build": {
       "advanced": "Advanced options",
@@ -624,7 +572,7 @@
       "target": "Target stage",
       "targetPlaceholder": "Stage name for multi-stage builds; empty builds the final stage",
       "title": "Build image",
-      "waiting": "Building… this version returns the result at the end; large images can take minutes. Keep this dialog open."
+      "waiting": "Building… large images can take minutes; progress updates in real time."
     },
     "col": {
       "created": "Created",
@@ -680,7 +628,7 @@
       "required": "Please enter an image name",
       "submitting": "Pulling…",
       "title": "Pull image",
-      "waiting": "Pulling… a large image can take tens of seconds (live progress lands with the 0.5.0 SignalR work)"
+      "waiting": "Pulling… a large image can take tens of seconds; progress updates in real time."
     },
     "push": {
       "done": "Pushed {reference}",
@@ -828,7 +776,6 @@
     "unread": "{count} unread notifications"
   },
   "overview": {
-    "enter": "Open",
     "filter": {
       "all": "All groups",
       "allTags": "All tags",
@@ -838,8 +785,6 @@
       "status": "Any status",
       "ungrouped": "Ungrouped"
     },
-    "groupCount": "{count} host | {count} hosts",
-    "hostCount": "{total} total · {online} online",
     "manageHosts": "Add a host",
     "noHosts": "No Docker host yet",
     "stat": {
@@ -852,32 +797,21 @@
   },
   "page": {
     "containers": {
-      "cap1": "List with pagination and filters",
-      "cap2": "Start / stop / restart / remove",
-      "cap3": "Visual create form",
-      "cap4": "Log stream and resource stats",
-      "note": "Container APIs land in 0.0.9; the container UI follows in 0.0.11.",
-      "placeholder": "Containers placeholder — waiting for /api/v1/container/list (0.0.9)",
-      "subtitle": "Inspect containers on a host, start / stop / restart / remove them, or create one from an image.",
-      "title": "Container list and lifecycle management"
+      "subtitle": "Inspect containers on a host, start / stop / restart / remove them, or create one from an image."
     },
     "events": {
       "cap1": "Who did what and when",
       "cap2": "Outcome and error details",
       "cap3": "Filter by host or actor",
-      "note": "Requires an audit table first; docs/features.md schedules it after 1.0.0. Note this is platform operation auditing, not the Docker Events stream.",
-      "placeholder": "Events placeholder — waiting for the backend audit table (after 1.0.0)",
+      "note": "Requires an audit table first; docs/features.md and docs/roadmap.md schedule it for 0.9.0. Note this is platform operation auditing, not the Docker Events stream.",
+      "placeholder": "Events placeholder — waiting for the backend audit table (0.9.0)",
       "title": "Operation audit log"
     },
     "hosts": {
-      "placeholder": "Hosts placeholder — admin-only, waiting for /api/v1/host/* (0.0.8)",
-      "subtitle": "Register remote hosts, test connectivity, and organise them into groups. Admin only.",
-      "title": "Docker host registration and management"
+      "subtitle": "Register remote hosts, test connectivity, and organise them into groups. Admin only."
     },
     "images": {
-      "placeholder": "Images placeholder — waiting for /api/v1/image/list (0.0.10)",
-      "subtitle": "Browse the images on this host, pull new ones, or remove what you no longer need.",
-      "title": "Image repositories and pulling"
+      "subtitle": "Browse the images on this host, pull new ones, or remove what you no longer need."
     },
     "networks": {
       "subtitle": "Manage container network connectivity"
@@ -894,18 +828,10 @@
       "cap3": "One-click deploy and destroy",
       "cap4": "Per-service status",
       "note": "Depends on the container and image capabilities; scheduled as a whole for 0.10.0.",
-      "placeholder": "Stacks placeholder — waiting for /api/v1/stack/list (0.10.0)",
       "title": "Compose stacks"
     },
     "users": {
-      "cap1": "User list and creation",
-      "cap2": "Password reset",
-      "cap3": "Role assignment",
-      "cap4": "Role and scope assignment",
-      "note": "Admin only. Role and scope assignment was delivered in 0.1.0; container-level scopes are scheduled for 0.12.0.",
-      "placeholder": "Users placeholder — admin-only, waiting for /api/v1/user/* (0.0.8)",
-      "subtitle": "Create accounts, assign roles per host, or reset someone's password. Container-level scopes are scheduled for 0.12.0.",
-      "title": "User and role management"
+      "subtitle": "Create accounts, assign roles per host, or reset someone's password. Container-level scopes are scheduled for 0.12.0."
     },
     "volumes": {
       "subtitle": "Manage container persistent data"
@@ -1042,7 +968,7 @@
       "summary": "Global: {roles}",
       "title": "Global scope"
     },
-    "globalHint": "A global assignment contributes the role's global permissions (user.* / role.* / host.manage / audit.read); its host-scoped permissions then apply to every host.",
+    "globalHint": "A global assignment contributes the role's global permissions (user.* / role.* / repository.* / host.manage / audit.read); its host-scoped permissions then apply to every host.",
     "host": {
       "title": "Host scope"
     },
@@ -1116,7 +1042,7 @@
     "list": "List preferences",
     "locale": "Language",
     "pageSize": "Page size",
-    "pageSizeHint": "Page size for list views — applied to container / image lists from 0.0.11.",
+    "pageSizeHint": "Page size for list views — applied to the container, image, volume and network lists.",
     "realtime": "Live updates",
     "realtimeContainers": "Live refresh for the container list",
     "realtimeHint": "Three independent switches, all on by default",
@@ -1142,10 +1068,6 @@
     "title": "Keyboard shortcuts",
     "toggleSidebar": "Collapse / expand sidebar"
   },
-  "stacks": {
-    "hint": "The menu entry is in place; functionality ships with Compose support (0.10.0).",
-    "subtitle": "Orchestrate multiple containers with docker-compose.yml — deploy, update, stop, remove."
-  },
   "state": {
     "loadFailed": "Failed to load the host list — check that the backend is running",
     "notImplemented": "Not implemented yet",
@@ -1153,7 +1075,6 @@
   },
   "status": {
     "cpu": "CPU usage",
-    "disk": "Disk usage",
     "diskUsage": {
       "buildCache": "Build cache",
       "containers": "Containers",
@@ -1165,13 +1086,12 @@
       "volumes": "Volumes"
     },
     "events": "Recent events",
-    "eventsHint": "Container start/stop events are scheduled for 0.5.0, alongside the SignalR metrics.",
+    "eventsHint": "Container start/stop events are pushed live over SignalR, the same channel as the realtime metrics.",
     "eventsPending": "Event stream not connected yet",
     "memory": "Memory usage",
     "network": "Network I/O",
     "realtime": "Realtime metrics",
     "realtimeHint": "Host-level CPU / memory / network are not supported — the Docker API has no such endpoint; container-level metrics live in the container list. Disk usage comes from system/df.",
-    "running": "Runtime status",
     "unsupported": "Not supported"
   },
   "theme": {

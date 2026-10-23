@@ -41,11 +41,9 @@
     "delete": "删除",
     "edit": "编辑",
     "empty": "暂无数据",
-    "error": "出错了",
     "loading": "加载中…",
     "menu": "菜单",
     "next": "下一页",
-    "no": "否",
     "pageSize": "每页条数",
     "pageSizeAll": "全部",
     "pageSizeAllCapped": "全部（上限 {max} 条）",
@@ -57,9 +55,7 @@
     "search": "搜索",
     "selected": "已选 {count} 项",
     "sidebar": "切换侧边栏",
-    "sizeSharedHint": "实际体积 {virtual}（含与其他镜像共享的层）",
-    "total": "共 {total} 个",
-    "yes": "是"
+    "sizeSharedHint": "实际体积 {virtual}（含与其他镜像共享的层）"
   },
   "container": {
     "action": {
@@ -77,11 +73,6 @@
       "start": "启动",
       "stop": "停止",
       "update": "热更新"
-    },
-    "actionHint": {
-      "removeStopped": "已停止的容器可删除",
-      "start": "停止的容器可启动",
-      "stop": "运行中的容器可停止"
     },
     "addVolumes": {
       "done": "挂载已追加",
@@ -123,8 +114,6 @@
       "ulimits": "资源限制（每行 name 或 name=soft:hard）",
       "user": "运行用户"
     },
-    "autoRefresh": "自动刷新",
-    "autoRefreshOn": "每 {seconds} 秒",
     "backToList": "返回容器列表",
     "batch": {
       "confirm": {
@@ -152,7 +141,6 @@
       "title": "显示列"
     },
     "confirm": {
-      "forceRemove": "强制删除（会跳过优雅停止）",
       "remove": {
         "force": "强制删除",
         "message": "即将删除「{name}」。数据卷不会被删除。",
@@ -272,8 +260,7 @@
       "title": "没有容器"
     },
     "filter": {
-      "all": "包含已停止",
-      "allHint": "默认只列运行中的容器"
+      "all": "包含已停止"
     },
     "health": {
       "healthy": "健康",
@@ -285,10 +272,7 @@
     "inspect": {
       "failed": "详情加载失败"
     },
-    "loadFailed": "加载失败",
-    "loading": "加载中…",
     "logs": {
-      "autoScroll": "自动滚动",
       "backToBottom": "回到底部",
       "download": "下载日志",
       "dropped": "已丢弃 {count} 行（服务端推送过快）",
@@ -296,8 +280,6 @@
       "emptyHint": "容器启动后，其输出会实时出现在这里",
       "follow": "实时跟随",
       "includeStderr": "包含 stderr",
-      "loadFailed": "日志加载失败",
-      "notFollow": "实时跟随将在 0.4.0 提供；当前为一次性读取",
       "pause": "暂停",
       "paused": "已暂停接收，新日志正在缓冲",
       "resume": "继续",
@@ -309,7 +291,6 @@
       },
       "subtitle": "实时跟随容器输出",
       "tail": "显示行数",
-      "tailAll": "全部",
       "timestamps": "显示时间戳",
       "title": "容器日志",
       "wrap": "自动换行"
@@ -334,7 +315,6 @@
       "transition": "过渡中",
       "unknown": "未知"
     },
-    "total": "共 {total} 个",
     "update": {
       "cpus": "CPU 配额（核）",
       "cpusInvalid": "请填大于 0 的数字（可含小数），且不超过 1024 核",
@@ -349,19 +329,6 @@
       "title": "更新容器配置"
     }
   },
-  "dashboard": {
-    "placeholder": "概览页占位 — 等待后端 stats API 就绪（0.4.0）",
-    "welcome": "欢迎使用 Whalefleet"
-  },
-  "error": {
-    "1000": "请求参数无效",
-    "1001": "资源不存在",
-    "1100": "用户名或密码错误",
-    "1101": "登录已过期，请重新登录",
-    "1103": "登录尝试过于频繁，请稍后再试",
-    "1200": "Docker 主机不可达",
-    "9999": "服务器内部错误"
-  },
   "events": {
     "col": {
       "action": "操作类型",
@@ -369,9 +336,7 @@
       "result": "结果",
       "target": "目标资源",
       "time": "时间"
-    },
-    "hint": "菜单与表格骨架已就位，功能将在审计日志阶段（1.0.0 之后）填充。",
-    "subtitle": "操作审计日志：记录谁在什么时候对哪个资源做了什么。"
+    }
   },
   "host": {
     "action": {
@@ -381,7 +346,6 @@
     },
     "actions": {
       "edit": "编辑主机",
-      "editSoon": "编辑功能待主机管理接口就绪后开放",
       "enterLabel": "进入主机 {name}",
       "status": "状态图"
     },
@@ -413,7 +377,7 @@
       "cgroup": "Cgroup",
       "components": "组件版本",
       "cpus": "CPU 核数",
-      "hint": "CPU 核数与内存总量是**静态上限**（Docker API 不提供宿主机级实时指标）；代理地址中的用户名与口令已被遮蔽。",
+      "hint": "CPU 核数与内存总量是静态上限（Docker API 不提供宿主机级实时指标）；代理地址中的用户名与口令已被遮蔽。",
       "kernel": "内核",
       "logging": "日志驱动",
       "memory": "内存总量",
@@ -433,12 +397,6 @@
       "impact": "停用后，指向该主机的所有资源请求会被拒绝（1302），其容器 / 镜像页将不可用。",
       "message": "即将停用「{name}」。",
       "title": "停用主机"
-    },
-    "duration": {
-      "day": "天",
-      "hour": "小时",
-      "minute": "分",
-      "second": "秒"
     },
     "empty": "还没有注册任何主机，先添加一台吧。",
     "enable": {
@@ -468,7 +426,7 @@
       "saved": "已保存",
       "testFailed": "连不上：请检查端点、凭据以及目标主机是否可达。",
       "testOk": "连接成功：这份配置可以连上守护进程。",
-      "tlsNote": "填的是**容器内可见的文件路径**，不是证书内容；三项均为必填（缺 CA 等于接受任意服务端证书）。",
+      "tlsNote": "填的是容器内可见的文件路径，不是证书内容；三项均为必填（缺 CA 等于接受任意服务端证书）。",
       "type": "连接方式"
     },
     "group": {
@@ -493,7 +451,7 @@
       "editTitle": "编辑分组",
       "empty": "还没有分组。",
       "hostCount": "主机数",
-      "listHint": "分组只影响总览页的呈现，不改变任何权限。",
+      "listHint": "分组影响总览页的呈现与选择 / 过滤边界，但不参与授权——谁能碰哪些主机只由带作用域的角色分配决定。",
       "listTitle": "主机分组",
       "local": "本机",
       "localDesc": "Whalefleet 宿主机自身",
@@ -508,11 +466,9 @@
       "ungrouped": "未分组"
     },
     "hero": {
-      "copied": "endpoint 已复制到剪贴板",
       "copyEndpoint": "复制 endpoint",
       "notFound": "未找到该主机，它可能已被删除",
-      "refresh": "刷新",
-      "refreshSoon": "主机列表接口就绪后可刷新，当前列表来自本地演示数据"
+      "refresh": "刷新"
     },
     "info": {
       "agentVersion": "Agent 版本",
@@ -527,9 +483,7 @@
       "title": "主机列表"
     },
     "offline": {
-      "desc": "无法连接到这台主机。下方数据来自上次成功同步的结果，可能已经过期。",
-      "retry": "重新检测",
-      "title": "主机当前离线"
+      "desc": "无法连接到这台主机。下方数据来自上次成功同步的结果，可能已经过期。"
     },
     "reachable": {
       "offline": "连不上",
@@ -547,19 +501,14 @@
     },
     "tag": {
       "assign": "打标签",
-      "assignTitle": "给选中的主机打标签",
       "assigned": "标签已更新",
-      "color": "颜色",
       "create": "新建标签",
       "deleteConfirm": "删除标签会解除它与全部主机的关联，但不会删除主机。确定继续？",
-      "description": "描述",
       "empty": "还没有标签。",
       "hostCount": "主机数",
       "manage": "管理标签",
       "name": "标签名",
       "removed": "已解除 {count} 台主机的该标签",
-      "revoke": "清除标签",
-      "selectHosts": "请先勾选主机",
       "title": "主机标签"
     },
     "total": "共 {total} 台",
@@ -584,8 +533,7 @@
         "title": "批量删除镜像"
       },
       "done": "已删除 {count} 个镜像",
-      "partial": "已删除 {done} 个，{failed} 个失败：{names}",
-      "untaggedOnly": "已解绑标签：{tags}。镜像本体仍被其他标签引用，因此保留。"
+      "partial": "已删除 {done} 个，{failed} 个失败：{names}"
     },
     "build": {
       "advanced": "高级选项",
@@ -624,7 +572,7 @@
       "target": "目标阶段",
       "targetPlaceholder": "多阶段构建的阶段名；留空构建最终阶段",
       "title": "构建镜像",
-      "waiting": "构建进行中…本版一次性返回结果，大镜像可能要几分钟，请勿关闭对话框"
+      "waiting": "构建进行中…大镜像可能要几分钟，进度会实时更新。"
     },
     "col": {
       "created": "创建时间",
@@ -680,7 +628,7 @@
       "required": "请填写镜像名",
       "submitting": "拉取中…",
       "title": "拉取镜像",
-      "waiting": "拉取中…大镜像可能需要数十秒（实时进度随 0.5.0 的 SignalR 一起改）"
+      "waiting": "拉取中…大镜像可能需要数十秒，进度会实时更新。"
     },
     "push": {
       "done": "已推送 {reference}",
@@ -828,7 +776,6 @@
     "unread": "{count} 条未读通知"
   },
   "overview": {
-    "enter": "进入",
     "filter": {
       "all": "全部分组",
       "allTags": "全部标签",
@@ -838,8 +785,6 @@
       "status": "全部状态",
       "ungrouped": "未分组"
     },
-    "groupCount": "{count} 台 | {count} 台",
-    "hostCount": "共 {total} 台 · {online} 台在线",
     "manageHosts": "去添加主机",
     "noHosts": "尚未添加任何 Docker 主机",
     "stat": {
@@ -852,32 +797,21 @@
   },
   "page": {
     "containers": {
-      "cap1": "列表与分页筛选",
-      "cap2": "启动 / 停止 / 重启 / 删除",
-      "cap3": "可视化创建表单",
-      "cap4": "日志流与资源统计",
-      "note": "后端容器 API 排在 0.0.9，前端容器 UI 排在 0.0.11。",
-      "placeholder": "容器页占位 — 等待后端 /api/v1/container/list（0.0.9）",
-      "subtitle": "查看主机上的容器，启动 / 停止 / 重启 / 删除，或从镜像新建一个。",
-      "title": "容器列表与生命周期管理"
+      "subtitle": "查看主机上的容器，启动 / 停止 / 重启 / 删除，或从镜像新建一个。"
     },
     "events": {
       "cap1": "谁在何时做了什么",
       "cap2": "操作结果与错误详情",
       "cap3": "按主机 / 操作人筛选",
-      "note": "需先建审计表，docs/features.md 中明确排在 1.0.0 之后。注意它记录的是平台操作审计，不是 Docker Events 流。",
-      "placeholder": "事件页占位 — 等待后端操作审计表（1.0.0 之后）",
+      "note": "需先建审计表，docs/features.md 与 docs/roadmap.md 把它排在 0.9.0。注意它记录的是平台操作审计，不是 Docker Events 流。",
+      "placeholder": "事件页占位 — 等待后端操作审计表（0.9.0）",
       "title": "操作审计日志"
     },
     "hosts": {
-      "placeholder": "主机管理占位 — admin 专用，等待后端 /api/v1/host/*（0.0.8）",
-      "subtitle": "注册远程主机、测试连通性，并按分组归类。仅管理员可见。",
-      "title": "Docker 主机注册与管理"
+      "subtitle": "注册远程主机、测试连通性，并按分组归类。仅管理员可见。"
     },
     "images": {
-      "placeholder": "镜像页占位 — 等待后端 /api/v1/image/list（0.0.10）",
-      "subtitle": "查看主机上的镜像，拉取新镜像，或删除不再使用的。",
-      "title": "镜像仓库与拉取"
+      "subtitle": "查看主机上的镜像，拉取新镜像，或删除不再使用的。"
     },
     "networks": {
       "subtitle": "管理容器的网络连通性"
@@ -894,18 +828,10 @@
       "cap3": "一键部署与销毁",
       "cap4": "服务级状态查看",
       "note": "依赖容器与镜像能力，整块排在 0.10.0。",
-      "placeholder": "编排页占位 — 等待后端 /api/v1/stack/list（0.10.0）",
       "title": "Compose 编排"
     },
     "users": {
-      "cap1": "用户列表与创建",
-      "cap2": "重置密码",
-      "cap3": "角色分配",
-      "cap4": "角色与作用域分配",
-      "note": "仅管理员可见。角色与作用域分配已于 0.1.0 落地，容器级作用域排在 0.12.0。",
-      "placeholder": "用户管理占位 — admin 专用，等待后端 /api/v1/user/*（0.0.8）",
-      "subtitle": "创建账号、按主机分配角色，或重置他人密码。容器级作用域排在 0.12.0。",
-      "title": "用户与角色管理"
+      "subtitle": "创建账号、按主机分配角色，或重置他人密码。容器级作用域排在 0.12.0。"
     },
     "volumes": {
       "subtitle": "管理容器的持久化数据"
@@ -1042,7 +968,7 @@
       "summary": "全局：{roles}",
       "title": "全局作用域"
     },
-    "globalHint": "全局分配贡献角色的全局权限（user.* / role.* / host.manage / audit.read）；它的主机域权限则对所有主机生效。",
+    "globalHint": "全局分配贡献角色的全局权限（user.* / role.* / repository.* / host.manage / audit.read）；它的主机域权限则对所有主机生效。",
     "host": {
       "title": "主机作用域"
     },
@@ -1116,7 +1042,7 @@
     "list": "列表偏好",
     "locale": "语言",
     "pageSize": "每页条数",
-    "pageSizeHint": "列表页分页大小，0.0.11 起容器 / 镜像列表生效。",
+    "pageSizeHint": "列表页分页大小，对容器 / 镜像 / 数据卷 / 网络列表生效。",
     "realtime": "实时更新",
     "realtimeContainers": "容器列表实时刷新",
     "realtimeHint": "三项互相独立，默认全部开启",
@@ -1142,10 +1068,6 @@
     "title": "键盘快捷键",
     "toggleSidebar": "折叠 / 展开侧边栏"
   },
-  "stacks": {
-    "hint": "菜单已就位，功能将在 Compose 支持阶段（0.10.0）填充。",
-    "subtitle": "用 docker-compose.yml 编排多个容器，支持部署 / 更新 / 停止 / 删除。"
-  },
   "state": {
     "loadFailed": "主机列表加载失败，请检查后端是否已启动",
     "notImplemented": "尚未实现",
@@ -1153,7 +1075,6 @@
   },
   "status": {
     "cpu": "CPU 使用率",
-    "disk": "磁盘占用",
     "diskUsage": {
       "buildCache": "构建缓存",
       "containers": "容器",
@@ -1165,13 +1086,12 @@
       "volumes": "数据卷"
     },
     "events": "近期事件",
-    "eventsHint": "容器启停等操作事件的推送排在 0.5.0，与 SignalR 实时指标同批交付。",
+    "eventsHint": "容器启停等操作事件已通过 SignalR 实时推送，与实时指标同一条通道。",
     "eventsPending": "事件流尚未接入",
     "memory": "内存使用率",
     "network": "网络 I/O",
     "realtime": "实时指标",
     "realtimeHint": "宿主机级 CPU / 内存 / 网络不在支持范围——Docker API 无此端点；容器级指标请看容器列表。磁盘用量来自 system/df。",
-    "running": "运行状态",
     "unsupported": "不支持"
   },
   "theme": {
