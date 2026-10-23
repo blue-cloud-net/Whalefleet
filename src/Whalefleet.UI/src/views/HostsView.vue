@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, h, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, type TableInstance } from 'element-plus'
 import PageHeader from '@/components/common/PageHeader.vue'
 import SectionCard from '@/components/common/SectionCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -10,6 +10,8 @@ import HostFormDialog from '@/components/business/HostFormDialog.vue'
 import GroupFormDialog from '@/components/business/GroupFormDialog.vue'
 import TagManagerDialog from '@/components/business/TagManagerDialog.vue'
 import HostTagAssignDialog from '@/components/business/HostTagAssignDialog.vue'
+import HostTagBatchDialog from '@/components/business/HostTagBatchDialog.vue'
+import BatchActionBar from '@/components/common/BatchActionBar.vue'
 import { deleteHost, listAdminHosts, listHosts, updateHost } from '@/api/host'
 import { deleteHostGroup, listAdminHostGroups } from '@/api/host-group'
 import { listHostTags } from '@/api/host-tag'
@@ -49,6 +51,42 @@ const editingGroup = ref<HostGroup | null>(null)
 const tagManagerVisible = ref(false)
 const tagAssignVisible = ref(false)
 const tagTarget = ref<AdminHostSummary | null>(null)
+
+/**
+ * 批量打标（0.7.0）。
+ *
+ * ⚠️ **批量范围是「主机」，不是「容器」**：分组是**主机**的分组，
+ * 而容器列表是单主机视图（路由 `/hosts/{hostId}/containers`），
+ * 因此「按分组批量启停容器」在本项目里没有承载界面——
+ * 批量打标是对这个分组能力**唯一说得通**的用法。
+ */
+const selectedHosts = ref<AdminHostSummary[]>([])
+const tagBatchVisible = ref(false)
+const tagBatchBusy = ref(false)
+
+/**
+ * 表格实例：只有 `clearSelection()` 用得到，但它是实例方法，
+ * 模板 ref 是唯一拿得到它的方式（`BatchActionBar` 本身不该知道 el-table 的存在）。
+ */
+const tableRef = ref<TableInstance | null>(null)
+
+/** 打开批量打标弹窗（选中了才允许）。 */
+function openTagBatch(): void {
+  if (selectedHosts.value.length === 0) return
+
+  tagBatchVisible.value = true
+}
+
+/** 表格选区变化。 */
+function onSelectionChange(rows: AdminHostSummary[]): void {
+  selectedHosts.value = rows
+}
+
+/** 清空选区。 */
+function clearSelection(table: { clearSelection: () => void } | null): void {
+  table?.clearSelection()
+  selectedHosts.value = []
+}
 
 /** 全量标签（下拉用）。 */
 const tags = ref<HostTag[]>([])
@@ -335,108 +373,123 @@ watch(() => t, load, { immediate: true })
         <el-button @click="load">{{ t('common.retry') }}</el-button>
       </div>
 
-      <el-table
-        v-else
-        v-loading="loading"
-        :data="hosts"
-        :row-key="(row: AdminHostSummary) => row.id"
-        empty-text=""
-      >
-        <el-table-column :label="t('host.col.name')" min-width="180">
-          <template #default="{ row }">
-            <div class="min-w-0">
-              <div class="font-medium text-content-strong app-truncate">{{ row.name }}</div>
-              <div class="text-xs text-content-faint">
-                {{ row.type === 'socket' ? t('host.type.socket') : t('host.type.tcp') }}
+      <!--
+        批量操作条与表格一起包在 <template v-else> 里——
+        v-else 必须**紧跟** v-if 的兄弟节点，中间插任何元素都会让 Vue 报
+        「v-else 没有相邻的 v-if」。
+      -->
+      <template v-else>
+        <BatchActionBar :count="selectedHosts.length" :busy="tagBatchBusy" @clear="clearSelection(tableRef)">
+          <el-button size="small" :disabled="tagBatchBusy" @click="openTagBatch">
+            {{ t('host.tag.batch.action') }}
+          </el-button>
+        </BatchActionBar>
+
+        <el-table
+          v-loading="loading"
+          :data="hosts"
+          :row-key="(row: AdminHostSummary) => row.id"
+          empty-text=""
+          ref="tableRef"
+          @selection-change="onSelectionChange"
+        >
+          <el-table-column type="selection" width="44" reserve-selection />
+          <el-table-column :label="t('host.col.name')" min-width="180">
+            <template #default="{ row }">
+              <div class="min-w-0">
+                <div class="font-medium text-content-strong app-truncate">{{ row.name }}</div>
+                <div class="text-xs text-content-faint">
+                  {{ row.type === 'socket' ? t('host.type.socket') : t('host.type.tcp') }}
+                </div>
               </div>
-            </div>
-          </template>
-        </el-table-column>
+            </template>
+          </el-table-column>
 
-        <el-table-column :label="t('host.col.endpoint')" min-width="220">
-          <template #default="{ row }">
-            <span class="font-mono text-xs break-all">{{ row.endpoint }}</span>
-          </template>
-        </el-table-column>
+          <el-table-column :label="t('host.col.endpoint')" min-width="220">
+            <template #default="{ row }">
+              <span class="font-mono text-xs break-all">{{ row.endpoint }}</span>
+            </template>
+          </el-table-column>
 
-        <el-table-column :label="t('host.col.auth')" width="110">
-          <template #default="{ row }">
-            <span class="text-xs">{{ authLabel(row) }}</span>
-          </template>
-        </el-table-column>
+          <el-table-column :label="t('host.col.auth')" width="110">
+            <template #default="{ row }">
+              <span class="text-xs">{{ authLabel(row) }}</span>
+            </template>
+          </el-table-column>
 
-        <el-table-column :label="t('host.col.group')" width="140">
-          <template #default="{ row }">
-            <span v-if="row.groupId" class="text-xs">
-              {{ groupNameById.get(row.groupId) ?? '—' }}
-            </span>
-            <span v-else class="text-xs text-content-faint">{{ t('host.group.ungrouped') }}</span>
-          </template>
-        </el-table-column>
-
-        <!--
-          标签（0.6.0）：点「打标」打开多选弹窗。
-          ⚠️ 标签与分组是两种组织方式：分组是单一归属，标签是多对多自由打标；两者都不参与授权。
-        -->
-        <el-table-column :label="t('host.tag.title')" min-width="200">
-          <template #default="{ row }">
-            <div class="flex flex-wrap items-center gap-1">
-              <span
-                v-for="tag in tags.filter((item) => (hostTagIds[row.name] ?? []).includes(item.id))"
-                :key="tag.id"
-                class="app-chip bg-surface-sunken text-content-muted ring-line-subtle"
-              >
-                <span
-                  class="h-1.5 w-1.5 rounded-full shrink-0"
-                  :style="{ backgroundColor: tag.color ?? 'var(--brand-500)' }"
-                  aria-hidden="true"
-                />
-                {{ tag.name }}
+          <el-table-column :label="t('host.col.group')" width="140">
+            <template #default="{ row }">
+              <span v-if="row.groupId" class="text-xs">
+                {{ groupNameById.get(row.groupId) ?? '—' }}
               </span>
+              <span v-else class="text-xs text-content-faint">{{ t('host.group.ungrouped') }}</span>
+            </template>
+          </el-table-column>
 
-              <el-button text size="small" class="!px-1.5" @click="openTagAssign(row)">
-                <span class="i-carbon-add-alt text-sm" />
-              </el-button>
-            </div>
-          </template>
-        </el-table-column>
+          <!--
+            标签（0.6.0）：点「打标」打开多选弹窗。
+            ⚠️ 标签与分组是两种组织方式：分组是单一归属，标签是多对多自由打标；两者都不参与授权。
+          -->
+          <el-table-column :label="t('host.tag.title')" min-width="200">
+            <template #default="{ row }">
+              <div class="flex flex-wrap items-center gap-1">
+                <span
+                  v-for="tag in tags.filter((item) => (hostTagIds[row.name] ?? []).includes(item.id))"
+                  :key="tag.id"
+                  class="app-chip bg-surface-sunken text-content-muted ring-line-subtle"
+                >
+                  <span
+                    class="h-1.5 w-1.5 rounded-full shrink-0"
+                    :style="{ backgroundColor: tag.color ?? 'var(--brand-500)' }"
+                    aria-hidden="true"
+                  />
+                  {{ tag.name }}
+                </span>
 
-        <!-- 三态：未探测（null）与离线（false）必须能区分，否则会让人去查网络而病因在别处 -->
-        <el-table-column :label="t('host.col.reachable')" width="110">
-          <template #default="{ row }">
-            <span class="text-xs" :class="reachableClass(row)">{{ reachableLabel(row) }}</span>
-          </template>
-        </el-table-column>
+                <el-button text size="small" class="!px-1.5" @click="openTagAssign(row)">
+                  <span class="i-carbon-add-alt text-sm" />
+                </el-button>
+              </div>
+            </template>
+          </el-table-column>
 
-        <el-table-column :label="t('host.col.enabled')" width="90">
-          <template #default="{ row }">
-            <el-switch
-              :model-value="row.enabled"
-              :loading="busyNames.has(row.name)"
-              @change="toggleEnabled(row)"
-            />
-          </template>
-        </el-table-column>
+          <!-- 三态：未探测（null）与离线（false）必须能区分，否则会让人去查网络而病因在别处 -->
+          <el-table-column :label="t('host.col.reachable')" width="110">
+            <template #default="{ row }">
+              <span class="text-xs" :class="reachableClass(row)">{{ reachableLabel(row) }}</span>
+            </template>
+          </el-table-column>
 
-        <!--
-          与容器 / 镜像 / 用户页共用 IconActionButton：图标 + tooltip 文字标签。
-          列宽 64 = 两个 24px 圆形按钮；省略 `align` 即左对齐，表头与图标同侧才不看着错位。
-        -->
-        <el-table-column :label="t('container.col.actions')" width="64">
-          <template #default="{ row }">
-            <div class="flex items-center">
-              <IconActionButton icon="i-carbon-edit" :label="t('common.edit')" @click="openEdit(row)" />
-              <IconActionButton
-                icon="i-carbon-trash-can"
-                :label="t('common.delete')"
-                tone="danger"
+          <el-table-column :label="t('host.col.enabled')" width="90">
+            <template #default="{ row }">
+              <el-switch
+                :model-value="row.enabled"
                 :loading="busyNames.has(row.name)"
-                @click="onDelete(row)"
+                @change="toggleEnabled(row)"
               />
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
+            </template>
+          </el-table-column>
+
+          <!--
+            与容器 / 镜像 / 用户页共用 IconActionButton：图标 + tooltip 文字标签。
+            列宽 64 = 两个 24px 圆形按钮；省略 `align` 即左对齐，表头与图标同侧才不看着错位。
+          -->
+          <el-table-column :label="t('container.col.actions')" width="64">
+            <template #default="{ row }">
+              <div class="flex items-center">
+                <IconActionButton icon="i-carbon-edit" :label="t('common.edit')" @click="openEdit(row)" />
+                <IconActionButton
+                  icon="i-carbon-trash-can"
+                  :label="t('common.delete')"
+                  tone="danger"
+                  :loading="busyNames.has(row.name)"
+                  @click="onDelete(row)"
+                />
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
+      </template>
 
       <EmptyState v-if="isEmpty" icon="i-carbon-data-center" :description="t('host.empty')">
         <el-button type="primary" @click="openCreate">{{ t('host.action.create') }}</el-button>
@@ -506,6 +559,12 @@ watch(() => t, load, { immediate: true })
       v-model="tagAssignVisible"
       :host="tagTarget"
       :tag-ids="tagTarget ? (hostTagIds[tagTarget.name] ?? []) : []"
+      @saved="onTagsChanged"
+    />
+
+    <HostTagBatchDialog
+      v-model="tagBatchVisible"
+      :host-names="selectedHosts.map((host) => host.name)"
       @saved="onTagsChanged"
     />
   </div>

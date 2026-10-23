@@ -530,6 +530,14 @@
     "tag": {
       "assign": "Tag hosts",
       "assigned": "Tags updated",
+      "batch": {
+        "action": "Tag hosts in bulk",
+        "add": "Add tags",
+        "done": "Updated tags on {count} host(s)",
+        "hint": "Adding and removing are **incremental**: other tags already on these hosts are left untouched.",
+        "remove": "Remove tags",
+        "title": "Tag {count} host(s)"
+      },
       "create": "New tag",
       "deleteConfirm": "Deleting a tag removes it from every host, but never deletes a host. Continue?",
       "empty": "No tags yet.",
