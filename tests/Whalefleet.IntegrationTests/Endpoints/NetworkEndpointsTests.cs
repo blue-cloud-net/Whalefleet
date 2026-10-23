@@ -450,6 +450,187 @@ public class NetworkEndpointsTests : IAsyncLifetime
         }
     }
 
+    [Theory]
+    [InlineData("connect")]
+    [InlineData("disconnect")]
+    public async Task 接入断开_未认证_返回401(string action)
+    {
+        using var client = _factory.CreateClient();
+
+        using var response = await client.PostAsJsonAsync(
+            $"/api/v1/hosts/{_localHost}/networks/{action}",
+            new { containerId = "x", networkId = "y" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Theory]
+    [InlineData("connect")]
+    [InlineData("disconnect")]
+    public async Task 接入断开_标识为空_返回1000(string action)
+    {
+        using var client = await this.LoginAsync();
+
+        using var response = await client.PostAsJsonAsync(
+            $"/api/v1/hosts/{_localHost}/networks/{action}",
+            new { containerId = "  ", networkId = "y" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await ReadCodeAsync(response)).Should().Be(ErrorCodes.ValidationFailed);
+    }
+
+    [Theory]
+    [InlineData("connect")]
+    [InlineData("disconnect")]
+    public async Task 接入断开_网络不存在_返回1401(string action)
+    {
+        using var client = await this.LoginAsync();
+
+        using var response = await client.PostAsJsonAsync(
+            $"/api/v1/hosts/{_localHost}/networks/{action}",
+            new { containerId = "whatever", networkId = _unknownNetwork });
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await ReadCodeAsync(response)).Should().Be(ErrorCodes.DockerResourceNotFound);
+    }
+
+    [DockerImageFact]
+    public async Task 接入_重复接入幂等()
+    {
+        using var client = await this.LoginAsync();
+        var network = NewName("conn");
+        var containerName = NewName("connc");
+        var image = DockerAvailability.ImageReference!;
+        var docker = await GetDockerClientAsync();
+
+        string containerId = string.Empty;
+
+        try
+        {
+            using var created = await client.PostAsJsonAsync(
+                $"/api/v1/hosts/{_localHost}/networks/create",
+                new { name = network, driver = "bridge" });
+
+            created.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            // 容器建在**默认**网络上，随后再接入自定义网络——这样「接入」才有意义
+            using var containerCreated = await client.PostAsJsonAsync(
+                $"/api/v1/hosts/{_localHost}/containers/create",
+                new { image, name = containerName, cmd = _sleepCommand });
+
+            containerCreated.StatusCode.Should().Be(HttpStatusCode.OK);
+            containerId = (await ReadDataAsync<CreatedPayload>(containerCreated)).ContainerId;
+
+            // ⚠️ 必须先 start：守护进程只允许接入**运行中**的容器
+            // （停止的容器没有网络命名空间可接入）。
+            await docker.Containers.StartContainerAsync(
+                containerId,
+                new ContainerStartParameters(),
+                CancellationToken.None);
+
+            using var connected = await client.PostAsJsonAsync(
+                $"/api/v1/hosts/{_localHost}/networks/connect",
+                new { containerId, networkId = network });
+
+            connected.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            // 幂等：重复接入仍然成功，而不是 403「已经接入」
+            using var again = await client.PostAsJsonAsync(
+                $"/api/v1/hosts/{_localHost}/networks/connect",
+                new { containerId, networkId = network });
+
+            again.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            // 网络详情里必须能看到这个端点——这是「接入成功」的唯一凭据
+            using var inspected = await client.PostAsJsonAsync(
+                $"/api/v1/hosts/{_localHost}/networks/inspect",
+                new { networkId = network });
+
+            var detail = await ReadDataAsync<NetworkDetailPayload>(inspected);
+
+            detail.Containers.Should().ContainSingle();
+            detail.Containers[0].Name.Should().Be(containerName);
+        }
+        finally
+        {
+            if (!String.IsNullOrEmpty(containerId))
+            {
+                await RemoveContainerAsync(docker, containerId);
+            }
+
+            await RemoveNetworkAsync(client, network);
+        }
+    }
+
+    [DockerImageFact]
+    public async Task 断开_未接入幂等且断开后可删网络()
+    {
+        using var client = await this.LoginAsync();
+        var network = NewName("disc");
+        var containerName = NewName("discc");
+        var image = DockerAvailability.ImageReference!;
+        var docker = await GetDockerClientAsync();
+
+        string containerId = string.Empty;
+
+        try
+        {
+            using var created = await client.PostAsJsonAsync(
+                $"/api/v1/hosts/{_localHost}/networks/create",
+                new { name = network, driver = "bridge" });
+
+            created.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            using var containerCreated = await client.PostAsJsonAsync(
+                $"/api/v1/hosts/{_localHost}/containers/create",
+                new { image, name = containerName, cmd = _sleepCommand });
+
+            containerCreated.StatusCode.Should().Be(HttpStatusCode.OK);
+            containerId = (await ReadDataAsync<CreatedPayload>(containerCreated)).ContainerId;
+
+            await docker.Containers.StartContainerAsync(
+                containerId,
+                new ContainerStartParameters(),
+                CancellationToken.None);
+
+            // 幂等：容器本来就不在这个网络上，断开应当成功（而不是 404「未接入」）
+            using var disconnected = await client.PostAsJsonAsync(
+                $"/api/v1/hosts/{_localHost}/networks/disconnect",
+                new { containerId, networkId = network });
+
+            disconnected.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            // 真的接入一次，再断开一次
+            using var connected = await client.PostAsJsonAsync(
+                $"/api/v1/hosts/{_localHost}/networks/connect",
+                new { containerId, networkId = network });
+
+            connected.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            using var removedContainer = await client.PostAsJsonAsync(
+                $"/api/v1/hosts/{_localHost}/networks/disconnect",
+                new { containerId, networkId = network });
+
+            removedContainer.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            // 断开后网络就没有容器了，删得掉
+            using var removed = await client.PostAsJsonAsync(
+                $"/api/v1/hosts/{_localHost}/networks/remove",
+                new { networkId = network });
+
+            removed.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            if (!String.IsNullOrEmpty(containerId))
+            {
+                await RemoveContainerAsync(docker, containerId);
+            }
+
+            await RemoveNetworkAsync(client, network);
+        }
+    }
+
     [DockerTheory]
     [InlineData("bridge")]
     [InlineData("host")]
