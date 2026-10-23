@@ -59,12 +59,56 @@ before the first public release).
 - **Disk usage** (`POST /api/v1/hosts/{hostId}/system/df`): per-class totals, reclaimable
   bytes and per-item details; classes that were not queried come back as `null`, never as an
   empty bucket.
-- **Daemon info** in the host overview: OS / kernel / CPU count / memory / storage, logging and
-  cgroup drivers / runtimes and component versions / plugins / registry mirrors / proxies /
-  root dir. Everything comes from the **same** `/info` call; proxy URLs have their userinfo
+- **"Engine info" card** on the host overview: Docker / API / Go version, storage · logging ·
+  cgroup drivers, runtimes and component versions (containerd / runc / init), the four plugin
+  lists, the firewall backend, live-restore and the Docker root dir. Everything comes from the
+  **same** `/info` and `/version` calls — no extra Docker call; proxy URLs have their userinfo
   masked server-side.
+- **Host overview split into three cards — "host information", "engine information" and
+  "registry & security"** — and every field now sits on **its own line**. The split follows
+  **who the field is about**:
+  - Host information = the machine (OS / architecture / kernel / CPU count / total memory)
+  - Engine information = the Docker engine (versions / drivers / runtimes / plugins), split
+    into version, storage & drivers, runtime & components, and plugins
+  - Registry & security = how the engine reaches the outside world (registry mirrors /
+    insecure registries / index server / proxy / security options / CDI spec dirs)
+
+  The earlier split followed the **data source** (`/version` vs `/info`), which put the host
+  operating system into "engine information" — same source does not mean same meaning: with
+  "24 cores" and "62.5 GiB" sitting among the engine settings, the first thing a reader
+  concludes is "the engine uses that much". The plugin list (volume / network / log / auth),
+  the init binary and the firewall backend are rendered as well — the plugin list had been
+  announced here since the first draft but never actually shown.
 
 #### Changed
+
+- **Container list: health folded into the "status" column**; the separate health column is
+  **gone**. "Running" and "healthy" answer the same question — *is this service still
+  ok?*; split across two columns a row shows both "running" and "unhealthy" and the reader
+  has to work out which one is the verdict. Folded together there are exactly four:
+  **healthy / unhealthy (amber) / running / stopped**.
+  ⚠️ **Unhealthy is amber, not red**: the container is still running, and red makes people
+  think it is already dead — turning "restart it" into "handle this now". The merge lives in
+  `utils/container-status.ts` (`containerDisplayState`).
+- **Container list: health is now always fetched** (one batch request per 10 s) and shown as
+  part of the status column; the "columns" panel no longer has a "health" switch — it can no
+  longer be turned off, and leaving it there suggests otherwise.
+- **Resource list pages (containers / images / volumes / networks) moved their description
+  into a hover tooltip on the title**; no permanent line under the heading any more. The
+  description says "what this page is for", and that is usually already on the page itself;
+  a permanent line just pushes the heading down and eats the most valuable strip of the
+  screen.
+- **Container / image / volume / network names and image references always carry a hover
+  tooltip** (no longer only the truncated part). Whether the tooltip is there does not depend
+  on the length, which is what makes it usable as a reliable way to read the full value.
+- **Container and image icons swapped**: containers use the cube (`i-carbon-cube` — a box
+  reads more like a container), images use an **archive** glyph (`i-carbon-archive`).
+  Images previously used the "picture" icon (`i-carbon-image`), and a Docker image is a
+  packaged artifact, not a photograph.
+- **Every name-style tooltip now waits 0.5 s before appearing** (`show-after="500"`): with
+  a tooltip on every row, zero delay makes a whole column of them flash as the mouse
+  sweeps past, pulling the eye away instead of helping it. 500 ms is where "I stopped to
+  look" begins and "I was just passing by" ends.
 
 - **`startedAt` removed** from the host overview, along with every "up x" label. Docker's
   `/info` `SystemTime` is the *current* time, not the boot time, so the old field always
@@ -79,6 +123,40 @@ before the first public release).
 - **New realtime option** `MaxStatsSubscriptionsPerConnection` (20). `MaxSubscriptionsPerKind`
   stays at 5 and now governs **logs only** — one number for both made "20 containers in the
   list" and "5 log panes" impossible to satisfy at the same time.
+
+#### Fixed
+
+- **Element Plus control widths were silently dropped**: EP hard-codes `.el-select` and
+  `.el-input` to `var(--el-select-width)` / `var(--el-input-width)` (both `100%`) and loads its
+  stylesheet *after* UnoCSS, so utilities such as `w-40` lost the cascade and every control
+  stretched to the full row. The language dropdown on the settings page therefore dropped
+  onto a second line, and the overview filter bar became a stack of full-width rows. Widths
+  now use `!w-*`.
+- **Overview filter bar**: group / tags / status / keyword sit on a single row, each with a
+  permanent label (a selected option replaces the placeholder, so the field would otherwise be
+  unidentifiable), and "clear filters" keeps its slot (disabled while idle) instead of
+  appearing on demand and shifting the row.
+- **Truncated technical values** on the host overview: the storage driver, the component
+  versions and the registry mirrors were cut off mid-string; values wrap now.
+- **The "columns" toggle in the container list is now an icon** moved to the top right of
+  the table (it used to be a labelled button next to the page title, sitting at the same
+  visual weight as "refresh" and "create"). It is a low-frequency switch and does not belong
+  in the heading bar.
+- **Fixed the "columns" icon not responding to clicks**: with an `el-tooltip` **component**
+  in the popover's reference slot, Element Plus's forwardRef runtime directive is attached
+  to the component rather than to a DOM node (Vue warns
+  `Runtime directive used on component with non-element root node`), so the popover never
+  gets a trigger element and its **click trigger is never bound** — the menu would not open
+  while the tooltip worked perfectly, which makes for a very confusing symptom. The
+  reference slot now holds the **button itself**, with the tooltip on the icon inside it.
+  The tooltip also moved to the **top** so it cannot sit on top of the panel that opens
+  below and swallow clicks aimed at it.
+- **Two-column information grids** on the host overview: the label and its value were half a
+  screen apart, so pairing them cost a scan across the whole column. Every field is on its
+  own line now.
+- **Repeated "not synced yet" note** on the host overview: for an offline host both the host
+  information and the engine information card printed the same sentence, which reads like a
+  rendering bug. It now appears once, on the last card that has missing fields.
 
 ### `0.5.0` — Realtime channels (SignalR) (internal draft)
 

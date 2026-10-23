@@ -226,6 +226,9 @@ DDD 战术模式（聚合根 / 领域事件 / 领域服务）**已整体移除**
 | 44 | **ECharts 必须懒加载，且颜色不能硬编码** | 直接 `import 'echarts'` 会让整包进主 bundle（实测按需引入后仍是 ~176KB gz）。另外 canvas **不继承 CSS 变量**：颜色要在运行时 `getComputedStyle` 读取，并在主题切换时重新 `setOption`，否则暗色下网格与文字看不清 |
 | 45 | **删除标签要先删关联** | `host_tag_assignments` 对 `host_tags` 有外键，软删标签不删关联会让「同名标签重建」继承旧关联。打标/清标用 `INSERT OR IGNORE` / `DELETE` 实现幂等；`host_id` 存的是 `hosts.id`（Guid 小写 36 位），**不是主机名**——主机名可改 |
 | 46 | **手动 `stop` 也会产生 `die` 事件** | 只订 `die` / `oom` 时，`docker stop` 也会弹「异常退出」。必须同时订 `stop` / `kill`，并用 10 秒窗口吞掉随后的 `die`；`oom` + `die` 是**同一次死亡的两条事件**，要去重 |
+| 47 | **`el-select` / `el-input` 上的 `w-*` 工具类会静默失效** | Element Plus 把这两者的宽度写死成 `var(--el-select-width)` / `var(--el-input-width)`（默认都是 **100%**），而 `main.ts` 里 **EP 的样式表排在 `virtual:uno.css` 之后**——同特异度下 EP 赢，`w-40` 这类工具类被吃掉。症状：控件撑满整行（一行一个），筛选栏看起来「被拉坏」、`justify-between` 的标签与下拉框被挤到两行。**必须写 `!w-40`**（UnoCSS 的 important 前缀） |
+| 48 | **图标名要对上「概念」，不能对上「形状」** | Carbon 的 `i-carbon-image` 是**照片**（picture），不是「镜像 / 制品」。Docker 镜像是打包产物，用 `i-carbon-archive`（压缩包）；容器用 `i-carbon-cube`（方盒子）。`uno.config.ts` 只校验图标**是否存在**，不校验它**是否对题**——写错了照样编译通过，只是界面上挂着一个画风不对的图形。选图标前先想「这东西在现实世界里长什么样」，而不是「我要画个什么形状」 |
+| 49 | **`el-popover` 的 reference 插槽里不能放组件** | EP 的 `el-popover` 内部就是 `el-tooltip`：它用 `ElOnlyChild` 取插槽里的**第一个节点**，把 forwardRef **运行时指令**挂到那个节点上，靠指令的 `mounted` 钩子拿真正的 DOM 元素。若第一个节点是**组件**（如 `el-tooltip`），指令挂到了组件上，Vue 告警 `Runtime directive used on component with non-element root node`，popover 拿不到触发元素 → **点击触发器永远绑不上**。症状极具迷惑性：**tooltip 正常，菜单点不开**。正确写法：reference 槽里放**按钮本身**，tooltip 挂按钮**内部**的图标上；且 tooltip 与面板**别放在同一侧**（否则浮层会盖住面板、吃掉落在那儿的点击）。⚠️ **jsdom 复现不出点击失效**（渲染与属性透传与浏览器不一致），只能守结构与那条告警 |
 
 > **Dapper 物化能力（已核实，勿再沿用旧判断）**：Dapper **可以**物化「非公开构造 + 非公开 setter」
 > 的充血实体，用 `skipVisibility` 动态方法。**不需要** Row DTO，**不需要** `InternalsVisibleTo`。
