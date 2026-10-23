@@ -137,6 +137,7 @@
       "state": "Status"
     },
     "columns": {
+      "hint": "Metric columns are off by default: each one opens a connection to the daemon for every visible container.",
       "title": "Columns"
     },
     "confirm": {

@@ -923,18 +923,56 @@ onBeforeUnmount(() => {
       narrow
     >
       <template #actions>
+        <el-switch
+          :model-value="includeStopped"
+          :active-text="t('container.filter.all')"
+          @change="toggleIncludeStopped"
+        />
+        <el-button :loading="loading" @click="load">
+          {{ t('container.action.refresh') }}
+        </el-button>
+        <el-button type="primary" @click="createDialogVisible = true">
+          {{ t('container.action.create') }}
+        </el-button>
+      </template>
+    </PageHeader>
+
+    <SectionCard density="flush">
+      <template #actions>
+        <span v-if="lastSyncedAt" class="text-xs text-content-muted">
+          {{ t('state.updatedAt', { time: formatDateTime(new Date(lastSyncedAt).toISOString()) }) }}
+        </span>
+
         <!--
           显示列（0.6.0）：三个指标列。
           ⚠️ 指标列默认全关：每开一列，每个可见容器就多占一条到守护进程的流。
           ⚠️ 健康**不在这里**：它已并入「状态」列（见 ContainerStatusBadge），
           再给一个独立开关等于让人以为「关掉就不看健康了」——实际上关不掉。
 
+          压成图标放在表头右侧：它是个「偶尔用一次」的低频开关，
+          文字按钮会让它看起来跟刷新 / 新建是同一量级的东西。
+
+          ⚠️ **tooltip 必须挂在按钮内部的图标上，不能套在按钮外面**：
+          `el-popover` 的 reference 插槽只认**一个元素**（EP 的 `OnlyChild` 把插槽里的
+          第一个节点 `cloneVNode` 出来，再把触发器的事件处理器合并上去）。往里塞一个
+          `el-tooltip` **组件**时，合并上去的 `onClick` 落到了组件上而不是 DOM 节点上，
+          组件又不会把它转发下去——popover 的点击触发器因此**永远绑不上**，
+          症状就是「点按钮毫无反应」（tooltip 正常，菜单不弹）。
+          所以：外层 reference 是**按钮本身**，tooltip 挂在按钮**里面的图标**上。
+
+          ⚠️ tooltip 放**上方**（`placement="top"`）：菜单面板从下方展开，
+          tooltip 若也在下方，浮层会盖在面板的角上并**吃掉落在那儿的点击**。
         -->
         <el-popover placement="bottom-end" :width="200" trigger="click">
           <template #reference>
-            <el-button>
-              <span class="i-carbon-column text-base" />
-              {{ t('container.columns.title') }}
+            <el-button text class="!px-1.5" :aria-label="t('container.columns.title')">
+              <el-tooltip
+                :content="t('container.columns.title')"
+                placement="top"
+                :show-after="TIP_DELAY_MS"
+              >
+                <span class="i-carbon-column text-base" />
+              </el-tooltip>
             </el-button>
           </template>
 
@@ -958,27 +996,12 @@ onBeforeUnmount(() => {
               {{ t('container.col.network') }}
             </el-checkbox>
           </div>
+
+          <!-- 代价说明放在面板里：图标按钮的 tooltip 只有一行，说不下「为什么默认关闭」 -->
+          <p class="mt-2 border-t border-line-subtle pt-2 text-xs text-content-faint">
+            {{ t('container.columns.hint') }}
+          </p>
         </el-popover>
-
-        <el-switch
-          :model-value="includeStopped"
-          :active-text="t('container.filter.all')"
-          @change="toggleIncludeStopped"
-        />
-        <el-button :loading="loading" @click="load">
-          {{ t('container.action.refresh') }}
-        </el-button>
-        <el-button type="primary" @click="createDialogVisible = true">
-          {{ t('container.action.create') }}
-        </el-button>
-      </template>
-    </PageHeader>
-
-    <SectionCard density="flush">
-      <template #actions>
-        <span v-if="lastSyncedAt" class="text-xs text-content-muted">
-          {{ t('state.updatedAt', { time: formatDateTime(new Date(lastSyncedAt).toISOString()) }) }}
-        </span>
       </template>
 
       <!-- 错误态给整块内容位，而不是只弹一个 toast：
