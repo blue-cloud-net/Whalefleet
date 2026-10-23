@@ -26,6 +26,7 @@ import {
   isVolumeInUse
 } from '@/utils/resource-display'
 import { formatDateTime } from '@/utils/datetime'
+import { TIP_DELAY_MS } from '@/utils/tooltip'
 import { PAGE_SIZE_ALL, resolvePageSize, usePreferencesStore } from '@/stores/preferences'
 import type { BatchOperationFailure, VolumeDetail, VolumeSummary } from '@/types/api'
 
@@ -402,7 +403,7 @@ watch(
     <PageHeader
       icon="i-carbon-data-volume"
       :title="t('nav.volumes')"
-      :subtitle="t('page.volumes.subtitle')"
+      :title-tip="t('page.volumes.subtitle')"
       narrow
     >
       <template #actions>
@@ -462,17 +463,31 @@ watch(
 
           <el-table-column :label="t('volume.col.name')" min-width="220">
             <template #default="{ row }">
-              <!-- 名称即详情入口，用 `<button>` 才可 Tab / 可读屏 -->
-              <button
-                type="button"
-                class="app-truncate text-left font-medium text-content-strong hover:text-brand-500 hover:underline"
-                @click="openDetail(row)"
+              <!--
+                名称即详情入口，用 `<button>` 才可 Tab / 可读屏。
+                ⚠️ 悬浮提示**始终**给：卷名可长可短，提示在不在与内容长短无关，
+                读者才能把它当成可靠的入口。
+              -->
+              <el-tooltip :content="row.name" placement="top-start" :show-after="TIP_DELAY_MS">
+                <button
+                  type="button"
+                  class="app-truncate block text-left font-medium text-content-strong hover:text-brand-500 hover:underline"
+                  @click="openDetail(row)"
+                >
+                  {{ row.name }}
+                </button>
+              </el-tooltip>
+              <el-tooltip
+                v-if="row.mountpoint"
+                :content="row.mountpoint"
+                placement="top-start"
+                :show-after="TIP_DELAY_MS"
               >
-                {{ row.name }}
-              </button>
-              <div class="app-truncate font-mono text-xs text-content-faint">
-                {{ row.mountpoint || '—' }}
-              </div>
+                <div class="app-truncate font-mono text-xs text-content-faint">
+                  {{ row.mountpoint }}
+                </div>
+              </el-tooltip>
+              <div v-else class="app-truncate font-mono text-xs text-content-faint">—</div>
             </template>
           </el-table-column>
 

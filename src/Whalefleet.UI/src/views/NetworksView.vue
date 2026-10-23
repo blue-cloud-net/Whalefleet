@@ -19,6 +19,7 @@ import {
   networkSubnetLabel
 } from '@/utils/resource-display'
 import { PAGE_SIZE_ALL, resolvePageSize, usePreferencesStore } from '@/stores/preferences'
+import { TIP_DELAY_MS } from '@/utils/tooltip'
 import type { NetworkDetail, NetworkSummary } from '@/types/api'
 
 /**
@@ -302,7 +303,7 @@ watch(
     <PageHeader
       icon="i-carbon-network-3"
       :title="t('nav.networks')"
-      :subtitle="t('page.networks.subtitle')"
+      :title-tip="t('page.networks.subtitle')"
       narrow
     >
       <template #actions>
@@ -338,18 +339,26 @@ watch(
         >
         <el-table-column :label="t('network.col.name')" min-width="220">
           <template #default="{ row }">
-            <!-- 名称即详情入口，用 `<button>` 才可 Tab / 可读屏 -->
-            <button
-              type="button"
-              class="app-truncate text-left font-medium hover:text-brand-500 hover:underline"
-              :class="isBuiltInNetwork(row) ? 'text-content-strong' : 'text-brand-600'"
-              @click="openDetail(row)"
-            >
-              {{ row.name }}
-            </button>
-            <div class="app-truncate font-mono text-xs text-content-faint">
-              {{ row.id }}
-            </div>
+            <!--
+              名称即详情入口，用 `<button>` 才可 Tab / 可读屏。
+              ⚠️ 悬浮提示**始终**给：提示在不在与内容长短无关，
+              读者才能把它当成可靠的入口。
+            -->
+            <el-tooltip :content="row.name" placement="top-start" :show-after="TIP_DELAY_MS">
+              <button
+                type="button"
+                class="app-truncate block text-left font-medium hover:text-brand-500 hover:underline"
+                :class="isBuiltInNetwork(row) ? 'text-content-strong' : 'text-brand-600'"
+                @click="openDetail(row)"
+              >
+                {{ row.name }}
+              </button>
+            </el-tooltip>
+            <el-tooltip :content="row.id" placement="top-start" :show-after="TIP_DELAY_MS">
+              <div class="app-truncate font-mono text-xs text-content-faint">
+                {{ row.id }}
+              </div>
+            </el-tooltip>
           </template>
         </el-table-column>
 

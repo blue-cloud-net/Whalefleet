@@ -30,6 +30,7 @@ import {
 import { ApiRequestError } from '@/api'
 import { containerTone, formatPort } from '@/utils/container-status'
 import { formatDateTime } from '@/utils/datetime'
+import { TIP_DELAY_MS } from '@/utils/tooltip'
 import { formatMemory, formatPercent } from '@/utils/log-format'
 import { useContainerStatsBoard } from '@/composables/useContainerStatsBoard'
 import { subscribeContainerDied } from '@/realtime/notification'
@@ -918,7 +919,7 @@ onBeforeUnmount(() => {
     <PageHeader
       icon="i-carbon-cube"
       :title="t('nav.containers')"
-      :subtitle="t('page.containers.subtitle')"
+      :title-tip="t('page.containers.subtitle')"
       narrow
     >
       <template #actions>
@@ -1033,22 +1034,36 @@ onBeforeUnmount(() => {
                   不该只对鼠标用户成立。
                   `text-left` + `w-fit`：默认 button 是居中的且撑满，直接套样式会把
                   两行内容（名称 + 短 ID）居中排掉，左对齐的表格列会被撑歪。
+
+                  ⚠️ 悬浮提示**始终**给，不按「是否被截断」来判断：
+                  容器名往往带前缀与随机后缀，同一列里有的长有的短，
+                  用户没法从「这行没提示」推断出「这行没被截断」——
+                  提示在不在与内容长短无关，才能被当作可靠的入口。
                 -->
-                <button
-                  type="button"
-                  class="app-truncate block w-fit max-w-full text-left font-medium text-content-strong hover:text-brand-500 hover:underline"
-                  @click="openInspect(row)"
-                >
-                  {{ row.name }}
-                </button>
-                <div class="app-truncate font-mono text-xs text-content-faint">{{ row.id.slice(0, 12) }}</div>
+                <el-tooltip :content="row.name" placement="top-start" :show-after="TIP_DELAY_MS">
+                  <button
+                    type="button"
+                    class="app-truncate block w-fit max-w-full text-left font-medium text-content-strong hover:text-brand-500 hover:underline"
+                    @click="openInspect(row)"
+                  >
+                    {{ row.name }}
+                  </button>
+                </el-tooltip>
+                <el-tooltip :content="row.id" placement="top-start" :show-after="TIP_DELAY_MS">
+                  <div class="app-truncate font-mono text-xs text-content-faint">
+                    {{ row.id.slice(0, 12) }}
+                  </div>
+                </el-tooltip>
               </div>
             </template>
           </el-table-column>
 
           <el-table-column prop="image" :label="t('container.col.image')" min-width="200" sortable="custom">
             <template #default="{ row }">
-              <span class="app-truncate text-sm">{{ row.image }}</span>
+              <!-- 镜像名同样始终给提示：长镜像名（带仓库地址 + 标签 + 摘要）会被截断 -->
+              <el-tooltip :content="row.image" placement="top-start" :show-after="TIP_DELAY_MS">
+                <span class="app-truncate block text-sm">{{ row.image }}</span>
+              </el-tooltip>
             </template>
           </el-table-column>
 

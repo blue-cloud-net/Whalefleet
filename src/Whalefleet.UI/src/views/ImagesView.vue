@@ -26,6 +26,7 @@ import {
   stackedTagCount
 } from '@/utils/image-display'
 import { formatDateTime } from '@/utils/datetime'
+import { TIP_DELAY_MS } from '@/utils/tooltip'
 import { PAGE_SIZE_ALL, resolvePageSize, usePreferencesStore } from '@/stores/preferences'
 import type { ImageSummary } from '@/types/api'
 
@@ -436,7 +437,7 @@ watch(
     <PageHeader
       icon="i-carbon-archive"
       :title="t('nav.images')"
-      :subtitle="t('page.images.subtitle')"
+      :title-tip="t('page.images.subtitle')"
       narrow
     >
       <template #actions>
@@ -498,15 +499,26 @@ watch(
           <template #default="{ row }">
             <div class="min-w-0">
               <div class="flex items-center gap-2">
-                <!-- 同容器页：名称即详情入口，必须用 `<button>` 才可 Tab / 可读屏 -->
-                <button
-                  type="button"
-                  class="app-truncate text-left font-medium hover:text-brand-500 hover:underline"
-                  :class="isDangling(row.repoTags) ? 'text-content-muted italic' : 'text-content-strong'"
-                  @click="openInspect(row)"
+                <!--
+                  同容器页：名称即详情入口，必须用 `<button>` 才可 Tab / 可读屏。
+                  ⚠️ 悬浮提示**始终**给：镜像名普遍带仓库地址 + 标签 + 摘要，
+                  截断是常态；提示只在「长」时出现的话，读者无法区分
+                  「这个没提示」与「这个没被截断」。
+                -->
+                <el-tooltip
+                  :content="primaryImageName(row.repoTags)"
+                  placement="top-start"
+                  :show-after="TIP_DELAY_MS"
                 >
-                  {{ primaryImageName(row.repoTags) }}
-                </button>
+                  <button
+                    type="button"
+                    class="app-truncate text-left font-medium hover:text-brand-500 hover:underline"
+                    :class="isDangling(row.repoTags) ? 'text-content-muted italic' : 'text-content-strong'"
+                    @click="openInspect(row)"
+                  >
+                    {{ primaryImageName(row.repoTags) }}
+                  </button>
+                </el-tooltip>
                 <span
                   v-if="stackedTagCount(row.repoTags) > 0"
                   class="shrink-0 text-xs text-content-muted"
@@ -514,9 +526,11 @@ watch(
                   {{ t('image.tags.more', { count: stackedTagCount(row.repoTags) }) }}
                 </span>
               </div>
-              <div class="app-truncate font-mono text-xs text-content-faint">
-                {{ shortImageId(row.id) }}
-              </div>
+              <el-tooltip :content="row.id" placement="top-start" :show-after="TIP_DELAY_MS">
+                <div class="app-truncate font-mono text-xs text-content-faint">
+                  {{ shortImageId(row.id) }}
+                </div>
+              </el-tooltip>
             </div>
           </template>
         </el-table-column>
@@ -526,9 +540,16 @@ watch(
             <span v-if="isDangling(row.repoTags)" class="text-xs text-content-faint">
               {{ t('image.dangling.hint') }}
             </span>
-            <span v-else class="app-truncate text-xs text-content-muted">
-              {{ row.repoTags.join(' · ') }}
-            </span>
+            <el-tooltip
+              v-else
+              :content="row.repoTags.join(' · ')"
+              placement="top-start"
+              :show-after="TIP_DELAY_MS"
+            >
+              <span class="app-truncate block text-xs text-content-muted">
+                {{ row.repoTags.join(' · ') }}
+              </span>
+            </el-tooltip>
           </template>
         </el-table-column>
 
