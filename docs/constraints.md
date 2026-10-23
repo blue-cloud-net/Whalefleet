@@ -281,7 +281,8 @@ services:
 > 只开子集不开 `POST` 的症状极具误导性：列表页一切正常，但创建 / 启停 / 删除容器
 > 与拉取镜像一律 `403`，而开关列表看上去全是开的。
 >
-> 另：`INFO` 不能省（主机启动时间靠 `GetSystemInfoAsync`），`PING` 是连通性探测，
+> 另：`INFO` 不能省（`daemon` 信息与容器 / 镜像计数靠 `GetSystemInfoAsync`；卷与网络计数走各自的列表接口），
+> `PING` 是连通性探测，
 > `VERSION` 供概览页展示版本。仓库根 [docker-compose.yml](../docker-compose.yml) 是权威副本。
 
 详细的安全声明与部署模式见仓库根 [README.zh-CN.md](../README.zh-CN.md#️-安全声明docker-socket-挂载)（[English](../README.md#️-security-notice-docker-socket-mounting)）。

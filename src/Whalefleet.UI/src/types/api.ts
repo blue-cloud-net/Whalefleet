@@ -255,7 +255,8 @@ export interface HostOverview extends HostInfo {
 /**
  * 主页标签（管理页用）。
  *
- * **不参与授权**：授权边界只有分组与角色分配。标签只用于过滤与批量选择。
+ * **不参与授权**：授权边界只有带作用域的角色分配（分组与标签都不参与）。
+ * 标签只用于总览过滤与打标 / 清标。
  */
 export interface HostTag {
   /** 标签主键 */

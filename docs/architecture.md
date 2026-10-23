@@ -174,17 +174,18 @@ dotnet list src/Whalefleet.Application/Whalefleet.Application.csproj package
 | **`Application` 引用 `Infrastructure`** | 应用服务直接 `new SqliteConnection()` | 在 `Application/Abstractions` 定义接口，`Infrastructure` 实现并注入 |
 | **持久化接口返回活连接** | `IHostRepository.QueryAllListAsync()` 返回的对象里带 `DockerClient` | 仓储只负责持久化；客户端获取走 `IDockerClientFactory` |
 
-### 实体清单（0.0.3 / 0.0.8 已落地）
+### 实体清单（0.0.3 – 0.6.0 已落地）
 
 | 实体 | 位置 | 基类 | 业务键与唯一性 | 关键不变量 |
 |------|------|------|----------------|-----------|
 | `Role` | `Core/Users/Role.cs` | `FullAuditedEntity<Guid, Guid>` | `name`（小写文本，`COLLATE NOCASE` 部分唯一索引） | 标识自动转小写、2–32 字符、仅 `[A-Za-z0-9._-]`；**标识不可改**；携带权限集（`Permissions`，投影自 `role_permissions`），**内置角色的权限集不可修改**；内置角色不可删（`Retire` + 仓储 `WHERE is_built_in = 0` 双重保证） |
 | `User` | `Core/Users/User.cs` | `FullAuditedEntity<Guid, Guid>` | `username`（`COLLATE NOCASE` 部分唯一索引） | 去首尾空白后 3–32 字符，仅 `[A-Za-z0-9._-]`；密码哈希非空；**没有角色字段**——角色由 `user_role_assignments` 分配；**用户名不可改** |
 | `DockerHost` | `Core/Hosts/DockerHost.cs` | `FullAuditedEntity<Guid, Guid>` | `name`（同上） | 名称 1–64 且无控制字符、**不可改**（它是对外主机标识）；连接方式与端点形态不得矛盾；连接方式 / 端点 / 凭据必须成组更新 |
-| `HostGroup` | `Core/Hosts/HostGroup.cs` | `FullAuditedEntity<Guid, Guid>` | `name`（同上） | 名称 1–32 且无控制字符；**纯展示性**——不参与任何授权判定 |
+| `HostGroup` | `Core/Hosts/HostGroup.cs` | `FullAuditedEntity<Guid, Guid>` | `name`（同上） | 名称 1–32 且无控制字符；**展示与选择 / 过滤的边界，不是授权边界**——不参与任何授权判定 |
 | `RefreshToken` | `Core/Auth/RefreshToken.cs` | `CreationAuditedEntity<Guid, Guid>` | `token_hash` 唯一 | 只存哈希（非原文）；归属用户非空；`IsActiveAt` = 未撤销且未过期 |
 | `UserRoleAssignment` | `Core/Permissions/UserRoleAssignment.cs` | `FullAuditedEntity<Guid, Guid>` | `(user_id, role_id, COALESCE(host_id, ''))` 部分唯一索引（`WHERE is_deleted = 0`） | 用户与角色主键非空；`host_id` 为 `NULL` 即**全局分配**，非空即仅在该主机上生效（`AppliesTo`）；撤销走软删除，因此同一组合可重新分配 |
 | `RepositoryCredential` | `Core/Repositories/RepositoryCredential.cs` | `FullAuditedEntity<Guid, Guid>` | 别名与服务地址各占一个部分唯一索引（`WHERE is_deleted = 0`） | **只存口令密文**（实体里永远没有明文）；账号与口令必须成对；地址经 `RepositoryServerAddress` 规范化 |
+| `HostTag` | `Core/Hosts/HostTag.cs` | `FullAuditedEntity<Guid, Guid>` | `name`（`COLLATE NOCASE` 部分唯一索引，`WHERE is_deleted = 0`） | 名称 1–32 且无控制字符、**不可改**；描述最长 200；`color` 只接受 `#RRGGBB`（`NULL` = 界面默认色）；**只用于过滤与批量选择**，不参与任何授权判定（多对多，与单一归属的分组不同） |
 
 > **0.1.0 已落地权限目录、`role_permissions` 与 `user_role_assignments`**（迁移 `0006_rbac.sql`、仓储、DI
 > 与角色 / 分配管理端点）。权限目录是**静态封闭集**（`Core/Permissions/Permission.cs` 里的 `Permission` 常量与
@@ -276,8 +277,10 @@ dotnet list src/Whalefleet.Application/Whalefleet.Application.csproj package
 
 **主机分组为什么建表而不是枚举 / 配置**（0.0.13）：分组是**运行时可变的数据**（管理员随时增删改），
 枚举会把「有哪些分组」焊死在编译期，与 0.0.3 把角色从枚举改成表是同一个理由。
-它还刻意**不承担授权语义**——「某人能碰哪些主机」由带作用域的角色分配（`user_role_assignments`）回答，
-分组只影响总览页的呈现。两者混在一起会让「把主机挪进某个分组」变成一次隐式提权。
+它还刻意**不承担授权语义**：
+分组是**展示与选择 / 过滤的边界**（0.6.0 起：总览按分组聚合、总览可按分组过滤），
+但**不参与授权**——「谁能碰哪些主机」只由带作用域的角色分配（`user_role_assignments`）回答。
+两者混在一起会让「把主机挪进某个分组」变成一次隐式提权。
 
 **完整实现**见 `src/Whalefleet.Core/{Users,Hosts,Auth,Permissions}/`；
 仓储契约 `IUserRepository` / `IHostRepository` / `IRoleRepository` / `IRefreshTokenRepository` 定义在 `Core`，
@@ -324,7 +327,7 @@ protected abstract Task<bool> ExecuteUpdateAsync(DbConnection connection, TEntit
 > `<TEntity>` 只能约束到 `Entity<TId>`（覆盖全部实体），而 `MarkCreated` / `MarkModified` / `Delete`
 > 分别定义在不同审计基类上。约束到具体基类会让基类无法服务「只带部分审计」的实体。
 
-### 表结构（0.0.3 已落地）
+### 表结构（0.0.3 – 0.6.0 已落地）
 
 各表的权威定义是内嵌迁移脚本
 `src/Whalefleet.Infrastructure/Persistence/Schema/Migrations/000N_*.sql`；
@@ -337,8 +340,11 @@ protected abstract Task<bool> ExecuteUpdateAsync(DbConnection connection, TEntit
 | `role_permissions` | `0006_rbac.sql` | 角色携带的权限集：复合主键 `(role_id, permission)`，`role_id` 为指向 `roles(id)` 的外键；`permission` 是 `domain.level` 文本，**没有指向目录表的外键**（目录是编译期事实，由 `Core/Permissions/Permission.cs` 校验）；无软删除列，覆盖式更新不做差量审计；内置角色的权限行随迁移种入（时间戳固定） |
 | `user_role_assignments` | `0006_rbac.sql` | 带作用域的角色分配：`host_id` 可空（`NULL` = 全局分配，非空为指向 `hosts(id)` 的外键）；`ux_user_role_assignments` = `UNIQUE (user_id, role_id, COALESCE(host_id, '')) WHERE is_deleted = 0`——**必须是表达式索引**，因为 SQLite 的唯一索引不去重 `NULL`，用裸列拦不住「同一全局角色被重复分配」；`ix_*_user` / `ix_*_host` 分别支撑鉴权热路径与「谁能访问这台机器」 |
 | `hosts` | `0002_hosts.sql`（`0005` 加列） | `type` = `socket`\|`tcp`（小写文本）；`endpoint` 存**规范化前**原文；`auth_kind` = `none`\|`tls`\|`basic`；`auth_config_json` 在无认证时为 NULL；`ux_hosts_name` 同 users；`group_id` 可空外键指向 `host_groups(id)`（0.0.13） |
-| `host_groups` | `0005_host_groups.sql` | 主机的展示性分组（**不是权限边界**）：`name` 唯一（部分索引 + `COLLATE NOCASE`）、`description` 可空、`sort_order` 升序；种入 `production` / `staging` / `local` 三个内置分组（固定主键） |
+| `host_groups` | `0005_host_groups.sql` | 主机的分组（**展示与选择 / 过滤的边界，不是授权边界**）：`name` 唯一（部分索引 + `COLLATE NOCASE`）、`description` 可空、`sort_order` 升序；种入 `production` / `staging` / `local` 三个内置分组（固定主键） |
 | `refresh_tokens` | `0003_refresh_tokens.sql` | 无软删除列；`ux_refresh_tokens_token_hash` 唯一；`ix_*_user_id` / `ix_*_expires_at` 支撑「登出所有设备」与过期清理；**不建** `user_id → users(id)` 外键（用户是软删除的，外键带不来额外保护却会让清理脚本更复杂） |
+| `repositories` | `0007_repositories.sql` | 一行 = 一条「仓库地址 + 一套登录凭据」：`server_address` 存**规范化后的明文**（它不是秘密，且必须可按它查找）；`username` 空串 = 匿名；`encrypted_password` **只存 AES-GCM 密文**（随机 nonce，每次不同，因此**不建索引**）；`ux_repositories_name` / `ux_repositories_server_address` 各为 `UNIQUE (… COLLATE NOCASE) WHERE is_deleted = 0`——**同址更危险**（会让「推镜像时该用哪条凭据」变成随机行为）。⚠️ 加密密钥**不在表里**：走 `SecretFileStore` 落到数据目录下的 `repository.key`（0600），须随数据卷一起备份 |
+| `host_tags` | `0008_host_tags.sql` | 主机标签（多对多自由打标）：`name` 唯一（部分索引 + `COLLATE NOCASE`，最长 32）、`description` 可空（最长 200）、`color` 只存规范化的 `#RRGGBB`（`NULL` = 界面默认色）；种入无固定数据 |
+| `host_tag_assignments` | `0008_host_tags.sql` | 主机 ↔ 标签的多对多关系：复合主键 `(host_id, tag_id)`——打标 / 清标天然幂等，`INSERT OR IGNORE` 把幂等性交给数据库；`host_id` 存的是 `hosts.id`（Guid 小写 36 位文本）**而不是主机名**（主机名可改，关系不能因此断掉）；`ix_host_tag_assignments_tag_id` 支撑反向查询（正向由主键前缀覆盖）；**无 `is_deleted`、无级联删除**——撤销打标就是删行，删标签时由应用服务先清关联 |
 
 **迁移机制**：`PRAGMA user_version` 记录已应用到第几版，脚本文件名前缀即目标版本（必须从 1 起**连续**编号，
 否则启动失败）；每个脚本与其版本号写入**同一事务**，因此中断只会留下"该脚本整体未应用"。
@@ -778,7 +784,7 @@ public interface IDockerClientPool
 
 > 写入走 `IHostRepository`（审计由 `RepositoryBase` 用 `TimeProvider` / `ICurrentUser` 填充），
 > 而不是裸 SQL——因此无需在此维护一份必须与 DDL 对齐的插入语句。
-> 判空用物理行数的原因见 [表结构](#表结构003-已落地)。
+> 判空用物理行数的原因见 [表结构](#表结构003--060-已落地)。
 
 ### 主机凭据（`auth_config_json`）
 
