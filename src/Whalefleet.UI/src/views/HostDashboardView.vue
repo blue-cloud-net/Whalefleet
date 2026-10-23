@@ -6,6 +6,7 @@ import { ElMessage } from 'element-plus'
 import { useHostStore } from '@/stores/host'
 import type { HostOverview } from '@/types/api'
 import { formatBytes, type ByteUnits } from '@/utils/container-status'
+import { formatDateTime } from '@/utils/datetime'
 import HostHero from '@/components/business/HostHero.vue'
 import ResourceTile from '@/components/business/ResourceTile.vue'
 import SectionCard from '@/components/common/SectionCard.vue'
@@ -129,11 +130,33 @@ function goResource(key: ResourceKey) {
 }
 
 /**
- * 刷新：主机列表目前来自本地种子（0.0.8 的列表接口就绪后才真正拉取），
- * 这里沿用与「编辑主机」一致的处理方式——明确告知未就绪，而不是点一下没反应。
+ * 刷新：重新拉取主机列表。
+ *
+ * 列表本来就走真接口（`POST /api/v1/hosts/list`，见 store 的 `loadHosts()`），
+ * `loadHosts()` 会连带重取版本 / 计数（`loadHostDetails()`），因此刷新后
+ * 本页的四个磁贴与信息卡都会跟着变。
+ *
+ * 失败时 store **不抛异常**而是把错误写进 `error` 并保留旧数据，
+ * 页面上又没有任何一处渲染它——不提示的话，用户面对一个毫无变化的页面
+ * 只会以为按钮坏了，因此这里补一条失败提示。
  */
-function onRefresh() {
-  ElMessage.info(t('host.hero.refreshSoon'))
+async function onRefresh(): Promise<void> {
+  // 已经在拉了就直接返回：主机多时一次列表往返要数秒，连点会把请求堆起来
+  if (host.loading) return
+
+  await host.loadHosts()
+
+  if (host.error !== null) {
+    ElMessage({ type: 'error', message: t('state.loadFailed'), showClose: true })
+    return
+  }
+
+  // 成功也报一声：刷新按钮没有任何视觉状态（`HostHero` 只有一个图标），
+  // 不提示的话「点了到底生效没」无从判断。用同步时间当作回执。
+  ElMessage({
+    type: 'success',
+    message: t('state.updatedAt', { time: formatDateTime(host.lastSyncedAt) })
+  })
 }
 
 /** 缺失值的统一占位符，避免各处各写一个长得不一样的破折号 */

@@ -105,7 +105,7 @@ async function copyEndpoint() {
         </p>
       </div>
 
-      <!-- 操作区：刷新交由父组件处理（当前是本地占位，接口就绪后接真实请求） -->
+      <!-- 操作区：刷新交由父组件处理（父组件回调里重新拉取主机列表与详情） -->
       <div class="flex items-center gap-1.5 shrink-0">
         <el-tooltip :content="t('host.hero.refresh')" placement="bottom">
           <el-button
