@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
+import { listAdminHosts } from '@/api/host'
 import { useAuthStore } from '@/stores/auth'
-import type { HostOverview, HostCounts } from '@/types/api'
+import { useHostStore } from '@/stores/host'
+import type { AdminHostSummary, HostOverview, HostCounts } from '@/types/api'
 import { hostTone, HOST_TONE_CHIP, HOST_TONE_LABEL_KEY, HOST_TONE_RAIL } from '@/utils/host-status'
 import StatusDot from '@/components/common/StatusDot.vue'
+import HostFormDialog from '@/components/business/HostFormDialog.vue'
 
 const props = defineProps<{
   host: HostOverview
@@ -15,6 +18,19 @@ const props = defineProps<{
 const router = useRouter()
 const { t } = useI18n()
 const auth = useAuthStore()
+const hostStore = useHostStore()
+
+/** 编辑对话框（与「主机管理」页 HostsView 用的是同一个 `HostFormDialog`，`isEdit` 模式）。 */
+const editorVisible = ref(false)
+/** 编辑目标；null = 新建。本卡片只做编辑，因此恒为非 null 的 `AdminHostSummary`。 */
+const editingHost = ref<AdminHostSummary | null>(null)
+/** 正在取管理端数据：期间按钮转圈，避免连点开出两个对话框 */
+const loadingEditor = ref(false)
+
+/** 分组下拉的选项（store 的 `groups` 由 `loadHosts()` 一并拉取，与 HostsView 同源） */
+const groupOptions = computed(() =>
+  hostStore.groups.map((group) => ({ id: group.id, name: group.name }))
+)
 
 /**
  * 资源计数：由 store 的 `loadHostDetails()` 从单台概览端点（`POST /hosts/{hostId}/overview`）补齐。
@@ -80,11 +96,47 @@ function openStatus() {
 }
 
 /**
- * 编辑功能待 0.0.13 的 `/api/v1/host/update` 就绪后接入，
- * 当前仅 admin 可见占位，避免普通用户看到点不动的按钮。
+ * 打开编辑对话框。
+ *
+ * ⚠️ **必须先取 `listAdminHosts()`，不能拿卡片上的 `HostOverview` 顶替**：
+ * 表单要显示**认证方式**（`authKind`）与所属分组，而 `HostOverview` 里没有 `authKind`。
+ * 拿摘要硬凑会把 TLS / Basic 的主机显示成「无认证」，保存时更会把它已有的凭据清掉
+ * （`clearCredentials`）。管理端列表是唯一带 `authKind` 的来源。
+ *
+ * 主键按**主机名**对齐：`HostOverview.id` 就是主机名，与 `AdminHostSummary.name` 同一标识。
  */
-function editHost() {
-  ElMessage.info(t('host.actions.editSoon'))
+async function editHost(): Promise<void> {
+  if (loadingEditor.value) return
+
+  loadingEditor.value = true
+  try {
+    const target = (await listAdminHosts()).find((item) => item.name === props.host.name)
+
+    // 卡片还在列表里、管理端却没有：只可能是两次请求之间被删了，如实说明而不是开空表单
+    if (!target) {
+      ElMessage.error(t('host.hero.notFound'))
+      return
+    }
+
+    editingHost.value = target
+    editorVisible.value = true
+  } catch {
+    // 失败提示由全局拦截器统一给出，这里保持卡片原样（不开一个字段全空的表单）
+  } finally {
+    loadingEditor.value = false
+  }
+}
+
+/**
+ * 保存成功后重拉列表：端点、启用状态与所属分组都可能已变。
+ *
+ * 走 store 而不是让父组件重新加载：`HostCard` 的数据源就是这份 store，
+ * 重拉后卡片会自己更新，无需把事件一路冒泡到视图层。
+ */
+async function onHostSaved(): Promise<void> {
+  editorVisible.value = false
+  editingHost.value = null
+  await hostStore.loadHosts()
 }
 
 /** 紧凑元信息：OS/Arch 与 Docker 版本；缺失时不渲染，避免塌版。
@@ -224,6 +276,7 @@ function onKeydown(e: KeyboardEvent) {
             text
             size="small"
             class="!px-1.5"
+            :loading="loadingEditor"
             :aria-label="t('host.actions.edit')"
             @click.stop="editHost"
           >
@@ -247,6 +300,20 @@ function onKeydown(e: KeyboardEvent) {
       <span class="i-carbon-arrow-right text-sm text-content-faint shrink-0" aria-hidden="true" />
     </div>
   </div>
+
+  <!--
+    编辑对话框刻意放在可点击行**外面**（因此本组件是双根的 Fragment）。
+    `el-dialog` 的 `append-to-body` 默认是 false，遮罩会就地渲染在卡片的父节点里，
+    于是「点遮罩关闭」的事件会冒泡到整行的 `@click="enter"`——
+    表现为关掉对话框的同时被导航进那台主机。
+  -->
+  <HostFormDialog
+    v-if="auth.isAdmin"
+    v-model="editorVisible"
+    :host="editingHost"
+    :groups="groupOptions"
+    @saved="onHostSaved"
+  />
 </template>
 
 <style scoped>
