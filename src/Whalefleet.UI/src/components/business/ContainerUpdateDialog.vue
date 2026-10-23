@@ -32,6 +32,29 @@ import type { ContainerDetail } from '@/types/api'
  */
 const { t } = useI18n()
 
+/**
+ * 重启策略的线上写法 → i18n key。
+ *
+ * 必须显式映射，**不能**在模板里拼 ``t(`container.restartPolicy.${v}`)``：
+ * Docker 给的是 `on-failure` / `unless-stopped`（连字符），而 i18n key 用的是
+ * `onFailure` / `unlessStopped`（驼峰）。拼出来的 key 不存在，界面上会直接显示
+ * `container.restartPolicy.unless-stopped` 这种原始 key 路径——
+ * 而 vue-i18n 找不到 key 时只告警不报错，构建与测试都拦不住（见 AGENTS.md「常见陷阱」）。
+ */
+const RESTART_POLICY_KEYS: Record<string, string> = {
+  no: 'container.restartPolicy.no',
+  always: 'container.restartPolicy.always',
+  'on-failure': 'container.restartPolicy.onFailure',
+  'unless-stopped': 'container.restartPolicy.unlessStopped'
+}
+
+/** 未登记的策略（将来 Docker 新增）显示原文，而不是一个 key 路径。 */
+function restartPolicyLabel(policy: string): string {
+  const key = RESTART_POLICY_KEYS[policy]
+
+  return key ? t(key) : policy
+}
+
 const props = defineProps<{
   hostId: string
   containerId: string | null
@@ -180,7 +203,7 @@ async function submit(): Promise<void> {
             <el-option
               v-for="policy in RESTART_POLICIES"
               :key="policy"
-              :label="t(`container.restartPolicy.${policy === 'on-failure' ? 'onFailure' : policy}`)"
+              :label="restartPolicyLabel(policy)"
               :value="policy"
             />
           </el-select>
