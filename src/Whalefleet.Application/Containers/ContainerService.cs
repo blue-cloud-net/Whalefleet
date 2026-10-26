@@ -1080,8 +1080,6 @@ public sealed partial class ContainerService
     /// <returns>列表项投影。</returns>
     private static ContainerSummary MapSummary(ContainerListResponse source)
     {
-        var ports = source.Ports is null ? [] : source.Ports.Select(MapPort).ToArray();
-
         return new ContainerSummary(
             Id: source.ID,
             Name: MapName(source.Names, source.ID),
@@ -1091,7 +1089,68 @@ public sealed partial class ContainerService
             Created: ToUtc(source.Created),
             State: source.State,
             Status: source.Status,
-            Ports: ports);
+            Ports: MapPorts(source.Ports));
+    }
+
+    /// <summary>
+    /// 把端口映射投影成对外结构，并按<b>确定性顺序</b>排列。
+    /// </summary>
+    /// <param name="source">SDK 端口项。</param>
+    /// <returns>已排序的端口投影。</returns>
+    /// <remarks>
+    /// <para><b>为什么必须显式排序</b>：守护进程的 <c>GET /containers/json</c> 里
+    /// <c>Ports</c> 数组的元素顺序<b>每次调用都可能不同</b>——它由 Go 侧遍历
+    /// <c>map[Port]PortBinding</c> 生成，而 Go 的 map 迭代顺序是随机的。
+    /// 直接透传的话，同一个容器在列表刷新后端口行的先后会来回跳，
+    /// 用户会以为端口「变了」，而实际映射根本没变。</para>
+    /// <para><b>排序键</b>：容器端口 ↑ → 协议（序数）→ 宿主端口（未映射的排最后）→
+    /// 绑定地址等级（未指定 / 通配 → IPv4 → IPv6）→ 绑定地址（序数）。
+    /// 末位用绑定地址兜底，保证**全序**——否则两个完全同键的端口仍可能换位。</para>
+    /// <para><b>同端口多绑定是常态</b>：<c>-p 8080:80</c> 会被 Docker 记成
+    /// <c>0.0.0.0</c> 与 <c>::</c> 两条（IPv4 + IPv6 各一条）。
+    /// 「把它们合并成一行」是**展示层**的事，服务端只负责给出稳定且可预期的顺序。</para>
+    /// </remarks>
+    private static IReadOnlyList<ContainerPort> MapPorts(IList<PortSummary>? source)
+    {
+        if (source is null || source.Count == 0)
+        {
+            return [];
+        }
+
+        return
+        [
+            .. source
+                .Select(MapPort)
+                .OrderBy(port => port.PrivatePort)
+                .ThenBy(port => port.Type, StringComparer.Ordinal)
+                // 未映射的端口（只暴露不绑定）排在最后：它们没有宿主端口可比
+                .ThenBy(port => port.PublicPort ?? int.MaxValue)
+                .ThenBy(port => IpRank(port.Ip))
+                .ThenBy(port => port.Ip ?? string.Empty, StringComparer.Ordinal)
+        ];
+    }
+
+    /// <summary>
+    /// 绑定地址的排序等级。
+    /// </summary>
+    /// <param name="ip">绑定地址；<see langword="null"/> 表示未指定。</param>
+    /// <returns>等级值，越小越靠前。</returns>
+    /// <remarks>
+    /// 顺序：具体 IPv4 → IPv4 通配 → 具体 IPv6 → IPv6 通配 → 未指定。
+    /// <br/>
+    /// <b>为什么 IPv4 家族在前</b>：<c>-p 8080:80</c> 会被 Docker 记成
+    /// <c>0.0.0.0</c> 与 <c>::</c> 两条，两条都指「所有网卡」，但 IPv4 是绝大多数场景
+    /// 真正能访问到的那一个。把它排在前面，客户端「取第一个」就能拿到对的地址。
+    /// <br/>
+    /// <b>为什么具体地址优先于通配</b>：具体地址是更多信息（只监听某张网卡）。
+    /// </remarks>
+    private static int IpRank(string? ip)
+    {
+        if (string.IsNullOrWhiteSpace(ip)) return 4;
+        if (ip == "0.0.0.0") return 1;
+        if (ip == "::") return 3;
+
+        return ip.Contains(':', StringComparison.Ordinal) ? 2 : 0;
     }
 
     /// <summary>

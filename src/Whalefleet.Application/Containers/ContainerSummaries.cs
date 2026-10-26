@@ -11,11 +11,18 @@ namespace Whalefleet.Application.Containers;
 /// <param name="Created">创建时间（UTC）。</param>
 /// <param name="State">状态（如 <c>running</c> / <c>exited</c>）。</param>
 /// <param name="Status">人类可读状态（如 <c>Up 3 hours</c>）。</param>
-/// <param name="Ports">端口映射。</param>
+/// <param name="Ports">端口映射，<b>已按确定性顺序排列</b>（见下）。</param>
 /// <remarks>
-/// <b>为什么逐字段挑选而不是直接序列化 SDK 的 <c>ContainerListResponse</c></b>：
+/// <para><b>为什么逐字段挑选而不是直接序列化 SDK 的 <c>ContainerListResponse</c></b>：
 /// 一是那个对象带着 <c>HostConfig</c> / <c>NetworkSettings</c> 等一大坨列表页用不到的东西，
-/// 列表返回体会膨胀十几倍；二是 SDK 升级时字段变动会直接变成对外契约的变动。
+/// 列表返回体会膨胀十几倍；二是 SDK 升级时字段变动会直接变成对外契约的变动。</para>
+/// <para><b>端口数组的顺序是对外契约的一部分</b>：守护进程返回的
+/// <c>Ports</c> 顺序每次调用都可能不同（Go 的 map 迭代顺序随机），
+/// 因此服务端会显式排序——容器端口 ↑ → 协议 → 宿主端口（未映射的最后）→
+/// 绑定地址等级（未指定/通配 → IPv4 → IPv6）→ 绑定地址。
+/// 客户端可以直接依赖这个顺序，不必自己再排一次。</para>
+/// <para><b>同一个端口可能有多条记录</b>：<c>-p 8080:80</c> 会被 Docker 记成
+/// <c>0.0.0.0</c> 与 <c>::</c> 两条。是否合并成一行是<b>展示层</b>的决定。</para>
 /// </remarks>
 public sealed record ContainerSummary(
     string Id,
