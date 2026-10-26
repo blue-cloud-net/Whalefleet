@@ -9,7 +9,35 @@ namespace Whalefleet.Application.Containers;
 public sealed record ListContainersRequest
 {
     /// <summary>是否包含已停止的容器；省略时只列运行中的（与 <c>docker ps</c> 一致）。</summary>
+    /// <remarks>
+    /// <b>被 <see cref="State"/> 取代</b>：状态筛选要能表达「仅未运行」，
+    /// 布尔开关表达不了（true/false 只有「含/不含已停止」两态）。
+    /// 保留它是为了兼容旧客户端：<see cref="State"/> 省略时按本字段的旧语义处理
+    /// （<c>true</c> = 全部，<c>false</c> / 省略 = 仅运行中）。
+    /// </remarks>
     public bool? All { get; init; }
+
+    /// <summary>
+    /// 状态筛选；取值见 <see cref="ContainerStateFilter"/> 的常量。
+    /// 省略时按 <see cref="All"/> 的旧语义处理。
+    /// </summary>
+    /// <remarks>
+    /// <b>未知值一律按「全部」处理</b>，而不是报错——与 <see cref="SortBy"/> 同策略：
+    /// 筛选字段来自客户端，版本错配时不该让整个列表 400。
+    /// </remarks>
+    public string? State { get; init; }
+
+    /// <summary>
+    /// 关键字搜索：按容器名 / 镜像名 / 容器 ID 模糊匹配（不区分大小写）。
+    /// </summary>
+    /// <remarks>
+    /// <b>刻意不匹配启动命令</b>：命令里常含密钥、路径与参数，
+    /// 把它当搜索面既容易命中无关内容，也会让用户以为「搜出来的就是相关的那个」。
+    /// <br/>
+    /// 匹配规则与镜像列表一致（见 <c>ImageService.Filter</c>）：在**服务端内存**里过滤，
+    /// 因为分页也在服务端做——前端过滤只能筛到当前页，规则会与后端漂移。
+    /// </remarks>
+    public string? Search { get; init; }
 
     /// <summary>页码（从 0 开始）；省略时按 0 处理。</summary>
     public int? PageIndex { get; init; }
@@ -54,6 +82,28 @@ public static class ContainerSortField
 
     /// <summary>默认字段：等价于守护进程自己给的创建时间降序。</summary>
     public const string Default = Created;
+}
+
+/// <summary>
+/// 容器列表的状态筛选取值。
+/// </summary>
+/// <remarks>
+/// 与 <see cref="ContainerSortField"/> 同构：常量而非枚举，因为请求字段是字符串，
+/// 「未知值回落」这条策略需要在调用处的 <c>switch</c> 默认分支里显式可见。
+/// </remarks>
+public static class ContainerStateFilter
+{
+    /// <summary>全部容器（运行中 + 未运行）。</summary>
+    public const string All = "all";
+
+    /// <summary>仅运行中（含已暂停与重启中——它们都算「还活着」）。</summary>
+    public const string Running = "running";
+
+    /// <summary>仅未运行（已退出 / 已死亡 / 从未启动）。</summary>
+    public const string Stopped = "stopped";
+
+    /// <summary>默认筛选：全部。</summary>
+    public const string Default = All;
 }
 
 /// <summary>

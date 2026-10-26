@@ -90,26 +90,33 @@ public sealed partial class ContainerService
         ArgumentNullException.ThrowIfNull(request);
 
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
-        var all = request.All ?? false;
+        var filter = ResolveStateFilter(request);
 
         var containers = await DockerErrorTranslator.ExecuteAsync(
-            () => client.Containers.ListContainersAsync(new ContainersListParameters { All = all }, cancellationToken),
+            () => client.Containers.ListContainersAsync(
+                new ContainersListParameters { All = filter.IncludeStopped },
+                cancellationToken),
             "容器列表",
             cancellationToken).ConfigureAwait(false);
+
+        // 过滤 → 排序 → 分页，顺序不能换：
+        // 先分页再过滤会让 total 与实际命中数不一致（页脚说 100 个、翻过去只有 3 个）。
+        var filtered = Filter(containers, request.Search, filter);
 
         // 客户端**显式**指定排序字段时才重排：那时顺序是用户要的；没指定就保持守护进程
         // 返回的顺序（创建时间降序），它本来就是稳定的，额外重排只会让「翻页时看到的东西变了」
         // 更难解释。排序必须在分页之前，否则 total 不变而每页内容错位。
-        var ordered = Sort(containers, request.SortBy, request.SortDir);
+        var ordered = Sort(filtered, request.SortBy, request.SortDir);
 
         var pageIndex = Math.Max(request.PageIndex ?? 0, 0);
         var pageSize = Math.Clamp(request.PageSize ?? DefaultPageSize, 1, MaxPageSize);
 
         _logger.LogDebug(
-            "主机 {HostId} 容器列表：共 {Total} 个（含已停止={All}，排序={SortBy}/{SortDir}），返回第 {PageIndex} 页（每页 {PageSize}）",
+            "主机 {HostId} 容器列表：共 {Total} 个（状态={State}，搜索={Search}，排序={SortBy}/{SortDir}），返回第 {PageIndex} 页（每页 {PageSize}）",
             hostId,
             ordered.Count,
-            all,
+            filter.Kind,
+            string.IsNullOrWhiteSpace(request.Search) ? "无" : request.Search.Trim(),
             request.SortBy ?? "默认",
             request.SortDir ?? "desc",
             pageIndex,
@@ -121,6 +128,128 @@ public sealed partial class ContainerService
             pageIndex,
             pageSize);
     }
+
+    /// <summary>
+    /// 状态筛选的解析结果。
+    /// </summary>
+    /// <param name="Kind">筛选种类（用于日志与调试）。</param>
+    /// <param name="IncludeStopped">是否向守护进程请求「含已停止」的列表。</param>
+    /// <param name="OnlyRunning">是否只保留运行类容器（<c>true</c> 时剔除未运行的）。</param>
+    /// <param name="OnlyStopped">是否只保留未运行类容器（<c>true</c> 时剔除运行类的）。</param>
+    private sealed record StateFilter(
+        string Kind,
+        bool IncludeStopped,
+        bool OnlyRunning,
+        bool OnlyStopped)
+    {
+        /// <summary>全部容器。</summary>
+        public static StateFilter All { get; } = new(ContainerStateFilter.All, true, false, false);
+
+        /// <summary>仅运行中。</summary>
+        public static StateFilter Running { get; } = new(ContainerStateFilter.Running, false, true, false);
+
+        /// <summary>仅未运行。</summary>
+        public static StateFilter Stopped { get; } = new(ContainerStateFilter.Stopped, true, false, true);
+
+        /// <summary>
+        /// 判断某个状态是否命中本筛选。
+        /// </summary>
+        /// <param name="state">Docker 原始状态文本。</param>
+        /// <returns>命中返回 <see langword="true"/>。</returns>
+        public bool Matches(string? state)
+        {
+            if (OnlyRunning) return IsRunningState(state);
+            if (OnlyStopped) return !IsRunningState(state);
+
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// 解析请求里的状态筛选。
+    /// </summary>
+    /// <param name="request">列表请求。</param>
+    /// <returns>筛选解析结果。</returns>
+    /// <remarks>
+    /// <b>优先级：<c>state</c> &gt; <c>all</c></b>。<c>state</c> 是新契约，
+    /// <c>all</c> 是旧契约（布尔开关表达不了「仅未运行」）。旧客户端不发 <c>state</c>，
+    /// 因此按 <c>all</c> 的旧语义处理：<c>true</c> = 全部，<c>false</c> / 省略 = 仅运行中。
+    /// <br/>
+    /// <b>未知值按「全部」处理</b>，与排序字段同策略：筛选值来自客户端，
+    /// 版本错配时不该让整个列表 400。
+    /// </remarks>
+    private static StateFilter ResolveStateFilter(ListContainersRequest request)
+    {
+        var state = request.State?.Trim();
+
+        if (string.IsNullOrEmpty(state))
+        {
+            return request.All == true ? StateFilter.All : StateFilter.Running;
+        }
+
+        return state.ToLowerInvariant() switch
+        {
+            ContainerStateFilter.Running => StateFilter.Running,
+            ContainerStateFilter.Stopped => StateFilter.Stopped,
+            _ => StateFilter.All
+        };
+    }
+
+    /// <summary>
+    /// 判断状态是否属于「运行类」。
+    /// </summary>
+    /// <param name="state">Docker 原始状态文本。</param>
+    /// <returns>运行中 / 已暂停 / 重启中返回 <see langword="true"/>。</returns>
+    /// <remarks>
+    /// <b>已暂停与重启中算「运行类」</b>：它们都还占着资源、还连着端口，
+    /// 对「这个服务还活着吗」这个问题而言答案是「活着」。
+    /// 守护进程自己判定「运行中」时用的也是同一套口径（<c>docker ps</c> 会列出它们）。
+    /// </remarks>
+    private static bool IsRunningState(string? state) => state?.Trim().ToLowerInvariant() switch
+    {
+        "running" or "paused" or "restarting" => true,
+        _ => false
+    };
+
+    /// <summary>
+    /// 按状态与关键字过滤容器。
+    /// </summary>
+    /// <param name="containers">守护进程返回的容器。</param>
+    /// <param name="search">搜索关键字；为空时不做关键字过滤。</param>
+    /// <param name="filter">状态筛选。</param>
+    /// <returns>命中的容器。</returns>
+    /// <remarks>
+    /// <b>必须在分页之前</b>：分页也在服务端内存里做，先分页再过滤会让
+    /// <c>total</c> 与实际命中数对不上（页脚说 100 个，翻过去却只有 3 个）。
+    /// </remarks>
+    private static IReadOnlyList<ContainerListResponse> Filter(
+        IList<ContainerListResponse> containers,
+        string? search,
+        StateFilter filter)
+    {
+        IEnumerable<ContainerListResponse> query = containers.Where(c => filter.Matches(c.State));
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var keyword = search.Trim();
+
+            query = query.Where(container =>
+                Contains(MapName(container.Names, container.ID ?? string.Empty), keyword)
+                || Contains(container.Image, keyword)
+                || Contains(container.ID, keyword));
+        }
+
+        return [.. query];
+    }
+
+    /// <summary>
+    /// 关键字包含判断（不区分大小写）。
+    /// </summary>
+    /// <param name="haystack">被检查的文本。</param>
+    /// <param name="needle">关键字。</param>
+    /// <returns>命中返回 <see langword="true"/>。</returns>
+    private static bool Contains(string? haystack, string needle) =>
+        haystack?.Contains(needle, StringComparison.OrdinalIgnoreCase) == true;
 
     /// <summary>
     /// 按请求指定的字段排序。
@@ -138,7 +267,7 @@ public sealed partial class ContainerService
     /// 同一个列表在不同机器上顺序不同，无法复现。
     /// </remarks>
     private static IReadOnlyList<ContainerListResponse> Sort(
-        IList<ContainerListResponse> containers,
+        IReadOnlyList<ContainerListResponse> containers,
         string? sortBy,
         string? sortDir)
     {
