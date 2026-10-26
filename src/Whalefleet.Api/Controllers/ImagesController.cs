@@ -313,4 +313,43 @@ public sealed class ImagesController : ControllerBase
 
         return this.Ok(ApiResults.Ok(result));
     }
+
+    /// <summary>
+    /// 清理未被使用的镜像（**不可逆**）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">清理请求（是否只清悬空镜像、标签过滤）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应，<c>data</c> 为实际删除的镜像清单与回收字节数。</returns>
+    /// <response code="200">清理完成（可能一个都没删——没有可清理的镜像时也是成功）。</response>
+    /// <response code="400">标签过滤表达式非法（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机不存在（<c>1300</c>）。</response>
+    /// <response code="409">另一项清理正在进行中（<c>1404</c>）。</response>
+    /// <response code="502">主机不可达（<c>1301</c>）。</response>
+    /// <remarks>
+    /// <para><b>请求里没有「要删哪些」</b>：选哪些由守护进程按引用计数判断。
+    /// 因此界面<b>必须</b>在调用本端点之前先用 <c>POST /hosts/{hostId}/system/df</c>
+    /// 展示候选清单并要求确认——那是本端点唯一的安全阀。</para>
+    /// <para><b>响应里的清单是事实</b>：它可能与预览不完全一致
+    /// （守护进程会跳过某些条目），界面要显示实际结果而不是只显示「清理完成」。</para>
+    /// </remarks>
+    [HttpPost("prune")]
+    [ProducesResponseType(typeof(ApiResult<PruneResult>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> PruneAsync(
+        string hostId,
+        [FromBody] PruneImagesRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _images.PruneAsync(hostId, request, cancellationToken).ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok(result));
+    }
 }

@@ -530,6 +530,14 @@
     "tag": {
       "assign": "打标签",
       "assigned": "标签已更新",
+      "batch": {
+        "action": "批量打标签",
+        "add": "追加标签",
+        "done": "已更新 {count} 台主机的标签",
+        "hint": "追加与移除都是**增量**操作：不会动这些主机上已有的其它标签。",
+        "remove": "移除标签",
+        "title": "给 {count} 台主机打标签"
+      },
       "create": "新建标签",
       "deleteConfirm": "删除标签会解除它与全部主机的关联，但不会删除主机。确定继续？",
       "empty": "还没有标签。",
@@ -738,7 +746,20 @@
       "subnet": "子网"
     },
     "created": "网络「{name}」已创建",
+    "connect": {
+      "action": "接入",
+      "placeholder": "选择要接入的容器",
+      "truncated": "本机共 {count} 个容器，仅列出前 100 个。"
+    },
+    "connected": "容器已接入网络",
+    "disconnect": {
+      "action": "断开",
+      "confirm": "断开后，容器「{name}」将立即失去该网络的连通性。确定吗？",
+      "title": "断开网络"
+    },
+    "disconnected": "容器已断开网络",
     "detail": {
+      "actions": "操作",
       "containerName": "容器",
       "containers": "已接入的容器",
       "gatewayLabel": "网关",
@@ -923,6 +944,40 @@
     "volume": {
       "read": "查看数据卷",
       "write": "管理数据卷"
+    }
+  },
+  "prune": {
+    "action": {
+      "dangling": "清理悬空镜像",
+      "all": "清理所有未使用镜像",
+      "volumes": "清理未使用数据卷"
+    },
+    "title": {
+      "images": "清理镜像",
+      "volumes": "清理数据卷"
+    },
+    "subtitle": {
+      "images": "将被清理的是**没有被任何容器使用**的镜像。此操作不可撤销。",
+      "volumes": "将被清理的是**没有被任何容器引用**的数据卷。此操作不可撤销。"
+    },
+    "candidates": "将被清理（{count} 项）",
+    "reclaimable": "预计可回收 {size}",
+    "empty": "没有可清理的资源。",
+    "unknown": "另有 {count} 项用量未知，未计入上面的清单（守护进程没给出是否被引用）。",
+    "bindMount": "带挂载选项（bind）的数据卷不会被清理——它们其实不是本地卷。",
+    "advanced": "高级",
+    "label": {
+      "title": "标签过滤",
+      "placeholder": "key 或 key=value（留空表示不过滤）",
+      "hint": "只清理带该标签的资源。",
+      "previewNote": "已按标签收窄清理范围：上面的清单是**全量候选**，实际只会清理带该标签的资源。"
+    },
+    "confirm": "确认清理",
+    "done": "已清理 {count} 项",
+    "close": "关闭",
+    "result": {
+      "count": "实际清理了 {count} 项",
+      "reclaimed": "回收空间 {size}"
     }
   },
   "repository": {

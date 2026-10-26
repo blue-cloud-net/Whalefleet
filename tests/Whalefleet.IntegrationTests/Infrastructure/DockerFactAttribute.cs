@@ -76,6 +76,33 @@ public sealed class DockerImageFactAttribute : FactAttribute
 }
 
 /// <summary>
+/// 「需要真实 Docker 守护进程<b>并且</b>宿主上有能跑 <c>/bin/sh</c> 的镜像」的用例标注。
+/// </summary>
+/// <remarks>
+/// <para>用于要求容器<b>输出确定内容</b>的用例：这类用例必须显式覆盖入口点，
+/// 否则输出量由宿主上「第一张有标签的镜像」的默认入口点决定——
+/// <c>alpine</c> 一行都不输出，本项目自己的镜像会输出上百行启动日志。</para>
+/// <para>跳过原因写在 <see cref="DockerAvailability.ShellImageSkipReason"/>。</para>
+/// </remarks>
+public sealed class DockerShellImageFactAttribute : FactAttribute
+{
+    /// <summary>
+    /// 初始化特性，并在守护进程不可用或没有可跑 shell 的镜像时给出跳过原因。
+    /// </summary>
+    public DockerShellImageFactAttribute()
+    {
+        if (!DockerAvailability.IsAvailable)
+        {
+            this.Skip = DockerAvailability.SkipReason;
+        }
+        else if (DockerAvailability.ShellImageReference is null)
+        {
+            this.Skip = DockerAvailability.ShellImageSkipReason;
+        }
+    }
+}
+
+/// <summary>
 /// 「需要真实 Docker 守护进程<b>并且</b>能连上镜像仓库」的用例标注。
 /// </summary>
 /// <remarks>

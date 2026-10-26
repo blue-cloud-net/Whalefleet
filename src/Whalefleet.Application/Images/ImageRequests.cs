@@ -121,6 +121,40 @@ public sealed record BatchRemoveImagesRequest
 }
 
 /// <summary>
+/// 清理镜像请求（对应 <c>docker image prune</c>）。
+/// </summary>
+/// <remarks>
+/// <para><b>清理不可逆</b>：因此请求里没有任何「要删哪些」的清单——
+/// 选哪些由守护进程按「未被任何容器使用」判断，而界面负责在动手之前
+/// 把<b>候选清单</b>展示给人看（预览走 <c>GET /system/df</c>）。</para>
+/// </remarks>
+public sealed record PruneImagesRequest
+{
+    /// <summary>
+    /// 是否只清理悬空镜像（没有任何标签的镜像）。
+    /// </summary>
+    /// <remarks>
+    /// <para><b>省略时为 <see langword="true"/></b>（与 Docker 一致）：
+    /// 只清理完全没有标签的镜像，被容器引用的镜像一律不动。</para>
+    /// <para><b>显式传 <c>false</c> 表示「连没有被任何容器使用的镜像也清理」</b>——
+    /// 那等于 <c>docker image prune -a</c>，是一次不可逆的大动作。
+    /// 守护进程对它的解释是「<b>不止</b>悬空」，而不是「只要非悬空」，
+    /// 因此这个字段在界面上必须写成「清理所有未使用镜像」，
+    /// 不能写成「清理非悬空镜像」。</para>
+    /// </remarks>
+    public bool? DanglingOnly { get; init; }
+
+    /// <summary>
+    /// 标签过滤表达式（<c>key</c> 或 <c>key=value</c>）；省略表示不按标签过滤。
+    /// </summary>
+    /// <remarks>
+    /// 存在的理由有两个：把清理范围限定到「某类资源」（例如只清本平台自己建的镜像），
+    /// 以及让集成测试不必真的清掉开发机上的全部闲置镜像。
+    /// </remarks>
+    public string? Label { get; init; }
+}
+
+/// <summary>
 /// 给镜像打标签请求（对应 <c>docker tag</c>）。
 /// </summary>
 /// <remarks>

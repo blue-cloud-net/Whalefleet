@@ -8,7 +8,8 @@ import SectionCard from '@/components/common/SectionCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import IconActionButton from '@/components/common/IconActionButton.vue'
 import ListPagination from '@/components/common/ListPagination.vue'
-import { createNetwork, inspectNetwork, listNetworks, removeNetwork } from '@/api/network'
+import { connectNetwork, createNetwork, disconnectNetwork, inspectNetwork, listNetworks, removeNetwork } from '@/api/network'
+import { listContainers } from '@/api/container'
 import { ApiRequestError } from '@/api'
 import {
   isBuiltInNetwork,
@@ -20,7 +21,7 @@ import {
 } from '@/utils/resource-display'
 import { PAGE_SIZE_ALL, resolvePageSize, usePreferencesStore } from '@/stores/preferences'
 import { TIP_DELAY_MS } from '@/utils/tooltip'
-import type { NetworkDetail, NetworkSummary } from '@/types/api'
+import type { ContainerSummary, NetworkDetail, NetworkSummary } from '@/types/api'
 
 /**
  * 网络列表页（0.2.0，分页于 0.14.x 补齐）。
@@ -62,6 +63,26 @@ const createForm = ref({ name: '', driver: '', subnet: '', gateway: '', attachab
 const detailVisible = ref(false)
 const detail = ref<NetworkDetail | null>(null)
 const detailBusy = ref(false)
+
+/**
+ * 接入 / 断开容器的交互（0.7.0）。
+ *
+ * ## 候选容器从哪来
+ * 用 `containers/list { all: true, pageSize: 100 }` 拉一次，然后滤掉已在网中的。
+ * ⚠️ **必须显式要 `pageSize: 100`**：默认每页 20 条，容器多的机器上
+ * 候选列表会悄悄缺一大截，而用户完全看不出少了几台。
+ * ⚠️ **上限 100 是后端的硬上限**（`Math.Clamp(pageSize, 1, 100)`），
+ * 因此候选超过 100 台时必须**明说**，否则用户会以为「只有这些」。
+ */
+const attachCandidates = ref<ContainerSummary[]>([])
+const attachTarget = ref('')
+const attachBusy = ref(false)
+
+/** 正在断开中的容器 ID（用于禁用该行的按钮）。 */
+const detachingContainerId = ref<string | null>(null)
+
+/** 候选容器总数（用来判断有没有被 100 的上限截断）。 */
+const attachTotal = ref(0)
 
 /** URL 上的 hostId。**以它为准**而不是 store.currentId：深链进入时 store 可能还没被守卫写入。 */
 const hostId = computed(() => String(route.params.hostId ?? ''))
@@ -273,9 +294,12 @@ async function openDetail(network: NetworkSummary): Promise<void> {
   detailVisible.value = true
   detailBusy.value = true
   detail.value = null
+  attachTarget.value = ''
+  attachCandidates.value = []
 
   try {
     detail.value = await inspectNetwork(hostId.value, network.id)
+    await loadAttachCandidates()
   } catch (e) {
     detailVisible.value = false
     if (e instanceof ApiRequestError) {
@@ -283,6 +307,87 @@ async function openDetail(network: NetworkSummary): Promise<void> {
     }
   } finally {
     detailBusy.value = false
+  }
+}
+
+/**
+ * 拉取可接入的容器（已在本网络上的滤掉）。
+ *
+ * ⚠️ **拉的是 `all: true`**：停止的容器也要列出来——
+ * 守护进程只允许接入**运行中**的容器，但列出来至少让人知道有这么一台，
+ * 而不是「这台机器上没这个容器」。
+ */
+async function loadAttachCandidates(): Promise<void> {
+  try {
+    const result = await listContainers(hostId.value, { all: true, pageSize: 100 })
+    attachTotal.value = result.total
+
+    const attached = new Set((detail.value?.containers ?? []).map((item) => item.id))
+
+    attachCandidates.value = result.items.filter((item) => !attached.has(item.id))
+  } catch {
+    attachCandidates.value = []
+  }
+}
+
+/** 把选中的容器接入当前网络。 */
+async function attachContainer(): Promise<void> {
+  const network = detail.value
+  const containerId = attachTarget.value
+
+  if (network === null || containerId === '') return
+
+  attachBusy.value = true
+
+  try {
+    await connectNetwork(hostId.value, containerId, network.id)
+    ElMessage({ type: 'success', message: t('network.connected') })
+    attachTarget.value = ''
+    detail.value = await inspectNetwork(hostId.value, network.id)
+    await loadAttachCandidates()
+  } catch (e) {
+    if (e instanceof ApiRequestError) {
+      ElMessage({ type: 'error', message: e.message })
+    }
+  } finally {
+    attachBusy.value = false
+  }
+}
+
+/**
+ * 把容器从当前网络断开。
+ *
+ * ⚠️ **必须二次确认**：断开后容器**立刻**失去该网络的连通性，
+ * 而如果容器靠这个网络对外提供服务，表现就是「服务突然挂了」。
+ */
+async function detachContainer(containerId: string, containerName: string): Promise<void> {
+  const network = detail.value
+
+  if (network === null) return
+
+  try {
+    await ElMessageBox.confirm(t('network.disconnect.confirm', { name: containerName }), t('network.disconnect.title'), {
+      confirmButtonText: t('common.confirm'),
+      cancelButtonText: t('common.cancel'),
+      type: 'warning'
+    })
+  } catch {
+    return
+  }
+
+  detachingContainerId.value = containerId
+
+  try {
+    await disconnectNetwork(hostId.value, containerId, network.id)
+    ElMessage({ type: 'success', message: t('network.disconnected') })
+    detail.value = await inspectNetwork(hostId.value, network.id)
+    await loadAttachCandidates()
+  } catch (e) {
+    if (e instanceof ApiRequestError) {
+      ElMessage({ type: 'error', message: e.message })
+    }
+  } finally {
+    detachingContainerId.value = null
   }
 }
 
@@ -496,6 +601,45 @@ watch(
 
           <div class="mt-4">
             <p class="mb-2 text-sm font-medium">{{ t('network.detail.containers') }}</p>
+
+            <!--
+              接入容器的入口放在「容器」这一节的**上方**：
+              用户来这里就是想知道「谁在这个网络上」以及「怎么把谁接进来」。
+            -->
+            <div class="mb-3 flex flex-wrap items-center gap-2">
+              <el-select
+                v-model="attachTarget"
+                class="!w-64"
+                size="small"
+                filterable
+                :placeholder="t('network.connect.placeholder')"
+                :disabled="attachBusy || attachCandidates.length === 0"
+              >
+                <el-option
+                  v-for="item in attachCandidates"
+                  :key="item.id"
+                  :label="item.name"
+                  :value="item.id"
+                />
+              </el-select>
+              <el-button
+                size="small"
+                :loading="attachBusy"
+                :disabled="attachTarget === ''"
+                @click="attachContainer"
+              >
+                {{ t('network.connect.action') }}
+              </el-button>
+            </div>
+
+            <!--
+              ⚠️ 必须明说「只列出前 100 个」：后端对 `pageSize` 的上限是 100，
+              而容器更多的机器上候选会被截断。不说的话，用户会以为「就这些」。
+            -->
+            <p v-if="attachTotal > attachCandidates.length" class="mb-2 text-xs text-status-warn">
+              {{ t('network.connect.truncated', { count: attachTotal }) }}
+            </p>
+
             <p v-if="detail.containers.length === 0" class="text-xs text-content-muted">
               {{ t('network.detail.noContainers') }}
             </p>
@@ -515,6 +659,18 @@ watch(
                   <span class="font-mono text-xs text-content-muted">
                     {{ row.macAddress ?? '—' }}
                   </span>
+                </template>
+              </el-table-column>
+              <el-table-column :label="t('network.detail.actions')" width="90">
+                <template #default="{ row }">
+                  <el-button
+                    text
+                    size="small"
+                    :loading="detachingContainerId === row.id"
+                    @click="detachContainer(row.id, row.name)"
+                  >
+                    {{ t('network.disconnect.action') }}
+                  </el-button>
                 </template>
               </el-table-column>
             </el-table>

@@ -397,6 +397,68 @@ public sealed class VolumeService
     }
 
     /// <summary>
+    /// 清理未被引用的数据卷（对应 <c>docker volume prune</c>）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">清理请求（标签过滤）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>被删除的卷名与回收的字节数。</returns>
+    /// <exception cref="BusinessException">
+    /// 标签过滤表达式非法（<c>1000</c>）、主机不可达（<c>1301</c>）、已停用（<c>1302</c>）、
+    /// 已有清理在进行（<c>1404</c>）或 Docker 调用失败（<c>1402</c>）。
+    /// </exception>
+    /// <remarks>
+    /// <para><b>必须下发 <c>all=true</c></b>：守护进程自 Engine API 1.42 起，
+    /// <c>POST /volumes/prune</c> 在没有 <c>all</c> 过滤时只清「匿名卷」
+    /// （那些没有名字的），具名卷一律不动。而本项目的预览（<c>GET /system/df</c>）
+    /// 列的是<b>全部</b>未被引用的卷——不补这个参数，用户就会看到
+    /// 「清单里有 5 个，删完还在」。</para>
+    /// <para><b>带挂载选项的卷不会被清理</b>：守护进程跳过那些带 <c>device=</c> /
+    /// <c>o=</c> 之类挂载选项的卷（它们其实不是本地卷，回收不了空间）。
+    /// 预览会把它们列出来，因此界面必须说明这一点，否则就是承诺了做不到的事。</para>
+    /// </remarks>
+    public async Task<PruneResult> PruneAsync(
+        string hostId,
+        PruneVolumesRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var label = PruneFilter.NormalizeLabel(request.Label);
+        var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
+
+        var entries = new List<(string Key, string Value)>
+        {
+            // all=true：连具名卷一起清，与预览（system/df）的口径保持一致
+            ("all", "true"),
+        };
+
+        if (label is not null)
+        {
+            entries.Add(("label", label));
+        }
+
+        var response = await DockerPrune.ExecuteAsync(
+            () => client.Volumes.PruneAsync(
+                new VolumesPruneParameters { Filters = PruneFilter.Build([.. entries]) },
+                cancellationToken),
+            "数据卷清理",
+            cancellationToken).ConfigureAwait(false);
+
+        List<string> deleted = response.VolumesDeleted is null ? [] : [.. response.VolumesDeleted];
+
+        _logger.LogInformation(
+            "主机 {HostId} 清理数据卷：删除 {DeletedCount} 个，回收 {ReclaimedBytes} 字节（标签过滤={Label}）",
+            hostId,
+            deleted.Count,
+            response.SpaceReclaimed,
+            label ?? "无");
+
+        return new PruneResult(deleted, (long)response.SpaceReclaimed);
+    }
+
+    /// <summary>
     /// 用已有客户端删除单个数据卷（单条与批量端点共用）。
     /// </summary>
     /// <param name="client">该主机的 Docker 客户端。</param>

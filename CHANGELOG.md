@@ -31,6 +31,58 @@ Work in progress. The next milestone is `0.1.0` — authorization baseline and M
 (its per-version notes accumulate here as internal drafts and are rewritten into the `1.0.0` entry
 before the first public release).
 
+### `0.7.0` — Batch operations and resource cleanup (internal draft)
+
+#### Added
+
+- **Image pruning** (`POST /api/v1/hosts/{hostId}/images/prune`): body `{ danglingOnly?, label? }`,
+  returns `{ deleted, reclaimedBytes }`. `danglingOnly` defaults to `true` (dangling images only);
+  `false` means **not only dangling** (equivalent to `docker image prune -a`).
+- **Volume pruning** (`POST /api/v1/hosts/{hostId}/volumes/prune`): body `{ label? }`.
+  Always sent as "named volumes included" — since Engine API 1.42 the daemon only prunes
+  *anonymous* volumes by default, and without `all=true` the preview lists five volumes while
+  nothing is deleted.
+- **Network connect / disconnect** (`POST /api/v1/hosts/{hostId}/networks/{connect,disconnect}`):
+  body `{ containerId, networkId }` (disconnect also takes `force?`). **Idempotent** —
+  connecting an already-connected container and disconnecting a non-connected one both succeed.
+- **Prune preview**: the image and volume pages gain a "prune" entry point that **lists the
+  candidates before asking for confirmation** — candidate list, reclaimable size and the number
+  of items with unknown usage are all in the dialog. **Unknown usage is not a candidate**
+  ("could not be determined" is not the same as "definitely zero").
+- **Label filter for pruning**: both prune dialogs have a collapsed "advanced" section accepting
+  `key` or `key=value`. Without it, *every* unreferenced resource on the machine is eligible.
+- **Multi-select and batch tag assignment / removal on the host management page**: select hosts
+  and append or remove tags in one go, reusing the existing tag endpoints (no backend change).
+
+#### Changed
+
+- **Batch start / stop in the container list reports the reason for every failure**: it used to
+  list only the names of the failed containers, leaving the user unable to tell "the container is
+  gone" from "the port is in use".
+- **The network detail drawer gains connect / disconnect**: the container dropdown is sorted by
+  **name**, and beyond 100 entries it says so explicitly ("only the first 100 are listed").
+
+#### Notes
+
+- **No server-side batch start / stop endpoints**: start and stop are idempotent, so calling them
+  one by one costs a few round trips, while a batch endpoint brings a whole contract of its own
+  ("which IDs does the body carry", "what is the limit", "how are per-item error codes ordered").
+  **Batch removal still goes through the server** (`batch-remove`), because deletion is not
+  reversible and must be able to report failures item by item.
+- **Pruning has no `dryRun`**: the preview comes from `system/df` and is a **policy-level**
+  candidate list, while the daemon skips volumes with mount options and applies its own
+  reference counting when it actually deletes. A `dryRun` could only return "the list we
+  guessed", which is not the same judgement the deletion makes — that would promise something
+  that cannot be delivered.
+- **Prune skips volumes with mount options** (`bind` volumes): they are not local volumes and
+  reclaim no space, so the UI states that "volumes with mount options are not pruned".
+- **Concurrent pruning returns 409** (`a prune operation is already running`) → mapped to
+  `1404`/409 rather than a "server fault"/500.
+- **Cross-host batch start / stop is an explicit non-goal**: a group is a group of **hosts**,
+  while the container list is a single-host view. Doing cross-host batch start / stop would
+  require a cross-host container list first (`0.16.0`). The only form of group batch operation in
+  this milestone is **tag assignment / removal**.
+
 ### `0.6.0` — Observability (internal draft)
 
 #### Added
@@ -225,6 +277,48 @@ before the first public release).
   from the request path.
 
 ---
+
+### `0.2.0` — Volume and network (internal draft)
+
+#### Added
+
+- **Volume API**: `POST /api/v1/hosts/{hostId}/volumes/{list,create,remove,batch-remove,inspect}`.
+  - The list response carries the daemon's **`warnings` array**. Dropping it leaves the user with a
+    list that is mysteriously short and no explanation.
+  - `size` / `refCount` come from the daemon's `UsageData`, which only exists in Docker API 1.42+.
+    Older daemons do not return the field at all, so it deserializes to `0` and is indistinguishable
+    from a genuine zero — the UI therefore shows "—" instead of a precise-looking "0 B".
+  - **Batch removal matches the container / image endpoints**: partial success still returns 200,
+    per-item failures land in `failures` with the exact error codes of the single-item endpoints.
+    Duplicates are de-duplicated before counting.
+- **Network API**: `POST /api/v1/hosts/{hostId}/networks/{list,create,remove,inspect}`.
+  - The list **deliberately has no "container count"**. Docker's `GET /networks` does not return
+    `Containers`; only `GET /networks/{id}` does. A field that is constantly 0 reads as
+    "this network is unused" while it may be carrying dozens of containers.
+  - **Network IDs carry no `sha256:` prefix** (image IDs do). Copying the image parsing logic
+    yields a wrong ID and a bewildering 404.
+  - **Creating a network with an IPv6 subnet enables IPv6 automatically** — otherwise the daemon
+    builds a network with an IPv6 address pool that cannot route, and nothing in the UI shows it.
+  - Docker 26 renamed the built-in `null` network to `none`; the protection list takes both,
+    so it still holds on older daemons.
+- **Volume and network pages**: the two placeholder sidebar pages become real — lists, creation
+  and detail drawers. The container creation form can now **pick an existing network or volume**
+  instead of typing names by hand.
+- **Subnet format validation lives in this layer**, returning `1000`/400. The daemon answers 400
+  for a malformed subnet, which the translation layer turns into `1402`/500 — the user gets
+  "server fault" for a typo in a field they just filled in.
+
+#### Notes
+
+- These two resource lists **are not paginated**: a single host has few volumes and networks and
+  the entries are small, while pagination and filtering are a **cross-resource** change (`0.16.0`).
+  Doing half of it now means reworking both the API and the UI twice.
+- A volume's `force` is **not** "force delete": as long as a container still references it, the
+  daemon refuses, with or without `force`. The only thing the field does is turn "volume does not
+  exist" into success, which makes retries safe. The confirmation therefore says "remove the
+  containers using it first" instead of offering a switch that does nothing.
+- `Docker.DotNet.Enhanced` **ignores** the `force` parameter of `Volumes.RemoveAsync`
+  (verified by capturing the request). Idempotent removal is implemented by the application layer.
 
 ### `0.1.0` — Authorization baseline and MVP consolidation (internal draft)
 

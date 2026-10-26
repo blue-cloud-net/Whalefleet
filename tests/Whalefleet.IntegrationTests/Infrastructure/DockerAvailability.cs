@@ -214,6 +214,101 @@ public static class DockerAvailability
     /// </remarks>
     public static string? ImageReference => AvailableImage.Value;
 
+    /// <summary>
+    /// 宿主上「能起一个 <c>/bin/sh</c> 容器」的第一张有标签镜像；没有则 <see langword="null"/>。
+    /// </summary>
+    /// <remarks>
+    /// <para><b>为什么需要它</b>：有些用例要求容器<b>恰好输出确定的内容</b>（例如验证日志按行返回）。
+    /// 而宿主上「第一张有标签的镜像」是任意的：<c>alpine</c> 没有入口点，跑 <c>sleep</c> 时<b>一行都不输出</b>；
+    /// 本项目自己的镜像（<c>whalefleet:local</c>）入口点是 API 宿主，会输出<b>上百行</b>启动日志。
+    /// 用例的断言不可能同时扛住这两种极端。</para>
+    /// <para>因此这里给出的是「<b>能显式覆盖入口点</b>」的镜像：调用方把入口点写成
+    /// <c>/bin/sh -c '…'</c>，输出就由用例自己说了算，不再受镜像默认入口点影响。</para>
+    /// <para><b>探测方式</b>：真起一个 <c>/bin/sh -c 'exit 0'</c> 的容器看它是否正常退出——
+    /// 只有「有没有 shell」这种问题才问得准（<c>Config.Entrypoint</c> 里看不出镜像里有没有 shell）。</para>
+    /// </remarks>
+    public static string? ShellImageReference => ShellCapableImage.Value;
+
+    /// <summary>「能跑 shell 的镜像」的跳过原因。</summary>
+    public const string ShellImageSkipReason =
+        "宿主上第一张有标签的镜像跑不起 /bin/sh（可能是 scratch 类镜像）——"
+        + "需要显式覆盖入口点的用例已跳过。";
+
+    private static readonly Lazy<string?> ShellCapableImage =
+        new(DiscoverShellCapableImage, LazyThreadSafetyMode.ExecutionAndPublication);
+
+    private static string? DiscoverShellCapableImage()
+    {
+        var image = DiscoverImage();
+
+        return image is not null && CanRunShell(image) ? image : null;
+    }
+
+    /// <summary>
+    /// 起一个 <c>/bin/sh -c 'exit 0'</c> 的容器，看它能不能正常跑起来。
+    /// </summary>
+    /// <param name="image">候选镜像。</param>
+    /// <returns>跑得起来返回 <see langword="true"/>。</returns>
+    private static bool CanRunShell(string image)
+    {
+        DockerClient? client = null;
+        string? containerId = null;
+
+        try
+        {
+            client = new DockerClientBuilder()
+                .WithEndpoint(new Uri($"unix://{DefaultSocketPath}"))
+                .Build();
+
+            var created = client.Containers
+                .CreateContainerAsync(new CreateContainerParameters
+                {
+                    Image = image,
+                    Entrypoint = ["/bin/sh", "-c", "exit 0"],
+                })
+                .GetAwaiter()
+                .GetResult();
+
+            containerId = created.ID;
+
+            client.Containers
+                .StartContainerAsync(containerId, new ContainerStartParameters())
+                .GetAwaiter()
+                .GetResult();
+
+            var exited = client.Containers
+                .WaitContainerAsync(containerId)
+                .GetAwaiter()
+                .GetResult();
+
+            return exited.StatusCode == 0;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            // 探测期的任何失败都只意味着「这台机器上这张镜像不能用来跑 shell」。
+            return false;
+        }
+        finally
+        {
+            if (client is not null && containerId is not null)
+            {
+                try
+                {
+                    client.Containers
+                        .RemoveContainerAsync(containerId, new ContainerRemoveParameters { Force = true })
+                        .GetAwaiter()
+                        .GetResult();
+                }
+                catch (Exception exception) when (exception is not OutOfMemoryException)
+                {
+                    // 探针容器删不掉不该让发现阶段失败。
+                }
+            }
+
+            client?.Dispose();
+        }
+    }
+
     private static string? DiscoverImage()
     {
         if (!IsAvailable)

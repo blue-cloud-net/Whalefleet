@@ -1,5 +1,11 @@
 import { request } from '@/api'
-import type { BatchOperationResult, VolumeDetail, VolumeListResult, VolumeSummary } from '@/types/api'
+import type {
+  BatchOperationResult,
+  PruneResult,
+  VolumeDetail,
+  VolumeListResult,
+  VolumeSummary
+} from '@/types/api'
 
 /**
  * 数据卷端点（主机作用域，路径含 `hostId`）。
@@ -95,5 +101,30 @@ export function batchRemoveVolumes(
     url: `/api/v1/hosts/${encodeURIComponent(hostId)}/volumes/batch-remove`,
     method: 'post',
     data: { names, force }
+  })
+}
+
+/**
+ * 清理未被引用的数据卷（0.7.0，**不可逆**）。
+ *
+ * ⚠️ **请求里没有「要删哪些」**：选哪些由守护进程按「没有被任何容器引用」判断。
+ * 它还会**跳过带挂载选项的卷**（那些其实不是本地卷），因此预览里可能列出来、实际却删不掉。
+ *
+ * ⚠️ **服务端固定按「连具名卷一起清」下发**（守护进程自 Engine API 1.42 起
+ * 默认只清匿名卷，而预览列的是全部未被引用的卷）——因此预览与实际清理是同一套口径。
+ *
+ * `label` 把范围收窄到带该标签的卷（`key` 或 `key=value`）。
+ * ⚠️ **省略它就等于「清掉本机全部未被引用的卷」**——在共享的开发机上那是别人的数据。
+ *
+ * 返回的 `deleted` 是**实际**删掉的卷名。
+ */
+export function pruneVolumes(
+  hostId: string,
+  payload: { label?: string } = {}
+): Promise<PruneResult> {
+  return request<PruneResult>({
+    url: `/api/v1/hosts/${encodeURIComponent(hostId)}/volumes/prune`,
+    method: 'post',
+    data: payload
   })
 }

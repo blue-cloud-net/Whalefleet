@@ -530,6 +530,14 @@
     "tag": {
       "assign": "Tag hosts",
       "assigned": "Tags updated",
+      "batch": {
+        "action": "Tag hosts in bulk",
+        "add": "Add tags",
+        "done": "Updated tags on {count} host(s)",
+        "hint": "Adding and removing are **incremental**: other tags already on these hosts are left untouched.",
+        "remove": "Remove tags",
+        "title": "Tag {count} host(s)"
+      },
       "create": "New tag",
       "deleteConfirm": "Deleting a tag removes it from every host, but never deletes a host. Continue?",
       "empty": "No tags yet.",
@@ -738,7 +746,20 @@
       "subnet": "Subnet"
     },
     "created": "Network \"{name}\" created",
+    "connect": {
+      "action": "Connect",
+      "placeholder": "Select a container to connect",
+      "truncated": "{count} containers on this host; only the first 100 are listed."
+    },
+    "connected": "Container connected to the network",
+    "disconnect": {
+      "action": "Disconnect",
+      "confirm": "Container \"{name}\" will immediately lose connectivity on this network. Continue?",
+      "title": "Disconnect from network"
+    },
+    "disconnected": "Container disconnected from the network",
     "detail": {
+      "actions": "Actions",
       "containerName": "Container",
       "containers": "Attached containers",
       "gatewayLabel": "Gateway",
@@ -923,6 +944,40 @@
     "volume": {
       "read": "View volumes",
       "write": "Manage volumes"
+    }
+  },
+  "prune": {
+    "action": {
+      "dangling": "Clean up dangling images",
+      "all": "Clean up all unused images",
+      "volumes": "Clean up unused volumes"
+    },
+    "title": {
+      "images": "Clean up images",
+      "volumes": "Clean up volumes"
+    },
+    "subtitle": {
+      "images": "Images **not used by any container** will be removed. This cannot be undone.",
+      "volumes": "Volumes **not referenced by any container** will be removed. This cannot be undone."
+    },
+    "candidates": "Will be removed ({count})",
+    "reclaimable": "Estimated reclaimable {size}",
+    "empty": "Nothing to clean up.",
+    "unknown": "{count} more item(s) have unknown usage and are not listed above (the daemon did not report whether they are referenced).",
+    "bindMount": "Volumes with mount options (bind) are not removed — they are not local volumes to begin with.",
+    "advanced": "Advanced",
+    "label": {
+      "title": "Label filter",
+      "placeholder": "key or key=value (empty means no filter)",
+      "hint": "Only resources carrying this label are removed.",
+      "previewNote": "The cleanup range is narrowed by label: the list above is the **full set of candidates**, but only resources with that label are actually removed."
+    },
+    "confirm": "Clean up",
+    "done": "Cleaned up {count} item(s)",
+    "close": "Close",
+    "result": {
+      "count": "Actually removed {count} item(s)",
+      "reclaimed": "Reclaimed {size}"
     }
   },
   "repository": {

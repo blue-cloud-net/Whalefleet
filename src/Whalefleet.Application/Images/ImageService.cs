@@ -377,6 +377,109 @@ public sealed class ImageService
     }
 
     /// <summary>
+    /// 清理未被使用的镜像（对应 <c>docker image prune</c>）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">清理请求（是否只清悬空镜像、标签过滤）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>被删除的镜像清单与回收的字节数。</returns>
+    /// <exception cref="BusinessException">
+    /// 标签过滤表达式非法（<c>1000</c>）、主机不可达（<c>1301</c>）、已停用（<c>1302</c>）、
+    /// 已有清理在进行（<c>1404</c>）或 Docker 调用失败（<c>1402</c>）。
+    /// </exception>
+    /// <remarks>
+    /// <para><b>「删哪些」由守护进程决定</b>：请求里没有镜像清单，
+    /// 它按自己的引用计数挑出「没有被任何容器使用」的镜像。
+    /// 界面负责在动手之前把候选清单展示给人看——那份清单来自
+    /// <c>GET /system/df</c>，是<b>预览</b>；本方法返回的是<b>实际结果</b>，
+    /// 两者可能不同（守护进程还会跳过带挂载选项的条目等）。</para>
+    /// <para><b><c>dangling</c> 的语义是「不止悬空」而不是「只要非悬空」</b>：
+    /// 守护进程读到的 <c>dangling=false</c> 表示「连未被使用的镜像也清理」
+    /// （等价于 <c>docker image prune -a</c>）。写成「只要非悬空」会让用户
+    /// 以为只会删掉无标签的那一批。</para>
+    /// </remarks>
+    public async Task<PruneResult> PruneAsync(
+        string hostId,
+        PruneImagesRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var label = PruneFilter.NormalizeLabel(request.Label);
+        var danglingOnly = request.DanglingOnly ?? true;
+        var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
+
+        var entries = new List<(string Key, string Value)>
+        {
+            ("dangling", danglingOnly ? "true" : "false"),
+        };
+
+        if (label is not null)
+        {
+            entries.Add(("label", label));
+        }
+
+        var response = await DockerPrune.ExecuteAsync(
+            () => client.Images.PruneImagesAsync(
+                new ImagesPruneParameters { Filters = PruneFilter.Build([.. entries]) },
+                cancellationToken),
+            "镜像清理",
+            cancellationToken).ConfigureAwait(false);
+
+        var deleted = MapPrunedImages(response.ImagesDeleted);
+
+        _logger.LogInformation(
+            "主机 {HostId} 清理镜像：删除 {DeletedCount} 个，回收 {ReclaimedBytes} 字节（仅悬空={DanglingOnly}，标签过滤={Label}）",
+            hostId,
+            deleted.Count,
+            response.SpaceReclaimed,
+            danglingOnly,
+            label ?? "无");
+
+        return new PruneResult(deleted, (long)response.SpaceReclaimed);
+    }
+
+    /// <summary>
+    /// 把守护进程返回的清理条目映射成可读标识。
+    /// </summary>
+    /// <param name="responses">守护进程返回的条目（可能为 <see langword="null"/>）。</param>
+    /// <returns>镜像标签或镜像 ID 列表。</returns>
+    /// <remarks>
+    /// <b>优先给标签</b>：镜像 ID 是 <c>sha256:…</c>，对用户没有意义；
+    /// 而悬空镜像本来就没有标签，只能退回 ID。
+    /// </remarks>
+    private static List<string> MapPrunedImages(IList<ImageDeleteResponse>? responses)
+    {
+        if (responses is not { Count: > 0 })
+        {
+            return [];
+        }
+
+        var deleted = new List<string>(responses.Count);
+
+        foreach (var response in responses)
+        {
+            var untagged = response?.Untagged;
+
+            if (!string.IsNullOrWhiteSpace(untagged) && !string.Equals(untagged, "<none>", StringComparison.Ordinal))
+            {
+                deleted.Add(untagged);
+                continue;
+            }
+
+            var imageId = response?.Deleted;
+
+            if (!string.IsNullOrWhiteSpace(imageId))
+            {
+                deleted.Add(imageId);
+            }
+        }
+
+        return deleted;
+    }
+
+    /// <summary>
     /// 用已有客户端删除单个镜像（单条与批量端点共用）。
     /// </summary>
     /// <param name="client">该主机的 Docker 客户端。</param>

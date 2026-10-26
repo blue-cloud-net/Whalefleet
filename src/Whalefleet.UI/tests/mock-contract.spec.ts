@@ -16,6 +16,7 @@ import { ERROR_HTTP_STATUS, ERROR_MESSAGES, ErrorCode, httpStatusOf } from '../s
 import { resetSessionContainers } from '../src/mocks/handlers/containers'
 import { resetSessionHosts } from '../src/mocks/handlers/hosts'
 import { resetSessionImages } from '../src/mocks/handlers/images'
+import { resetSessionResources } from '../src/mocks/handlers/resources'
 import { resetSessionRoles } from '../src/mocks/handlers/permissions'
 import { resetSessionUsers } from '../src/mocks/handlers/users'
 import { MOCK_CONTAINERS_DEFAULT } from '../src/mocks/data/containers'
@@ -45,6 +46,7 @@ afterEach(() => {
   resetSessionContainers()
   resetSessionHosts()
   resetSessionImages()
+  resetSessionResources()
   resetSessionRoles()
   resetSessionUsers()
 })
@@ -1868,6 +1870,134 @@ describe('镜像打标签（0.3.0）', () => {
       imageId: 'no-such-image-0123456789',
       repository: 'whalefleet-test/tag',
       tag: 'v1'
+    })
+
+    expect(status).toBe(404)
+    expect(json.code).toBe(ErrorCode.DockerResourceNotFound)
+  })
+})
+
+
+describe('资源清理端点（0.7.0）', () => {
+  it('volumes/prune：只删「未被引用 + 本地驱动」的卷', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/volumes/prune', {})
+
+    expect(status).toBe(200)
+    expect(json.success).toBe(true)
+
+    const data = json.data as { deleted: string[]; reclaimedBytes: number }
+
+    // 夹具里只有 build-cache 是「无人引用 + local 驱动」
+    expect(data.deleted).toEqual(['build-cache'])
+    expect(data.reclaimedBytes).toBeGreaterThan(0)
+  })
+
+  it('volumes/prune：标签过滤含控制字符 → 1000 / 400', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/volumes/prune', {
+      label: 'bad\nlabel'
+    })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.ValidationFailed)
+  })
+
+  it('volumes/prune：标签过滤把范围收窄（只删带该标签的卷）', async () => {
+    // 先建一个**带标签**且无人引用的卷
+    const created = await post('/api/v1/hosts/local/volumes/create', {
+      name: 'wf-prune-labeled',
+      labels: { 'wf.test': '1' }
+    })
+    expect(created.status).toBe(200)
+
+    // 标签不匹配 → 一条都删不到
+    const other = await post('/api/v1/hosts/local/volumes/prune', { label: 'wf.test=2' })
+    expect((other.json.data as { deleted: string[] }).deleted).not.toContain('wf-prune-labeled')
+
+    // 标签匹配 → 删得到
+    const matched = await post('/api/v1/hosts/local/volumes/prune', { label: 'wf.test=1' })
+    expect((matched.json.data as { deleted: string[] }).deleted).toContain('wf-prune-labeled')
+  })
+
+  it('images/prune：danglingOnly 默认只清悬空镜像（带标签的不动）', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/images/prune', {})
+
+    expect(status).toBe(200)
+
+    const data = json.data as { deleted: string[] }
+
+    // alpine:3.20 没人用但**有标签** → 不属于悬空镜像
+    expect(data.deleted).not.toContain('alpine:3.20')
+    // 悬空镜像没有标签 → 只能退回镜像 ID
+    expect(data.deleted.length).toBeGreaterThan(0)
+    expect(data.deleted.some((item) => item.startsWith('sha256:'))).toBe(true)
+  })
+
+  it('images/prune：danglingOnly=false 才会动带标签的未使用镜像', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/images/prune', {
+      danglingOnly: false
+    })
+
+    expect(status).toBe(200)
+
+    const data = json.data as { deleted: string[] }
+
+    expect(data.deleted).toContain('alpine:3.20')
+    // 被容器引用的镜像一律不动
+    expect(data.deleted).not.toContain('nginx:latest')
+    expect(data.deleted).not.toContain('redis:7-alpine')
+  })
+})
+
+describe('网络接入端点（0.7.0）', () => {
+  it('networks/connect：幂等，重复接入仍是 200 且端点只有一个', async () => {
+    const first = await post('/api/v1/hosts/local/networks/connect', {
+      containerId: 'whalefleet-ui',
+      networkId: 'app-internal'
+    })
+    expect(first.status).toBe(200)
+
+    const second = await post('/api/v1/hosts/local/networks/connect', {
+      containerId: 'whalefleet-ui',
+      networkId: 'app-internal'
+    })
+    expect(second.status).toBe(200)
+
+    const inspected = await post('/api/v1/hosts/local/networks/inspect', {
+      networkId: 'app-internal'
+    })
+
+    const containers = (inspected.json.data as { containers: { name: string }[] }).containers
+    const matched = containers.filter((item) => item.name === 'whalefleet-ui')
+
+    expect(matched).toHaveLength(1)
+  })
+
+  it('networks/disconnect：本来没接入也返回 200（幂等）', async () => {
+    const { status } = await post('/api/v1/hosts/local/networks/disconnect', {
+      containerId: 'whalefleet-ui',
+      networkId: 'lan-macvlan'
+    })
+
+    expect(status).toBe(200)
+  })
+
+  it('networks/disconnect：断开后该网络就能删了', async () => {
+    await post('/api/v1/hosts/local/networks/disconnect', {
+      containerId: 'order-api',
+      networkId: 'app-internal'
+    })
+
+    const removed = await post('/api/v1/hosts/local/networks/remove', {
+      networkId: 'app-internal'
+    })
+
+    expect(removed.status).toBe(200)
+  })
+
+  it('networks/connect：网络不存在 → 1401 / 404', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/networks/connect', {
+      containerId: 'whalefleet-ui',
+      networkId: 'no-such-network'
     })
 
     expect(status).toBe(404)

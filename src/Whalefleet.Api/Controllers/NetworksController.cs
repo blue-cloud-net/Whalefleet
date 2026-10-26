@@ -158,4 +158,74 @@ public sealed class NetworksController : ControllerBase
 
         return this.Ok(ApiResults.Ok());
     }
+
+    /// <summary>
+    /// 把容器接入网络（**幂等**：已在网中视为成功）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">接入请求（容器标识、网络标识）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应（无数据）。</returns>
+    /// <response code="200">接入成功，或容器本来就在该网络上。</response>
+    /// <response code="400">标识为空或含非法字符（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机（<c>1300</c>）、容器（<c>1401</c>）或网络（<c>1401</c>）不存在。</response>
+    /// <response code="409">容器未运行，无法接入（<c>1404</c>）。</response>
+    /// <response code="502">主机不可达（<c>1301</c>）。</response>
+    /// <remarks>
+    /// <b>幂等由服务端实现</b>：先读容器与网络的实际状态，已接入就直接返回成功，
+    /// 不依赖守护进程在不同版本上的差异行为。
+    /// </remarks>
+    [HttpPost("connect")]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> ConnectAsync(
+        string hostId,
+        [FromBody] ConnectNetworkRequest request,
+        CancellationToken cancellationToken)
+    {
+        await _networks.ConnectContainerAsync(hostId, request, cancellationToken).ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok());
+    }
+
+    /// <summary>
+    /// 把容器从网络断开（**幂等**：本来就不在网中视为成功）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">断开请求（容器标识、网络标识、是否强制）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应（无数据）。</returns>
+    /// <response code="200">断开成功，或容器本来就不在该网络上。</response>
+    /// <response code="400">标识为空或含非法字符（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机（<c>1300</c>）、容器（<c>1401</c>）或网络（<c>1401</c>）不存在。</response>
+    /// <response code="502">主机不可达（<c>1301</c>）。</response>
+    /// <remarks>
+    /// <b>断开会让容器立刻失去该网络的连通性</b>，界面必须二次确认。
+    /// 强制断开（<c>force</c>）会连累共用网络命名空间的其它容器，默认关闭。
+    /// </remarks>
+    [HttpPost("disconnect")]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> DisconnectAsync(
+        string hostId,
+        [FromBody] DisconnectNetworkRequest request,
+        CancellationToken cancellationToken)
+    {
+        await _networks.DisconnectContainerAsync(hostId, request, cancellationToken).ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok());
+    }
 }

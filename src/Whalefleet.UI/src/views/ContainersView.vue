@@ -491,6 +491,10 @@ function clearSelection(table: { clearSelection: () => void } | null): void {
  *
  * 启停与重启仍是前端逐条调用：它们**幂等**，批量端点只做了删除
  * （幂等操作发一次请求省不了几个往返，而删除是不可逆的，必须留出逐条汇报失败的空间）。
+ *
+ * ⚠️ **失败项必须带上原因**（0.7.0）：只列名字的话，用户看到
+ * 「web-api 失败」却不知道是「容器不在了」还是「端口被占」——
+ * 两条原因对应的下一步完全不同，而界面上无法区分。
  */
 async function batchRun(
   label: string,
@@ -500,7 +504,7 @@ async function batchRun(
   if (targets.length === 0) return
 
   batchBusy.value = true
-  const failed: string[] = []
+  const failed: { name: string; reason: string }[] = []
 
   try {
     // 并发执行：容器数受页大小限制（≤100），且这些操作互不依赖，
@@ -510,8 +514,11 @@ async function batchRun(
       targets.map(async (container) => {
         try {
           await action(container)
-        } catch {
-          failed.push(container.name)
+        } catch (e) {
+          failed.push({
+            name: container.name,
+            reason: e instanceof Error ? e.message : String(e)
+          })
         }
       })
     )
@@ -520,9 +527,17 @@ async function batchRun(
     if (failed.length === 0) {
       ElMessage({ type: 'success', message: t('container.batch.done', { action: label, count: done }) })
     } else {
+      // 名字 + 原因一起报出来：原因才是用户下一步的依据
+      const details = failed.map((item) => `${item.name}（${item.reason}）`).join('、')
+
       ElMessage({
         type: 'warning',
-        message: t('container.batch.partial', { action: label, done, failed: failed.length, names: failed.join('、') }),
+        message: t('container.batch.partial', {
+          action: label,
+          done,
+          failed: failed.length,
+          names: details
+        }),
         showClose: true
       })
     }

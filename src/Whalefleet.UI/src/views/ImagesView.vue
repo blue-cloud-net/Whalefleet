@@ -14,6 +14,7 @@ import PullImageDialog from '@/components/business/PullImageDialog.vue'
 import ImageTagDialog from '@/components/business/ImageTagDialog.vue'
 import BuildImageDialog from '@/components/business/BuildImageDialog.vue'
 import PushImageDialog from '@/components/business/PushImageDialog.vue'
+import PruneDialog from '@/components/business/PruneDialog.vue'
 import ImageSize from '@/components/business/ImageSize.vue'
 import { onActionRequest } from '@/composables/useActionBus'
 import { batchRemoveImages, listImages, removeImage, type ImageSortField } from '@/api/image'
@@ -74,6 +75,24 @@ const pushDialogVisible = ref(false)
 
 /** 0.3.0：打标签的目标镜像与对话框开关。 */
 const tagDialogVisible = ref(false)
+
+/**
+ * 清理对话框（0.7.0）。
+ *
+ * ⚠️ **两种清理范围的措辞必须不同**：
+ * - `true`（只清悬空）= 一个标签都不剩的镜像；
+ * - `false` = **不止悬空**（等价 `docker image prune -a`），任何未被容器使用的镜像都算。
+ *
+ * 写成「清理非悬空镜像」会让用户以为只会删掉没标签的那一批——
+ * 而实际删掉的是**所有**没被容器用上的镜像（包括带标签的）。
+ */
+const pruneDialogVisible = ref(false)
+const pruneDanglingOnly = ref(true)
+
+function openPrune(danglingOnly: boolean): void {
+  pruneDanglingOnly.value = danglingOnly
+  pruneDialogVisible.value = true
+}
 const tagTarget = ref<ImageSummary | null>(null)
 
 /** 当前排序列；`null` = 不排序，后端保持守护进程返回顺序（创建时间降序） */
@@ -448,6 +467,23 @@ watch(
         <el-button type="primary" @click="pullDialogVisible = true">
           {{ t('image.action.pull') }}
         </el-button>
+        <!--
+          清理放在「更多」下拉里而不是独立按钮：
+          它是不可逆操作，不该和「拉取镜像」这类常规动作并列在同一个视觉层级上。
+        -->
+        <el-dropdown>
+          <el-button>{{ t('common.actions') }}</el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item @click="openPrune(true)">
+                {{ t('prune.action.dangling') }}
+              </el-dropdown-item>
+              <el-dropdown-item @click="openPrune(false)">
+                {{ t('prune.action.all') }}
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </template>
     </PageHeader>
 
@@ -656,6 +692,14 @@ watch(
       :host-id="hostId"
       :image="pushTarget"
       @pushed="onPushed"
+    />
+
+    <PruneDialog
+      v-model="pruneDialogVisible"
+      :host-id="hostId"
+      resource="images"
+      :dangling-only="pruneDanglingOnly"
+      @done="load"
     />
 
     <p class="mt-3 text-xs text-content-faint">
