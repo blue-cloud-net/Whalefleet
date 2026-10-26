@@ -9,6 +9,15 @@ namespace Whalefleet.Application.Volumes;
 /// </remarks>
 public sealed record ListVolumesRequest
 {
+    /// <summary>
+    /// 关键字搜索：按卷名 / 驱动 / 宿主挂载路径模糊匹配（不区分大小写）。
+    /// </summary>
+    /// <remarks>
+    /// 在<b>服务端内存</b>里过滤：分页也在服务端做，前端过滤只能筛到当前页，
+    /// 规则会与后端漂移。与镜像列表的 <c>search</c> 同口径。
+    /// </remarks>
+    public string? Search { get; init; }
+
     /// <summary>页码（从 0 开始）；省略时按 0 处理，负数同样按 0 处理。</summary>
     public int? PageIndex { get; init; }
 

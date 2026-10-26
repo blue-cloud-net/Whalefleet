@@ -103,28 +103,71 @@ public sealed class VolumeService
 
         var usage = await GetUsageAsync(client, hostId, cancellationToken).ConfigureAwait(false);
 
+        // 过滤必须在分页之前：先分页再过滤会让 total 与实际命中数对不上。
+        var filtered = Filter(volumes, request.Search);
+
         var pageIndex = Math.Max(request.PageIndex ?? 0, 0);
         var pageSize = Math.Clamp(request.PageSize ?? DefaultPageSize, 1, MaxPageSize);
 
         _logger.LogDebug(
-            "主机 {HostId} 数据卷列表：共 {Total} 个（用量 {UsageCount} 项，告警 {WarningCount} 条），返回第 {PageIndex} 页（每页 {PageSize}）",
+            "主机 {HostId} 数据卷列表：共 {Total} 个（搜索={Search}，用量 {UsageCount} 项，告警 {WarningCount} 条），返回第 {PageIndex} 页（每页 {PageSize}）",
             hostId,
-            volumes.Count,
+            filtered.Count,
+            string.IsNullOrWhiteSpace(request.Search) ? "无" : request.Search.Trim(),
             usage.Count,
             warnings.Count,
             pageIndex,
             pageSize);
 
         return new VolumeListResult(
-            [.. volumes
+            [.. filtered
                 .Skip(pageIndex * pageSize)
                 .Take(pageSize)
                 .Select(volume => MapSummary(volume, usage.GetValueOrDefault(volume.Name ?? string.Empty)))],
-            volumes.Count,
+            filtered.Count,
             pageIndex,
             pageSize,
             [.. warnings]);
     }
+
+    /// <summary>
+    /// 按搜索关键字过滤数据卷。
+    /// </summary>
+    /// <param name="volumes">全部数据卷。</param>
+    /// <param name="search">搜索关键字；为空时原样返回。</param>
+    /// <returns>命中的数据卷。</returns>
+    /// <remarks>
+    /// 匹配<b>卷名 / 驱动 / 宿主挂载路径</b>三项：用户找卷时既可能记得名字，
+    /// 也可能只记得「在 /var/lib/... 下面那个」。
+    /// </remarks>
+    private static IReadOnlyList<VolumeResponse> Filter(
+        IList<VolumeResponse> volumes,
+        string? search)
+    {
+        if (string.IsNullOrWhiteSpace(search))
+        {
+            return [.. volumes];
+        }
+
+        var keyword = search.Trim();
+
+        return
+        [
+            .. volumes.Where(volume =>
+                Contains(volume.Name, keyword)
+                || Contains(volume.Driver, keyword)
+                || Contains(volume.Mountpoint, keyword)),
+        ];
+    }
+
+    /// <summary>
+    /// 关键字包含判断（不区分大小写）。
+    /// </summary>
+    /// <param name="haystack">被检查的文本。</param>
+    /// <param name="needle">关键字。</param>
+    /// <returns>命中返回 <see langword="true"/>。</returns>
+    private static bool Contains(string? haystack, string needle) =>
+        haystack?.Contains(needle, StringComparison.OrdinalIgnoreCase) == true;
 
     /// <summary>
     /// 查询各卷的用量（占用字节数与引用它的容器数）。

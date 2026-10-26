@@ -75,22 +75,65 @@ public sealed class NetworkService
             "网络列表",
             cancellationToken).ConfigureAwait(false);
 
+        // 过滤必须在分页之前：先分页再过滤会让 total 与实际命中数对不上。
+        var filtered = Filter(networks, request.Search);
+
         var pageIndex = Math.Max(request.PageIndex ?? 0, 0);
         var pageSize = Math.Clamp(request.PageSize ?? DefaultPageSize, 1, MaxPageSize);
 
         _logger.LogDebug(
-            "主机 {HostId} 网络列表：共 {Total} 个，返回第 {PageIndex} 页（每页 {PageSize}）",
+            "主机 {HostId} 网络列表：共 {Total} 个（搜索={Search}），返回第 {PageIndex} 页（每页 {PageSize}）",
             hostId,
-            networks.Count,
+            filtered.Count,
+            string.IsNullOrWhiteSpace(request.Search) ? "无" : request.Search.Trim(),
             pageIndex,
             pageSize);
 
         return new NetworkListResult(
-            [.. networks.Skip(pageIndex * pageSize).Take(pageSize).Select(MapSummary)],
-            networks.Count,
+            [.. filtered.Skip(pageIndex * pageSize).Take(pageSize).Select(MapSummary)],
+            filtered.Count,
             pageIndex,
             pageSize);
     }
+
+    /// <summary>
+    /// 按搜索关键字过滤网络。
+    /// </summary>
+    /// <param name="networks">全部网络。</param>
+    /// <param name="search">搜索关键字；为空时原样返回。</param>
+    /// <returns>命中的网络。</returns>
+    /// <remarks>
+    /// 匹配<b>网络名 / 网络 ID / 驱动</b>三项：ID 在界面上是裸的 64 位十六进制，
+    /// 完整 ID 很难凭记忆输入，但「从别处复制来的那一串」是可以搜的。
+    /// </remarks>
+    private static IReadOnlyList<NetworkResponse> Filter(
+        IList<NetworkResponse> networks,
+        string? search)
+    {
+        if (string.IsNullOrWhiteSpace(search))
+        {
+            return [.. networks];
+        }
+
+        var keyword = search.Trim();
+
+        return
+        [
+            .. networks.Where(network =>
+                Contains(network.Name, keyword)
+                || Contains(network.ID, keyword)
+                || Contains(network.Driver, keyword)),
+        ];
+    }
+
+    /// <summary>
+    /// 关键字包含判断（不区分大小写）。
+    /// </summary>
+    /// <param name="haystack">被检查的文本。</param>
+    /// <param name="needle">关键字。</param>
+    /// <returns>命中返回 <see langword="true"/>。</returns>
+    private static bool Contains(string? haystack, string needle) =>
+        haystack?.Contains(needle, StringComparison.OrdinalIgnoreCase) == true;
 
     /// <summary>
     /// 查询网络详情。
