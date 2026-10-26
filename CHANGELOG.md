@@ -31,6 +31,64 @@ Work in progress. The next milestone is `0.1.0` — authorization baseline and M
 (its per-version notes accumulate here as internal drafts and are rewritten into the `1.0.0` entry
 before the first public release).
 
+### Unassigned — List experience and create-form improvements (internal draft)
+
+#### Added
+
+- **Keyword search in the container list**: `POST /api/v1/hosts/{hostId}/containers/list` takes
+  `search`, matching **container name / image name / container ID** (case-insensitive, filtered
+  on the server before pagination). The start command is deliberately **not** matched — commands
+  often contain secrets and paths, so searching them surfaces unrelated rows.
+- **Status filter in the container list**: the same endpoint takes `state`
+  (`all` / `running` / `stopped`). `stopped` means "**not running**" (exited / dead / never
+  started); paused and restarting still count as alive, matching `docker ps`. The old boolean
+  `all` is kept for compatibility and `state` takes precedence.
+- **Keyword search for volumes and networks**: volumes match on name / driver / mount path,
+  networks on name / ID / driver.
+- **One-click port links**: TCP ports in the list open the address they are bound to in a new
+  window (IPv4 first, IPv6 in brackets).
+- **A shared list toolbar**: the five list pages (containers / images / volumes / networks /
+  hosts) now share `ListToolbar` — search box, status filter, **always-visible** batch actions,
+  selection count, an icon-only refresh button and the column picker.
+
+#### Changed
+
+- **One row per port mapping**: `-p 8080:80` is two records in Docker (`0.0.0.0` and `::`).
+  Rendering them one by one made a single port occupy two nearly identical rows. They are now
+  merged into one row, with the remaining concrete addresses collapsed into “+N”.
+- **Unmapped ports are no longer listed**: ports the image `EXPOSE`s but that are not published
+  to the host (MySQL's official image exposes `33060` alongside `3306`) used to show up as
+  `33060/tcp`. Such a port cannot be reached from outside the host at all, so listing it only
+  suggests “there is another service here” and sends people hunting a problem that does not
+  exist.
+- **Port order no longer jumps**: the daemon returns ports in a different order on every call
+  (it iterates a Go map), so the server sorts them explicitly — a container's port rows keep
+  their order across refreshes.
+- **The create-container form is rearranged**: the image can be picked from a dropdown of the
+  host's own images (still typeable for images that are not there yet), the high-frequency
+  fields come first in two columns, “Basic info” is expanded by default and “Advanced” is not.
+- **The three input editors are table-first**: `EnvVarEditor` / `PortMappingEditor` /
+  `VolumeMountEditor` show a **structured table** by default; bulk paste stays available as a
+  switchable secondary mode (the paste path and its line-numbered errors are kept).
+- **Batch actions are always visible**: the old “appears once something is selected” bar is now
+  a permanent part of the toolbar, disabled until rows are selected (the reason is in the
+  tooltip). The entry point is no longer undiscoverable.
+- **The refresh button is an icon**, and the “updated at …” timestamp is gone — it changed every
+  five seconds and nobody read it.
+
+#### Notes
+
+- **Search and filtering happen on the server**: pagination is an in-memory server-side slice
+  too, so filtering on the client would only ever filter the current page — the footer would
+  then show a count that does not match the pages you can turn to.
+- **Port links are always `http://` and always use the bound address**: a port mapping carries
+  no protocol information (whether the service speaks HTTPS is only known inside the container),
+  and guessing wrong turns the link into “cannot connect”, which reads as “the service is down”.
+- **UDP gets no link**: browsers have no way to open UDP directly, so a link would only ever
+  fail to open.
+- **The status filter is remembered**: it is a continuation of "which kind of containers do I
+  want to look at this time"; not remembering it means clicking it again on every visit.
+
 ### `0.7.0` — Batch operations and resource cleanup (internal draft)
 
 #### Added

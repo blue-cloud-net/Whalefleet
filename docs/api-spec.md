@@ -844,7 +844,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 操作 | 路径 | 阶段 | 说明 |
 |------|------|------|------|
 | **创建容器** | `POST /api/v1/hosts/{hostId}/containers/create` | 0.0.9 | Body: `{ image, name?, cmd?, entrypoint?, env?, labels?, ports?, volumes?, restartPolicy?, autoRemove?, network?, hostname?, workingDir?, tty?, stdinOpen? }`（**精选子集**，非全部 `CreateContainerParameters` 字段，理由见下文）。**0.3.0** 新增高级参数 `user?`、`capAdd?`、`capDrop?`、`healthCheck?`、`devices?`、`sysctls?`、`ulimits?`、`logDriver?`、`memoryLimitBytes?`、`nanoCpus?`（见下） |
-| 获取列表 | `POST /api/v1/hosts/{hostId}/containers/list` | 0.0.9 | Body: `{ all?, pageIndex?, pageSize?, sortBy?, sortDir? }`；分页在服务端**内存**完成（Docker 无分页参数），`pageSize` 上限 100 |
+| 获取列表 | `POST /api/v1/hosts/{hostId}/containers/list` | 0.0.9 | Body: `{ all?, state?, search?, pageIndex?, pageSize?, sortBy?, sortDir? }`；分页在服务端**内存**完成（Docker 无分页参数），`pageSize` 上限 100；`state` / `search` 见下方说明 |
 | 启动 | `POST /api/v1/hosts/{hostId}/containers/start` | 0.0.9 | Body: `{ containerId }` |
 | 停止 | `POST /api/v1/hosts/{hostId}/containers/stop` | 0.0.9 | Body: `{ containerId, waitSeconds? }`；`waitSeconds` 取值 0–300（默认 10，与 Docker 一致） |
 | 重启 | `POST /api/v1/hosts/{hostId}/containers/restart` | 0.0.9 | Body: `{ containerId }` |
@@ -1009,7 +1009,7 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
 ```jsonc
 // POST /api/v1/hosts/local/containers/list
 // Request
-{ "all": true, "pageIndex": 0, "pageSize": 20 }
+{ "all": true, "pageIndex": 0, "pageSize": 20, "search": "web", "state": "running" }
 // Response.data
 {
   "items": [
@@ -1030,6 +1030,47 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
   "pageSize": 20      // 服务端实际使用的每页条数（夹紧后）
 }
 ```
+
+> **`search`（关键字搜索，0.7.0）**
+>
+> 按 **容器名 / 镜像名 / 容器 ID** 模糊匹配（不区分大小写）。
+>
+> ⚠️ **刻意不匹配启动命令**：命令里常含密钥、路径与参数，
+> 把它当搜索面既容易命中无关内容，也会让用户以为「搜出来的就是相关的那个」。
+>
+> 过滤在**服务端内存**里完成（分页也在服务端做）——
+> 前端过滤只能筛到当前页，规则会与后端漂移。
+
+> **`state`（状态筛选，0.7.0）**
+>
+> | 取值 | 含义 |
+> |---|---|
+> | `all` | 全部容器（默认） |
+> | `running` | 仅运行类：`running` / `paused` / `restarting`（与 `docker ps` 一致） |
+> | `stopped` | 仅未运行类：`exited` / `dead` / `created`（**从未启动**也算） |
+>
+> 未知取值按 `all` 处理（不报错，与 `sortBy` 同策略）。
+> `state` **优先于** `all`：`all` 是旧契约（布尔开关表达不了「仅未运行」），
+> 保留它只为兼容旧客户端——`state` 省略时按 `all` 的旧语义处理
+> （`true` = 全部，`false` / 省略 = 仅运行中）。
+
+> **`ports` 数组的顺序是对外契约的一部分**
+>
+> 守护进程返回的端口顺序**每次调用都可能不同**（它由 Go 侧遍历
+> `map[Port]PortBinding` 生成，而 Go 的 map 迭代顺序是随机的）。
+> 因此服务端显式排序：容器端口 ↑ → 协议（序数）→ 宿主端口（未映射的最后）→
+> 绑定地址等级（具体 IPv4 → `0.0.0.0` → 具体 IPv6 → `::` → 未指定）→ 绑定地址。
+> 客户端可以直接依赖这个顺序，不必自己再排一次。
+> 具体 IPv4 排在最前是刻意的：它是最可能真正能访问到的那个地址，
+> 客户端「取第一个」就拿得到对的。
+>
+> ⚠️ **同一个端口可能有多条记录**：`-p 8080:80` 会被 Docker 记成
+> `0.0.0.0` 与 `::` 两条。是否合并成一行是**展示层**的决定（接口不做合并）。
+>
+> ⚠️ **未映射的端口也会原样返回**（`publicPort` 为 `null`）：镜像 `EXPOSE` 过的端口
+> 即使没有映射到宿主，守护进程也会报回来，接口如实投影。
+> 但这类端口从宿主机外根本连不上，**界面不展示它们**——
+> 「投影忠实」与「界面挑有用的」是两件事，不要为了界面好看而删掉 API 里的数据。
 
 > **`sortBy` / `sortDir`（排序）**
 >
@@ -1494,7 +1535,7 @@ nginx: [emerg] …
 
 | 操作 | 路径 | 说明 |
 |------|------|------|
-| 获取列表 | `POST /api/v1/hosts/{hostId}/volumes/list` | Body: `{ pageIndex?, pageSize? }`；分页在服务端**内存**完成（Docker 无分页参数），`pageSize` 默认 20 / 上限 100 |
+| 获取列表 | `POST /api/v1/hosts/{hostId}/volumes/list` | Body: `{ search?, pageIndex?, pageSize? }`；分页在服务端**内存**完成（Docker 无分页参数），`pageSize` 默认 20 / 上限 100；`search` 按**卷名 / 驱动 / 宿主挂载路径**模糊匹配（不区分大小写），在分页之前过滤 |
 | 创建 | `POST /api/v1/hosts/{hostId}/volumes/create` | Body: `{ name, driver?, driverOptions?, labels? }` |
 | 删除 | `POST /api/v1/hosts/{hostId}/volumes/remove` | Body: `{ name, force? }` |
 | **批量删除** | `POST /api/v1/hosts/{hostId}/volumes/batch-remove` | Body: `{ names: [...], force? }` |
@@ -1558,7 +1599,7 @@ nginx: [emerg] …
 
 | 操作 | 路径 | 说明 |
 |------|------|------|
-| 获取列表 | `POST /api/v1/hosts/{hostId}/networks/list` | Body: `{ pageIndex?, pageSize? }`；分页在服务端**内存**完成，`pageSize` 默认 20 / 上限 100 |
+| 获取列表 | `POST /api/v1/hosts/{hostId}/networks/list` | Body: `{ search?, pageIndex?, pageSize? }`；分页在服务端**内存**完成，`pageSize` 默认 20 / 上限 100；`search` 按**网络名 / 网络 ID / 驱动**模糊匹配（不区分大小写），在分页之前过滤 |
 | 创建 | `POST /api/v1/hosts/{hostId}/networks/create` | Body: `{ name, driver?, subnet?, gateway?, ipRange?, attachable?, labels? }` |
 | 删除 | `POST /api/v1/hosts/{hostId}/networks/remove` | Body: `{ networkId }` |
 | **接入网络** | `POST /api/v1/hosts/{hostId}/networks/connect` | Body: `{ containerId, networkId }`；容器已接入时**幂等返回成功**（服务端先读实际状态再决定要不要调守护进程）。容器须**运行中** |

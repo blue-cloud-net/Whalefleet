@@ -58,23 +58,28 @@ UnoCSS 默认 + 自定义：
 | 层 | 用途 | 示例 | 位置 |
 |---|---|---|---|
 | **Layout 层** | 顶级布局 | `AppLayout`（+ `AppBreadcrumb` / `AppSidebar` / `SidebarNav` / `UserMenu`） | `src/Whalefleet.UI/src/layouts/` |
-| **通用组件** | 跨页面复用 | `EmptyState`、`PlaceholderSection`、`SectionCard`、`StatCard`、`PageHeader`、`StatusDot`、`IconActionButton`、`LangSwitcher`、`ThemeSwitcher`、`MockBadge`（开发期）；0.0.14 新增 `StatusBadge`、`JsonTree`、`CopyableText`、`CommandPalette`、`ShortcutHelpDialog` | `src/Whalefleet.UI/src/components/common/` |
+| **通用组件** | 跨页面复用 | `EmptyState`、`PlaceholderSection`、`SectionCard`、`StatCard`、`PageHeader`、`StatusDot`、`IconActionButton`、`LangSwitcher`、`ThemeSwitcher`、`MockBadge`（开发期）；0.0.14 新增 `StatusBadge`、`JsonTree`、`CopyableText`、`CommandPalette`、`ShortcutHelpDialog`；0.7.0 新增 `ListToolbar`（列表页统一工具条） | `src/Whalefleet.UI/src/components/common/` |
 | **业务组件** | 领域专用 | `HostHero`、`ResourceTile`、`HostCard`、`HostGroupSection`、`HostSelector`；各 `*Dialog.vue`（创建 / 编辑 / 改密）；0.0.14 新增 `ContainerStatusBadge`、`ImageSize`、`PortMappingEditor`、`EnvVarEditor`、`VolumeMountEditor` | `src/Whalefleet.UI/src/components/business/` |
 | **View 层** | 路由对应的页面 | 每个路由一个 .vue 文件 | `src/Whalefleet.UI/src/views/` |
 
 > 加载态用 `el-skeleton` 直接写，不单独包一层 `Skeleton.vue`——包装组件省下的
 > 那点模板量换不来一次额外的间接层。
 
-### 行式输入编辑器（0.0.14）
+### 行式输入编辑器（0.0.14，0.7.0 改为表格优先）
 
-端口 / 挂载 / 环境变量三个字段统一由 `*Editor.vue` 承担，两条约定：
+端口 / 挂载 / 环境变量三个字段统一由 `*Editor.vue` 承担，三条约定：
 
-1. **双模**：批量粘贴与逐行编辑共用同一份解析逻辑（`utils/container-input.ts`）。
-   分成两条解析路径必然出现「粘贴能建、手填建不了」。
+1. **双模**：**表格**（默认）与**批量粘贴**共用同一份解析逻辑
+   （`utils/container-input.ts`）。分成两条解析路径必然出现「粘贴能建、手填建不了」。
+   表格优先是因为「改一两个值」更常见，而粘贴框做不到；粘贴保留是因为
+   「从 Compose 文件抄一整段」是高频动作。
 2. **出错行号必须回传父级**（`v-model:error-line`）：解析失败时编辑器给出的结构化
    数组只含出错行**之前**的合法部分，父级若看不到行号就会提交这份残缺数据，
    建出一个「少了一条环境变量却提示成功」的容器。因此编辑器自己显示错误
    （带行号），父级据此禁用提交。
+3. **表格模式下的校验由 model 直接算**：粘贴模式靠解析器报错，表格模式没有解析器，
+   因此编辑器自己逐行判定（键名合法 / 端口范围 / 容器内路径必须绝对），
+   并把第一行出错的行号回传父级。
 
 > **不要给编辑器加后端没有的开关。** 挂载类型（bind / 具名卷）就是现成的反例：
 > 后端 `ContainerVolumeMapping` 没有 `type` 字段，类型由 Docker 按来源路径是否存在
@@ -352,7 +357,8 @@ HOST_TONE_RAIL[tone]                // 卡片左侧色条
 | **功能未就绪的点击** | 统一 `ElMessage.info` 说明「X 接口就绪后开放」，**不要**静默无响应（参照 `HostCard` 的编辑按钮） |
 | **复制** | `navigator.clipboard` 在非安全上下文不可用，必须 `try/catch` 并降级提示 |
 | **表单** | 必填项标 `*`；提交按钮在表单未变 dirty 时禁用 |
-| **表格** | 默认显示「名称 / 状态 / 创建时间 / 操作」四列；行内动作一律用 `IconActionButton`（图标 + tooltip 文字标签），文字按钮只留在页头 / 批量条；操作列**左对齐**（表头与图标同侧）；分页（默认 20 条/页，可在用户偏好设置中调整 10/20/50/100） |
+| **表格** | 默认显示「名称 / 状态 / 创建时间 / 操作」四列；行内动作一律用 `IconActionButton`（图标 + tooltip 文字标签），文字按钮只留在页头 / 工具条；操作列**左对齐**（表头与图标同侧）；分页（默认 20 条/页，可在用户偏好设置中调整 10/20/50/100） |
+| **列表工具条** | 五个列表页（容器 / 镜像 / 卷 / 网络 / 主机）共用 `ListToolbar`，**一律放在卡片头部右侧**：搜索框（输入去抖 300ms + 回车即时 + 可清空）→ 状态筛选 → **常驻**的批量动作（未选中时禁用，禁用原因写进 tooltip）→ 已选计数与「清空」→ 图标刷新按钮 → 列设置。**批量按钮必须常驻**：选中才出现的批量条入口不可发现，而常驻 + 禁用既有可发现性、也不会让人怀疑页面坏了。**刷新按钮用图标**（`i-carbon-renew`），它是一个高频动作，不值得占一个按钮的宽度 |
 | **状态标签** | 容器/镜像状态用统一 `StatusBadge` 组件（颜色 + 图标 + 文本）；主机三态色走 `utils/host-status.ts` |
 | **时间格式** | 列表显示相对时间（「2 分钟前」）；详情显示绝对时间（带时区） |
 | **数字格式** | 字节大小自动单位（B / KB / MB / GB / TB）；时间 ms / s / min 自动选择 |
