@@ -2,21 +2,26 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
+  formatEnvEntry,
   isValidEnvKey,
   parseEnvText,
   type EnvEntry
 } from '@/utils/container-input'
 
 /**
- * 环境变量编辑器（0.0.14）。
+ * 环境变量编辑器。
  *
- * ## 为什么默认「批量粘贴」而不是逐行表格
+ * ## 两种输入模式
+ * - **表格**（默认）：一行一个变量，键与值分列。改少量项时最直观。
+ * - **批量粘贴**：一次贴一整段 `KEY=VALUE`。
+ *
+ * ## 为什么表格是默认而不是粘贴
  * 用户手上的环境变量几乎总是**已经存在的**——从 Compose 文件、`.env` 文件或
- * 另一台机器的容器里复制过来。逐行填表格要把 `KEY=VALUE` 手工拆成两列，
- * 是纯粹的重复劳动。
- *
- * 逐行模式只作为「编辑少量项」时的补充：粘贴进来的内容同样能逐项修改，
- * 不必「一次性粘贴 + 一次性提交」这种非此即彼的模型。
+ * 另一台机器的容器里复制过来；逐行填表格要把 `KEY=VALUE` 手工拆成两列，
+ * 是纯粹的重复劳动。因此粘贴必须**保留**。
+ * 但反过来，「只改一个变量的值」是更常见的日常操作，而粘贴框做不到——
+ * 它只有一整个文本框。
+ * 两者互有长短，所以做成**可切换的两种模式**，而不是二选一。
  *
  * ## 为什么值列用 input 而不是 textarea
  * 环境变量的值常常是超长连接串。`input` 不会把对话框撑成几十行，
@@ -36,45 +41,99 @@ const errorLine = defineModel<number | null>('errorLine', { required: true })
 
 const { t } = useI18n()
 
+/** 输入模式。 */
+const mode = ref<'table' | 'paste'>('table')
+
 /**
- * 文本框的**原始草稿**。
+ * 文本框的**原始草稿**（粘贴模式用）。
  *
  * 不能用 `computed` 的 get/set 与 model 双向绑定：解析出错时 model 里只剩
  * 合法的前缀，getter 再拼出来的文本就会**把出错那一行抹掉**——用户正在改的
  * 第 2 行凭空消失，比报错本身还糟。
- *
- * 草稿只在两种情况下与 model 同步：
- *  1. model 被外部整体替换（对话框每次打开都会 reset）→ 重新生成文本
- *  2. model 与「按草稿解析的结果」不一致（用户改的是结构化行）→ 重新生成文本
- * 平时用户打字则只更新草稿，不打扰 model。
  */
-const draft = ref(model.value.map((entry) => `${entry.key}=${entry.value}`).join('\n'))
+const draft = ref(model.value.map(formatEnvEntry).join('\n'))
 
 const parsed = computed(() => parseEnvText(draft.value))
 
-/** 同步给父级；`immediate` 保证「打开即有错」（粘贴残留）也能立刻反映到提交按钮上。 */
+/** 表格模式下某一行是否合法。 */
+function isRowValid(entry: EnvEntry): boolean {
+  // 整行都空 = 还没填，提交时会被丢掉，不算错误
+  if (entry.key.length === 0) return entry.value.length === 0
+
+  return isValidEnvKey(entry.key)
+}
+
+/** 表格模式下第一行出错的行号（从 1 开始）；null = 全部合法。 */
+const tableErrorLine = computed(() => {
+  for (let index = 0; index < model.value.length; index++) {
+    const entry = model.value[index]
+    if (entry === undefined) continue
+    if (isRowValid(entry)) continue
+
+    return index + 1
+  }
+
+  return null
+})
+
+/**
+ * 同步给父级：两种模式各有各的判据。
+ *
+ * `immediate` 保证「打开即有错」（粘贴残留）也能立刻反映到提交按钮上。
+ */
 watch(
-  parsed,
-  (value) => {
-    errorLine.value = value.errorLine
+  [mode, tableErrorLine, parsed],
+  () => {
+    errorLine.value = mode.value === 'paste' ? parsed.value.errorLine : tableErrorLine.value
   },
   { immediate: true }
 )
 
-/** 把草稿同步给 model（每次输入都调）：只写入已解析出的合法部分。 */
+/** 把草稿同步给 model（粘贴模式下每次输入都调）：只写入已解析出的合法部分。 */
 watch(draft, (value) => {
+  if (mode.value !== 'paste') return
+
   model.value = parseEnvText(value).values
 })
 
-/** model 被外部改动（reset / 结构化行编辑）时重建草稿。 */
+/**
+ * model 被外部改动（reset）时重建草稿；表格模式下不动草稿——
+ * 那时的 model 变化是**用户自己**在编辑，重建草稿会把粘贴框的内容冲掉。
+ */
 watch(
   model,
   (value) => {
+    if (mode.value !== 'paste') return
+
     const fromDraft = draft.value
-    const next = value.map((entry) => `${entry.key}=${entry.value}`).join('\n')
+    const next = value.map(formatEnvEntry).join('\n')
     // 已经一致就别动草稿，否则每次输入都会把光标打到末尾
     if (next !== fromDraft && parseEnvText(fromDraft).values.length !== value.length) {
       draft.value = next
+    }
+  },
+  { deep: true }
+)
+
+/** 切到粘贴模式：把当前表格内容重新拼成文本。 */
+watch(mode, (next) => {
+  if (next === 'paste') {
+    draft.value = model.value.map(formatEnvEntry).join('\n')
+  }
+})
+
+/**
+ * model 被清空（对话框每次打开都会 reset）→ 回到默认的表格模式。
+ *
+ * 刻意不靠「父级传个 visible 进来」实现：编辑器的状态归自己管，
+ * 而「内容没了」本身就是「回到初始状态」的充分信号。
+ */
+watch(
+  model,
+  (value) => {
+    if (value.length === 0 && mode.value !== 'table') {
+      mode.value = 'table'
+      draft.value = ''
     }
   },
   { deep: true }
@@ -85,7 +144,7 @@ const duplicateKeys = computed(() => {
   const seen = new Set<string>()
   const dupes = new Set<string>()
 
-  for (const entry of parsed.value.values) {
+  for (const entry of model.value) {
     if (seen.has(entry.key)) dupes.add(entry.key)
     seen.add(entry.key)
   }
@@ -104,17 +163,78 @@ function removeRow(index: number): void {
 
 <template>
   <div class="flex flex-col gap-2">
-    <el-input
-      v-model="draft"
-      type="textarea"
-      :rows="3"
-      :placeholder="t('container.create.envHint')"
-      :class="{ '!border-status-down': errorLine !== null }"
-    />
+    <!--
+      模式切换：两个**文字**小按钮而不是下拉——
+      它们要一直可见（用户不该为了切模式先点开一个菜单）。
+    -->
+    <div class="flex items-center justify-end gap-1">
+      <el-button
+        size="small"
+        text
+        :type="mode === 'table' ? 'primary' : 'default'"
+        @click="mode = 'table'"
+      >
+        {{ t('container.editor.modeTable') }}
+      </el-button>
+      <el-button
+        size="small"
+        text
+        :type="mode === 'paste' ? 'primary' : 'default'"
+        @click="mode = 'paste'"
+      >
+        {{ t('container.editor.modePaste') }}
+      </el-button>
+    </div>
 
-    <p v-if="errorLine !== null" class="text-xs text-status-down">
-      {{ t('container.create.envInvalid', { line: errorLine }) }}
-    </p>
+    <template v-if="mode === 'table'">
+      <p v-if="model.length === 0" class="text-xs text-content-faint">
+        {{ t('container.editor.noRows') }}
+      </p>
+
+      <div v-for="(entry, index) in model" :key="index" class="flex items-start gap-2">
+        <el-input
+          v-model="entry.key"
+          :placeholder="t('container.editor.envKey')"
+          class="w-2/5 font-mono"
+          :class="{ '!border-status-down': !isRowValid(entry) }"
+        />
+        <el-input
+          v-model="entry.value"
+          :placeholder="t('container.editor.envValue')"
+          class="flex-1 font-mono"
+        />
+        <el-button
+          text
+          :aria-label="t('common.delete')"
+          class="!px-1.5 text-status-down"
+          @click="removeRow(index)"
+        >
+          <span class="i-carbon-trash-can" />
+        </el-button>
+      </div>
+
+      <el-button size="small" class="self-start" @click="addRow">
+        <span class="i-carbon-add mr-1" />{{ t('container.editor.addRow') }}
+      </el-button>
+
+      <p v-if="tableErrorLine !== null" class="text-xs text-status-down">
+        {{ t('container.editor.rowInvalid', { line: tableErrorLine }) }}
+      </p>
+    </template>
+
+    <template v-else>
+      <el-input
+        v-model="draft"
+        type="textarea"
+        :rows="3"
+        :placeholder="t('container.create.envHint')"
+        :class="{ '!border-status-down': parsed.errorLine !== null }"
+      />
+
+      <p v-if="parsed.errorLine !== null" class="text-xs text-status-down">
+        {{ t('container.create.envInvalid', { line: parsed.errorLine }) }}
+      </p>
+    </template>
 
     <el-alert
       v-if="duplicateKeys.size > 0"
@@ -128,41 +248,5 @@ function removeRow(index: number): void {
         </span>
       </template>
     </el-alert>
-
-    <el-collapse>
-      <el-collapse-item :title="t('container.editor.editRows')" name="rows">
-        <div class="flex flex-col gap-2">
-          <div
-            v-for="(entry, index) in model"
-            :key="index"
-            class="flex items-start gap-2"
-          >
-            <el-input
-              v-model="entry.key"
-              :placeholder="t('container.editor.envKey')"
-              class="w-2/5 font-mono"
-              :class="{ '!border-status-down': entry.key.length > 0 && !isValidEnvKey(entry.key) }"
-            />
-            <el-input
-              v-model="entry.value"
-              :placeholder="t('container.editor.envValue')"
-              class="flex-1 font-mono"
-            />
-            <el-button
-              text
-              :aria-label="t('common.delete')"
-              class="!px-1.5 text-status-down"
-              @click="removeRow(index)"
-            >
-              <span class="i-carbon-trash-can" />
-            </el-button>
-          </div>
-
-          <el-button size="small" class="self-start" @click="addRow">
-            <span class="i-carbon-add mr-1" />{{ t('container.editor.addRow') }}
-          </el-button>
-        </div>
-      </el-collapse-item>
-    </el-collapse>
   </div>
 </template>

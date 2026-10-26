@@ -10,7 +10,7 @@ import {
 } from '@/utils/container-input'
 
 /**
- * 挂载编辑器（0.0.14；0.2.0 接入卷名选择）。
+ * 挂载编辑器。
  *
  * ## 最重要的一条：容器内路径必须绝对
  * Docker 把相对路径按 **daemon 的工作目录** 解析，而这个目录随启动方式变化
@@ -35,6 +35,9 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
+
+/** 输入模式。 */
+const mode = ref<'table' | 'paste'>('table')
 
 /**
  * 主机上现有的卷名（0.2.0）。
@@ -68,13 +71,50 @@ const draft = ref(model.value.map(formatVolumeMount).join('\n'))
 
 const parsed = computed(() => parseVolumeText(draft.value))
 
+/**
+ * 表格模式下某一行是否合法。
+ *
+ * ⚠️ **相对路径算错误**：见文件头——它会导致「挂到了意料之外的目录且不报错」。
+ * 这一点在表格模式下比在粘贴模式下更容易被忽略（粘贴时格式固定，相对路径会被解析器拒掉）。
+ */
+function isRowValid(row: VolumeMount): boolean {
+  if (row.source.trim().length === 0) return false
+
+  return isValidContainerPath(row.destination)
+}
+
+/** 表格模式下第一行出错的行号（从 1 开始）；null = 全部合法。 */
+const tableErrorLine = computed(() => {
+  for (let index = 0; index < model.value.length; index++) {
+    const row = model.value[index]
+    if (row === undefined) continue
+    if (isRowValid(row)) continue
+
+    return index + 1
+  }
+
+  return null
+})
+
+watch(
+  [mode, tableErrorLine, parsed],
+  () => {
+    errorLine.value = mode.value === 'paste' ? parsed.value.errorLine : tableErrorLine.value
+  },
+  { immediate: true }
+)
+
 watch(draft, (value) => {
+  if (mode.value !== 'paste') return
+
   model.value = parseVolumeText(value).values
 })
 
 watch(
   model,
   (value) => {
+    if (mode.value !== 'paste') return
+
     const fromDraft = draft.value
     const next = value.map(formatVolumeMount).join('\n')
     if (next !== fromDraft && parseVolumeText(fromDraft).values.length !== value.length) {
@@ -84,12 +124,23 @@ watch(
   { deep: true }
 )
 
+/** 切到粘贴模式：把当前表格内容重新拼成文本。 */
+watch(mode, (next) => {
+  if (next === 'paste') {
+    draft.value = model.value.map(formatVolumeMount).join('\n')
+  }
+})
+
+/** model 被清空（对话框每次打开都会 reset）→ 回到默认的表格模式。 */
 watch(
-  parsed,
+  model,
   (value) => {
-    errorLine.value = value.errorLine
+    if (value.length === 0 && mode.value !== 'table') {
+      mode.value = 'table'
+      draft.value = ''
+    }
   },
-  { immediate: true }
+  { deep: true }
 )
 
 function addRow(): void {
@@ -103,82 +154,109 @@ function removeRow(index: number): void {
 
 <template>
   <div class="flex flex-col gap-2">
-    <el-input
-      v-model="draft"
-      type="textarea"
-      :rows="2"
-      :placeholder="t('container.create.volumeHint')"
-      :class="{ '!border-status-down': errorLine !== null }"
-    />
+    <!-- 模式切换：两个文字小按钮常驻，用户不该为了切模式先点开一个菜单。 -->
+    <div class="flex items-center justify-end gap-1">
+      <el-button
+        size="small"
+        text
+        :type="mode === 'table' ? 'primary' : 'default'"
+        @click="mode = 'table'"
+      >
+        {{ t('container.editor.modeTable') }}
+      </el-button>
+      <el-button
+        size="small"
+        text
+        :type="mode === 'paste' ? 'primary' : 'default'"
+        @click="mode = 'paste'"
+      >
+        {{ t('container.editor.modePaste') }}
+      </el-button>
+    </div>
 
-    <p v-if="errorLine !== null" class="text-xs text-status-down">
-      {{ t('container.create.volumeInvalid', { line: errorLine }) }}
-    </p>
+    <template v-if="mode === 'table'">
+      <p v-if="model.length === 0" class="text-xs text-content-faint">
+        {{ t('container.editor.noRows') }}
+      </p>
 
-    <el-collapse>
-      <el-collapse-item :title="t('container.editor.editRows')" name="rows">
-        <div class="flex flex-col gap-2">
-          <div v-for="(row, index) in model" :key="index" class="flex items-start gap-2">
-            <el-input
-              v-model="row.source"
-              :placeholder="t('container.editor.mountSource')"
-              class="flex-1 font-mono"
-            >
-              <!--
-                补全主机上**已存在**的卷名，但不限制手打：
-                多数时候用户要挂的是刚由 `docker compose` 建出来的卷，
-                打错一个字母的后果是 Docker 默默按 bind 处理挂了个空目录。
-              -->
-              <template v-if="knownVolumes.length > 0" #prepend>
-                <el-select
-                  :model-value="''"
-                  class="!w-36"
-                  :placeholder="t('volume.pickExisting')"
-                  @change="(value: string) => { if (value) row.source = value }"
-                >
-                  <el-option v-for="name in knownVolumes" :key="name" :value="name" :label="name" />
-                </el-select>
-              </template>
-            </el-input>
-
-            <el-input
-              v-model="row.destination"
-              :placeholder="t('container.editor.mountDestination')"
-              class="flex-1 font-mono"
-              :class="{ '!border-status-down': row.destination.length > 0 && !isValidContainerPath(row.destination) }"
-            />
-
-            <el-checkbox :model-value="row.readOnly" @update:model-value="(v: boolean) => (row.readOnly = v)">
-              {{ t('container.editor.readOnly') }}
-            </el-checkbox>
-
-            <el-button
-              text
-              :aria-label="t('common.delete')"
-              class="!px-1.5 text-status-down"
-              @click="removeRow(index)"
-            >
-              <span class="i-carbon-trash-can" />
-            </el-button>
-          </div>
-
+      <div v-for="(row, index) in model" :key="index" class="flex items-start gap-2">
+        <el-input
+          v-model="row.source"
+          :placeholder="t('container.editor.mountSource')"
+          class="flex-1 font-mono"
+          :class="{ '!border-status-down': row.source.trim().length === 0 }"
+        >
           <!--
-            相对路径的说明放在行下方而不是 tooltip：这不是「补充信息」，
-            而是一个会导致「挂载到了意料之外的目录且不报错」的陷阱，
-            值得占一行字。
+            补全主机上**已存在**的卷名，但不限制手打：
+            多数时候用户要挂的是刚由 `docker compose` 建出来的卷，
+            打错一个字母的后果是 Docker 默默按 bind 处理挂了个空目录。
           -->
-          <p
-            v-if="model.some((row) => row.destination.length > 0 && !isValidContainerPath(row.destination))"
-            class="text-xs text-status-warn"
-          >
-            {{ t('container.editor.relativePathWarn') }}
-          </p>
+          <template v-if="knownVolumes.length > 0" #prepend>
+            <el-select
+              :model-value="''"
+              class="!w-36"
+              :placeholder="t('volume.pickExisting')"
+              @change="(value: string) => { if (value) row.source = value }"
+            >
+              <el-option v-for="name in knownVolumes" :key="name" :value="name" :label="name" />
+            </el-select>
+          </template>
+        </el-input>
 
-          <el-button size="small" class="self-start" @click="addRow">
-            <span class="i-carbon-add mr-1" />{{ t('container.editor.addRow') }}
-          </el-button>
-        </div>
-      </el-collapse-item>
-    </el-collapse>
+        <el-input
+          v-model="row.destination"
+          :placeholder="t('container.editor.mountDestination')"
+          class="flex-1 font-mono"
+          :class="{ '!border-status-down': !isValidContainerPath(row.destination) }"
+        />
+
+        <el-checkbox :model-value="row.readOnly" @update:model-value="(v: boolean) => (row.readOnly = v)">
+          {{ t('container.editor.readOnly') }}
+        </el-checkbox>
+
+        <el-button
+          text
+          :aria-label="t('common.delete')"
+          class="!px-1.5 text-status-down"
+          @click="removeRow(index)"
+        >
+          <span class="i-carbon-trash-can" />
+        </el-button>
+      </div>
+
+      <!--
+        相对路径的说明放在行下方而不是 tooltip：这不是「补充信息」，
+        而是一个会导致「挂载到了意料之外的目录且不报错」的陷阱，
+        值得占一行字。
+      -->
+      <p
+        v-if="model.some((row) => row.destination.length > 0 && !isValidContainerPath(row.destination))"
+        class="text-xs text-status-warn"
+      >
+        {{ t('container.editor.relativePathWarn') }}
+      </p>
+
+      <el-button size="small" class="self-start" @click="addRow">
+        <span class="i-carbon-add mr-1" />{{ t('container.editor.addRow') }}
+      </el-button>
+
+      <p v-if="tableErrorLine !== null" class="text-xs text-status-down">
+        {{ t('container.editor.rowInvalid', { line: tableErrorLine }) }}
+      </p>
+    </template>
+
+    <template v-else>
+      <el-input
+        v-model="draft"
+        type="textarea"
+        :rows="2"
+        :placeholder="t('container.create.volumeHint')"
+        :class="{ '!border-status-down': parsed.errorLine !== null }"
+      />
+
+      <p v-if="parsed.errorLine !== null" class="text-xs text-status-down">
+        {{ t('container.create.volumeInvalid', { line: parsed.errorLine }) }}
+      </p>
+    </template>
   </div>
 </template>

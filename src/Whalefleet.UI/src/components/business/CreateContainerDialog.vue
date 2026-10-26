@@ -7,6 +7,7 @@ import {
   startContainer,
   type CreateContainerPayload
 } from '@/api/container'
+import { listImages } from '@/api/image'
 import EnvVarEditor from '@/components/business/EnvVarEditor.vue'
 import PortMappingEditor from '@/components/business/PortMappingEditor.vue'
 import VolumeMountEditor from '@/components/business/VolumeMountEditor.vue'
@@ -133,6 +134,15 @@ const healthDisabled = ref(false)
 const advancedErrors = ref<Record<string, string>>({})
 
 /**
+ * 折叠面板的展开项。
+ *
+ * ⚠️ **默认展开「基本信息」**：它装的是主机名 / 工作目录 / 运行选项，
+ * 偶尔会用到；而「高级参数」才是真正用不到的。
+ * 早先两个都默认收起，用户得先点开才知道里面有什么。
+ */
+const activePanels = ref<string[]>(['basic'])
+
+/**
  * 主机上现有的网络（0.2.0），用于把「网络名」从手打变成选。
  *
  * ⚠️ **加载失败不能阻断创建**：拉列表只是一个便利功能，
@@ -141,6 +151,58 @@ const advancedErrors = ref<Record<string, string>>({})
  */
 const networks = ref<NetworkSummary[]>([])
 const networksLoading = ref(false)
+
+/**
+ * 本机镜像列表（用于「镜像」下拉）。
+ *
+ * ⚠️ **拉取失败不阻断创建**：用户必须能填一个本机没镜像的名字
+ * （比如即将 `docker pull` 的镜像，或另一个仓库的镜像）。
+ * 因此下拉是可空的、允许手输（`allow-create`），拉取失败时静默降级成「只能手打」。
+ */
+const imageOptions = ref<ImageOption[]>([])
+const imagesLoading = ref(false)
+
+/** 镜像下拉的候选项。 */
+interface ImageOption {
+  /** 传给 Docker 的镜像引用（标签优先，悬挂镜像用 ID） */
+  reference: string
+  /** 展示文本 */
+  label: string
+  /** 副标题（悬挂镜像没有标签，用短 ID 提示） */
+  hint: string
+}
+
+/**
+ * 拉取本机镜像，供「镜像」下拉选择。
+ *
+ * ⚠️ **必须显式要最大页**：列表接口默认每页 20 条，
+ * 镜像多的主机上候选会悄悄只剩前 20 个——用户会以为某个镜像「不存在」。
+ */
+async function loadImages(): Promise<void> {
+  if (props.hostId.length === 0) return
+
+  imagesLoading.value = true
+  try {
+    const result = await listImages(props.hostId, { pageSize: 100 })
+
+    imageOptions.value = result.items.flatMap((item) => {
+      const tags = item.repoTags.filter((tag) => tag.length > 0 && tag !== '<none>:<none>')
+
+      // 悬挂镜像（没有任何标签）只能用 ID 启动，展示成短 ID + 完整 ID 的提示
+      if (tags.length === 0) {
+        const short = item.id.replace(/^sha256:/, '').slice(0, 12)
+
+        return [{ reference: item.id, label: short, hint: item.id }]
+      }
+
+      return tags.map((tag) => ({ reference: tag, label: tag, hint: '' }))
+    })
+  } catch {
+    imageOptions.value = []
+  } finally {
+    imagesLoading.value = false
+  }
+}
 
 /** 本对话框自己校验的字段级错误：key 是字段名，value 是错误 key（交由 t() 取文案）。 */
 const fieldErrors = ref<Record<string, string>>({})
@@ -193,6 +255,7 @@ function reset(): void {
   fieldErrors.value = {}
   createdContainerId.value = null
   warnings.value = []
+  activePanels.value = ['basic']
 }
 
 // 每次打开都清空上一次的残留：否则用户上次填到一半关掉，下次打开会看到一堆他不想要的值。
@@ -200,6 +263,7 @@ watch(visible, (open) => {
   if (open) {
     reset()
     void loadNetworks()
+    void loadImages()
   }
 })
 
@@ -321,12 +385,18 @@ async function submit(): Promise<void> {
   // 提交按钮已随 hasInputError 禁用；这里再兜一道，防止键盘直接触发提交。
   if (Object.keys(errors).length > 0 || hasInputError.value) return
 
+  /** 丢掉完全空白的行（用户点了「添加一行」却没填）。 */
+  const filledEnv = envEntries.value.filter((entry) => entry.key.trim().length > 0)
+
   const payload: CreateContainerPayload = {
     image: image.value.trim(),
     ...(name.value.trim() ? { name: name.value.trim() } : {}),
     ...(cmd.value.trim() ? { cmd: splitArgs(cmd.value) } : {}),
     ...(entrypoint.value.trim() ? { entrypoint: splitArgs(entrypoint.value) } : {}),
-    ...(envEntries.value.length > 0 ? { env: envEntries.value.map(formatEnvEntry) } : {}),
+    // ⚠️ **丢掉完全空白的行**：用户在表格里点了「添加一行」却没填，
+    // 那一行会以 `KEY=` 的形态发出去，而守护进程会把它当成「显式置空」——
+    // 与「我没填」的语义完全不同。
+    ...(filledEnv.length > 0 ? { env: filledEnv.map(formatEnvEntry) } : {}),
     ...(portEntries.value.length > 0 ? { ports: portEntries.value.map(toPortPayload) } : {}),
     ...(volumeEntries.value.length > 0 ? { volumes: volumeEntries.value.map(toVolumePayload) } : {}),
     restartPolicy: restartPolicy.value,
@@ -437,40 +507,57 @@ function splitArgs(text: string): string[] {
     </div>
 
     <el-form v-else label-position="top" @submit.prevent>
-      <el-form-item :label="t('container.create.image')" :error="image.trim().length === 0 && submitting ? t('container.create.imageRequired') : undefined">
-        <el-input v-model="image" :placeholder="t('container.create.imagePlaceholder')" clearable />
-      </el-form-item>
+      <!--
+        镜像 + 容器名（两列）：整个表单里**最高频**的两个字段，
+        放在最上面且并排，占据最少的高度。
 
+        镜像用下拉而不是纯输入框：绝大多数时候用户要的就是本机已有的镜像，
+        从列表里选比手打省事（少打一遍、也不会打错）。
+        ⚠️ 但**必须允许手输**（`allow-create`）：用户可能要填一个本机还没有、
+        准备 `docker pull` 的镜像，或另一个仓库的镜像。
+      -->
       <div class="grid gap-x-4 sm:grid-cols-2">
+        <el-form-item
+          :label="t('container.create.image')"
+          :error="image.trim().length === 0 && submitting ? t('container.create.imageRequired') : undefined"
+        >
+          <el-select
+            v-model="image"
+            filterable
+            allow-create
+            default-first-option
+            clearable
+            :loading="imagesLoading"
+            class="w-full"
+            :placeholder="t('container.create.imagePlaceholder')"
+          >
+            <el-option
+              v-for="option in imageOptions"
+              :key="option.reference"
+              :value="option.reference"
+              :label="option.label"
+            >
+              <span class="font-mono text-xs">{{ option.label }}</span>
+              <span v-if="option.hint" class="ml-2 text-xs text-content-faint">{{ option.hint }}</span>
+            </el-option>
+          </el-select>
+        </el-form-item>
+
         <el-form-item :label="t('container.create.name')" :error="fieldErrors.name">
           <el-input v-model="name" :placeholder="t('container.create.namePlaceholder')" clearable />
         </el-form-item>
-
-        <el-form-item :label="t('container.create.restartPolicy')">
-          <el-select v-model="restartPolicy" class="w-full">
-            <el-option value="no" :label="t('container.restartPolicy.no')" />
-            <el-option value="always" :label="t('container.restartPolicy.always')" />
-            <el-option value="on-failure" :label="t('container.restartPolicy.onFailure')" />
-            <el-option value="unless-stopped" :label="t('container.restartPolicy.unlessStopped')" />
-          </el-select>
-        </el-form-item>
       </div>
 
-      <el-form-item :label="t('container.create.cmd')">
-        <el-input v-model="cmd" :placeholder="t('container.create.cmdHint')" />
-      </el-form-item>
-
-      <el-form-item :label="t('container.create.entrypoint')">
-        <el-input v-model="entrypoint" :placeholder="t('container.create.entrypointHint')" />
-      </el-form-item>
-
-      <!-- 三个编辑器自带行号校验与重复项提示；这里只把 errorLine 接上来用于禁用提交。 -->
-      <el-form-item :label="t('container.create.env')">
-        <EnvVarEditor v-model="envEntries" v-model:error-line="envError" />
-      </el-form-item>
-
+      <!--
+        端口 / 环境变量 / 挂载：三个**结构化编辑器**。
+        它们放在命令与入口点之前，因为「跑起来要能访问」比「跑什么命令」更常用。
+      -->
       <el-form-item :label="t('container.create.ports')">
         <PortMappingEditor v-model="portEntries" v-model:error-line="portError" />
+      </el-form-item>
+
+      <el-form-item :label="t('container.create.env')">
+        <EnvVarEditor v-model="envEntries" v-model:error-line="envError" />
       </el-form-item>
 
       <el-form-item :label="t('container.create.volumes')">
@@ -481,51 +568,86 @@ function splitArgs(text: string): string[] {
         />
       </el-form-item>
 
-      <el-collapse>
+      <!-- 启动命令 + 入口点（两列） -->
+      <div class="grid gap-x-4 sm:grid-cols-2">
+        <el-form-item :label="t('container.create.cmd')">
+          <el-input v-model="cmd" :placeholder="t('container.create.cmdHint')" />
+        </el-form-item>
+
+        <el-form-item :label="t('container.create.entrypoint')">
+          <el-input v-model="entrypoint" :placeholder="t('container.create.entrypointHint')" />
+        </el-form-item>
+      </div>
+
+      <!-- 重启策略 + 网络（两列） -->
+      <div class="grid gap-x-4 sm:grid-cols-2">
+        <el-form-item :label="t('container.create.restartPolicy')">
+          <el-select v-model="restartPolicy" class="w-full">
+            <el-option value="no" :label="t('container.restartPolicy.no')" />
+            <el-option value="always" :label="t('container.restartPolicy.always')" />
+            <el-option value="on-failure" :label="t('container.restartPolicy.onFailure')" />
+            <el-option value="unless-stopped" :label="t('container.restartPolicy.unlessStopped')" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item :label="t('container.create.network')">
+          <!--
+            `el-select` + `allow-create`：既有下拉可选，也允许手打模式名
+            （`container:xxx`、`host`、`none` 等本项目不一定列得全）。
+            只给下拉会挡住合法输入，只给输入框则要用户去别处查名字。
+          -->
+          <el-select
+            v-model="network"
+            filterable
+            allow-create
+            default-first-option
+            clearable
+            :loading="networksLoading"
+            class="w-full"
+            :placeholder="t('container.create.networkPlaceholder')"
+          >
+            <el-option value="" :label="t('container.create.networkDefault')" />
+            <el-option
+              v-for="item in networks"
+              :key="item.id"
+              :value="item.name"
+              :label="item.name"
+            >
+              <span class="font-mono text-xs">{{ item.name }}</span>
+              <span class="ml-2 text-xs text-content-faint">{{ item.driver }}</span>
+            </el-option>
+          </el-select>
+        </el-form-item>
+      </div>
+
+      <!--
+        ⚠️ **两个折叠块**：「基本信息」默认展开，「高级」默认收起。
+        折叠是「常用 / 高级」两级结构的本意，而高级字段（能力 / 资源限制 / 健康检查…）
+        多数容器一个都不用。
+      -->
+      <el-collapse v-model="activePanels">
         <el-collapse-item :title="t('container.create.basic')" name="basic">
           <div class="grid gap-x-4 sm:grid-cols-2">
-            <el-form-item :label="t('container.create.network')">
-              <!--
-                `el-select` + `allow-create`：既有下拉可选，也允许手打模式名
-                （`container:xxx`、`host`、`none` 等本项目不一定列得全）。
-                只给下拉会挡住合法输入，只给输入框则要用户去别处查名字。
-              -->
-              <el-select
-                v-model="network"
-                filterable
-                allow-create
-                default-first-option
-                clearable
-                :loading="networksLoading"
-                class="w-full"
-                :placeholder="t('container.create.networkPlaceholder')"
-              >
-                <el-option value="" :label="t('container.create.networkDefault')" />
-                <el-option
-                  v-for="item in networks"
-                  :key="item.id"
-                  :value="item.name"
-                  :label="item.name"
-                >
-                  <span class="font-mono text-xs">{{ item.name }}</span>
-                  <span class="ml-2 text-xs text-content-faint">{{ item.driver }}</span>
-                </el-option>
-              </el-select>
-            </el-form-item>
             <el-form-item :label="t('container.create.hostname')">
               <el-input v-model="hostname" clearable />
             </el-form-item>
             <el-form-item :label="t('container.create.workingDir')">
               <el-input v-model="workingDir" clearable />
             </el-form-item>
-            <el-form-item :label="t('container.action.create')">
-              <div class="flex items-center gap-5 pt-1.5">
-                <el-checkbox v-model="autoRemove">{{ t('container.create.autoRemove') }}</el-checkbox>
-                <el-checkbox v-model="tty">{{ t('container.create.tty') }}</el-checkbox>
-                <el-checkbox v-model="stdinOpen">{{ t('container.create.stdinOpen') }}</el-checkbox>
-              </div>
-            </el-form-item>
           </div>
+
+          <!--
+            运行选项：三个**布尔开关**。
+            ⚠️ 旧版这一组的标题误用了「新建容器」（`container.action.create`）——
+            一个和内容完全无关的词，界面上读起来像放错了地方。
+          -->
+          <el-form-item :label="t('container.create.runOptions')">
+            <div class="flex items-center gap-5 pt-1.5">
+              <el-checkbox v-model="autoRemove">{{ t('container.create.autoRemove') }}</el-checkbox>
+              <el-checkbox v-model="tty">{{ t('container.create.tty') }}</el-checkbox>
+              <el-checkbox v-model="stdinOpen">{{ t('container.create.stdinOpen') }}</el-checkbox>
+            </div>
+          </el-form-item>
         </el-collapse-item>
 
         <!--

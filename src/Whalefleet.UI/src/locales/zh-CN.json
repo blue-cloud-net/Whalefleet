@@ -175,6 +175,7 @@
       "portInvalid": "第 {line} 行格式不正确，应为 宿主端口:容器端口",
       "ports": "端口映射",
       "restartPolicy": "重启策略",
+      "runOptions": "运行选项",
       "startNow": "立即启动",
       "stdinOpen": "保持标准输入打开",
       "submit": "创建",
@@ -242,17 +243,20 @@
     "editor": {
       "addRow": "添加一行",
       "containerPort": "容器端口",
-      "editRows": "逐行编辑",
       "envDuplicate": "键 {keys} 重复，后面的会覆盖前面的",
       "envKey": "键（KEY）",
       "envValue": "值（VALUE）",
       "hostIp": "宿主地址",
       "hostPort": "宿主端口",
+      "modePaste": "批量粘贴",
+      "modeTable": "表格",
       "mountDestination": "容器内路径",
       "mountSource": "来源",
+      "noRows": "还没有内容，点「添加一行」开始填写。",
       "portDuplicate": "容器端口 {ports} 被映射多次，实际只有一条生效",
       "readOnly": "只读",
-      "relativePathWarn": "容器内路径建议用绝对路径：相对路径由守护进程按自己的工作目录解析，你很难确定实际挂到了哪里。"
+      "relativePathWarn": "容器内路径建议用绝对路径：相对路径由守护进程按自己的工作目录解析，你很难确定实际挂到了哪里。",
+      "rowInvalid": "第 {line} 行还不合法，请修正后再提交"
     },
     "empty": {
       "filtered": "没有匹配的容器",

@@ -175,6 +175,7 @@
       "portInvalid": "Line {line} is malformed, expected HOST_PORT:CONTAINER_PORT",
       "ports": "Port mappings",
       "restartPolicy": "Restart policy",
+      "runOptions": "Runtime options",
       "startNow": "Start now",
       "stdinOpen": "Keep stdin open",
       "submit": "Create",
@@ -242,17 +243,20 @@
     "editor": {
       "addRow": "Add a row",
       "containerPort": "Container port",
-      "editRows": "Edit row by row",
       "envDuplicate": "Duplicate key(s) {keys} — the later value wins",
       "envKey": "Key",
       "envValue": "Value",
       "hostIp": "Host IP",
       "hostPort": "Host port",
+      "modePaste": "Bulk paste",
+      "modeTable": "Table",
       "mountDestination": "Container path",
       "mountSource": "Source",
+      "noRows": "Nothing here yet — click “Add a row” to start.",
       "portDuplicate": "Container port(s) {ports} are mapped more than once — only one mapping takes effect",
       "readOnly": "Read-only",
-      "relativePathWarn": "Use an absolute path for the container path: the daemon resolves relative paths against its own working directory, which is hard to predict."
+      "relativePathWarn": "Use an absolute path for the container path: the daemon resolves relative paths against its own working directory, which is hard to predict.",
+      "rowInvalid": "Row {line} is not valid yet — fix it before submitting"
     },
     "empty": {
       "filtered": "No matching containers",
