@@ -191,9 +191,22 @@ export function resourceHandlers(scenario: () => MockScenario) {
 
       const body = await readBody(request)
 
+      // ⚠️ 搜索发生在**分页之前**（后端 Filter 在切片之前）：
+      // 否则 total 会是过滤前的条数，页脚显示的数字与翻页结果对不上。
+      const search = String(body.search ?? '').trim().toLowerCase()
+      const matched = volumesFor(scenario()).filter((volume) => {
+        if (search.length === 0) return true
+
+        return (
+          volume.name.toLowerCase().includes(search) ||
+          volume.driver.toLowerCase().includes(search) ||
+          volume.mountpoint.toLowerCase().includes(search)
+        )
+      })
+
       return HttpResponse.json(
         ok({
-          ...paginate(volumesFor(scenario()), body),
+          ...paginate(matched, body),
           // 恒为数组：守护进程没给告警时也要有这个键，否则模板遍历 undefined 会崩
           warnings: []
         })
@@ -409,9 +422,21 @@ export function resourceHandlers(scenario: () => MockScenario) {
 
       const body = await readBody(request)
 
+      // ⚠️ 搜索发生在**分页之前**（后端 Filter 在切片之前）。
+      const search = String(body.search ?? '').trim().toLowerCase()
+      const matched = networksFor(scenario()).filter((network) => {
+        if (search.length === 0) return true
+
+        return (
+          network.name.toLowerCase().includes(search) ||
+          network.id.toLowerCase().includes(search) ||
+          network.driver.toLowerCase().includes(search)
+        )
+      })
+
       // ⚠️ items 里**没有** containerCount：Docker 的列表接口不返回 Containers，
       // 后端不会补一个恒为 0 的字段。mock 同样不给。
-      return HttpResponse.json(ok(paginate(networksFor(scenario()), body)))
+      return HttpResponse.json(ok(paginate(matched, body)))
     }),
 
     http.post('*/api/v1/hosts/:hostId/networks/inspect', async ({ request }) => {

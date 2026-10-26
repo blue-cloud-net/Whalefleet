@@ -173,7 +173,10 @@ interface ContainerSeed {
   image: string
   /** Docker 的原始状态文本（前端不翻译，只按它上色） */
   state: 'running' | 'exited' | 'paused' | 'restarting' | 'created' | 'dead'
-  /** 端口：`宿主:容器`；宿主留空（`:443`）表示「已暴露但没映射到宿主」 */
+  /**
+   * 端口：`宿主:容器`；宿主留空（`:443`）表示「已暴露但没映射到宿主」。
+   * 这种条目后端照旧返回，但**列表里不显示**（见 `describePorts`）。
+   */
   ports?: string[]
   /** 健康检查状态；没配健康检查就不传（对外是 `none`，不是 null） */
   health?: 'healthy' | 'unhealthy' | 'starting' | null
@@ -241,6 +244,24 @@ const CONTAINER_SEEDS: ContainerSeed[] = [
     cpus: '2',
     mounts: ['volume:pgdata:/var/lib/postgresql/data'],
     env: ['POSTGRES_PASSWORD=change-me-in-prod', 'POSTGRES_DB=whalefleet'],
+    owner: 'platform'
+  },
+  {
+    // ⚠️ **刻意带上一个未映射的端口**（33060 = MySQL 的 X Protocol）。
+    // MySQL 官方镜像 `EXPOSE` 了 3306 与 33060，而实际部署只会映射 3306——
+    // 守护进程仍会把 33060 报回来（`publicPort` 为 null）。
+    // 界面上**不显示**它（见 `describePorts` 的「未映射的端口不显示」），
+    // 留这个夹具是为了让「被滤掉」这条路径在 mock 模式下也能走查。
+    name: 'whalefleet-mysql',
+    image: 'mysql:8.4',
+    state: 'running',
+    ports: ['3306:3306', ':33060'],
+    health: 'healthy',
+    restart: 'unless-stopped',
+    memory: '2g',
+    cpus: '2',
+    mounts: ['volume:mysqldata:/var/lib/mysql'],
+    env: ['MYSQL_ROOT_PASSWORD=change-me-in-prod', 'MYSQL_DATABASE=whalefleet'],
     owner: 'platform'
   },
   {
@@ -699,8 +720,9 @@ function nanoCpusOf(spec: string | null | undefined): number | null {
 /**
  * `'8080:80'` → 映射到宿主；`':443'` → 只暴露未映射。
  *
- * 两种形态都要有：只暴露不绑定的那一半（`publicPort: null`）在真实环境里非常常见，
- * 界面上显示成「443」还是「443 → 443」正是要验证的地方。
+ * 两种形态都要有：只暴露不映射（`publicPort: null`）在真实环境里非常常见
+ * （MySQL 官方镜像的 `33060` 就是典型），而它在列表里**不应该出现**——
+ * 列表要把这类条目滤掉，所以 mock 必须造得出来这条路径。
  */
 function parsePorts(specs: string[] | undefined): ContainerPort[] {
   return (specs ?? []).map((spec) => {
@@ -863,8 +885,14 @@ export const MOCK_CONTAINER_DETAILS: ContainerDetail[] = [
  */
 const PORTS_BY_NAME: Record<string, ContainerPort[]> = {
   [RUNNING.name]: [
+    // ⚠️ 刻意给同一个端口配 **IPv4 + IPv6** 两条：`-p 8080:80` 在真实 Docker 上
+    // 就是这样（`0.0.0.0` 与 `::` 各一条）。不这么配，界面上的「端口合并」
+    // 在 mock 模式下永远走不到——那正是最容易被误以为「已经做好了」的地方。
     { privatePort: 80, publicPort: 8080, type: 'tcp', ip: '0.0.0.0' },
-    // 只暴露不绑定：没有宿主端口，验证列表里只显示容器侧那一半。
+    { privatePort: 80, publicPort: 8080, type: 'tcp', ip: '::' },
+    // 只暴露不映射：镜像 EXPOSE 了它，但没绑到宿主。
+    // 界面上**不显示**这一条（见 `describePorts` 的「未映射的端口不显示」），
+    // 留着它是为了让「被滤掉」这条路径在 mock 模式下也能走查。
     { privatePort: 443, publicPort: null, type: 'tcp', ip: null }
   ],
   ...Object.fromEntries(

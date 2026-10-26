@@ -10,8 +10,47 @@ import type {
   BatchOperationFailure,
   ContainerDetail,
   ContainerLogLine,
+  ContainerPort,
   ContainerSummary
 } from '@/types/api'
+
+/**
+ * 绑定地址的排序等级（与后端 `ContainerService.IpRank` 逐条对齐）。
+ *
+ * 具体 IPv4 → IPv4 通配 → 具体 IPv6 → IPv6 通配 → 未指定。
+ */
+function ipRank(ip: string | null): number {
+  const value = (ip ?? '').trim()
+
+  if (value.length === 0) return 4
+  if (value === '0.0.0.0') return 1
+  if (value === '::') return 3
+
+  return value.includes(':') ? 2 : 0
+}
+
+/**
+ * 给端口数组排序。
+ *
+ * ⚠️ **mock 必须复刻后端的排序**：守护进程返回的端口顺序是随机的（Go 的 map 迭代），
+ * 后端会显式排序保证「同一容器每次刷新端口行的顺序一致」。
+ * mock 不排的话，前端在 mock 模式下看到的顺序是夹具里的原始顺序，
+ * 那条「顺序稳定」的守卫在 mock 模式下就永远测不出来。
+ */
+function sortPorts(ports: ContainerPort[]): ContainerPort[] {
+  return [...ports].sort((a, b) => {
+    if (a.privatePort !== b.privatePort) return a.privatePort - b.privatePort
+    if (a.type !== b.type) return a.type.localeCompare(b.type)
+
+    const byPublic = (a.publicPort ?? Number.MAX_SAFE_INTEGER) - (b.publicPort ?? Number.MAX_SAFE_INTEGER)
+    if (byPublic !== 0) return byPublic
+
+    const byRank = ipRank(a.ip) - ipRank(b.ip)
+    if (byRank !== 0) return byRank
+
+    return (a.ip ?? '').localeCompare(b.ip ?? '')
+  })
+}
 
 /**
  * 把 mock 的整段日志拆成**结构化行**（0.5.0）。
@@ -258,10 +297,36 @@ export function containerHandlers(scenario: () => MockScenario) {
       const body = await readBody(request)
       const pageIndex = Math.max(Number(body.pageIndex ?? 0) || 0, 0)
       const pageSize = Math.min(Math.max(Number(body.pageSize ?? 20) || 20, 1), 100)
+
+      // ⚠️ `state` 优先于 `all`（与后端 ContainerService.ResolveStateFilter 同口径）：
+      // state = running → 只留运行类；state = stopped → 只留未运行类；all → 全留。
+      // `all: false` 是旧契约，等价 `state: running`。
+      const state = String(body.state ?? '').trim().toLowerCase()
       const all = body.all !== false
 
-      // `all: false` 等价 `docker ps`：只列运行中的。
-      const visible = containersFor(scenario()).filter((item) => all || item.state === 'running')
+      const runningStates = ['running', 'paused', 'restarting']
+
+      const visible = containersFor(scenario()).filter((item) => {
+        if (state === 'running') return runningStates.includes(item.state)
+        if (state === 'stopped') return !runningStates.includes(item.state)
+        if (state === 'all') return true
+
+        return all || item.state === 'running'
+      })
+
+      // ⚠️ 搜索发生在**分页之前**（后端 Filter 在 Sort 之前）：
+      // 匹配名称 / 镜像 / ID，不匹配启动命令。
+      const search = String(body.search ?? '').trim().toLowerCase()
+
+      const searched =
+        search.length === 0
+          ? visible
+          : visible.filter(
+              (item) =>
+                item.name.toLowerCase().includes(search) ||
+                item.image.toLowerCase().includes(search) ||
+                item.id.toLowerCase().includes(search)
+            )
 
       // ⚠️ 排序必须在**分页之前**，否则 total 不变而每页内容错位——
       // 这正是后端 Sort() 的位置，前端排序之所以正确全靠这一点。
@@ -269,7 +334,7 @@ export function containerHandlers(scenario: () => MockScenario) {
       const sortBy = String(body.sortBy ?? '').trim()
       const descending = String(body.sortDir ?? '').trim().toLowerCase() !== 'asc'
 
-      let ordered = visible
+      let ordered = searched
       if (sortBy.length > 0) {
         const pick = (item: ContainerSummary): string => {
           switch (sortBy) {
@@ -284,7 +349,7 @@ export function containerHandlers(scenario: () => MockScenario) {
           }
         }
 
-        ordered = [...visible].sort((a, b) => {
+        ordered = [...searched].sort((a, b) => {
           const result = pick(a).localeCompare(pick(b))
           if (result !== 0) return descending ? -result : result
           return a.id.localeCompare(b.id)
@@ -293,7 +358,9 @@ export function containerHandlers(scenario: () => MockScenario) {
 
       return HttpResponse.json(
         ok({
-          items: ordered.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize),
+          items: ordered
+            .slice(pageIndex * pageSize, (pageIndex + 1) * pageSize)
+            .map((item) => ({ ...item, ports: sortPorts(item.ports) })),
           total: ordered.length,
           pageIndex,
           // 回显**夹紧后**的值：前端必须用它而不是请求里的值。
