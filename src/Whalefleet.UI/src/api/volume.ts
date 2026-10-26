@@ -24,10 +24,13 @@ import type {
  *
  * 省略分页参数时后端按「第 0 页、每页 20 条」处理；`pageSize` 超过 100 会被**夹紧**，
  * 回显的 `pageIndex` / `pageSize` 是夹紧后的实际取值。
+ *
+ * `search` 在服务端内存过滤（卷名 / 驱动 / 宿主挂载路径，不区分大小写）：
+ * 分页也在服务端做，前端过滤只能筛到当前页。
  */
 export function listVolumes(
   hostId: string,
-  params: { pageIndex?: number; pageSize?: number } = {}
+  params: { search?: string; pageIndex?: number; pageSize?: number } = {}
 ): Promise<VolumeListResult> {
   return request<VolumeListResult>({
     url: `/api/v1/hosts/${encodeURIComponent(hostId)}/volumes/list`,

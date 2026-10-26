@@ -15,10 +15,13 @@ import type { NetworkDetail, NetworkListResult, NetworkSummary } from '@/types/a
  * 「这个网络上有几个容器」要打开详情看，别在列表上编一个 0 出来。
  *
  * 省略分页参数时后端按「第 0 页、每页 20 条」处理；`pageSize` 超过 100 会被**夹紧**。
+ *
+ * `search` 在服务端内存过滤（网络名 / 网络 ID / 驱动，不区分大小写）：
+ * 分页也在服务端做，前端过滤只能筛到当前页。
  */
 export function listNetworks(
   hostId: string,
-  params: { pageIndex?: number; pageSize?: number } = {}
+  params: { search?: string; pageIndex?: number; pageSize?: number } = {}
 ): Promise<NetworkListResult> {
   return request<NetworkListResult>({
     url: `/api/v1/hosts/${encodeURIComponent(hostId)}/networks/list`,

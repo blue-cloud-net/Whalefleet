@@ -788,6 +788,9 @@
     },
     "empty": "No networks yet",
     "emptyHint": "Create a custom network so containers can reach each other.",
+    "search": {
+      "placeholder": "Search name / ID / driver"
+    },
     "form": {
       "attachable": "Attachable",
       "driver": "Driver",
@@ -1311,6 +1314,9 @@
     },
     "empty": "No volumes yet",
     "emptyHint": "Volumes are usually created with a container; you can also create one here.",
+    "search": {
+      "placeholder": "Search name / driver / path"
+    },
     "form": {
       "driver": "Driver",
       "driverPlaceholder": "Leave empty for the host default (local)",

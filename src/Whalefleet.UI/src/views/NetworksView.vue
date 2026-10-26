@@ -8,6 +8,8 @@ import SectionCard from '@/components/common/SectionCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import IconActionButton from '@/components/common/IconActionButton.vue'
 import ListPagination from '@/components/common/ListPagination.vue'
+import ListToolbar from '@/components/common/ListToolbar.vue'
+import { useListSearch } from '@/composables/useListSearch'
 import { connectNetwork, createNetwork, disconnectNetwork, inspectNetwork, listNetworks, removeNetwork } from '@/api/network'
 import { listContainers } from '@/api/container'
 import { ApiRequestError } from '@/api'
@@ -107,10 +109,20 @@ const pageCount = computed(() =>
  */
 function listParams() {
   return {
+    // ⚠️ 搜索在**服务端**过滤：分页也在服务端做，前端过滤只能筛到当前页。
+    search: search.value.trim(),
     pageIndex: pageIndex.value,
     pageSize: resolvePageSize(pageSize.value, total.value)
   }
 }
+
+/**
+ * 搜索：输入去抖 + 回车即时；筛完必须回到第 0 页。
+ */
+const { keyword: search, schedule: scheduleSearch, searchNow } = useListSearch(async () => {
+  pageIndex.value = 0
+  await load()
+})
 
 /**
  * 创建表单的校验规则。
@@ -412,16 +424,58 @@ watch(
       narrow
     >
       <template #actions>
-        <el-button :loading="loading" @click="load">{{ t('common.refresh') }}</el-button>
         <el-button type="primary" @click="openCreate">{{ t('network.action.create') }}</el-button>
       </template>
     </PageHeader>
 
     <SectionCard density="flush">
       <template #actions>
-        <span class="text-xs text-content-muted">
-          {{ t('network.total', { total }) }}
-        </span>
+        <ListToolbar>
+          <template #filters>
+            <!-- ⚠️ `!w-40` 的 `!` 不能省：Element Plus 把 `el-input` 的宽度写死成
+                 `var(--el-input-width)`（默认 100%），同特异度下 EP 赢，工具类会被吃掉。 -->
+            <el-input
+              v-model="search"
+              class="!w-40 sm:!w-64"
+              clearable
+              :placeholder="t('network.search.placeholder')"
+              @input="scheduleSearch"
+              @keyup.enter="searchNow"
+              @clear="searchNow"
+            >
+              <template #prefix><span class="i-carbon-search" /></template>
+            </el-input>
+            <span class="text-xs text-content-muted">
+              {{ t('network.total', { total }) }}
+            </span>
+          </template>
+
+          <template #extra>
+            <!--
+              刷新按钮**用图标**：它是一个「随时可点」的高频动作，
+              而「刷新」两个字占了整个按钮的宽度却不增加任何信息量。
+              ⚠️ 图标放在 `icon` 插槽里（不是默认插槽）：EP 的 Button 在 `loading` 时
+              会用转圈图标**替换** `icon` 插槽的内容，两个都渲染就成了「转圈 + 图标」。
+            -->
+            <el-tooltip
+              :content="t('common.refresh')"
+              placement="bottom"
+              :show-after="TIP_DELAY_MS"
+            >
+              <span class="inline-flex">
+                <el-button
+                  text
+                  circle
+                  :loading="loading"
+                  :aria-label="t('common.refresh')"
+                  @click="load"
+                >
+                  <template #icon><span class="i-carbon-renew" /></template>
+                </el-button>
+              </span>
+            </el-tooltip>
+          </template>
+        </ListToolbar>
       </template>
 
       <div v-if="error" class="p-6 flex flex-col items-center gap-3">

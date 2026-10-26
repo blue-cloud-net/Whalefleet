@@ -9,7 +9,7 @@ import SectionCard from '@/components/common/SectionCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import IconActionButton from '@/components/common/IconActionButton.vue'
 import ListPagination from '@/components/common/ListPagination.vue'
-import BatchActionBar from '@/components/common/BatchActionBar.vue'
+import ListToolbar from '@/components/common/ListToolbar.vue'
 import PullImageDialog from '@/components/business/PullImageDialog.vue'
 import ImageTagDialog from '@/components/business/ImageTagDialog.vue'
 import BuildImageDialog from '@/components/business/BuildImageDialog.vue'
@@ -17,6 +17,7 @@ import PushImageDialog from '@/components/business/PushImageDialog.vue'
 import PruneDialog from '@/components/business/PruneDialog.vue'
 import ImageSize from '@/components/business/ImageSize.vue'
 import { onActionRequest } from '@/composables/useActionBus'
+import { useListSearch } from '@/composables/useListSearch'
 import { batchRemoveImages, listImages, removeImage, type ImageSortField } from '@/api/image'
 import { ApiRequestError } from '@/api'
 import {
@@ -56,7 +57,6 @@ const pageIndex = ref(0)
  * 是任意 number，写回时需要接住它。「全部」靠与 `PAGE_SIZE_ALL` 相等来判断，不靠类型。
  */
 const pageSize = ref<number>(usePreferencesStore().pageSize)
-const search = ref('')
 const loading = ref(false)
 const error = ref<string | null>(null)
 /** 正在删除的镜像 id：让对应按钮转圈，而不是整页转圈 */
@@ -162,11 +162,15 @@ async function load(): Promise<void> {
   }
 }
 
-/** 搜索 / 清空搜索：筛条件变了还留在第 3 页，结果一定是空的——回到第一页。 */
-async function searchNow(): Promise<void> {
+/**
+ * 搜索 / 清空搜索：筛条件变了还留在第 3 页，结果一定是空的——回到第一页。
+ *
+ * ⚠️ **输入时去抖、回车即时**：连打十个字不该打十次请求。
+ */
+const { keyword: search, schedule: scheduleSearch, searchNow } = useListSearch(async () => {
   pageIndex.value = 0
   await load()
-}
+})
 
 function markBusy(id: string, busy: boolean): void {
   const next = new Set(busyIds.value)
@@ -460,7 +464,6 @@ watch(
       narrow
     >
       <template #actions>
-        <el-button :loading="loading" @click="load">{{ t('common.refresh') }}</el-button>
         <!-- 构建与拉取并列：两者都是「往这台主机上加一个镜像」，
              只是来源不同（本地 tar / 远程仓库）。 -->
         <el-button @click="buildDialogVisible = true">{{ t('image.action.build') }}</el-button>
@@ -489,18 +492,66 @@ watch(
 
     <SectionCard density="flush">
       <template #actions>
-        <el-input
-          v-model="search"
-          class="!w-40 sm:!w-64"
-          clearable
-          :placeholder="t('image.search.placeholder')"
-          @keyup.enter="searchNow"
-          @clear="searchNow"
+        <ListToolbar
+          :selected-count="selected.length"
+          :busy="batchBusy"
+          @clear="clearSelection(tableRef)"
         >
-          <template #prefix><span class="i-carbon-search" /></template>
-        </el-input>
-        <el-button :disabled="loading" @click="searchNow">{{ t('common.search') }}</el-button>
-        <span class="text-xs text-content-muted">{{ t('image.total', { total }) }}</span>
+          <template #filters>
+            <!-- ⚠️ `!w-40` 的 `!` 不能省：Element Plus 把 `el-input` 的宽度写死成
+                 `var(--el-input-width)`（默认 100%），同特异度下 EP 赢，工具类会被吃掉。 -->
+            <el-input
+              v-model="search"
+              class="!w-40 sm:!w-64"
+              clearable
+              :placeholder="t('image.search.placeholder')"
+              @input="scheduleSearch"
+              @keyup.enter="searchNow"
+              @clear="searchNow"
+            >
+              <template #prefix><span class="i-carbon-search" /></template>
+            </el-input>
+            <span class="text-xs text-content-muted">{{ t('image.total', { total }) }}</span>
+          </template>
+
+          <template #batch="{ count, busy }">
+            <IconActionButton
+              icon="i-carbon-trash-can"
+              :label="t('common.delete')"
+              tone="danger"
+              placement="bottom"
+              :disabled="count === 0 || busy"
+              :hint="count === 0 ? t('container.batch.selectFirst') : undefined"
+              @click="batchRemove"
+            />
+          </template>
+
+          <template #extra>
+            <!--
+              刷新按钮**用图标**：它是一个「随时可点」的高频动作，
+              而「刷新」两个字占了整个按钮的宽度却不增加任何信息量。
+              ⚠️ 图标放在 `icon` 插槽里（不是默认插槽）：EP 的 Button 在 `loading` 时
+              会用转圈图标**替换** `icon` 插槽的内容，两个都渲染就成了「转圈 + 图标」。
+            -->
+            <el-tooltip
+              :content="t('common.refresh')"
+              placement="bottom"
+              :show-after="TIP_DELAY_MS"
+            >
+              <span class="inline-flex">
+                <el-button
+                  text
+                  circle
+                  :loading="loading"
+                  :aria-label="t('common.refresh')"
+                  @click="load"
+                >
+                  <template #icon><span class="i-carbon-renew" /></template>
+                </el-button>
+              </span>
+            </el-tooltip>
+          </template>
+        </ListToolbar>
       </template>
 
       <!-- 错误态给整块内容位：镜像页是「要看清单」的场景，弹完就没的提示等于没说 -->
@@ -509,17 +560,7 @@ watch(
         <el-button @click="load">{{ t('common.retry') }}</el-button>
       </div>
 
-      <!-- 批量条与表格同属"正常态"，必须包在同一个 v-else 里：
-           v-else 只认**紧邻的**上一个元素，中间插一个 BatchActionBar 会直接报编译错。 -->
       <template v-else>
-        <BatchActionBar :count="selected.length" :busy="batchBusy" @clear="clearSelection(tableRef)">
-          <template #default>
-            <el-button size="small" type="danger" plain :disabled="batchBusy" @click="batchRemove">
-              {{ t('common.delete') }}
-            </el-button>
-          </template>
-        </BatchActionBar>
-
         <el-table
           ref="tableRef"
           v-loading="loading"

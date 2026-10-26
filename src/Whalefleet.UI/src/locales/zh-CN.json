@@ -788,6 +788,9 @@
     },
     "empty": "还没有网络",
     "emptyHint": "创建第一个自定义网络，让容器之间可以互相访问。",
+    "search": {
+      "placeholder": "搜索名称 / ID / 驱动"
+    },
     "form": {
       "attachable": "可单独接入",
       "driver": "驱动",
@@ -1311,6 +1314,9 @@
     },
     "empty": "还没有数据卷",
     "emptyHint": "数据卷通常由容器创建时自动生成，也可以在这里手动创建。",
+    "search": {
+      "placeholder": "搜索名称 / 驱动 / 路径"
+    },
     "form": {
       "driver": "驱动",
       "driverPlaceholder": "留空则用主机默认（local）",

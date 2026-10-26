@@ -11,7 +11,8 @@ import GroupFormDialog from '@/components/business/GroupFormDialog.vue'
 import TagManagerDialog from '@/components/business/TagManagerDialog.vue'
 import HostTagAssignDialog from '@/components/business/HostTagAssignDialog.vue'
 import HostTagBatchDialog from '@/components/business/HostTagBatchDialog.vue'
-import BatchActionBar from '@/components/common/BatchActionBar.vue'
+import ListToolbar from '@/components/common/ListToolbar.vue'
+import { TIP_DELAY_MS } from '@/utils/tooltip'
 import { deleteHost, listAdminHosts, listHosts, updateHost } from '@/api/host'
 import { deleteHostGroup, listAdminHostGroups } from '@/api/host-group'
 import { listHostTags } from '@/api/host-tag'
@@ -66,7 +67,7 @@ const tagBatchBusy = ref(false)
 
 /**
  * 表格实例：只有 `clearSelection()` 用得到，但它是实例方法，
- * 模板 ref 是唯一拿得到它的方式（`BatchActionBar` 本身不该知道 el-table 的存在）。
+ * 模板 ref 是唯一拿得到它的方式（`ListToolbar` 本身不该知道 el-table 的存在）。
  */
 const tableRef = ref<TableInstance | null>(null)
 
@@ -354,7 +355,6 @@ watch(() => t, load, { immediate: true })
       narrow
     >
       <template #actions>
-        <el-button :loading="loading" @click="load">{{ t('common.refresh') }}</el-button>
         <el-button @click="tagManagerVisible = true">
           <span class="i-carbon-tag text-base" />
           {{ t('host.tag.manage') }}
@@ -365,7 +365,52 @@ watch(() => t, load, { immediate: true })
 
     <SectionCard :title="t('host.list.title')" density="flush">
       <template #actions>
-        <span class="text-xs text-content-muted">{{ t('host.total', { total: hosts.length }) }}</span>
+        <ListToolbar
+          :selected-count="selectedHosts.length"
+          :busy="tagBatchBusy"
+          @clear="clearSelection(tableRef)"
+        >
+          <template #filters>
+            <span class="text-xs text-content-muted">{{ t('host.total', { total: hosts.length }) }}</span>
+          </template>
+
+          <template #batch="{ count, busy }">
+            <IconActionButton
+              icon="i-carbon-tag"
+              :label="t('host.tag.batch.action')"
+              placement="bottom"
+              :disabled="count === 0 || busy"
+              :hint="count === 0 ? t('container.batch.selectFirst') : undefined"
+              @click="openTagBatch"
+            />
+          </template>
+
+          <template #extra>
+            <!--
+              刷新按钮**用图标**：它是一个「随时可点」的高频动作，
+              而「刷新」两个字占了整个按钮的宽度却不增加任何信息量。
+              ⚠️ 图标放在 `icon` 插槽里（不是默认插槽）：EP 的 Button 在 `loading` 时
+              会用转圈图标**替换** `icon` 插槽的内容，两个都渲染就成了「转圈 + 图标」。
+            -->
+            <el-tooltip
+              :content="t('common.refresh')"
+              placement="bottom"
+              :show-after="TIP_DELAY_MS"
+            >
+              <span class="inline-flex">
+                <el-button
+                  text
+                  circle
+                  :loading="loading"
+                  :aria-label="t('common.refresh')"
+                  @click="load"
+                >
+                  <template #icon><span class="i-carbon-renew" /></template>
+                </el-button>
+              </span>
+            </el-tooltip>
+          </template>
+        </ListToolbar>
       </template>
 
       <div v-if="error" class="p-6 flex flex-col items-center gap-3">
@@ -373,18 +418,7 @@ watch(() => t, load, { immediate: true })
         <el-button @click="load">{{ t('common.retry') }}</el-button>
       </div>
 
-      <!--
-        批量操作条与表格一起包在 <template v-else> 里——
-        v-else 必须**紧跟** v-if 的兄弟节点，中间插任何元素都会让 Vue 报
-        「v-else 没有相邻的 v-if」。
-      -->
       <template v-else>
-        <BatchActionBar :count="selectedHosts.length" :busy="tagBatchBusy" @clear="clearSelection(tableRef)">
-          <el-button size="small" :disabled="tagBatchBusy" @click="openTagBatch">
-            {{ t('host.tag.batch.action') }}
-          </el-button>
-        </BatchActionBar>
-
         <el-table
           v-loading="loading"
           :data="hosts"
