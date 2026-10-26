@@ -5,8 +5,8 @@ import {
   CONTAINER_TONE_LABEL_KEY,
   containerDisplayState,
   containerTone,
-  formatBytes,
-  formatPort
+  describePorts,
+  formatBytes
 } from '../src/utils/container-status'
 
 /**
@@ -117,26 +117,122 @@ describe('containerDisplayState', () => {
   })
 })
 
-describe('formatPort', () => {
+describe('describePorts', () => {
   it('有宿主端口时同时给出两侧', () => {
-    expect(formatPort({ privatePort: 80, publicPort: 8080, type: 'tcp', ip: '0.0.0.0' })).toBe(
-      '0.0.0.0:8080→80/tcp'
-    )
+    const result = describePorts([
+      { privatePort: 80, publicPort: 8080, type: 'tcp', ip: '0.0.0.0' }
+    ])
+
+    expect(result).toHaveLength(1)
+    // 通配地址不进展示文本：它只表达「监听所有网卡」，
+    // 写成 `0.0.0.0:8080→80/tcp` 会让人以为「访问 0.0.0.0 就能连上」。
+    expect(result[0].text).toBe('8080→80/tcp')
   })
 
-  it('没有绑定地址时不显示 0.0.0.0（那只是「没指定」）', () => {
-    expect(formatPort({ privatePort: 80, publicPort: 8080, type: 'tcp', ip: null })).toBe(
-      '8080→80/tcp'
-    )
+  it('绑定了具体地址时把地址写进展示文本', () => {
+    const result = describePorts([
+      { privatePort: 80, publicPort: 8080, type: 'tcp', ip: '192.168.1.10' }
+    ])
+
+    expect(result[0].text).toBe('192.168.1.10:8080→80/tcp')
   })
 
-  it('只暴露不绑定时只给容器侧那一半', () => {
-    // 给成 `→80/tcp` 会让人以为宿主上也有个端口，进而以为访问不通是别的原因。
-    expect(formatPort({ privatePort: 443, publicPort: null, type: 'tcp', ip: null })).toBe('443/tcp')
+  it('只暴露不映射的端口不显示', () => {
+    // 守护进程会把镜像 EXPOSE 过的端口一并报回来，即使它没映射到宿主。
+    // MySQL 官方镜像 EXPOSE 了 3306 与 33060（X Protocol），
+    // 而实际只映射 3306——那一行 `33060/tcp` 是纯噪声：
+    // 没映射到宿主的端口从宿主机外根本连不上，列出来只会让人以为「这里还有个服务」。
+    const result = describePorts([
+      { privatePort: 443, publicPort: null, type: 'tcp', ip: null }
+    ])
+
+    expect(result).toHaveLength(0)
+  })
+
+  it('已映射与未映射混在一起时只留已映射的那些', () => {
+    const result = describePorts([
+      { privatePort: 3306, publicPort: 3306, type: 'tcp', ip: '0.0.0.0' },
+      { privatePort: 33060, publicPort: null, type: 'tcp', ip: null }
+    ])
+
+    expect(result).toHaveLength(1)
+    expect(result[0].text).toBe('3306→3306/tcp')
   })
 
   it('保留协议', () => {
-    expect(formatPort({ privatePort: 53, publicPort: 53, type: 'udp', ip: null })).toBe('53→53/udp')
+    const result = describePorts([
+      { privatePort: 53, publicPort: 53, type: 'udp', ip: '0.0.0.0' }
+    ])
+
+    expect(result[0].text).toBe('53→53/udp')
+  })
+
+  it('IPv4 与 IPv6 绑同一个端口时合并成一行', () => {
+    // `-p 8080:80` 在真实 Docker 上就是两条记录（0.0.0.0 与 ::）。
+    // 逐条渲染时同一个端口占两行，用户会以为是两个端口。
+    const result = describePorts([
+      { privatePort: 80, publicPort: 8080, type: 'tcp', ip: '0.0.0.0' },
+      { privatePort: 80, publicPort: 8080, type: 'tcp', ip: '::' }
+    ])
+
+    expect(result).toHaveLength(1)
+    expect(result[0].text).toBe('8080→80/tcp')
+  })
+
+  it('同一端口绑了多个具体地址时只显示首个，其余记在 extraIps', () => {
+    const result = describePorts([
+      { privatePort: 80, publicPort: 8080, type: 'tcp', ip: '192.168.1.10' },
+      { privatePort: 80, publicPort: 8080, type: 'tcp', ip: '192.168.1.11' }
+    ])
+
+    expect(result).toHaveLength(1)
+    expect(result[0].text).toBe('192.168.1.10:8080→80/tcp')
+    expect(result[0].extraIps).toEqual(['192.168.1.11'])
+  })
+
+  it('不同宿主端口算不同组', () => {
+    // `-p 8080:80 -p 8081:80` 是两个不同的映射，不能被合并掉一个。
+    const result = describePorts([
+      { privatePort: 80, publicPort: 8080, type: 'tcp', ip: '0.0.0.0' },
+      { privatePort: 80, publicPort: 8081, type: 'tcp', ip: '0.0.0.0' }
+    ])
+
+    expect(result).toHaveLength(2)
+  })
+
+  it('TCP 生成链接，UDP 不生成', () => {
+    // UDP 没有浏览器能直接打开的语义，做成链接只会让人点开发现打不开。
+    const tcp = describePorts([{ privatePort: 80, publicPort: 8080, type: 'tcp', ip: '0.0.0.0' }])
+    const udp = describePorts([{ privatePort: 53, publicPort: 53, type: 'udp', ip: '0.0.0.0' }])
+
+    expect(tcp[0].url).toBe('http://0.0.0.0:8080')
+    expect(udp[0].url).toBeNull()
+  })
+
+  it('IPv4 与 IPv6 同时绑定时链接优先用 IPv4', () => {
+    const result = describePorts([
+      { privatePort: 80, publicPort: 8080, type: 'tcp', ip: '::' },
+      { privatePort: 80, publicPort: 8080, type: 'tcp', ip: '0.0.0.0' }
+    ])
+
+    expect(result[0].url).toBe('http://0.0.0.0:8080')
+  })
+
+  it('IPv6 地址的链接要加方括号', () => {
+    const result = describePorts([
+      { privatePort: 80, publicPort: 8080, type: 'tcp', ip: '::1' }
+    ])
+
+    expect(result[0].url).toBe('http://[::1]:8080')
+  })
+
+  it('按宿主端口升序排列', () => {
+    const result = describePorts([
+      { privatePort: 8080, publicPort: 8080, type: 'tcp', ip: '0.0.0.0' },
+      { privatePort: 80, publicPort: 8080, type: 'tcp', ip: '0.0.0.0' }
+    ])
+
+    expect(result.map((item) => item.text)).toEqual(['8080→80/tcp', '8080→8080/tcp'])
   })
 })
 

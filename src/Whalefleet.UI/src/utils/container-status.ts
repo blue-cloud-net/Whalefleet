@@ -8,6 +8,8 @@
  * 刻意不引入 vue-i18n：返回 i18n **key** 而非文案，因此可以脱离组件单测。
  */
 
+import { buildPortUrl, ipRank, isWildcardIp } from '@/utils/port-link'
+
 /**
  * 语义色调。
  * ok = 运行中 / down = 已停止 / warn = 过渡态（重启、创建中）/ idle = 未知
@@ -128,26 +130,207 @@ export const CONTAINER_DISPLAY_LABEL_KEY: Record<ContainerDisplayState, string> 
 }
 
 /**
- * 端口的展示文本。
- *
- * 三种形态缺一不可，少一种就会误导：
- * - 有宿主端口 → `0.0.0.0:8080→80/tcp`（宿主的在左，容器的在右，与 `docker ps` 一致）
- * - 无宿主端口 → `80/tcp`（已暴露但未映射，只显示容器内那一侧）
- * - 无绑定地址 → 不显示 `0.0.0.0:`，否则会让用户以为它只在所有网卡上——
- *   后端已经会去掉 `0.0.0.0` / `::` 这类「等于没指定」的默认值了。
- *
- * @param hostIp 宿主地址；`null` / 空串表示「所有网卡」，不展示
+ * 端口映射的最小结构（与 `types/api.ts` 的 `ContainerPort` 同形，独立声明避免 util 依赖 API 层）。
  */
-export function formatPort(port: {
+export interface PortLike {
+  /** 容器内端口 */
   privatePort: number
+  /** 宿主端口；未映射时为 `null` */
   publicPort: number | null
+  /** 协议（`tcp` / `udp`） */
   type: string
+  /** 绑定的宿主地址；未绑定时为 `null` */
   ip: string | null
-}): string {
-  const target = `${port.privatePort}/${port.type}`
-  const bind = port.ip ? `${port.ip}:` : ''
+}
 
-  return port.publicPort == null ? target : `${bind}${port.publicPort}→${target}`
+/**
+ * 已映射到宿主的端口（`publicPort` 必然有值）。
+ *
+ * `describePorts` 入口先把未映射的那些滤掉，之后全链路都用这个类型——
+ * 这样「一定非空」的事实由**类型**表达，而不靠每处再判一次 `null`。
+ */
+type MappedPort = PortLike & { publicPort: number }
+
+/**
+ * 一组端口的展示结果。
+ *
+ * 一组 = 同一对（宿主端口、容器端口、协议）。同一个端口被绑到多个地址时
+ * （`-p 8080:80` 会被 Docker 记成 `0.0.0.0` 与 `::` 两条）合并成**一行**。
+ */
+export interface PortDisplay {
+  /** 展示文本（如 `8080→80/tcp` 或 `192.168.1.10:8080→80/tcp`） */
+  text: string
+  /** 可打开的地址；`null` 表示不能点（非 TCP 协议） */
+  url: string | null
+  /** 同组内其余的**具体**绑定地址（界面显示成「+N」，tooltip 里列出来） */
+  extraIps: string[]
+}
+
+/**
+ * 把端口列表整理成「一行一个映射」的展示结果。
+ *
+ * ## 未映射的端口**不显示**
+ *
+ * 守护进程会把镜像 `EXPOSE` 过的端口一并报回来，即使它**没有**映射到宿主
+ * （`publicPort` 为 `null`）。MySQL 官方镜像就是典型：它 `EXPOSE` 了
+ * 3306（MySQL 协议）与 **33060**（X Protocol），而实际部署只会映射 3306——
+ * 于是每一行 MySQL 都凭空多出一行 `33060/tcp`。
+ *
+ * 那行信息是**纯噪声**：没映射到宿主的端口，从宿主机外根本连不上，
+ * 列出来只会让人以为「这里还有个服务」，
+ * 进而去排查一个并不存在的问题。
+ * 因此这一列只展示**真正映射到宿主**的端口。
+ *
+ * ## 为什么要合并
+ * Docker 对 `-p 8080:80` 会记**两条**：一条 `0.0.0.0`（IPv4）、一条 `::`（IPv6）。
+ * 逐条渲染时同一个端口占两行，而且两行长得几乎一样——用户会以为是两个端口。
+ * 合并后一行就够，且保留「绑到了哪些具体地址」这个信息。
+ *
+ * ## 展示与链接用的是**两套地址**
+ * - **展示**：只显示**具体**地址（`192.168.1.10`）。通配地址（`0.0.0.0` / `::`）
+ *   只表达「监听所有网卡」，把它写进文本是噪声，还会让用户以为「访问 `0.0.0.0` 就能连上」。
+ * - **链接**：用**指定**的那个地址，通配也照用（用户明确要求「用指定 IP，即使 0.0.0.0」）。
+ *
+ * @param ports 端口映射列表
+ * @returns 展示结果列表
+ */
+export function describePorts(ports: PortLike[]): PortDisplay[] {
+  // ⚠️ **先丢掉未映射的端口**（见上文「未映射的端口不显示」）。
+  // 过滤放在分组之前：一组里若混着未映射的成员，按 `publicPort` 做的分组键
+  // 也会与已映射的那条对不上。
+  const mapped = ports.filter((port): port is MappedPort => port.publicPort !== null)
+
+  if (mapped.length === 0) return []
+
+  // 分组：同一组 = 同一对（宿主端口、容器端口、协议）
+  const groups = new Map<string, MappedPort[]>()
+
+  for (const port of mapped) {
+    const key = `${port.publicPort}|${port.privatePort}|${port.type}`
+    const bucket = groups.get(key)
+
+    if (bucket) bucket.push(port)
+    else groups.set(key, [port])
+  }
+
+  const result: {
+    display: PortDisplay
+    publicPort: number
+    privatePort: number
+    type: string
+  }[] = []
+
+  for (const bucket of groups.values()) {
+    const first = bucket[0]
+    // 分组是从 map 里取出来的，理论上非空；但 `noUncheckedIndexedAccess` 下
+    // 索引访问的类型是 `T | undefined`，而这里拿到 undefined 就直接跳过。
+    if (first === undefined) continue
+
+    const grouped = describePortGroup(bucket, first)
+
+    result.push({
+      display: { text: grouped.text, url: grouped.url, extraIps: grouped.extraIps },
+      publicPort: grouped.publicPort,
+      privatePort: grouped.privatePort,
+      type: grouped.type
+    })
+  }
+
+  // 排序：宿主端口 ↑ → 容器端口 ↑ → 协议
+  result.sort((a, b) => {
+    const byPublic = a.publicPort - b.publicPort
+    if (byPublic !== 0) return byPublic
+
+    return a.privatePort - b.privatePort || a.type.localeCompare(b.type)
+  })
+
+  return result.map((item) => item.display)
+}
+
+/**
+ * 端口展示结果的内部形态（排序时要用到分组里的数字）。
+ */
+interface PortDisplayInternal extends PortDisplay {
+  /** 宿主端口（**必然有值**：未映射的端口已在入口被滤掉） */
+  publicPort: number
+  /** 容器内端口 */
+  privatePort: number
+  /** 协议 */
+  type: string
+}
+
+/**
+ * 整理一组端口（同一对宿主端口 / 容器端口 / 协议）。
+ *
+ * @param bucket 组内成员
+ * @param first 组内第一条（已确保存在且已映射）
+ * @returns 展示结果
+ */
+function describePortGroup(bucket: MappedPort[], first: MappedPort): PortDisplayInternal {
+  const target = `${first.privatePort}/${first.type}`
+
+  // 具体地址（非通配）：进展示文本
+  const specifics = bucket.filter((port) => !isWildcardIp(port.ip))
+  // 链接地址：取「最该用」的那个——具体 IPv4 优先，其次 IPv4 通配
+  const linkIp = pickBestIp(bucket)
+
+  const shownIp = specifics.length > 0 ? pickBestIp(specifics) : null
+  const text = shownIp ? `${shownIp}:${first.publicPort}→${target}` : `${first.publicPort}→${target}`
+
+  // 其余的具体地址：界面显示成「+N」，tooltip 里列出来
+  const extraIps = specifics
+    .map((port) => port.ip ?? '')
+    .filter((ip) => ip.length > 0 && ip !== shownIp)
+
+  // ⚠️ **只有 TCP 才给链接**：UDP / SCTP 没有浏览器能直接打开的语义，
+  // 做成链接只会让人点开发现「打不开」，而那与服务是否健康无关。
+  const url = first.type === 'tcp' && linkIp ? buildPortUrl(linkIp, first.publicPort) : null
+
+  return {
+    ...baseDisplay(text),
+    url,
+    extraIps,
+    publicPort: first.publicPort,
+    privatePort: first.privatePort,
+    type: first.type
+  }
+}
+
+/**
+ * 造一个只有文本的展示结果骨架。
+ *
+ * @param text 展示文本
+ * @returns 骨架
+ */
+function baseDisplay(text: string): Omit<PortDisplayInternal, 'publicPort' | 'privatePort' | 'type'> {
+  return { text, url: null, extraIps: [] }
+}
+
+/**
+ * 挑出「最该用」的那个绑定地址。
+ *
+ * @param candidates 候选地址所属的端口项
+ * @returns 地址文本；一个都没有时返回 `null`
+ *
+ * @remarks
+ * 排序等级见 `ipRank`：具体 IPv4 → IPv4 通配 → 具体 IPv6 → IPv6 通配 → 未指定。
+ * 多个候选取等级最小者，等级相同时按地址文本序数比较——保证结果确定。
+ */
+function pickBestIp(candidates: PortLike[]): string | null {
+  let best: { ip: string; rank: number } | null = null
+
+  for (const candidate of candidates) {
+    const ip = (candidate.ip ?? '').trim()
+    if (ip.length === 0) continue
+
+    const rank = ipRank(ip)
+
+    if (best === null || rank < best.rank || (rank === best.rank && ip < best.ip)) {
+      best = { ip, rank }
+    }
+  }
+
+  return best?.ip ?? null
 }
 
 /**
