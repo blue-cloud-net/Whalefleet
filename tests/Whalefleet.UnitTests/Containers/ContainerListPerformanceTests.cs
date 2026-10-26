@@ -1,11 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
-using System.Net;
 using System.Text;
-using Docker.DotNet;
-using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Containers;
-using Whalefleet.Core.Hosts;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -61,7 +57,7 @@ public class ContainerListPerformanceTests
         await using var daemon = new FakeDockerDaemon(BuildContainersJson(100));
 
         var service = new ContainerService(
-            new StubAccessor(daemon.Endpoint),
+            new StubDockerHostAccessor(daemon.Endpoint),
             NullLogger<ContainerService>.Instance);
 
         var request = new ListContainersRequest { All = true, PageSize = 100 };
@@ -112,7 +108,7 @@ public class ContainerListPerformanceTests
         await using var daemon = new FakeDockerDaemon(BuildContainersJson(100));
 
         var service = new ContainerService(
-            new StubAccessor(daemon.Endpoint),
+            new StubDockerHostAccessor(daemon.Endpoint),
             NullLogger<ContainerService>.Instance);
 
         var full = await service.ListAsync(
@@ -187,9 +183,9 @@ public class ContainerListPerformanceTests
                     }
                   },
                   "Ports": [
-                    { "PrivatePort": 80, "PublicPort": 8080, "Type": "tcp", "IPAddress": "0.0.0.0" },
-                    { "PrivatePort": 443, "PublicPort": 8443, "Type": "tcp", "IPAddress": "0.0.0.0" },
-                    { "PrivatePort": 53, "PublicPort": 53, "Type": "udp", "IPAddress": "127.0.0.1" }
+                    { "PrivatePort": 80, "PublicPort": 8080, "Type": "tcp", "IP": "0.0.0.0" },
+                    { "PrivatePort": 443, "PublicPort": 8443, "Type": "tcp", "IP": "0.0.0.0" },
+                    { "PrivatePort": 53, "PublicPort": 53, "Type": "udp", "IP": "127.0.0.1" }
                   ],
                   "Env": ["TZ=UTC", "LANG=C.UTF-8", "APP_ENV=production", "DEBUG=false", "PORT=80"]
                 }
@@ -199,127 +195,5 @@ public class ContainerListPerformanceTests
         builder.Append(']');
 
         return builder.ToString();
-    }
-
-    /// <summary>
-    /// 只回应 <c>GET /containers/json</c> 的假 Docker 守护进程（回环 HTTP）。
-    /// </summary>
-    /// <remarks>
-    /// 刻意不校验路径：这条基线要的是「稳定的、可重复的响应」，多一层路由判断
-    /// 只会让测试变脆。所有 <c>/</c> 前缀的请求都返回同一份列表——
-    /// Docker.DotNet 会带 <c>/v1.42/containers/json</c> 这样的版本前缀。
-    /// </remarks>
-    private sealed class FakeDockerDaemon : IAsyncDisposable
-    {
-        private readonly HttpListener _listener = new();
-        private readonly string _body;
-        private readonly CancellationTokenSource _cts = new();
-        private readonly Task _loop;
-
-        public Uri Endpoint { get; }
-
-        public FakeDockerDaemon(string body)
-        {
-            _body = body;
-
-            // 端口 0 = 让系统分配空闲端口，避免并行测试互相抢端口
-            var port = FreeTcpPort();
-            Endpoint = new Uri($"tcp://127.0.0.1:{port}");
-            _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
-            _listener.Start();
-
-            _loop = Task.Run(ServeAsync);
-        }
-
-        private static int FreeTcpPort()
-        {
-            var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
-            listener.Start();
-            var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
-            listener.Stop();
-
-            return port;
-        }
-
-        private async Task ServeAsync()
-        {
-            while (!_cts.IsCancellationRequested)
-            {
-                HttpListenerContext context;
-                try
-                {
-                    context = await _listener.GetContextAsync().ConfigureAwait(false);
-                }
-                catch (HttpListenerException)
-                {
-                    // 监听器已停止（测试收尾）
-                    return;
-                }
-                catch (ObjectDisposedException)
-                {
-                    return;
-                }
-
-                var payload = Encoding.UTF8.GetBytes(_body);
-                context.Response.ContentType = "application/json";
-                context.Response.ContentLength64 = payload.Length;
-                await context.Response.OutputStream.WriteAsync(payload).ConfigureAwait(false);
-                context.Response.Close();
-            }
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            await _cts.CancelAsync().ConfigureAwait(false);
-            _listener.Close();
-
-            try
-            {
-                await _loop.ConfigureAwait(false);
-            }
-            catch (HttpListenerException)
-            {
-                // 关闭监听器必然导致它抛异常，这不是失败
-            }
-
-            _cts.Dispose();
-        }
-    }
-
-    /// <summary>
-    /// 只实现「取客户端」的访问器，其余成员直接抛 <see cref="NotSupportedException"/>。
-    /// </summary>
-    /// <remarks>
-    /// 列表路径只会用到 <see cref="GetClientAsync"/>；其余成员显式抛异常而不是
-    /// 悄悄返回默认值——若将来这条路径改用了别的成员，测试会立刻炸在这里，
-    /// 而不是静默退化成一个「什么都没测」的绿测。
-    /// </remarks>
-    private sealed class StubAccessor(Uri endpoint) : IDockerHostAccessor
-    {
-        // Docker.DotNet.Enhanced 4.x：DockerClientConfiguration 已移除，统一用
-        // DockerClientBuilder（与 DockerClientFactory 一致），传输方式由 scheme 推断。
-        public async Task<IDockerClient> GetClientAsync(
-            string hostId,
-            CancellationToken cancellationToken = default)
-        {
-            // 包一层 async：Build() 返回具体类型 DockerClient，直接 return 会触发
-            // Task<DockerClient> → Task<IDockerClient> 的协变转换报错
-            await Task.CompletedTask.ConfigureAwait(false);
-
-            return new DockerClientBuilder().WithEndpoint(endpoint).Build();
-        }
-
-        public Task<DockerHost> ResolveAsync(
-            string hostId,
-            CancellationToken cancellationToken = default)
-            => throw new NotSupportedException("性能基线不经过主机解析路径");
-
-        public Task<bool> TestConnectionAsync(
-            DockerHostConnection connection,
-            CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
-
-        public void Invalidate(DockerHostConnection connection)
-            => throw new NotSupportedException();
     }
 }
