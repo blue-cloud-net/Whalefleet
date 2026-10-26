@@ -123,7 +123,8 @@
         "title": "批量删除容器"
       },
       "done": "已{action} {count} 个容器",
-      "partial": "已{action} {done} 个，{failed} 个失败：{names}"
+      "partial": "已{action} {done} 个，{failed} 个失败：{names}",
+      "selectFirst": "先勾选要操作的容器"
     },
     "col": {
       "actions": "操作",
@@ -255,12 +256,15 @@
     },
     "empty": {
       "filtered": "没有匹配的容器",
-      "filteredHint": "试试取消「包含已停止」，或点右上角刷新。",
+      "filteredHint": "试试换个关键字，或把状态筛选切回「全部」。",
       "hint": "该主机上还没有任何容器。新建一个，或把筛选切回「仅运行中」。",
       "title": "没有容器"
     },
     "filter": {
-      "all": "包含已停止"
+      "all": "全部",
+      "placeholder": "筛选状态",
+      "running": "仅运行中",
+      "stopped": "仅未运行"
     },
     "health": {
       "healthy": "健康",
@@ -308,6 +312,9 @@
       "no": "不自动重启",
       "onFailure": "失败时重启",
       "unlessStopped": "除非手动停止，否则重启"
+    },
+    "search": {
+      "placeholder": "搜索名称 / 镜像 / ID"
     },
     "state": {
       "running": "运行中",

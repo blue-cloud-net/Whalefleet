@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import type { ContainerStateFilter } from '@/api/container'
 
 /** 列表每页条数可选值（与 ui-guidelines 的分页约定一致） */
 export const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const
@@ -101,7 +102,19 @@ export const usePreferencesStore = defineStore('preferences', {
      *
      * 开启时全局订阅通知 Hub；关闭时不连接。
      */
-    realtimeNotifications: true
+    realtimeNotifications: true,
+
+    /**
+     * 容器列表的状态筛选（0.7.0）。
+     *
+     * ⚠️ **刻意记住上次选择**：状态筛选是「我这次要看哪一类容器」的延续，
+     * 不是一次性的临时开关——用户切到「仅未运行」排查完问题后，
+     * 下次进页面往往还是想看那类。不记住的话每次都要重新点一遍。
+     *
+     * `stopped` 的口径是「未运行」（已退出 / 已死亡 / 从未启动），
+     * 与后端 `ContainerStateFilter` 一致。
+     */
+    containerStateFilter: 'all' as ContainerStateFilter
   }),
   actions: {
     setPageSize(size: number) {
@@ -127,6 +140,17 @@ export const usePreferencesStore = defineStore('preferences', {
         network: this.containerColumns.network,
         [column]: visible
       }
+    },
+
+    /**
+     * 设置容器列表的状态筛选。
+     *
+     * ⚠️ **防御非法值**：外部（持久化数据被手改、旧版本残留）传入时回落到「全部」。
+     * 非法值会让后端按「全部」处理，而界面显示的是一个下拉里根本不存在的选项——
+     * 用户会以为筛选坏了。
+     */
+    setContainerStateFilter(filter: ContainerStateFilter) {
+      this.containerStateFilter = filter === 'running' || filter === 'stopped' ? filter : 'all'
     }
   },
   persist: {

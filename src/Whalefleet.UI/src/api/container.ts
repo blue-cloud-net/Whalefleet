@@ -38,6 +38,19 @@ function base(hostId: string): string {
 export interface ListContainersParams {
   /** 是否含已停止的容器；省略时只列运行中的（等价 `docker ps`） */
   all?: boolean
+  /**
+   * 状态筛选；省略时按后端 `state` 的默认值（全部）处理。
+   *
+   * ⚠️ **优先于 `all`**：后端收到 `state` 时不再看 `all`。
+   * 保留 `all` 只是为了兼容旧客户端。
+   */
+  state?: ContainerStateFilter
+  /**
+   * 关键字搜索：按容器名 / 镜像名 / 容器 ID 模糊匹配（不区分大小写）。
+   *
+   * 在**服务端**过滤：分页也在服务端做，前端过滤只能筛到当前页。
+   */
+  search?: string
   /** 页码，从 0 开始 */
   pageIndex?: number
   /** 每页条数；后端上限 100，超出会被**夹紧并回显实际值** */
@@ -50,6 +63,14 @@ export interface ListContainersParams {
 
 /** 容器列表可排序的字段，与后端 `ContainerSortField` 常量一一对应。 */
 export type ContainerSortField = 'name' | 'image' | 'state' | 'created'
+
+/**
+ * 容器列表的状态筛选，与后端 `ContainerStateFilter` 常量一一对应。
+ *
+ * `stopped` 的口径是「**未运行**」：已退出 / 已死亡 / 从未启动都算，
+ * 而已暂停与重启中仍算「还活着」（与 `docker ps` 一致）。
+ */
+export type ContainerStateFilter = 'all' | 'running' | 'stopped'
 
 /** 排序方向。 */
 export type SortDirection = 'asc' | 'desc'

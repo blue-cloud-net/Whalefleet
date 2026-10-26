@@ -9,7 +9,7 @@ import SectionCard from '@/components/common/SectionCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import IconActionButton from '@/components/common/IconActionButton.vue'
 import ListPagination from '@/components/common/ListPagination.vue'
-import BatchActionBar from '@/components/common/BatchActionBar.vue'
+import ListToolbar from '@/components/common/ListToolbar.vue'
 import CreateContainerDialog from '@/components/business/CreateContainerDialog.vue'
 import ContainerRenameDialog from '@/components/business/ContainerRenameDialog.vue'
 import ContainerUpdateDialog from '@/components/business/ContainerUpdateDialog.vue'
@@ -17,6 +17,7 @@ import ContainerDuplicateDialog from '@/components/business/ContainerDuplicateDi
 import ContainerAddVolumesDialog from '@/components/business/ContainerAddVolumesDialog.vue'
 import ContainerStatusBadge from '@/components/business/ContainerStatusBadge.vue'
 import { onActionRequest } from '@/composables/useActionBus'
+import { useListSearch } from '@/composables/useListSearch'
 import {
   batchRemoveContainers,
   getContainerHealth,
@@ -25,10 +26,11 @@ import {
   restartContainer,
   startContainer,
   stopContainer,
-  type ContainerSortField
+  type ContainerSortField,
+  type ContainerStateFilter
 } from '@/api/container'
 import { ApiRequestError } from '@/api'
-import { containerTone, formatPort } from '@/utils/container-status'
+import { containerTone, describePorts, type PortDisplay } from '@/utils/container-status'
 import { formatDateTime } from '@/utils/datetime'
 import { TIP_DELAY_MS } from '@/utils/tooltip'
 import { formatMemory, formatPercent } from '@/utils/log-format'
@@ -75,9 +77,17 @@ const pageIndex = ref(0)
  */
 const pageSize = ref<number>(usePreferencesStore().pageSize)
 
-/** 偏好 store（实时更新开关）。 */
+/** 偏好 store（实时更新开关、列开关、状态筛选）。 */
 const prefs = usePreferencesStore()
-const includeStopped = ref(true)
+
+/**
+ * 状态筛选。
+ *
+ * ⚠️ **初值取自用户偏好**（持久化）：状态筛选是「我这次要看哪一类容器」的延续，
+ * 不是一次性开关——用户切到「仅未运行」排查完问题后，下次进页面往往还是想看那类。
+ */
+const stateFilter = ref<ContainerStateFilter>(prefs.containerStateFilter)
+
 const loading = ref(false)
 /** 错误信息；非 null 时显示错误态 + 重试，而不是保留一份可能是陈旧的数据 */
 const error = ref<string | null>(null)
@@ -99,8 +109,6 @@ const updateVisible = ref(false)
 const duplicateVisible = ref(false)
 const addVolumesVisible = ref(false)
 
-const lastSyncedAt = ref<number | null>(null)
-
 /** 当前排序列；`null` = 不排序，后端保持守护进程返回顺序（创建时间降序） */
 const sortField = ref<ContainerSortField | null>(null)
 const sortOrder = ref<'asc' | 'desc'>('desc')
@@ -111,7 +119,7 @@ const batchBusy = ref(false)
 
 /**
  * 表格实例：只有 `clearSelection()` 用得到，但它是实例方法，
- * 模板 ref 是唯一拿得到它的方式（`BatchActionBar` 本身不该知道 el-table 的存在）。
+ * 模板 ref 是唯一拿得到它的方式（`ListToolbar` 本身不该知道 el-table 的存在）。
  */
 const tableRef = ref<TableInstance | null>(null)
 
@@ -145,7 +153,10 @@ const pageCount = computed(() =>
  */
 function listParams() {
   return {
-    all: includeStopped.value,
+    // ⚠️ **搜索与筛选都在服务端**：分页也在服务端内存里做，
+    // 前端过滤只能筛到当前页——页脚说 100 个、翻过去只剩 3 个。
+    search: search.value.trim(),
+    state: stateFilter.value,
     pageIndex: pageIndex.value,
     // ⚠️ 「全部」必须在这里换算成真实条数再发出去：0 传出去会被后端
     // Math.Clamp(pageSize, 1, 100) 夹成 1，用户选了"全部"却只看到一行。
@@ -153,6 +164,44 @@ function listParams() {
     pageSize: resolvePageSize(pageSize.value, total.value),
     ...(sortField.value ? { sortBy: sortField.value, sortDir: sortOrder.value } : {})
   }
+}
+
+/**
+ * 搜索 / 筛选变了之后的重新加载。
+ *
+ * ⚠️ **必须回到第 0 页**：筛完还停在第 3 页，结果一定是空的——
+ * 而用户看到的是一个空列表，会以为「这台机器上没有容器了」。
+ *
+ * ⚠️ **必须清空选择**：选中的行可能已经被筛掉了，
+ * 留着它们会让「批量删除」作用在**看不见的容器**上。
+ */
+async function reloadAfterFilterChange(): Promise<void> {
+  pageIndex.value = 0
+  clearSelection(tableRef.value)
+  await load()
+}
+
+/**
+ * 关键字搜索（输入去抖 + 回车即时）。
+ *
+ * ⚠️ **必须解构成顶层绑定**：`<script setup>` 只对**顶层**的 ref 做模板解包。
+ * 写成 `const search = useListSearch(...)` 时，模板里的 `search.keyword` 拿到的是
+ * **Ref 对象本身**——`v-model` 会把输入框的值写成 "[object Object]"，
+ * 而脚本里的 `search.keyword.trim()` 直接抛 `undefined (reading 'trim')`。
+ */
+const { keyword: search, schedule: scheduleSearch, searchNow } = useListSearch(
+  reloadAfterFilterChange
+)
+
+/**
+ * 切换状态筛选。
+ *
+ * 筛选值**记住**（写进用户偏好）：见 `stateFilter` 的说明。
+ */
+async function onStateFilterChange(next: ContainerStateFilter): Promise<void> {
+  stateFilter.value = next
+  prefs.setContainerStateFilter(next)
+  await reloadAfterFilterChange()
 }
 
 /**
@@ -185,7 +234,6 @@ async function load(): Promise<void> {
     // 之后新增到 60 个容器就再也看不到全部了——而用户当初要的就是"全都列出来"。
     if (pageSize.value !== PAGE_SIZE_ALL) pageSize.value = result.pageSize
     error.value = null
-    lastSyncedAt.value = Date.now()
 
     // 0.6.0：列表变了就要重拉健康信息，并重新对齐指标订阅集合
     void refreshHealth()
@@ -206,7 +254,6 @@ async function poll(): Promise<void> {
 
     containers.value = result.items
     total.value = result.total
-    lastSyncedAt.value = Date.now()
 
     void syncBoard()
   } catch {
@@ -318,6 +365,47 @@ function latestSample(containerId: string): ContainerStatsSample | null {
 
   return points && points.length > 0 ? (points[points.length - 1] ?? null) : null
 }
+
+/**
+ * 每个容器的端口展示结果（容器 ID → 分好组的端口）。
+ *
+ * ⚠️ **在 `computed` 里算一次**而不是在模板里调函数：
+ * 模板里的 `portGroups(row)` 每渲染一次就算一次，而它内部要分组 + 排序——
+ * 一页 20 行 × 每次刷新都在重复做同一件事。
+ */
+const portGroups = computed<Record<string, PortDisplay[]>>(() => {
+  const map: Record<string, PortDisplay[]> = {}
+
+  for (const container of containers.value) {
+    map[container.id] = describePorts(container.ports)
+  }
+
+  return map
+})
+
+/**
+ * 空态的图标 / 标题 / 描述。
+ *
+ * ⚠️ **分三种情况**：「没搜过且没筛选」= 本来就没有；
+ * 「搜了或筛了」= 条件太窄。用户搜了半天看到「该主机上还没有任何容器」，
+ * 会以为机器上真的没有容器——而实际只是关键字没对上。
+ */
+const emptyIcon = computed(() =>
+  hasFilter.value ? 'i-carbon-search' : 'i-carbon-cube'
+)
+
+const emptyTitle = computed(() =>
+  hasFilter.value ? t('container.empty.filtered') : t('container.empty.title')
+)
+
+const emptyDescription = computed(() =>
+  hasFilter.value ? t('container.empty.filteredHint') : t('container.empty.hint')
+)
+
+/** 当前是否带着「搜索关键字」或「状态筛选」。 */
+const hasFilter = computed(
+  () => search.value.trim().length > 0 || stateFilter.value !== 'all'
+)
 
 /**
  * 把采样序列画成 SVG polyline 的 `points` 属性。
@@ -636,13 +724,6 @@ async function batchRemove(): Promise<void> {
   }
 }
 
-async function toggleIncludeStopped(): Promise<void> {
-  includeStopped.value = !includeStopped.value
-  // 筛选变了还留在第 3 页，结果一定是空的——回到第一页。
-  pageIndex.value = 0
-  await load()
-}
-
 async function onCreated(): Promise<void> {
   createDialogVisible.value = false
   pageIndex.value = 0
@@ -938,14 +1019,12 @@ onBeforeUnmount(() => {
       narrow
     >
       <template #actions>
-        <el-switch
-          :model-value="includeStopped"
-          :active-text="t('container.filter.all')"
-          @change="toggleIncludeStopped"
-        />
-        <el-button :loading="loading" @click="load">
-          {{ t('container.action.refresh') }}
-        </el-button>
+        <!--
+          页头只留「新建容器」：
+          刷新、搜索、筛选、批量动作都收进下方卡片头部的工具条——
+          它们都是**列表的**控件，与表格挨在一起才用得顺手；
+          放在页头会让它们离表格太远（中间隔着一整块卡片标题区）。
+        -->
         <el-button type="primary" @click="createDialogVisible = true">
           {{ t('container.action.create') }}
         </el-button>
@@ -954,69 +1033,171 @@ onBeforeUnmount(() => {
 
     <SectionCard density="flush">
       <template #actions>
-        <span v-if="lastSyncedAt" class="text-xs text-content-muted">
-          {{ t('state.updatedAt', { time: formatDateTime(new Date(lastSyncedAt).toISOString()) }) }}
-        </span>
-
         <!--
-          显示列（0.6.0）：三个指标列。
-          ⚠️ 指标列默认全关：每开一列，每个可见容器就多占一条到守护进程的流。
-          ⚠️ 健康**不在这里**：它已并入「状态」列（见 ContainerStatusBadge），
-          再给一个独立开关等于让人以为「关掉就不看健康了」——实际上关不掉。
+          列表工具条（搜索 + 状态筛选 + 批量动作 + 刷新 + 显示列）。
 
-          压成图标放在表头右侧：它是个「偶尔用一次」的低频开关，
-          文字按钮会让它看起来跟刷新 / 新建是同一量级的东西。
-
-          ⚠️ **tooltip 必须挂在按钮内部的图标上，不能套在按钮外面**：
-          `el-popover` 的 reference 插槽只认**一个元素**（EP 的 `OnlyChild` 把插槽里的
-          第一个节点 `cloneVNode` 出来，再把触发器的事件处理器合并上去）。往里塞一个
-          `el-tooltip` **组件**时，合并上去的 `onClick` 落到了组件上而不是 DOM 节点上，
-          组件又不会把它转发下去——popover 的点击触发器因此**永远绑不上**，
-          症状就是「点按钮毫无反应」（tooltip 正常，菜单不弹）。
-          所以：外层 reference 是**按钮本身**，tooltip 挂在按钮**里面的图标**上。
-
-          ⚠️ tooltip 放**上方**（`placement="top"`）：菜单面板从下方展开，
-          tooltip 若也在下方，浮层会盖在面板的角上并**吃掉落在那儿的点击**。
+          ⚠️ 批量按钮**常驻**：早先是「选中才出现」，
+          那种模型的入口不可发现——页面上没有任何东西提示「勾选行之后能批量操作」。
+          现在按钮一直在那儿，没勾选时禁用（禁用原因写在 tooltip 里）。
         -->
-        <el-popover placement="bottom-end" :width="200" trigger="click">
-          <template #reference>
-            <el-button text class="!px-1.5" :aria-label="t('container.columns.title')">
-              <el-tooltip
-                :content="t('container.columns.title')"
-                placement="top"
-                :show-after="TIP_DELAY_MS"
-              >
-                <span class="i-carbon-column text-base" />
-              </el-tooltip>
-            </el-button>
+        <ListToolbar
+          :selected-count="selected.length"
+          :busy="batchBusy"
+          @clear="clearSelection(tableRef)"
+        >
+          <template #filters>
+            <!--
+              搜索框：输入去抖（300ms）+ 回车即时 + 可清空。
+              ⚠️ `!w-40` 的 `!` 不能省：Element Plus 把 `el-input` 的宽度写死成
+              `var(--el-input-width)`（默认 100%），同特异度下 EP 赢，工具类会被吃掉。
+            -->
+            <el-input
+              v-model="search"
+              class="!w-40 sm:!w-56"
+              clearable
+              :placeholder="t('container.search.placeholder')"
+              @input="scheduleSearch"
+              @keyup.enter="searchNow"
+              @clear="searchNow"
+            >
+              <template #prefix><span class="i-carbon-search" /></template>
+            </el-input>
+
+            <!-- 状态筛选：三档（全部 / 仅运行中 / 仅未运行）。 -->
+            <el-select
+              :model-value="stateFilter"
+              class="!w-32"
+              :placeholder="t('container.filter.placeholder')"
+              @change="onStateFilterChange"
+            >
+              <el-option value="all" :label="t('container.filter.all')" />
+              <el-option value="running" :label="t('container.filter.running')" />
+              <el-option value="stopped" :label="t('container.filter.stopped')" />
+            </el-select>
           </template>
 
-          <div class="flex flex-col gap-2">
-            <el-checkbox
-              :model-value="columns.cpu"
-              @change="prefs.setContainerColumn('cpu', $event as boolean)"
-            >
-              {{ t('container.col.cpu') }}
-            </el-checkbox>
-            <el-checkbox
-              :model-value="columns.memory"
-              @change="prefs.setContainerColumn('memory', $event as boolean)"
-            >
-              {{ t('container.col.memory') }}
-            </el-checkbox>
-            <el-checkbox
-              :model-value="columns.network"
-              @change="prefs.setContainerColumn('network', $event as boolean)"
-            >
-              {{ t('container.col.network') }}
-            </el-checkbox>
-          </div>
+          <template #batch="{ count, busy }">
+            <IconActionButton
+              icon="i-carbon-play"
+              :label="t('container.action.start')"
+              placement="bottom"
+              :disabled="count === 0 || busy"
+              :hint="count === 0 ? t('container.batch.selectFirst') : undefined"
+              @click="batchStart"
+            />
+            <IconActionButton
+              icon="i-carbon-stop"
+              :label="t('container.action.stop')"
+              placement="bottom"
+              :disabled="count === 0 || busy"
+              :hint="count === 0 ? t('container.batch.selectFirst') : undefined"
+              @click="batchStop"
+            />
+            <IconActionButton
+              icon="i-carbon-restart"
+              :label="t('container.action.restart')"
+              placement="bottom"
+              :disabled="count === 0 || busy"
+              :hint="count === 0 ? t('container.batch.selectFirst') : undefined"
+              @click="batchRestart"
+            />
+            <IconActionButton
+              icon="i-carbon-trash-can"
+              :label="t('container.action.remove')"
+              tone="danger"
+              placement="bottom"
+              :disabled="count === 0 || busy"
+              :hint="count === 0 ? t('container.batch.selectFirst') : undefined"
+              @click="batchRemove"
+            />
+          </template>
 
-          <!-- 代价说明放在面板里：图标按钮的 tooltip 只有一行，说不下「为什么默认关闭」 -->
-          <p class="mt-2 border-t border-line-subtle pt-2 text-xs text-content-faint">
-            {{ t('container.columns.hint') }}
-          </p>
-        </el-popover>
+          <template #extra>
+            <!--
+              刷新按钮**用图标**：它是一个「随时可点」的高频动作，
+              而「刷新」两个字占了整个按钮的宽度却不增加任何信息量。
+              ⚠️ 图标放在 `icon` 插槽里（不是默认插槽）：EP 的 Button 在 `loading` 时
+              会用转圈图标**替换** `icon` 插槽的内容，两个都渲染就成了「转圈 + 图标」。
+            -->
+            <el-tooltip
+              :content="t('common.refresh')"
+              placement="bottom"
+              :show-after="TIP_DELAY_MS"
+            >
+              <span class="inline-flex">
+                <el-button
+                  text
+                  circle
+                  :loading="loading"
+                  :aria-label="t('common.refresh')"
+                  @click="load"
+                >
+                  <template #icon><span class="i-carbon-renew" /></template>
+                </el-button>
+              </span>
+            </el-tooltip>
+
+            <!--
+              显示列（0.6.0）：三个指标列。
+              ⚠️ 指标列默认全关：每开一列，每个可见容器就多占一条到守护进程的流。
+              ⚠️ 健康**不在这里**：它已并入「状态」列（见 ContainerStatusBadge），
+              再给一个独立开关等于让人以为「关掉就不看健康了」——实际上关不掉。
+
+              压成图标放在工具条最右：它是个「偶尔用一次」的低频开关，
+              文字按钮会让它看起来跟刷新 / 新建是同一量级的东西。
+
+              ⚠️ **tooltip 必须挂在按钮内部的图标上，不能套在按钮外面**：
+              `el-popover` 的 reference 插槽只认**一个元素**（EP 的 `OnlyChild` 把插槽里的
+              第一个节点 `cloneVNode` 出来，再把触发器的事件处理器合并上去）。往里塞一个
+              `el-tooltip` **组件**时，合并上去的 `onClick` 落到了组件上而不是 DOM 节点上，
+              组件又不会把它转发下去——popover 的点击触发器因此**永远绑不上**，
+              症状就是「点按钮毫无反应」（tooltip 正常，菜单不弹）。
+              所以：外层 reference 是**按钮本身**，tooltip 挂在按钮**里面的图标**上。
+
+              ⚠️ tooltip 放**上方**（`placement="top"`）：菜单面板从下方展开，
+              tooltip 若也在下方，浮层会盖在面板的角上并**吃掉落在那儿的点击**。
+            -->
+            <el-popover placement="bottom-end" :width="200" trigger="click">
+              <template #reference>
+                <el-button text class="!px-1.5" :aria-label="t('container.columns.title')">
+                  <el-tooltip
+                    :content="t('container.columns.title')"
+                    placement="top"
+                    :show-after="TIP_DELAY_MS"
+                  >
+                    <span class="i-carbon-column text-base" />
+                  </el-tooltip>
+                </el-button>
+              </template>
+
+              <div class="flex flex-col gap-2">
+                <el-checkbox
+                  :model-value="columns.cpu"
+                  @change="prefs.setContainerColumn('cpu', $event as boolean)"
+                >
+                  {{ t('container.col.cpu') }}
+                </el-checkbox>
+                <el-checkbox
+                  :model-value="columns.memory"
+                  @change="prefs.setContainerColumn('memory', $event as boolean)"
+                >
+                  {{ t('container.col.memory') }}
+                </el-checkbox>
+                <el-checkbox
+                  :model-value="columns.network"
+                  @change="prefs.setContainerColumn('network', $event as boolean)"
+                >
+                  {{ t('container.col.network') }}
+                </el-checkbox>
+              </div>
+
+              <!-- 代价说明放在面板里：图标按钮的 tooltip 只有一行，说不下「为什么默认关闭」 -->
+              <p class="mt-2 border-t border-line-subtle pt-2 text-xs text-content-faint">
+                {{ t('container.columns.hint') }}
+              </p>
+            </el-popover>
+          </template>
+        </ListToolbar>
       </template>
 
       <!-- 错误态给整块内容位，而不是只弹一个 toast：
@@ -1027,24 +1208,8 @@ onBeforeUnmount(() => {
       </div>
 
       <template v-else>
-        <BatchActionBar :count="selected.length" :busy="batchBusy" @clear="clearSelection(tableRef)">
-          <template #default>
-            <el-button size="small" :disabled="batchBusy" @click="batchStart">
-              {{ t('container.action.start') }}
-            </el-button>
-            <el-button size="small" :disabled="batchBusy" @click="batchStop">
-              {{ t('container.action.stop') }}
-            </el-button>
-            <el-button size="small" :disabled="batchBusy" @click="batchRestart">
-              {{ t('container.action.restart') }}
-            </el-button>
-            <el-button size="small" type="danger" plain :disabled="batchBusy" @click="batchRemove">
-              {{ t('container.action.remove') }}
-            </el-button>
-          </template>
-        </BatchActionBar>
-
-        <!-- 列宽分工：`min-width` 的列吃掉容器富余出来的宽度，`width` 的列纹丝不动。
+        <!--
+          列宽分工：`min-width` 的列吃掉容器富余出来的宽度，`width` 的列纹丝不动。
              状态（徽章 + 一行状态文案）、创建时间（一段定长日期）、操作（一排定宽图标）
              都是内容长度可预期的列，给固定宽才不会随窗口缩放抖动；
              名称 / 镜像 / 端口三列内容长度不定，让它们按比例瓜分多余空间。
@@ -1205,10 +1370,61 @@ onBeforeUnmount(() => {
             </template>
           </el-table-column>
 
+          <!--
+            端口列。
+
+            ⚠️ **一行一个映射**：`-p 8080:80` 在 Docker 里是两条记录
+            （`0.0.0.0` 与 `::`），逐条渲染会让同一个端口占两行、
+            而两行长得几乎一样——用户会以为是两个端口。合并规则见 `describePorts`。
+
+            ⚠️ **只有 TCP 才是链接**：UDP 没有浏览器能直接打开的语义，
+            做成链接只会让人点开发现打不开。
+          -->
           <el-table-column :label="t('container.col.ports')" min-width="220">
             <template #default="{ row }">
-              <div v-if="row.ports.length > 0" class="whitespace-pre-line font-mono text-xs leading-relaxed">
-                {{ row.ports.map(formatPort).join('\n') }}
+              <div
+                v-if="(portGroups[row.id] ?? []).length > 0"
+                class="flex flex-col gap-0.5 font-mono text-xs leading-relaxed"
+              >
+                <div
+                  v-for="(group, index) in portGroups[row.id] ?? []"
+                  :key="index"
+                  class="flex items-baseline gap-1"
+                >
+                  <!--
+                    链接新窗口打开：`target="_blank"` + `rel="noopener noreferrer"`。
+                    ⚠️ `noopener` 不能省：新窗口里的页面能通过 `window.opener`
+                    反向操控本页（改地址、发起请求），而目标地址是用户自己填的端口。
+                  -->
+                  <el-tooltip
+                    v-if="group.url"
+                    :content="group.url"
+                    placement="top-start"
+                    :show-after="TIP_DELAY_MS"
+                  >
+                    <a
+                      :href="group.url"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="text-brand-500 hover:underline"
+                    >
+                      {{ group.text }}
+                    </a>
+                  </el-tooltip>
+                  <span v-else>{{ group.text }}</span>
+
+                  <!--
+                    同一端口绑了多个**具体**地址：只显示首个，其余收成「+N」。
+                    通配地址（0.0.0.0 / ::）不算——它们只表达「所有网卡」，列出来是噪声。
+                  -->
+                  <span
+                    v-if="group.extraIps.length > 0"
+                    class="text-content-faint"
+                    :title="group.extraIps.join('\n')"
+                  >
+                    +{{ group.extraIps.length }}
+                  </span>
+                </div>
               </div>
               <span v-else class="text-xs text-content-faint">—</span>
             </template>
@@ -1271,11 +1487,16 @@ onBeforeUnmount(() => {
           </el-table-column>
         </el-table>
 
+        <!--
+          空态分三种：**没搜 / 搜不到 / 本来就没有**。
+          混成一个「没有容器」的话，用户搜了半天看到这句话会以为机器上真没有容器——
+          而实际只是关键字没对上。
+        -->
         <EmptyState
           v-if="!loading && containers.length === 0"
-          :icon="includeStopped ? 'i-carbon-cube' : 'i-carbon-search'"
-          :title="includeStopped ? t('container.empty.title') : t('container.empty.filtered')"
-          :description="includeStopped ? t('container.empty.hint') : t('container.empty.filteredHint')"
+          :icon="emptyIcon"
+          :title="emptyTitle"
+          :description="emptyDescription"
         />
 
         <!-- 分页条始终显示：`el-pagination` 自带页码按钮，「现在在第几页 / 一共几页」

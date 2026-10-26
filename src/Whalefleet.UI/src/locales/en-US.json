@@ -123,7 +123,8 @@
         "title": "Remove containers"
       },
       "done": "{action} {count} container(s)",
-      "partial": "{action} {done}, {failed} failed: {names}"
+      "partial": "{action} {done}, {failed} failed: {names}",
+      "selectFirst": "Select the containers to operate on first"
     },
     "col": {
       "actions": "Actions",
@@ -255,12 +256,15 @@
     },
     "empty": {
       "filtered": "No matching containers",
-      "filteredHint": "Try turning off “Include stopped”, or hit refresh in the top right.",
+      "filteredHint": "Try a different keyword, or set the status filter back to “All”.",
       "hint": "This host has no containers yet. Create one, or switch the filter back to running only.",
       "title": "No containers"
     },
     "filter": {
-      "all": "Include stopped"
+      "all": "All",
+      "placeholder": "Filter by status",
+      "running": "Running only",
+      "stopped": "Not running only"
     },
     "health": {
       "healthy": "Healthy",
@@ -308,6 +312,9 @@
       "no": "Do not restart",
       "onFailure": "Restart on failure",
       "unlessStopped": "Restart unless stopped"
+    },
+    "search": {
+      "placeholder": "Search name / image / ID"
     },
     "state": {
       "running": "Running",
