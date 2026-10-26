@@ -61,7 +61,15 @@ vi.mock('../src/api/container', () => ({
     ],
     truncated: false
   })),
-  downloadContainerLogs: vi.fn(async () => ({ blob: new Blob(['x']), fileName: 'smoke.log' }))
+  downloadContainerLogs: vi.fn(async () => ({ blob: new Blob(['x']), fileName: 'smoke.log' })),
+  // 容器列表页（0.7.0 改造过模板）用得到这几个
+  listContainers: vi.fn(async () => ({ items: [], total: 0, pageIndex: 0, pageSize: 20 })),
+  getContainerHealth: vi.fn(async () => ({ items: [] })),
+  startContainer: vi.fn(),
+  stopContainer: vi.fn(),
+  restartContainer: vi.fn(),
+  removeContainer: vi.fn(),
+  batchRemoveContainers: vi.fn(async () => ({ requested: 0, succeeded: 0, failures: [] }))
 }))
 
 vi.mock('../src/realtime/connection', () => ({
@@ -142,6 +150,11 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/hosts/:hostId/images/:id/inspect',
     name: 'host-image-inspect',
+    component: { template: '<div />' }
+  },
+  {
+    path: '/hosts/:hostId/containers',
+    name: 'host-containers',
     component: { template: '<div />' }
   }
 ]
@@ -338,6 +351,58 @@ describe('镜像列表页渲染冒烟（0.4.0 改过模板）', () => {
     // 这次给 ImagesView 加了按钮与对话框 import，改过的模板行必须能真的渲染
     expect(wrapper.text()).toContain('构建镜像')
     expect(wrapper.text()).toContain('拉取镜像')
+    wrapper.unmount()
+  })
+})
+
+describe('容器列表页渲染冒烟（0.7.0 改过模板）', () => {
+  it('空列表时正常渲染，搜索框与状态筛选都在', async () => {
+    const ContainersView = (await import('../src/views/ContainersView.vue')).default
+    const wrapper = await mountSmoke(ContainersView, { path: '/hosts/prod-01/containers' })
+
+    await wrapper.vm.$nextTick()
+    // 等 listContainers 的 promise 落定（watch 里 immediate 调了一次 load）
+    await Promise.resolve()
+    await Promise.resolve()
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    // ⚠️ **必须断言表格真的渲染出来了**：模板里的 `v-model="search.keyword"` 若忘了解包，
+    // 脚本里的 `search.keyword.trim()` 会抛 `undefined (reading 'trim')`，
+    // 而那个错**不是渲染期告警**——它被 catch 进错误态，整页变成「重试」按钮。
+    // 只查 console 告警会漏掉它，必须查「表格在不在」。
+    expect(wrapper.find('.el-table').exists(), '容器表格应已渲染（没进错误态）').toBe(true)
+    // 工具条上的搜索框与状态下拉必须在（模板改过最容易在这里炸）。
+    // ⚠️ 搜索框的占位符**不是文本内容**（它在 placeholder 属性里），
+    // 因此只能查元素而不是查文字。
+    expect(wrapper.find('input[placeholder="搜索名称 / 镜像 / ID"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('全部')
+    // 批量按钮**常驻**：没勾选任何行时它们也在（只是禁用）
+    expect(wrapper.find('[aria-label="启动"]').exists()).toBe(true)
+    expect(wrapper.find('[aria-label="停止"]').exists()).toBe(true)
+    expect(wrapper.find('[aria-label="重启"]').exists()).toBe(true)
+    expect(wrapper.find('[aria-label="删除"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('新建容器对话框：三个编辑器与镜像下拉都能渲染', async () => {
+    const Dialog = (await import('../src/components/business/CreateContainerDialog.vue')).default
+    const wrapper = await mountSmoke(Dialog, { props: { modelValue: true, hostId: 'prod-01' } })
+
+    await wrapper.vm.$nextTick()
+    await Promise.resolve()
+    await Promise.resolve()
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    // ⚠️ 对话框带 `append-to-body`：内容被传送到 body，
+    // `wrapper.text()` 里**看不到**它——必须查 document.body。
+    const body = document.body.textContent ?? ''
+    // 三个编辑器的「表格 / 批量粘贴」切换必须都在
+    expect(body).toContain('批量粘贴')
+    expect(body).toContain('端口映射')
+    expect(body).toContain('环境变量')
+    expect(body).toContain('卷挂载')
     wrapper.unmount()
   })
 })

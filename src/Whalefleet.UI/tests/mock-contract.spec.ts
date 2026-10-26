@@ -370,6 +370,67 @@ describe('容器端点', () => {
     expect(new Set(ids).size).toBe(ids.length)
   })
 
+  /** 搜索契约：复刻后端 `ContainerService.Filter`——只匹配名称 / 镜像 / ID。 */
+  it('search 命中名称与镜像，命中不到时 total 为 0', async () => {
+    const all = await post('/api/v1/hosts/local/containers/list', { all: true, pageSize: 100 })
+    const items = (all.json.data as { items: { name: string; image: string }[] }).items
+
+    expect(items.length).toBeGreaterThan(0)
+
+    const byName = await post('/api/v1/hosts/local/containers/list', {
+      all: true,
+      pageSize: 100,
+      search: items[0].name.slice(0, 6)
+    })
+    expect((byName.json.data as { total: number }).total).toBeGreaterThan(0)
+
+    const byImage = await post('/api/v1/hosts/local/containers/list', {
+      all: true,
+      pageSize: 100,
+      search: items[0].image
+    })
+    expect((byImage.json.data as { total: number }).total).toBeGreaterThan(0)
+
+    const miss = await post('/api/v1/hosts/local/containers/list', {
+      all: true,
+      search: 'zzz-绝不可能命中的关键字-zzz'
+    })
+    const missData = miss.json.data as { total: number; items: unknown[] }
+    expect(missData.total).toBe(0)
+    expect(missData.items).toHaveLength(0)
+  })
+
+  /** 状态筛选契约：复刻后端 `ResolveStateFilter` 的三档。 */
+  it('state=running 只回运行类，state=stopped 只回未运行类', async () => {
+    const runningStates = ['running', 'paused', 'restarting']
+
+    const running = await post('/api/v1/hosts/local/containers/list', {
+      state: 'running',
+      pageSize: 100
+    })
+    const runningItems = (running.json.data as { items: { state: string }[] }).items
+    expect(runningItems.length).toBeGreaterThan(0)
+    expect(runningItems.every((item) => runningStates.includes(item.state))).toBe(true)
+
+    const stopped = await post('/api/v1/hosts/local/containers/list', {
+      state: 'stopped',
+      pageSize: 100
+    })
+    const stoppedItems = (stopped.json.data as { items: { state: string }[] }).items
+    expect(stoppedItems.every((item) => !runningStates.includes(item.state))).toBe(true)
+  })
+
+  /** 端口顺序契约：守护进程的顺序是随机的，服务端必须显式排序。 */
+  it('同一容器的端口按容器端口升序', async () => {
+    const list = await post('/api/v1/hosts/local/containers/list', { all: true, pageSize: 100 })
+    const items = (list.json.data as { items: { ports: { privatePort: number }[] }[] }).items
+
+    for (const item of items) {
+      const ports = item.ports.map((port) => port.privatePort)
+      expect(ports).toEqual([...ports].sort((a, b) => a - b))
+    }
+  })
+
   it('不带 force 删除运行中的容器 → 409 / 1404', async () => {
     // 这条语义是前端「先停止容器」提示的唯一来源，mock 不复刻它就永远测不到。
     const list = await post('/api/v1/hosts/local/containers/list', { all: true })

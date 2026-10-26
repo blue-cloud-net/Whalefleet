@@ -107,6 +107,24 @@ describe('数据卷 mock 契约', () => {
     expect(negative.data.items).toHaveLength(2)
   })
 
+  /** 搜索契约：复刻后端 `VolumeService.Filter`——名称 / 驱动 / 挂载路径。 */
+  it('search 按名称命中，命中不到时 total 为 0', async () => {
+    const all = await readJson<{ data: VolumeListResult }>(await post('/volumes/list', {}))
+    const target = all.data.items[0].name
+
+    const hit = await readJson<{ data: VolumeListResult }>(
+      await post('/volumes/list', { search: target })
+    )
+    expect(hit.data.items.some((item) => item.name === target)).toBe(true)
+
+    const miss = await readJson<{ data: VolumeListResult }>(
+      await post('/volumes/list', { search: 'zzz-绝不可能命中的卷名-zzz' })
+    )
+    // 搜索发生在分页之前：total 必须是过滤后的条数
+    expect(miss.data.total).toBe(0)
+    expect(miss.data.items).toHaveLength(0)
+  })
+
   it('同名创建返回已存在的那一个而非报错', async () => {
     const first = await readJson<{ success: boolean; data: { name: string } }>(
       await post('/volumes/create', { name: 'same-name' })
@@ -182,6 +200,24 @@ describe('数据卷 mock 契约', () => {
 /* ==================== 网络 ==================== */
 
 describe('网络 mock 契约', () => {
+  /** 搜索契约：复刻后端 `NetworkService.Filter`——名称 / ID / 驱动。 */
+  it('search 按名称命中，命中不到时 total 为 0', async () => {
+    const all = await readJson<{ data: NetworkListResult }>(await post('/networks/list', {}))
+    const target = all.data.items[0].name
+
+    const hit = await readJson<{ data: NetworkListResult }>(
+      await post('/networks/list', { search: target })
+    )
+    expect(hit.data.items.some((item) => item.name === target)).toBe(true)
+
+    const miss = await readJson<{ data: NetworkListResult }>(
+      await post('/networks/list', { search: 'zzz-绝不可能命中的网络名-zzz' })
+    )
+    // 搜索发生在分页之前：total 必须是过滤后的条数
+    expect(miss.data.total).toBe(0)
+    expect(miss.data.items).toHaveLength(0)
+  })
+
   it('列表项**没有** containerCount', async () => {
     const response = await post('/networks/list', {})
     const raw = (await response.json()) as {
