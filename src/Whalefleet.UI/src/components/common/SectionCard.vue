@@ -30,7 +30,14 @@ withDefaults(
           {{ description }}
         </p>
       </div>
-      <div v-if="$slots.actions" class="flex items-center gap-2 shrink-0">
+      <!--
+        操作区**允许换行**：列表页的工具条（搜索 + 筛选 + 批量动作 + 刷新）
+        在窄屏上放不下一行，硬撑会溢出卡片边界；换行只是让卡片头高一点，
+        而溢出是「按钮跑到看不见的地方」。
+
+        `min-w-0` 让它能被压缩，`justify-end` 让换行后的第二行仍然靠右对齐。
+      -->
+      <div v-if="$slots.actions" class="flex flex-wrap items-center justify-end gap-2 min-w-0">
         <slot name="actions" />
       </div>
     </header>
