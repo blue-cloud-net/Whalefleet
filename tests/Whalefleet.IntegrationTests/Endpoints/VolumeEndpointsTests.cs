@@ -202,6 +202,51 @@ public class VolumeEndpointsTests : IAsyncLifetime
         beyondPage.Total.Should().Be(firstPage.Total);
     }
 
+    [DockerFact]
+    public async Task 列出数据卷_搜索命中不到时总数为零()
+    {
+        using var client = await this.LoginAsync();
+
+        using var response = await client.PostAsJsonAsync(
+            $"/api/v1/hosts/{_localHost}/volumes/list",
+            new { search = "zzz-绝不可能命中的卷名-zzz" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var result = await ReadDataAsync<VolumeListPayload>(response);
+
+        // 搜索发生在**分页之前**：total 必须是过滤后的条数，
+        // 否则页脚会显示一个与翻页结果对不上的数字。
+        result.Total.Should().Be(0);
+        result.Items.Should().BeEmpty();
+    }
+
+    [DockerFact]
+    public async Task 列出数据卷_搜索按名称命中()
+    {
+        using var client = await this.LoginAsync();
+
+        using var all = await client.PostAsJsonAsync(
+            $"/api/v1/hosts/{_localHost}/volumes/list",
+            new { pageSize = 100 });
+
+        var allResult = await ReadDataAsync<VolumeListPayload>(all);
+
+        allResult.Items.Should().NotBeEmpty();
+
+        var target = allResult.Items[0].Name;
+
+        using var response = await client.PostAsJsonAsync(
+            $"/api/v1/hosts/{_localHost}/volumes/list",
+            new { search = target });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var result = await ReadDataAsync<VolumeListPayload>(response);
+
+        result.Items.Should().Contain(item => item.Name == target);
+    }
+
     [DockerImageFact]
     public async Task 创建_挂进容器后能读到内容()
     {

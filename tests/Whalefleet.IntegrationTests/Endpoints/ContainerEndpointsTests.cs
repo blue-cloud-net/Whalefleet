@@ -207,6 +207,119 @@ public class ContainerEndpointsTests : IAsyncLifetime
     }
 
     [DockerFact]
+    public async Task 列表_状态筛选_仅未运行不含运行中的容器()
+    {
+        using var client = await CreateAuthenticatedClientAsync(_adminName);
+
+        using var response = await client.PostAsJsonAsync(
+            $"/api/v1/hosts/{_localHost}/containers/list",
+            new { all = true, state = "stopped", pageSize = 100 });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var list = await ReadDataAsync<ListPayload>(response);
+
+        // 「未运行」= 已退出 / 已死亡 / 从未启动；已暂停与重启中仍算「还活着」
+        list.Items.Should().OnlyContain(item =>
+            item.State != "running" && item.State != "paused" && item.State != "restarting");
+    }
+
+    [DockerFact]
+    public async Task 列表_状态筛选_仅运行中不含已退出的容器()
+    {
+        using var client = await CreateAuthenticatedClientAsync(_adminName);
+
+        using var response = await client.PostAsJsonAsync(
+            $"/api/v1/hosts/{_localHost}/containers/list",
+            new { all = true, state = "running", pageSize = 100 });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var list = await ReadDataAsync<ListPayload>(response);
+
+        list.Items.Should().OnlyContain(item =>
+            item.State == "running" || item.State == "paused" || item.State == "restarting");
+    }
+
+    [DockerFact]
+    public async Task 列表_搜索_不可能命中的关键字总数为零()
+    {
+        using var client = await CreateAuthenticatedClientAsync(_adminName);
+
+        using var response = await client.PostAsJsonAsync(
+            $"/api/v1/hosts/{_localHost}/containers/list",
+            new { all = true, search = "zzz-绝不可能命中的关键字-zzz" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var list = await ReadDataAsync<ListPayload>(response);
+
+        list.Total.Should().Be(0);
+        list.Items.Should().BeEmpty();
+    }
+
+    [DockerImageFact]
+    public async Task 列表_搜索_按容器名命中刚创建的容器()
+    {
+        using var client = await CreateAuthenticatedClientAsync(_adminName);
+
+        var name = $"dl-search-{Guid.NewGuid():N}"[..16];
+        string? containerId = null;
+
+        try
+        {
+            using var created = await client.PostAsJsonAsync(
+                $"/api/v1/hosts/{_localHost}/containers/create",
+                new { image = DockerAvailability.ImageReference, name, cmd = _sleepCommand });
+
+            created.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            containerId = (await ReadDataAsync<CreatedPayload>(created)).ContainerId;
+
+            using var response = await client.PostAsJsonAsync(
+                $"/api/v1/hosts/{_localHost}/containers/list",
+                new { all = true, search = name });
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            var list = await ReadDataAsync<ListPayload>(response);
+
+            list.Total.Should().Be(1);
+            list.Items.Should().ContainSingle().Which.Name.Should().Be(name);
+        }
+        finally
+        {
+            if (!string.IsNullOrWhiteSpace(containerId))
+            {
+                using var removed = await client.PostAsJsonAsync(
+                    $"/api/v1/hosts/{_localHost}/containers/remove",
+                    new { containerId, force = true });
+            }
+        }
+    }
+
+    [DockerFact]
+    public async Task 列表_端口按容器端口升序()
+    {
+        using var client = await CreateAuthenticatedClientAsync(_adminName);
+
+        using var response = await client.PostAsJsonAsync(
+            $"/api/v1/hosts/{_localHost}/containers/list",
+            new { all = true, pageSize = 100 });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var list = await ReadDataAsync<ListWithPortsPayload>(response);
+
+        // 守护进程返回的端口顺序是随机的（Go 的 map 迭代），
+        // 服务端必须显式排序——否则界面上的端口行会随刷新来回跳。
+        foreach (var item in list.Items)
+        {
+            item.Ports.Should().BeInAscendingOrder(port => port.PrivatePort);
+        }
+    }
+
+    [DockerFact]
     public async Task 详情_容器不存在_返回1401()
     {
         using var client = await CreateAuthenticatedClientAsync(_adminName);
@@ -529,6 +642,25 @@ public class ContainerEndpointsTests : IAsyncLifetime
     /// <summary>容器列表响应的投影（只取断言用得到的字段）。</summary>
     /// <remarks>属性名是 PascalCase 而线上是 camelCase，靠 <see cref="_jsonOptions"/> 的大小写不敏感兜住。</remarks>
     private sealed record ListPayload(List<ContainerPayload> Items, int Total, int PageIndex, int PageSize);
+
+    /// <summary>带端口的容器列表投影（用于断言端口顺序）。</summary>
+    private sealed record ListWithPortsPayload(
+        List<ContainerWithPortsPayload> Items,
+        int Total,
+        int PageIndex,
+        int PageSize);
+
+    /// <summary>带端口的容器列表项。</summary>
+    private sealed record ContainerWithPortsPayload(
+        string Id,
+        string Name,
+        string Image,
+        string State,
+        string Status,
+        List<PortPayload> Ports);
+
+    /// <summary>端口映射项。</summary>
+    private sealed record PortPayload(int PrivatePort, int? PublicPort, string Type, string? Ip);
 
     private sealed record ContainerPayload(string Id, string Name, string Image, string State, string Status);
 
