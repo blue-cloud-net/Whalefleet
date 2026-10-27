@@ -1032,25 +1032,19 @@ describe('主机管理端点', () => {
   })
 })
 
-describe('批量删除端点（0.1.0）', () => {
+describe('镜像批量删除端点（0.1.0）', () => {
   /** 后端上限 100，超出会是整批 1000 而不是逐条失败。 */
-  const overLimit = Array.from({ length: 101 }, (_, index) => `c${index}`)
+  const overLimit = Array.from({ length: 101 }, (_, index) => `i${index}`)
 
   it('入参为空 → 1000 / 400（整批失败，与逐条失败形态不同）', async () => {
-    const containers = await post('/api/v1/hosts/local/containers/batch-remove', {
-      containerIds: []
-    })
-    expect(containers.status).toBe(400)
-    expect(containers.json.code).toBe(ErrorCode.ValidationFailed)
-
     const images = await post('/api/v1/hosts/local/images/batch-remove', { imageIds: [] })
     expect(images.status).toBe(400)
     expect(images.json.code).toBe(ErrorCode.ValidationFailed)
   })
 
   it('列表全为空串 → 1000 / 400', async () => {
-    const { status, json } = await post('/api/v1/hosts/local/containers/batch-remove', {
-      containerIds: ['  ', '', '\t']
+    const { status, json } = await post('/api/v1/hosts/local/images/batch-remove', {
+      imageIds: ['  ', '', '\t']
     })
 
     expect(status).toBe(400)
@@ -1058,8 +1052,8 @@ describe('批量删除端点（0.1.0）', () => {
   })
 
   it('超过 100 条 → 1000 / 400', async () => {
-    const { status, json } = await post('/api/v1/hosts/local/containers/batch-remove', {
-      containerIds: overLimit
+    const { status, json } = await post('/api/v1/hosts/local/images/batch-remove', {
+      imageIds: overLimit
     })
 
     expect(status).toBe(400)
@@ -1068,8 +1062,8 @@ describe('批量删除端点（0.1.0）', () => {
   })
 
   it('重复 ID 按去重后的个数统计（否则界面会显示「成功 0、失败 2」）', async () => {
-    const { status, json } = await post('/api/v1/hosts/local/containers/batch-remove', {
-      containerIds: ['ghost-batch', 'ghost-batch', ' ghost-batch ']
+    const { status, json } = await post('/api/v1/hosts/local/images/batch-remove', {
+      imageIds: ['ghost-batch', 'ghost-batch', ' ghost-batch ']
     })
 
     expect(status).toBe(200)
@@ -1079,9 +1073,9 @@ describe('批量删除端点（0.1.0）', () => {
     expect(result.succeeded).toBe(0)
   })
 
-  it('部分成功也是 200，失败逐条带容器 ID 与错误码', async () => {
-    const { status, json } = await post('/api/v1/hosts/local/containers/batch-remove', {
-      containerIds: ['ghost-a', 'ghost-b']
+  it('部分成功也是 200，失败逐条带镜像 ID 与错误码', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/images/batch-remove', {
+      imageIds: ['ghost-a', 'ghost-b']
     })
 
     // 关键：全部失败**也**是 200。若这里是 4xx，界面就只能弹一个笼统的错误框
@@ -1103,59 +1097,209 @@ describe('批量删除端点（0.1.0）', () => {
     )
   })
 
-  it('不带 force 删除运行中的容器 → 该条失败 1404，其余照常成功', async () => {
-    const list = await post('/api/v1/hosts/local/containers/list', { all: true })
-    const items = (list.json.data as { items: { id: string; state: string }[] }).items
-    const running = items.find((item) => item.state === 'running')
-    const stopped = items.find((item) => item.state !== 'running')
-
-    if (running === undefined || stopped === undefined) {
-      // 夹具里没有「一运行一停止」的组合：前提不成立，跳过而不是假装通过
-      return
-    }
-
-    const { status, json } = await post('/api/v1/hosts/local/containers/batch-remove', {
-      containerIds: [running.id, stopped.id]
-    })
-
-    expect(status).toBe(200)
-
-    const result = json.data as {
-      succeeded: number
-      failures: { resourceId: string; code: number }[]
-    }
-
-    // 关键：已停止的那个**必须真的删掉**，而不是因为同批里有一条失败就整批中止
-    expect(result.succeeded).toBe(1)
-    expect(result.failures).toHaveLength(1)
-    expect(result.failures[0].resourceId).toBe(running.id)
-    expect(result.failures[0].code).toBe(ErrorCode.DockerResourceConflict)
-
-    const after = await post('/api/v1/hosts/local/containers/list', { all: true })
-    expect((after.json.data as { items: { id: string }[] }).items.map((i) => i.id)).not.toContain(
-      stopped.id
-    )
-  })
-
-  it('镜像批量删除同样返回逐条失败', async () => {
-    const { status, json } = await post('/api/v1/hosts/local/images/batch-remove', {
-      imageIds: ['ghost-image:latest']
-    })
-
-    expect(status).toBe(200)
-
-    const result = json.data as { requested: number; failures: { code: number }[] }
-    expect(result.requested).toBe(1)
-    expect(result.failures[0].code).toBe(ErrorCode.DockerResourceNotFound)
-  })
-
   it('主机不存在 → 1300 / 404（整批失败）', async () => {
-    const { status, json } = await post('/api/v1/hosts/nope/containers/batch-remove', {
-      containerIds: ['anything']
+    const { status, json } = await post('/api/v1/hosts/nope/images/batch-remove', {
+      imageIds: ['anything']
     })
 
     expect(status).toBe(404)
     expect(json.code).toBe(ErrorCode.HostNotFound)
+  })
+})
+
+describe('容器生命周期端点（0.7.0）', () => {
+  /** 取一个运行中的容器与一个已停止的容器（夹具里必须都有，否则相关断言无意义）。 */
+  async function pickContainers(): Promise<{
+    running: { id: string; name: string }
+    stopped: { id: string; name: string }
+  }> {
+    const list = await post('/api/v1/hosts/local/containers/list', { all: true, pageSize: 100 })
+    const items = (list.json.data as { items: { id: string; name: string; state: string }[] }).items
+
+    const running = items.find((item) => item.state === 'running')
+    const stopped = items.find((item) => item.state !== 'running')
+
+    expect(running, '夹具里必须有一个运行中的容器').toBeDefined()
+    expect(stopped, '夹具里必须有一个已停止的容器').toBeDefined()
+
+    return { running: running!, stopped: stopped! }
+  }
+
+  async function stateOf(containerId: string): Promise<string> {
+    const { json } = await post('/api/v1/hosts/local/containers/inspect', { containerId })
+    return (json.data as { state: { status: string } }).state.status
+  }
+
+  it('暂停运行中的容器 → 成功，且状态变成 paused', async () => {
+    const { running } = await pickContainers()
+
+    const { status } = await post('/api/v1/hosts/local/containers/pause', {
+      containerId: running.id
+    })
+
+    expect(status).toBe(200)
+    expect(await stateOf(running.id)).toBe('paused')
+  })
+
+  it('继续已暂停的容器 → 成功，且状态回到 running', async () => {
+    const { running } = await pickContainers()
+
+    await post('/api/v1/hosts/local/containers/pause', { containerId: running.id })
+    const { status } = await post('/api/v1/hosts/local/containers/resume', {
+      containerId: running.id
+    })
+
+    expect(status).toBe(200)
+    expect(await stateOf(running.id)).toBe('running')
+  })
+
+  it('暂停未运行的容器 → 1404 / 409（守护进程语义）', async () => {
+    const { stopped } = await pickContainers()
+
+    const { status, json } = await post('/api/v1/hosts/local/containers/pause', {
+      containerId: stopped.id
+    })
+
+    expect(status).toBe(409)
+    expect(json.code).toBe(ErrorCode.DockerResourceConflict)
+  })
+
+  it('终止运行中的容器 → 成功，且退出码是 137（SIGKILL 的语义）', async () => {
+    const { running } = await pickContainers()
+
+    const { status } = await post('/api/v1/hosts/local/containers/kill', {
+      containerId: running.id
+    })
+
+    expect(status).toBe(200)
+
+    const { json } = await post('/api/v1/hosts/local/containers/inspect', {
+      containerId: running.id
+    })
+    const state = (json.data as { state: { status: string; exitCode: number } }).state
+
+    expect(state.status).not.toBe('running')
+    // ⚠️ 不能是 0：SIGKILL 的退出码是 137，给 0 会被读成「已正常退出」
+    expect(state.exitCode).toBe(137)
+  })
+
+  it('终止时带自定义信号 → 成功', async () => {
+    const { running } = await pickContainers()
+
+    const { status } = await post('/api/v1/hosts/local/containers/kill', {
+      containerId: running.id,
+      signal: 'SIGTERM'
+    })
+
+    expect(status).toBe(200)
+  })
+
+  it('终止时信号含空白 → 1000 / 400（与后端同口径）', async () => {
+    const { running } = await pickContainers()
+
+    const { status, json } = await post('/api/v1/hosts/local/containers/kill', {
+      containerId: running.id,
+      signal: 'SIG KILL'
+    })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.ValidationFailed)
+  })
+
+  it('终止未运行的容器 → 1404 / 409', async () => {
+    const { stopped } = await pickContainers()
+
+    const { status, json } = await post('/api/v1/hosts/local/containers/kill', {
+      containerId: stopped.id
+    })
+
+    expect(status).toBe(409)
+    expect(json.code).toBe(ErrorCode.DockerResourceConflict)
+  })
+
+  it('生命周期端点对不存在的容器 → 1401 / 404', async () => {
+    for (const action of ['kill', 'pause', 'resume']) {
+      const { status, json } = await post(`/api/v1/hosts/local/containers/${action}`, {
+        containerId: 'no-such-container'
+      })
+
+      expect(status, action).toBe(404)
+      expect(json.code, action).toBe(ErrorCode.DockerResourceNotFound)
+    }
+  })
+
+  it('重建容器 → 换新 ID，旧容器让位，名称保留', async () => {
+    const { running } = await pickContainers()
+
+    const { status, json } = await post('/api/v1/hosts/local/containers/recreate', {
+      containerId: running.id
+    })
+
+    expect(status).toBe(200)
+
+    const data = json.data as {
+      containerId: string
+      name: string
+      replacedContainerId: string
+      running: boolean
+      recreated: boolean
+    }
+
+    // 重建的本质是「换一个容器」，ID 必须变——不变的话旧容器还在，
+    // 端口会冲突，而界面会以为重建失败了。
+    expect(data.containerId).not.toBe(running.id)
+    expect(data.replacedContainerId).toBe(running.id)
+    expect(data.name).toBe(running.name)
+    expect(data.recreated).toBe(true)
+    // 省略 start 时沿用原容器的运行状态
+    expect(data.running).toBe(true)
+  })
+
+  it('重建只改环境变量 → 其余字段保持原样（补丁语义）', async () => {
+    const { running } = await pickContainers()
+
+    const before = await post('/api/v1/hosts/local/containers/inspect', {
+      containerId: running.id
+    })
+    const original = (before.json.data as { config: { env: string[]; image: string } }).config
+
+    const { status, json } = await post('/api/v1/hosts/local/containers/recreate', {
+      containerId: running.id,
+      config: { env: ['ONLY=1'] }
+    })
+
+    expect(status).toBe(200)
+
+    const newId = (json.data as { containerId: string }).containerId
+    const after = await post('/api/v1/hosts/local/containers/inspect', { containerId: newId })
+    const updated = (after.json.data as { config: { env: string[]; image: string } }).config
+
+    expect(updated.env).toEqual(['ONLY=1'])
+    // ⚠️ 镜像没给就必须是原值：整份替换会让界面上没展示的字段静默消失
+    expect(updated.image).toBe(original.image)
+  })
+
+  it('重建不存在的容器 → 1401 / 404', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/containers/recreate', {
+      containerId: 'no-such-container'
+    })
+
+    expect(status).toBe(404)
+    expect(json.code).toBe(ErrorCode.DockerResourceNotFound)
+  })
+
+  it('容器详情带端口列表（编辑表单要靠它预填端口映射）', async () => {
+    const list = await post('/api/v1/hosts/local/containers/list', { all: true, pageSize: 100 })
+    const items = (list.json.data as { items: { id: string }[] }).items
+
+    for (const item of items.slice(0, 5)) {
+      const { status, json } = await post('/api/v1/hosts/local/containers/inspect', {
+        containerId: item.id
+      })
+
+      expect(status).toBe(200)
+      expect(Array.isArray((json.data as { ports: unknown[] }).ports)).toBe(true)
+    }
   })
 })
 

@@ -69,7 +69,10 @@ vi.mock('../src/api/container', () => ({
   stopContainer: vi.fn(),
   restartContainer: vi.fn(),
   removeContainer: vi.fn(),
-  batchRemoveContainers: vi.fn(async () => ({ requested: 0, succeeded: 0, failures: [] }))
+  killContainer: vi.fn(),
+  pauseContainer: vi.fn(),
+  resumeContainer: vi.fn(),
+  recreateContainer: vi.fn()
 }))
 
 vi.mock('../src/realtime/connection', () => ({
@@ -105,16 +108,36 @@ let warnings: string[] = []
 let warnSpy: ReturnType<typeof vi.spyOn>
 let errorSpy: ReturnType<typeof vi.spyOn>
 
+/**
+ * 把 console 参数安全地转成文本。
+ *
+ * ⚠️ **不能直接 `String(arg)`**：Vue 有时会把「组件实例 / 代理对象」当参数传出来，
+ * 而代理对象的 `toString` 可能不可调用——`String()` 于是抛
+ * `Cannot convert object to primitive value`，**守卫测试自己先炸掉**，
+ * 结果是「看不见真正要报的告警」。这里逐个 try，失败时退回 `Object.prototype.toString`。
+ */
+function safeText(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (value instanceof Error) return `${value.name}: ${value.message}`
+  try {
+    return String(value)
+  } catch {
+    return Object.prototype.toString.call(value)
+  }
+}
+
 beforeEach(() => {
   warnings = []
   // 固定语言：断言的是**渲染出来的文案**而不是 key（真实 i18n 会把 key 翻成文字），
   // 语言的确定性与断言的确定性必须绑定。
   i18n.global.locale.value = 'zh-CN'
   warnSpy = vi.spyOn(console, 'warn').mockImplementation((...args) => {
-    warnings.push(args.map(String).join(' '))
+    warnings.push(args.map(safeText).join(' '))
+    if (process.env.DUMP_WARNINGS) console.info('[WARN]', ...args.map(safeText))
   })
   errorSpy = vi.spyOn(console, 'error').mockImplementation((...args) => {
-    warnings.push(args.map(String).join(' '))
+    warnings.push(args.map(safeText).join(' '))
+    if (process.env.DUMP_WARNINGS) console.info('[ERROR]', ...args.map(safeText))
   })
 })
 
@@ -385,13 +408,82 @@ describe('容器列表页渲染冒烟（0.7.0 改过模板）', () => {
     wrapper.unmount()
   })
 
-  it('新建容器对话框：三个编辑器与镜像下拉都能渲染', async () => {
-    const Dialog = (await import('../src/components/business/CreateContainerDialog.vue')).default
-    const wrapper = await mountSmoke(Dialog, { props: { modelValue: true, hostId: 'prod-01' } })
+  it('容器详情页渲染冒烟（0.7.0 改过模板）', async () => {
+    const InspectView = (await import('../src/views/ContainerInspectView.vue')).default
+    const wrapper = await mountSmoke(InspectView, {
+      path: '/hosts/prod-01/containers/demo/inspect',
+      props: { containerId: 'demo' }
+    })
 
     await wrapper.vm.$nextTick()
     await Promise.resolve()
     await Promise.resolve()
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    wrapper.unmount()
+  })
+
+  it('批量动作条渲染冒烟（0.7.0 新组件）', async () => {
+    const BatchActions = (await import('../src/components/business/ContainerBatchActions.vue')).default
+    const wrapper = await mountSmoke(BatchActions, {
+      props: { states: ['running', 'exited'] }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    // 四个高频动作常驻（图标 + 文字）
+    expect(wrapper.text()).toContain('启动')
+    expect(wrapper.text()).toContain('停止')
+    expect(wrapper.text()).toContain('重启')
+    expect(wrapper.text()).toContain('删除')
+    wrapper.unmount()
+  })
+
+  it('终止对话框渲染冒烟（0.7.0 新组件）', async () => {
+    const KillDialog = (await import('../src/components/business/ContainerKillDialog.vue')).default
+    const wrapper = await mountSmoke(KillDialog, {
+      props: {
+        modelValue: true,
+        hostId: 'prod-01',
+        targets: [{ id: 'abc', name: 'web-frontend' }]
+      }
+    })
+
+    await wrapper.vm.$nextTick()
+    await Promise.resolve()
+    await Promise.resolve()
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    // ⚠️ `el-dialog` **默认不传送到 body**（`append-to-body` 默认 false），
+    // 因此对话框内容在 `wrapper.text()` 里——只有下拉选项会被传送到 body。
+    expect(wrapper.text()).toContain('web-frontend')
+    // 信号下拉的选项在 body 里（EP 的 popper 默认 teleport）
+    expect(document.body.textContent ?? '').toContain('SIGKILL')
+    wrapper.unmount()
+  })
+
+  it('编辑并重建对话框渲染冒烟（0.7.0 新组件）', async () => {
+    const EditDialog = (await import('../src/components/business/ContainerEditDialog.vue')).default
+    const wrapper = await mountSmoke(EditDialog, {
+      props: { modelValue: true, hostId: 'prod-01', containerId: 'abc' }
+    })
+
+    await wrapper.vm.$nextTick()
+    await Promise.resolve()
+    await Promise.resolve()
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    wrapper.unmount()
+  })
+
+  it('新建容器对话框：三个编辑器与镜像下拉都能渲染', async () => {
+    const Dialog = (await import('../src/components/business/CreateContainerDialog.vue')).default
+    const wrapper = await mountSmoke(Dialog, { props: { modelValue: true, hostId: 'prod-01' } })
+
     await wrapper.vm.$nextTick()
 
     expect(templateBugs(), '渲染期告警').toEqual([])
