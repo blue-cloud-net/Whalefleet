@@ -443,6 +443,9 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [InlineData("stop")]
     [InlineData("restart")]
     [InlineData("remove")]
+    [InlineData("kill")]
+    [InlineData("pause")]
+    [InlineData("resume")]
     public async Task 变更_容器标识为空_返回1000(string action)
     {
         using var client = await CreateAuthenticatedClientAsync(_adminName);
@@ -453,6 +456,36 @@ public class ContainerEndpointsTests : IAsyncLifetime
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await ReadCodeAsync(response)).Should().Be(ErrorCodes.ValidationFailed);
+    }
+
+    [Theory]
+    [InlineData("SIG KILL")]
+    [InlineData("SIG\tKILL")]
+    public async Task 终止_信号非法_返回1000(string signal)
+    {
+        using var client = await CreateAuthenticatedClientAsync(_adminName);
+
+        using var response = await client.PostAsJsonAsync(
+            $"/api/v1/hosts/{_localHost}/containers/kill",
+            new { containerId = "anything", signal });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await ReadCodeAsync(response)).Should().Be(ErrorCodes.ValidationFailed);
+    }
+
+    [DockerFact]
+    public async Task 终止_信号为空白_按未指定处理()
+    {
+        using var client = await CreateAuthenticatedClientAsync(_adminName);
+
+        using var response = await client.PostAsJsonAsync(
+            $"/api/v1/hosts/{_localHost}/containers/kill",
+            new { containerId = _unknownContainer, signal = "   " });
+
+        // 空白信号 = 「没填」，与省略同义：因此这里报的是「容器不存在」而不是「参数非法」。
+        // 空输入框提交上来就是这个形态，把它当成错误只会让用户改一个已经对的东西。
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await ReadCodeAsync(response)).Should().Be(ErrorCodes.DockerResourceNotFound);
     }
 
     [Fact]
@@ -501,6 +534,9 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [InlineData("stop")]
     [InlineData("restart")]
     [InlineData("remove")]
+    [InlineData("kill")]
+    [InlineData("pause")]
+    [InlineData("resume")]
     public async Task 变更_容器不存在_返回1401(string action)
     {
         using var client = await CreateAuthenticatedClientAsync(_adminName);
