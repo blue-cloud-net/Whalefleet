@@ -849,8 +849,11 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 停止 | `POST /api/v1/hosts/{hostId}/containers/stop` | 0.0.9 | Body: `{ containerId, waitSeconds? }`；`waitSeconds` 取值 0–300（默认 10，与 Docker 一致） |
 | 重启 | `POST /api/v1/hosts/{hostId}/containers/restart` | 0.0.9 | Body: `{ containerId }` |
 | 删除 | `POST /api/v1/hosts/{hostId}/containers/remove` | 0.0.9 | Body: `{ containerId, force? }`；不带 `force` 删运行中的容器返回 `1404`/409 |
-| **批量删除** | `POST /api/v1/hosts/{hostId}/containers/batch-remove` | **0.1.0** | Body: `{ containerIds: string[], force? }`；响应为汇总结果，**部分成功也是 200**（见下） |
-| **批量启停** | — | **0.7.0 不做** | 前端逐条调用 `start` / `stop` / `restart` 并**汇总失败原因**。启停是幂等操作，逐条调用的代价只是几个来回；服务端批量端点会多出「带哪几个 ID」「上限多少」「逐条错误码怎么排」一整套契约。**批量删除仍走服务端**（`batch-remove`），因为删除不可逆，必须留出逐条汇报失败的空间 |
+| **终止** | `POST /api/v1/hosts/{hostId}/containers/kill` | **0.7.0** | Body: `{ containerId, signal? }`；等价 `docker kill`。`signal` 省略时**由守护进程取默认值**（SIGKILL），服务端不写死。信号名与数值都原样透传（`SIGHUP` / `9` 都行），只挡空串 / 含空白 / 超长。⚠️ **信号不必然终止进程**——非终止信号下容器可能继续运行 |
+| **暂停** | `POST /api/v1/hosts/{hostId}/containers/pause` | **0.7.0** | Body: `{ containerId }`；等价 `docker pause`。容器未运行返回 `1404`/409；**已处于暂停状态同样返回 200**（幂等） |
+| **恢复** | `POST /api/v1/hosts/{hostId}/containers/resume` | **0.7.0** | Body: `{ containerId }`；等价 `docker unpause`。⚠️ **只解除暂停**，与「启动一个已停止的容器」不是一回事；未处于暂停状态同样返回 200（幂等） |
+| **重建** | `POST /api/v1/hosts/{hostId}/containers/recreate` | **0.7.0** | Body: `{ containerId, config?, start? }`；**等价「编辑并重建」**，容器 ID 会变。`config` 省略时按原配置重建；`config` 里**只给要改的字段**（`env` / `labels` / `ports` / `volumes` / `cmd` / `entrypoint` …），省略的字段沿用原值。`config.name` **被忽略**（改名是 `rename` 的职责）。`start` 省略时沿用原容器的运行状态。**旧容器不会被删除**，而是改名成 `whalefleet-replaced-*` 保留（回滚的后手）；响应 `data` 给出新容器 ID、名称、被让位的旧容器 ID 与运行状态 |
+| **批量启停** | — | **0.7.0 不做** | 前端逐条调用 `start` / `stop` / `restart` / `kill` / `pause` / `resume` / `remove` 并**汇总失败原因**。这些操作都是幂等的，逐条调用的代价只是几个来回；服务端批量端点会多出「带哪几个 ID」「上限多少」「逐条错误码怎么排」一整套契约。**删除同样逐条**（走单条 `remove`）——容器侧**不提供服务端 `batch-remove`** |
 | **重命名** | `POST /api/v1/hosts/{hostId}/containers/rename` | **0.3.0** | Body: `{ containerId, name }`；名称规则同 `create`（字母/数字开头，其后含 `_ . -`）；名称已被占用返回 `1404`/409 |
 | **热更新** | `POST /api/v1/hosts/{hostId}/containers/update` | **0.3.0** | Body: `{ containerId, restartPolicy?, memoryLimitBytes?, nanoCpus? }`；**只开放真能热改的字段**，镜像/端口/环境变量/挂载/网络**不支持**。省略 = 保持当前值，**传 0 是非法**（见下） |
 | **复制** | `POST /api/v1/hosts/{hostId}/containers/duplicate` | **0.3.0** | Body: `{ containerId, name?, start? }`；默认名「原名 + `-copy`」，被占用时自动递增 `-2`/`-3`。**原容器不受影响**（不停止、不改名、不删除） |
@@ -965,14 +968,17 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
 
 #### 批量删除的响应形态（0.1.0 已实现）
 
-容器与镜像的 `batch-remove` 共用同一个响应形状，因此前端的批量操作条可以用同一套逻辑处理两者：
+镜像与数据卷的 `batch-remove` 共用同一个响应形状，因此前端的批量操作条可以用同一套逻辑处理两者：
+
+> **容器侧没有 `batch-remove`**（0.7.0 移除）：容器删除逐条走单条 `remove`，
+> 失败原因直接来自单条端点的错误码，不需要汇总结构。
 
 ```jsonc
 {
   "requested": 3,        // ⚠️ 是**去重后**的个数：传两次同一个容器不会显示成「成功 1、失败 1」
   "succeeded": 2,
   "failures": [
-    { "resourceId": "abc123", "code": 1404, "message": "容器正在运行，需指定 force" }
+    { "resourceId": "abc123", "code": 1404, "message": "数据卷正在被容器引用，需指定 force" }
   ]
 }
 ```
@@ -1323,7 +1329,7 @@ nginx: [emerg] …
 | 获取列表 | `POST /api/v1/hosts/{hostId}/images/list` | 0.0.10 | Body: `{ all?, search?, pageIndex?, pageSize?, sortBy?, sortDir? }`；分页在服务端**内存**完成（Docker 无分页参数），`pageSize` 上限 100 |
 | 拉取 | `POST /api/v1/hosts/{hostId}/images/pull` | 0.0.10 | Body: `{ image, tag?, platform? }`；0.0.10 一次性返回结果，0.5.0 改 SignalR 实时进度 |
 | 删除 | `POST /api/v1/hosts/{hostId}/images/remove` | 0.0.10 | Body: `{ imageId, force? }`；被容器占用的镜像返回 `1404`/409 |
-| **批量删除** | `POST /api/v1/hosts/{hostId}/images/batch-remove` | **0.1.0** | Body: `{ imageIds: string[], force? }`；响应为汇总结果，**部分成功也是 200**（容器侧同形状） |
+| **批量删除** | `POST /api/v1/hosts/{hostId}/images/batch-remove` | **0.1.0** | Body: `{ imageIds: string[], force? }`；响应为汇总结果，**部分成功也是 200**（数据卷侧同形状） |
 | **打标签** | `POST /api/v1/hosts/{hostId}/images/tag` | **0.3.0** | Body: `{ imageId, repository, tag? }`；对应 `docker tag`。`repository` **不得含标签**（否则 `1000`），`tag` 省略或空串取 `latest` |
 | 获取详情 | `POST /api/v1/hosts/{hostId}/images/inspect` | 0.0.10 | Body: `{ imageId }` |
 | **构建镜像** | `POST /api/v1/hosts/{hostId}/images/build` | **0.4.0** | `multipart/form-data`：文件字段 `context`（tar 包，**必须带 filename**）+ 表单字段 `tag` / `dockerfile` / `buildArgs` / `labels` / `target` / `platform` / `noCache`；本版一次性返回（进度推送随 0.5.0 改 SignalR） |

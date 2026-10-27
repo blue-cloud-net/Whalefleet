@@ -111,6 +111,30 @@ before the first public release).
   `key` or `key=value`. Without it, *every* unreferenced resource on the machine is eligible.
 - **Multi-select and batch tag assignment / removal on the host management page**: select hosts
   and append or remove tags in one go, reusing the existing tag endpoints (no backend change).
+- **Container termination** (`POST /api/v1/hosts/{hostId}/containers/kill`): body
+  `{ containerId, signal? }`. The signal defaults to the **daemon's** default (SIGKILL) and is
+  deliberately **not hard-coded server-side**; names and numbers are passed through (`SIGHUP`,
+  `9`). A **non-terminating signal may leave the container running** — the signal was delivered,
+  not "the process died".
+- **Container pause / resume** (`POST /api/v1/hosts/{hostId}/containers/{pause,resume}`): body
+  `{ containerId }`. Both are **idempotent** (already paused / not paused both return 200).
+  `resume` only clears the pause — it is **not** "start a stopped container"; the two are
+  separate operations with separate buttons.
+- **Container recreation** (`POST /api/v1/hosts/{hostId}/containers/recreate`): body
+  `{ containerId, config?, start? }` — "edit and recreate", so **the container ID changes**.
+  `config` carries **only the fields to change**; omitted ones keep their current value, and
+  `config.name` is ignored (renaming is `rename`'s job). `start` omitted means "keep the
+  container's current running state". The **old container is not deleted** — it is renamed to
+  `whalefleet-replaced-*` and kept, which is the way back if the new one misbehaves.
+- **Seven container batch actions**: the toolbar drives `start` / `stop` / `restart` / `kill` /
+  `pause` / `resume` / `remove` **one by one** and **reports the reason for every failure**. The
+  action bar is **adaptive**: all seven when there is room, otherwise the four high-frequency
+  ones (start / stop / restart / remove) stay visible and the rest move into a "more" dropdown.
+  The buttons are **always visible and disabled** when nothing is selected — a bar that only
+  appears after a selection is an entry point nobody finds.
+- **A lifecycle action area on the container detail page**: the detail page is now
+  **self-contained** — lifecycle actions plus a "more" menu (duplicate / edit / recreate /
+  append mount) — so operating a container no longer means going back to the list.
 
 #### Changed
 
@@ -119,14 +143,21 @@ before the first public release).
   gone" from "the port is in use".
 - **The network detail drawer gains connect / disconnect**: the container dropdown is sorted by
   **name**, and beyond 100 entries it says so explicitly ("only the first 100 are listed").
+- **The container-side `batch-remove` endpoint is removed**: bulk removal now calls the
+  single-container `remove` **one by one**. Images and volumes keep their batch endpoints.
+- **The create-container form is shared with the edit dialog**: the configuration form was
+  extracted into `ContainerConfigForm`, so the two dialogs cannot drift apart.
 
 #### Notes
 
 - **No server-side batch start / stop endpoints**: start and stop are idempotent, so calling them
   one by one costs a few round trips, while a batch endpoint brings a whole contract of its own
   ("which IDs does the body carry", "what is the limit", "how are per-item error codes ordered").
-  **Batch removal still goes through the server** (`batch-remove`), because deletion is not
-  reversible and must be able to report failures item by item.
+  **The container-side `batch-remove` endpoint is removed along with it**: deletion also calls
+  the single-container `remove` one by one. Calling one by one does **not** lose "report failures
+  item by item" — that is exactly what the **frontend aggregation** does; the server-side
+  summary shape (`requested` / `succeeded` / `failures`) was a second implementation of the same
+  semantics, and keeping both meant one more place to keep in sync.
 - **Pruning has no `dryRun`**: the preview comes from `system/df` and is a **policy-level**
   candidate list, while the daemon skips volumes with mount options and applies its own
   reference counting when it actually deletes. A `dryRun` could only return "the list we
@@ -140,6 +171,16 @@ before the first public release).
   while the container list is a single-host view. Doing cross-host batch start / stop would
   require a cross-host container list first (`0.16.0`). The only form of group batch operation in
   this milestone is **tag assignment / removal**.
+- **PID 1 ignores signals with a default action (SIGTERM included)**: the kernel's default
+  action for PID 1 is "ignore", so the signal only arrives if the process installed a handler.
+  `docker kill -s SIGTERM` may therefore **return success while the container keeps running**
+  (measured with `sleep` as PID 1). The conclusion: **"the command did not fail" is not "the
+  process died"** — the actual container state is what counts.
+- **Whether an action is available is decided by Docker's semantics**, not by what looks good
+  in the UI: a paused container is still "alive" (and still needs `force` to be removed) but
+  cannot be paused, and `start` only applies to a container that is not running. The decision
+  lives in **one place**, shared by the row buttons, the batch buttons and the detail page —
+  three copies would eventually offer a button that answers 409.
 
 ### `0.6.0` — Observability (internal draft)
 
@@ -436,6 +477,8 @@ before the first public release).
   status mapping, both guard tests, the API spec, and the frontend error-code tables.
 - **Batch removal for containers and images** (`POST .../containers/batch-remove` and
   `.../images/batch-remove`). Up to **100** ids per request, trimmed, de-duplicated, order preserved.
+  - ⚠️ **The container-side endpoint was removed in `0.7.0`** (bulk removal calls the
+    single-container `remove` one by one); the image-side one stays.
   - The response is `200` with a per-item result rather than a single status: half a batch is expected
     to fail on a busy Docker host, and collapsing that into one 4xx/5xx throws away the part that did
     work. A total failure still reports `IsTotalFailure` so the caller can raise a toast instead of
