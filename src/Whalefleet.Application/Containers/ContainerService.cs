@@ -50,6 +50,13 @@ public sealed partial class ContainerService
     /// <summary><c>waitSeconds</c> 上限。</summary>
     private const int MaxWaitSeconds = 300;
 
+    /// <summary><c>signal</c> 长度上限。</summary>
+    /// <remarks>
+    /// 信号名最长也就十来个字符（<c>SIGRTMIN</c> / <c>SIGRTMAX</c> 一类），
+    /// 上限给到 32 已足够宽松；再长就只能是注入内容或拼错了。
+    /// </remarks>
+    private const int MaxSignalLength = 32;
+
     private readonly IDockerHostAccessor _accessor;
     private readonly ILogger<ContainerService> _logger;
 
@@ -576,6 +583,162 @@ public sealed partial class ContainerService
     }
 
     /// <summary>
+    /// 终止容器（等价于 <c>docker kill</c>：直接把信号送到容器主进程）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">终止请求（容器标识、可选信号）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>表示异步操作的任务。</returns>
+    /// <exception cref="BusinessException">
+    /// 容器标识为空或信号非法（<c>1000</c>）、容器不存在（<c>1401</c>）、
+    /// 容器未运行（<c>1404</c>）或 Docker 调用失败（<c>1402</c>）。
+    /// </exception>
+    /// <remarks>
+    /// <para><b>与「停止」的分工</b>：<c>stop</c> 先发 SIGTERM 并等优雅退出，
+    /// <c>kill</c> <b>不等待</b>——默认 SIGKILL 直接终结进程，容器没有机会清理现场。
+    /// 两者不是替代关系：正常停机用 <c>stop</c>，进程卡死时才用 <c>kill</c>。</para>
+    /// <para><b>信号省略时不写死 <c>SIGKILL</c></b>：交给守护进程取默认值，
+    /// 与 <c>stop</c> 的 <c>waitSeconds</c> 同一思路——守护进程改了默认值时，
+    /// 写死的数字会静默跑偏。</para>
+    /// <para><b>不预检容器状态</b>：守护进程对「容器未运行」回 409，
+    /// 翻译后是 <c>1404</c>（资源当前状态不允许），已经足够可读；
+    /// 而预检会多一次 inspect 并引入「检查之后状态又变了」的竞态。</para>
+    /// </remarks>
+    public async Task KillAsync(
+        string hostId,
+        KillContainerRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var containerId = RequireContainerId(request.ContainerId);
+        var signal = RequireSignal(request.Signal);
+        var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
+
+        var parameters = new ContainerKillParameters();
+
+        // 只在给了信号时赋值：空串会被守护进程当成「非法信号名」而不是「用默认值」。
+        if (signal is not null)
+        {
+            parameters.Signal = signal;
+        }
+
+        await DockerErrorTranslator.ExecuteAsync(
+            () => client.Containers.KillContainerAsync(containerId, parameters, cancellationToken),
+            $"容器 {containerId}",
+            cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation(
+            "主机 {HostId} 终止容器 {ContainerId}（信号={Signal}）",
+            hostId,
+            containerId,
+            signal ?? "默认");
+    }
+
+    /// <summary>
+    /// 暂停容器（等价于 <c>docker pause</c>）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">暂停请求（容器标识）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>表示异步操作的任务。</returns>
+    /// <exception cref="BusinessException">
+    /// 容器标识为空（<c>1000</c>）、容器不存在（<c>1401</c>）、
+    /// 容器未运行（<c>1404</c>）或 Docker 调用失败（<c>1402</c>）。
+    /// </exception>
+    /// <remarks>
+    /// <para><b>暂停 ≠ 停止</b>：暂停后容器进程仍在，只是不再占用 CPU；
+    /// 它<b>仍占着</b>映射的端口与挂载的卷。因此「暂停中」的容器不能直接当「已停」看待。</para>
+    /// <para><b>为什么要先 inspect</b>：守护进程对「已在暂停状态」与「容器未运行」
+    /// 都回 409，但这两件事需要给用户不同的提示（一个「已经是了」，一个「先启动」）。
+    /// 预检一次就能把它们分开，而幂等场景（重复点「暂停」）也就能按成功处理。</para>
+    /// </remarks>
+    public async Task PauseAsync(
+        string hostId,
+        PauseContainerRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var containerId = RequireContainerId(request.ContainerId);
+        var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
+
+        var state = await InspectStateAsync(client, containerId, cancellationToken).ConfigureAwait(false);
+
+        if (!state.Running)
+        {
+            throw BusinessException.Conflict($"容器 {containerId} 未在运行，无法暂停");
+        }
+
+        if (state.Paused)
+        {
+            // 已在目标状态：按成功处理（与「重复点启动」同一口径）
+            _logger.LogDebug("容器 {ContainerId} 已处于暂停状态，按成功处理", containerId);
+            return;
+        }
+
+        await DockerErrorTranslator.ExecuteAsync(
+            () => client.Containers.PauseContainerAsync(containerId, cancellationToken),
+            $"容器 {containerId}",
+            cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation("主机 {HostId} 暂停容器 {ContainerId}", hostId, containerId);
+    }
+
+    /// <summary>
+    /// 恢复容器（等价于 <c>docker unpause</c>）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">恢复请求（容器标识）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>表示异步操作的任务。</returns>
+    /// <exception cref="BusinessException">
+    /// 容器标识为空（<c>1000</c>）、容器不存在（<c>1401</c>）、
+    /// 容器未运行（<c>1404</c>）或 Docker 调用失败（<c>1402</c>）。
+    /// </exception>
+    /// <remarks>
+    /// <para><b>与「启动」不是一回事</b>：本端点只解除<b>暂停</b>，容器随即继续跑；
+    /// 而 <c>start</c> 是把<b>已停止</b>的容器跑起来。对一个已停止的容器调用本端点
+    /// 只会得到「容器未运行」——这正是它应该给的答案。</para>
+    /// <para><b>为什么先 inspect</b>：同 <see cref="PauseAsync"/>——
+    /// 「未暂停」与「未运行」都回 409，但需要不同的提示。</para>
+    /// </remarks>
+    public async Task ResumeAsync(
+        string hostId,
+        ResumeContainerRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var containerId = RequireContainerId(request.ContainerId);
+        var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
+
+        var state = await InspectStateAsync(client, containerId, cancellationToken).ConfigureAwait(false);
+
+        if (!state.Running)
+        {
+            throw BusinessException.Conflict($"容器 {containerId} 未在运行，无法恢复");
+        }
+
+        if (!state.Paused)
+        {
+            // 已在目标状态：按成功处理（与「重复点启动」同一口径）
+            _logger.LogDebug("容器 {ContainerId} 未处于暂停状态，按成功处理", containerId);
+            return;
+        }
+
+        await DockerErrorTranslator.ExecuteAsync(
+            () => client.Containers.UnpauseContainerAsync(containerId, cancellationToken),
+            $"容器 {containerId}",
+            cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation("主机 {HostId} 恢复容器 {ContainerId}", hostId, containerId);
+    }
+
+    /// <summary>
     /// 删除容器。
     /// </summary>
     /// <param name="hostId">主机标识（主机名）。</param>
@@ -606,76 +769,7 @@ public sealed partial class ContainerService
     }
 
     /// <summary>
-    /// 批量删除容器（逐条汇报失败，**部分成功也算成功**）。
-    /// </summary>
-    /// <param name="hostId">主机标识（主机名）。</param>
-    /// <param name="request">批量删除请求。</param>
-    /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>汇总结果。</returns>
-    /// <exception cref="BusinessException">
-    /// 主机不可达（<c>1301</c>）或已停用（<c>1302</c>）；列表为空 / 超限时 <c>1000</c>。
-    /// </exception>
-    /// <remarks>
-    /// <para><b>主机客户端只取一次</b>：<c>GetClientAsync</c> 会做可达性探测与凭据装配，
-    /// N 个容器取 N 次就是 N 次探测。而且它抛的 <c>1301</c> / <c>1302</c> 是<b>整批</b>的失败
-    /// （主机都连不上了，逐条汇报「100 个都失败了」对用户毫无帮助），因此它必须发生在循环之外。</para>
-    /// <para><b>串行而不是并行</b>：删除容器会触发清理动作（网络断开、卷解绑），
-    /// 并发删除时守护进程内部的锁会让失败原因变得不可预测；而单次删除通常在几十毫秒内完成，
-    /// 省下的那点时间远不如「失败结果能解释」值钱。</para>
-    /// </remarks>
-    public async Task<BatchOperationResult> BatchRemoveAsync(
-        string hostId,
-        BatchRemoveContainersRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
-        ArgumentNullException.ThrowIfNull(request);
-
-        var containerIds = BatchRequest.NormalizeIds(request.ContainerIds, nameof(request.ContainerIds));
-        var force = request.Force ?? false;
-        var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
-
-        var failures = new List<BatchOperationFailure>();
-
-        foreach (var containerId in containerIds)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            try
-            {
-                await this.RemoveAsync(client, containerId, force, hostId, cancellationToken).ConfigureAwait(false);
-            }
-            catch (BusinessException exception)
-            {
-                // 逐条收下：批量场景下「哪一条、为什么」比「整批失败」有用得多
-                failures.Add(new BatchOperationFailure(containerId, exception.Code, exception.Message));
-            }
-        }
-
-        if (failures.Count > 0)
-        {
-            _logger.LogWarning(
-                "主机 {HostId} 批量删除容器：成功 {Succeeded}/{Requested}，失败 {Failed} 条（强制={Force}）",
-                hostId,
-                containerIds.Count - failures.Count,
-                containerIds.Count,
-                failures.Count,
-                force);
-        }
-        else
-        {
-            _logger.LogInformation(
-                "主机 {HostId} 批量删除容器：全部 {Count} 个成功（强制={Force}）",
-                hostId,
-                containerIds.Count,
-                force);
-        }
-
-        return new BatchOperationResult(containerIds.Count, containerIds.Count - failures.Count, failures);
-    }
-
-    /// <summary>
-    /// 用已有客户端删除单个容器（单条与批量端点共用）。
+    /// 用已有客户端删除单个容器（批量删除端点移除后只剩单条删除在用它）。
     /// </summary>
     /// <param name="client">该主机的 Docker 客户端。</param>
     /// <param name="containerId">容器标识。</param>
@@ -1059,6 +1153,70 @@ public sealed partial class ContainerService
             : containerId.Trim();
 
     /// <summary>
+    /// 信号名校验。
+    /// </summary>
+    /// <param name="signal">请求里的信号名或信号号。</param>
+    /// <returns>去空白后的信号；未指定时为 <see langword="null"/>（用守护进程默认值）。</returns>
+    /// <exception cref="BusinessException">含空白字符或超长时抛 <c>1000</c>。</exception>
+    /// <remarks>
+    /// <b>只挡「明显非法」，不枚举合法信号</b>：信号集由内核决定（<c>signal(7)</c>），
+    /// 而且 Docker 接受 <c>SIGKILL</c> / <c>KILL</c> / <c>9</c> 三种写法。
+    /// 在本层维护一张白名单等于把内核的信号表拓一份——它会过时，而且过时后会把
+    /// 「合法的自定义信号」误报成非法。合法性交给守护进程判（非法时回 400 → <c>1402</c>）。
+    /// <br/>
+    /// 但「含空白字符」与「超长」必须本地挡：这两种输入守护进程只会回一句看不懂的
+    /// 「invalid signal」，而它们显然来自拼写或注入。
+    /// </remarks>
+    private static string? RequireSignal(string? signal)
+    {
+        if (string.IsNullOrWhiteSpace(signal))
+        {
+            return null;
+        }
+
+        var trimmed = signal.Trim();
+
+        if (trimmed.Length > MaxSignalLength)
+        {
+            throw new BusinessException(
+                ErrorCodes.ValidationFailed,
+                $"signal 长度不能超过 {MaxSignalLength} 个字符");
+        }
+
+        if (trimmed.Any(char.IsWhiteSpace))
+        {
+            throw new BusinessException(ErrorCodes.ValidationFailed, "signal 不能包含空白字符");
+        }
+
+        return trimmed;
+    }
+
+    /// <summary>
+    /// 读取容器的运行状态（供「暂停 / 恢复」判定前置状态用）。
+    /// </summary>
+    /// <param name="client">该主机的 Docker 客户端。</param>
+    /// <param name="containerId">容器标识。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>容器的运行状态。</returns>
+    /// <remarks>
+    /// <b>为什么用一个专门的辅助方法而不是在两处内联 inspect</b>：两处的判定完全相同
+    /// （先看 Running 再看 Paused），内联两份意味着以后改口径时容易只改一处。
+    /// </remarks>
+    private static async Task<SdkState> InspectStateAsync(
+        IDockerClient client,
+        string containerId,
+        CancellationToken cancellationToken)
+    {
+        var container = await DockerErrorTranslator.ExecuteAsync(
+            () => client.Containers.InspectContainerAsync(containerId, cancellationToken),
+            $"容器 {containerId}",
+            cancellationToken).ConfigureAwait(false);
+
+        return container.State
+            ?? throw BusinessException.NotFound($"容器 {containerId} 没有状态信息");
+    }
+
+    /// <summary>
     /// <c>tail</c> 范围校验。
     /// </summary>
     /// <param name="tail">请求里的行数。</param>
@@ -1203,7 +1361,80 @@ public sealed partial class ContainerService
         Config: MapConfig(source.Config),
         HostConfig: MapHostConfig(source.HostConfig),
         Mounts: source.Mounts is null ? [] : [.. source.Mounts.Select(MapMount)],
-        Networks: MapNetworks(source.NetworkSettings?.Networks));
+        Networks: MapNetworks(source.NetworkSettings?.Networks),
+        Ports: MapInspectPorts(source));
+
+    /// <summary>
+    /// 把 inspect 里的端口映射投影成对外结构，并按<b>确定性顺序</b>排列。
+    /// </summary>
+    /// <param name="source">SDK 详情。</param>
+    /// <returns>已排序的端口投影。</returns>
+    /// <remarks>
+    /// <para><b>为什么详情页也要给端口</b>：「编辑并重建」要把端口映射回填进表单，
+    /// 而<b>详情接口不给它就没有地方可回填</b>。若表单里是空的而重建时又整份替换，
+    /// 用户就会在「我只是改了个环境变量」的动作里丢掉全部端口映射。</para>
+    /// <para><b>数据源与列表端点不同</b>：列表拿的是 <c>GET /containers/json</c> 的
+    /// <c>Ports</c> 数组，而 inspect 给的是 <c>HostConfig.PortBindings</c>（字典）。
+    /// 两者表达的同一件事，因此这里的投影要自己拼出「容器端口 + 协议 + 宿主端口 + 绑定地址」。</para>
+    /// <para><b>排序与列表端点同口径</b>（容器端口 ↑ → 协议 → 宿主端口 → 绑定地址等级 → 绑定地址），
+    /// 否则同一个容器在列表页与详情页会给出不同的端口顺序。</para>
+    /// </remarks>
+    private static IReadOnlyList<ContainerPort> MapInspectPorts(ContainerInspectResponse source)
+    {
+        var bindings = source.HostConfig?.PortBindings;
+        var ports = new List<ContainerPort>();
+
+        foreach (var (key, bindingList) in bindings ?? new Dictionary<string, IList<PortBinding>>())
+        {
+            var (privatePort, protocol) = ParsePortKey(key);
+
+            if (privatePort is null)
+            {
+                continue;
+            }
+
+            if (bindingList is null || bindingList.Count == 0)
+            {
+                // 「只暴露不绑定」：镜像声明了 EXPOSE 但没有 -p
+                ports.Add(new ContainerPort(privatePort.Value, null, protocol, null));
+                continue;
+            }
+
+            foreach (var binding in bindingList)
+            {
+                // SDK 的 PortBinding.HostPort 是**字符串**（Docker 的 JSON 里端口号是字符串），
+                // 而对外的 ContainerPort.PublicPort 是数值——转换在这里做。
+                int? hostPort = int.TryParse(binding.HostPort, out var parsed) ? parsed : null;
+
+                ports.Add(new ContainerPort(privatePort.Value, hostPort, protocol, binding.HostIP));
+            }
+        }
+
+        return
+        [
+            .. ports
+                .OrderBy(port => port.PrivatePort)
+                .ThenBy(port => port.Type, StringComparer.Ordinal)
+                .ThenBy(port => port.PublicPort ?? int.MaxValue)
+                .ThenBy(port => IpRank(port.Ip))
+                .ThenBy(port => port.Ip ?? string.Empty, StringComparer.Ordinal)
+        ];
+    }
+
+    /// <summary>
+    /// 解析 Docker 的端口键（<c>"8080/tcp"</c> 或 <c>"8080"</c>）。
+    /// </summary>
+    /// <param name="key">端口键。</param>
+    /// <returns>容器端口与协议；解析不出来时容器端口为 <see langword="null"/>。</returns>
+    private static (int? PrivatePort, string Protocol) ParsePortKey(string key)
+    {
+        var separator = key.IndexOf('/', StringComparison.Ordinal);
+
+        var portText = separator < 0 ? key : key[..separator];
+        var protocol = separator < 0 ? "tcp" : key[(separator + 1)..];
+
+        return int.TryParse(portText, out var port) ? (port, protocol) : (null, "tcp");
+    }
 
     /// <summary>
     /// 投影运行状态。

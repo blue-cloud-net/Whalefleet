@@ -88,7 +88,8 @@ public sealed record ContainerDetail(
     ContainerConfigDetail Config,
     ContainerHostConfigDetail HostConfig,
     IReadOnlyList<ContainerMountDetail> Mounts,
-    IReadOnlyList<ContainerNetworkDetail> Networks);
+    IReadOnlyList<ContainerNetworkDetail> Networks,
+    IReadOnlyList<ContainerPort> Ports);
 
 /// <summary>
 /// 容器的运行状态。

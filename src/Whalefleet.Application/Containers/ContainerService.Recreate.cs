@@ -275,6 +275,236 @@ public sealed partial class ContainerService
         return new ContainerRecreatedResult(created.ID, name, null, start, warnings, Recreated: false);
     }
 
+    // ==================== 重建（编辑并重建） ====================
+
+    /// <summary>
+    /// 重建容器（<b>等价于「编辑并重建」</b>，容器 ID 会变）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">重建请求（容器标识、可选新配置、是否启动）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>新容器 ID、名称、被让位的旧容器 ID 与实际生效的运行状态。</returns>
+    /// <exception cref="BusinessException">
+    /// 容器标识为空或配置字段非法（<c>1000</c>）、容器不存在（<c>1401</c>）、
+    /// 重建失败且回滚也失败（<c>1402</c>）、主机不可达（<c>1301</c>）。
+    /// </exception>
+    /// <remarks>
+    /// <para>⚠️ <b>这个操作会重建容器</b>。Docker 没有「原地改配置」的接口——
+    /// 镜像、命令、端口、挂载、网络这些字段一旦要改，就只能重建。界面必须把这一点
+    /// 写在二次确认里。</para>
+    /// <para><b><see cref="RecreateContainerRequest.Config"/> 省略时按原配置原样重建</b>，
+    /// 给了则<b>只覆盖请求里出现的字段</b>（其余沿用原容器）——
+    /// 理由见该类型的注释。</para>
+    /// <para><b>名字始终沿用原容器</b>：请求里的 <c>config.name</c> 被忽略，
+    /// 改名是 <c>rename</c> 端点的职责。</para>
+    /// </remarks>
+    public async Task<ContainerRecreatedResult> RecreateAsync(
+        string hostId,
+        RecreateContainerRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var containerId = RequireContainerId(request.ContainerId);
+        var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
+
+        var source = await DockerErrorTranslator.ExecuteAsync(
+            () => client.Containers.InspectContainerAsync(containerId, cancellationToken),
+            $"容器 {containerId}",
+            cancellationToken).ConfigureAwait(false);
+
+        var name = source.Name?.TrimStart('/')
+            ?? throw BusinessException.Validation($"容器 {containerId} 没有名称，无法按原名重建");
+
+        var wasRunning = source.State?.Running ?? false;
+
+        // 基底永远是「从 inspect 还原的原配置」——它含 capabilities / sysctls / ulimits /
+        // devices / 日志驱动 / 健康检查等界面不展示的字段。丢掉它们就是静默丢配置。
+        var parameters = BuildRecreateParameters(source, name);
+
+        if (request.Config is not null)
+        {
+            ApplyConfigPatch(parameters, request.Config);
+        }
+
+        return await this.RecreateCoreAsync(
+            client,
+            hostId,
+            containerId,
+            name,
+            parameters,
+            wasRunning,
+            request.Start,
+            $"重建容器 {name}",
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 把请求里的新配置**覆盖**到从 inspect 还原的参数上。
+    /// </summary>
+    /// <param name="parameters">基底参数（由 <see cref="BuildRecreateParameters"/> 生成）。</param>
+    /// <param name="patch">请求里的新配置；<see langword="null"/> 字段表示「不改」。</param>
+    /// <exception cref="BusinessException">字段非法时抛 <c>1000</c>。</exception>
+    /// <remarks>
+    /// <para><b>为什么是「覆盖」而不是「整份替换」</b>：inspect 能拿到的字段比界面展示的多得多
+    /// （capabilities、sysctls、ulimits、devices、日志驱动、健康检查……）。
+    /// 若按「整份替换」处理，界面没展示的那些字段会在重建时**静默消失**——
+    /// 用户只是改了个环境变量，却把容器的能力集清空了。
+    /// <br/>
+    /// 而「不清空」也是可以表达的：请求里给 <c>env: []</c> 就是清空，
+    /// <c>[]</c> 与「不传」在 JSON 上是两件事（前者是空数组，后者是缺字段）。
+    /// 因此这里的规则很简单：<b>缺字段 = 保持原值，给了 = 用新值</b>。</para>
+    /// <para><b>为什么不需要区分「缺字段」与「null」</b>：所有可空字段的「清空」表达
+    /// 都是<b>空值</b>（空串 / 空数组 / false / 0）而不是 <c>null</c>，
+    /// 而 <c>null</c> 在序列化后就是「缺字段」——两者在本层被有意合并。</para>
+    /// </remarks>
+    // SDK 把 Cmd / Env / Labels / Hostname / User 等字段声明为**非空**，
+    // 但它们实际都是可选的：传 null 表示「未指定」，传空串 / 空数组才是「显式清空」。
+    // 这里确实要写 null（表示「清空」或「保持原值」），因此与 BuildRecreateParameters 一样
+    // 只用 pragma 关掉与 SDK 标注的不一致。
+#pragma warning disable CS8601
+    private static void ApplyConfigPatch(CreateContainerParameters parameters, CreateContainerRequest patch)
+    {
+        if (patch.Image is not null)
+        {
+            parameters.Image = RequireImage(patch.Image);
+        }
+
+        if (patch.Cmd is not null)
+        {
+            parameters.Cmd = patch.Cmd.Count == 0 ? null : [.. patch.Cmd];
+        }
+
+        if (patch.Entrypoint is not null)
+        {
+            parameters.Entrypoint = patch.Entrypoint.Count == 0 ? null : [.. patch.Entrypoint];
+        }
+
+        if (patch.Env is not null)
+        {
+            var env = RequireEnv(patch.Env);
+
+            parameters.Env = env is null || env.Count == 0 ? null : env;
+        }
+
+        if (patch.Labels is not null)
+        {
+            parameters.Labels = patch.Labels.Count == 0
+                ? null
+                : new Dictionary<string, string>(patch.Labels, StringComparer.Ordinal);
+        }
+
+        if (patch.Ports is not null)
+        {
+            var (exposed, bindings) = BuildPorts(patch.Ports);
+
+            parameters.ExposedPorts = exposed;
+            parameters.HostConfig!.PortBindings = bindings;
+        }
+
+        if (patch.Volumes is not null)
+        {
+            var binds = RequireVolumes(patch.Volumes);
+
+            parameters.HostConfig!.Binds = binds is null || binds.Count == 0 ? null : binds;
+        }
+
+        if (patch.RestartPolicy is not null)
+        {
+            parameters.HostConfig!.RestartPolicy = BuildRestartPolicy(patch.RestartPolicy);
+        }
+
+        if (patch.AutoRemove is not null)
+        {
+            parameters.HostConfig!.AutoRemove = patch.AutoRemove.Value;
+        }
+
+        if (patch.Network is not null)
+        {
+            var network = patch.Network.Trim();
+
+            parameters.HostConfig!.NetworkMode = network.Length == 0 ? "default" : network;
+
+            // 换网络意味着「原来接入的那些网络（含别名）」不再适用，
+            // 而重建时按原样带上会让守护进程报错。
+            parameters.NetworkingConfig = null;
+        }
+
+        if (patch.Hostname is not null)
+        {
+            parameters.Hostname = patch.Hostname.Length == 0 ? null : patch.Hostname;
+        }
+
+        if (patch.WorkingDir is not null)
+        {
+            parameters.WorkingDir = patch.WorkingDir.Length == 0 ? null : patch.WorkingDir;
+        }
+
+        if (patch.Tty is not null)
+        {
+            parameters.Tty = patch.Tty.Value;
+        }
+
+        if (patch.StdinOpen is not null)
+        {
+            parameters.OpenStdin = patch.StdinOpen.Value;
+        }
+
+        if (patch.User is not null)
+        {
+            parameters.User = patch.User.Length == 0 ? null : patch.User;
+        }
+
+        if (patch.CapAdd is not null)
+        {
+            parameters.HostConfig!.CapAdd = patch.CapAdd.Count == 0 ? null : [.. patch.CapAdd];
+        }
+
+        if (patch.CapDrop is not null)
+        {
+            parameters.HostConfig!.CapDrop = patch.CapDrop.Count == 0 ? null : [.. patch.CapDrop];
+        }
+
+        if (patch.HealthCheck is not null)
+        {
+            parameters.Healthcheck = AdvancedCreateOptions.BuildHealthCheck(patch.HealthCheck);
+        }
+
+        if (patch.Devices is not null)
+        {
+            parameters.HostConfig!.Devices = AdvancedCreateOptions.BuildDevices(patch.Devices);
+        }
+
+        if (patch.Sysctls is not null)
+        {
+            parameters.HostConfig!.Sysctls = patch.Sysctls.Count == 0
+                ? null
+                : new Dictionary<string, string>(patch.Sysctls, StringComparer.Ordinal);
+        }
+
+        if (patch.Ulimits is not null)
+        {
+            parameters.HostConfig!.Ulimits = AdvancedCreateOptions.BuildUlimits(patch.Ulimits);
+        }
+
+        if (patch.LogDriver is not null)
+        {
+            parameters.HostConfig!.LogConfig = AdvancedCreateOptions.BuildLogDriver(patch.LogDriver);
+        }
+
+        if (patch.MemoryLimitBytes is not null)
+        {
+            parameters.HostConfig!.Memory = patch.MemoryLimitBytes.Value;
+        }
+
+        if (patch.NanoCpus is not null)
+        {
+            parameters.HostConfig!.NanoCPUs = patch.NanoCpus.Value;
+        }
+    }
+#pragma warning restore CS8601
+
     // ==================== 追加挂载（重建） ====================
 
     /// <summary>
@@ -343,8 +573,60 @@ public sealed partial class ContainerService
 
         parameters.HostConfig!.Binds = [.. existingBinds, .. addedBinds];
 
+        return await this.RecreateCoreAsync(
+            client,
+            hostId,
+            containerId,
+            name,
+            parameters,
+            wasRunning,
+            request.Start,
+            $"为容器 {name} 追加 {addedBinds.Count} 个挂载后重建",
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    // ==================== 复制 / 重建共用的内部实现 ====================
+
+    /// <summary>
+    /// 重建的核心流程：让位旧容器 → 停下旧容器 → 用新参数创建 → 失败回滚 → 按需启动。
+    /// </summary>
+    /// <param name="client">该主机的 Docker 客户端。</param>
+    /// <param name="hostId">主机标识（仅用于日志）。</param>
+    /// <param name="containerId">旧容器 ID。</param>
+    /// <param name="name">新容器沿用的名字。</param>
+    /// <param name="parameters">创建新容器的参数。</param>
+    /// <param name="wasRunning">重建前旧容器是否在运行。</param>
+    /// <param name="requestedStart">
+    /// 请求指定的启动行为；<see langword="null"/> 表示<b>沿用旧容器原有的运行状态</b>。
+    /// </param>
+    /// <param name="actionDescription">日志里的动作描述。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>新容器 ID、名称、被让位的旧容器 ID 与实际生效的运行状态。</returns>
+    /// <exception cref="BusinessException">
+    /// 重建失败（<c>1402</c>）且回滚也失败；主机不可达（<c>1301</c>）。
+    /// </exception>
+    /// <remarks>
+    /// <para><b>为什么把流程抽出来</b>：「追加挂载」与「编辑并重建」是同一件事的两种参数来源，
+    /// 而它们最不容出错的部分恰恰是<b>顺序</b>与<b>回滚</b>。两处各写一份时，
+    /// 改了一处忘了另一处，症状是「重建失败后旧容器停在让位名上、回不去了」——
+    /// 那是一个用户既丢配置又丢名字的状态。</para>
+    /// <para><b>顺序不能反</b>：先让位（旧容器改名）才能用原名创建新容器。
+    /// 反过来会得到「名字被占用」，而那时旧容器已经被停了——一次失败的操作留下两个后果。</para>
+    /// <para><b>失败回滚</b>：重建失败时把旧容器改回原名并恢复它原本的运行状态，
+    /// 然后把原始异常原样抛出——回滚失败也不会掩盖真正的失败原因。</para>
+    /// </remarks>
+    private async Task<ContainerRecreatedResult> RecreateCoreAsync(
+        IDockerClient client,
+        string hostId,
+        string containerId,
+        string name,
+        CreateContainerParameters parameters,
+        bool wasRunning,
+        bool? requestedStart,
+        string actionDescription,
+        CancellationToken cancellationToken)
+    {
         // 顺序不能反：先让位（旧容器改名）才能用原名创建新容器。
-        // 反过来会得到「名字被占用」，而那时旧容器已经被停了——一次失败的操作留下两个后果。
         var parkedName = await ParkContainerAsync(client, containerId, name, cancellationToken).ConfigureAwait(false);
 
         if (wasRunning)
@@ -358,7 +640,7 @@ public sealed partial class ContainerService
         {
             created = await DockerErrorTranslator.ExecuteAsync(
                 () => client.Containers.CreateContainerAsync(parameters, cancellationToken),
-                $"重建容器 {name}",
+                actionDescription,
                 cancellationToken).ConfigureAwait(false);
         }
         catch (BusinessException)
@@ -377,7 +659,7 @@ public sealed partial class ContainerService
         }
 
         // start 为 null 时沿用原状态：对一个本来就没运行的容器擅自启动它是用户没要求的副作用
-        var start = request.Start ?? wasRunning;
+        var start = requestedStart ?? wasRunning;
 
         if (start)
         {
@@ -390,18 +672,15 @@ public sealed partial class ContainerService
         var warnings = created.Warnings is null ? [] : (IReadOnlyList<string>)[.. created.Warnings];
 
         _logger.LogInformation(
-            "主机 {HostId} 为容器 {OldId} 追加 {Count} 个挂载后重建：新容器 {NewId}，旧容器让位为 {ParkedName}，启动={Start}",
+            "主机 {HostId} {Action}：新容器 {NewId}，旧容器让位为 {ParkedName}，启动={Start}",
             hostId,
-            containerId,
-            addedBinds.Count,
+            actionDescription,
             created.ID,
             parkedName,
             start);
 
         return new ContainerRecreatedResult(created.ID, name, containerId, start, warnings, Recreated: true);
     }
-
-    // ==================== 复制 / 重建共用的内部实现 ====================
 
     /// <summary>
     /// 把 inspect 结果还原成「能重新创建出等价容器」的参数。

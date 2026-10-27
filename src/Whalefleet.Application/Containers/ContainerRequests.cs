@@ -353,15 +353,51 @@ public sealed record RemoveContainerRequest
 }
 
 /// <summary>
-/// 批量删除容器请求。
+/// 终止容器请求（等价于 <c>docker kill</c>）。
 /// </summary>
-public sealed record BatchRemoveContainersRequest
+/// <remarks>
+/// <para><b>与「停止」的区别</b>：<c>stop</c> 先发 SIGTERM 并等待优雅退出，
+/// 而 <c>kill</c> <b>直接</b>把信号送到容器主进程——默认是 SIGKILL，因此
+/// 容器没有机会清理现场。这正是运维在「进程卡死、优雅停止无效」时需要的动作。</para>
+/// <para><b>信号可以不是终止信号</b>：<c>docker kill -s SIGHUP</c> 这类用法是
+/// 「给进程发个信号」，容器**可能继续运行**。因此信号名与数值都原样透传给守护进程，
+/// 本层只挡明显非法的输入（空串 / 含空白 / 超长）。</para>
+/// </remarks>
+public sealed record KillContainerRequest
 {
-    /// <summary>要删除的容器标识列表；必填且不能为空。</summary>
-    public IReadOnlyList<string>? ContainerIds { get; init; }
+    /// <summary>容器标识。</summary>
+    public string? ContainerId { get; init; }
 
-    /// <summary>是否强制删除运行中的容器；省略为 <see langword="false"/>（此时这些容器会以 409 失败）。</summary>
-    public bool? Force { get; init; }
+    /// <summary>
+    /// 要发送的信号（如 <c>SIGKILL</c> / <c>SIGHUP</c> / <c>9</c>）；省略时由守护进程取默认值（SIGKILL）。
+    /// </summary>
+    /// <remarks>
+    /// 省略时**不在服务端写死 <c>SIGKILL</c>**：与 <c>stop</c> 的 <c>waitSeconds</c> 同思路——
+    /// 守护进程改了默认值时，写死的数字会静默跑偏。
+    /// </remarks>
+    public string? Signal { get; init; }
+}
+
+/// <summary>
+/// 暂停容器请求（等价于 <c>docker pause</c>）。
+/// </summary>
+public sealed record PauseContainerRequest
+{
+    /// <summary>容器标识。</summary>
+    public string? ContainerId { get; init; }
+}
+
+/// <summary>
+/// 恢复容器请求（等价于 <c>docker unpause</c>）。
+/// </summary>
+/// <remarks>
+/// <b>注意与「启动」的区别</b>：本端点只解除<b>暂停</b>状态，容器随即继续运行；
+/// 而 <c>start</c> 是把**已停止**的容器跑起来。对已停止的容器调用本端点没有意义（守护进程会以 409 拒绝）。
+/// </remarks>
+public sealed record ResumeContainerRequest
+{
+    /// <summary>容器标识。</summary>
+    public string? ContainerId { get; init; }
 }
 
 // ==================== 0.3.0 高级创建参数与基础操作 ====================
@@ -529,6 +565,41 @@ public sealed record AddContainerVolumesRequest
 
     /// <summary>要追加的挂载；必填且不能为空。</summary>
     public IReadOnlyList<ContainerVolumeMapping>? Volumes { get; init; }
+
+    /// <summary>
+    /// 重建成功后是否立即启动；<see langword="null"/> 表示<b>沿用原容器的运行状态</b>。
+    /// </summary>
+    /// <remarks>默认「保持原状」而不是「总是启动」：
+    /// 对一个本来就没运行的容器擅自启动它，是用户没要求的副作用。</remarks>
+    public bool? Start { get; init; }
+}
+
+/// <summary>
+/// 重建容器请求（<b>等价于「编辑并重建」</b>）。
+/// </summary>
+/// <remarks>
+/// <para>⚠️ <b>这个操作会重建容器</b>，容器 ID 一定变。Docker 没有「原地改配置」的接口——
+/// 镜像、命令、端口、挂载、网络这些字段一旦要改，就只能重建。</para>
+/// <para><b><see cref="Config"/> 是「只覆盖出现的字段」的语义</b>：省略时按<b>原容器的现有配置</b>原样重建；
+/// 给了则<b>逐字段覆盖</b>——请求里<b>没写</b>的字段保持原值。
+/// <br/>
+/// <b>为什么不是「整份替换」</b>：inspect 能拿到的字段比界面展示的多得多
+/// （capabilities、sysctls、ulimits、devices、日志驱动、健康检查……）。
+/// 整份替换会让这些字段在重建时<b>静默消失</b>——用户只是改了个环境变量，
+/// 却把容器的能力集清空了。
+/// <br/>
+/// <b>而「清空」仍然可表达</b>：请求里给 <c>env: []</c> / <c>labels: {}</c> 就是清空，
+/// 空值与「不传」在 JSON 上是两件事。</para>
+/// <para><b><see cref="Config"/> 里的 <c>name</c> 被忽略</b>：重建沿用原容器名，
+/// 改名是 <c>rename</c> 端点的职责。混在一起会让「重建」悄悄变成「重建 + 改名」。</para>
+/// </remarks>
+public sealed record RecreateContainerRequest
+{
+    /// <summary>容器标识。</summary>
+    public string? ContainerId { get; init; }
+
+    /// <summary>新的配置；省略时按原容器的现有配置重建。</summary>
+    public CreateContainerRequest? Config { get; init; }
 
     /// <summary>
     /// 重建成功后是否立即启动；<see langword="null"/> 表示<b>沿用原容器的运行状态</b>。
