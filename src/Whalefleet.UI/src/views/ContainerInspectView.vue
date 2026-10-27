@@ -2,17 +2,28 @@
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
+import { ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/common/PageHeader.vue'
 import SectionCard from '@/components/common/SectionCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import ContainerStatusBadge from '@/components/business/ContainerStatusBadge.vue'
-import { inspectContainer } from '@/api/container'
+import ContainerOperationDialogs from '@/components/business/ContainerOperationDialogs.vue'
+import {
+  inspectContainer,
+  pauseContainer,
+  removeContainer,
+  restartContainer,
+  resumeContainer,
+  startContainer,
+  stopContainer
+} from '@/api/container'
 import { ApiRequestError } from '@/api'
 import { useContainerStats } from '@/composables/useContainerStats'
 import { usePreferencesStore } from '@/stores/preferences'
 import { formatBytes } from '@/utils/container-status'
 import { formatDateTime } from '@/utils/datetime'
 import { formatMemory, formatNetwork, formatPercent, memoryPercent } from '@/utils/log-format'
+import { canPerform, isActive } from '@/utils/container-actions'
 import type { ByteUnits } from '@/utils/container-status'
 import type { ContainerDetail } from '@/types/api'
 
@@ -49,6 +60,45 @@ const containerId = computed(() => String(route.params.id ?? ''))
 const detail = ref<ContainerDetail | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
+
+/**
+ * 正在执行的写操作：让页头按钮转圈并禁用。
+ *
+ * ⚠️ **不用 `loading`**：那个是「详情还在拉」，而写操作期间详情并没有重新拉取，
+ * 用同一个标志会让刷新按钮也转起来，而它转起来的样子与「正在停止容器」毫无关系。
+ */
+const acting = ref(false)
+
+/** 七个操作对话框的宿主（与列表页共用同一个组件）。 */
+const operationDialogs = ref<InstanceType<typeof ContainerOperationDialogs> | null>(null)
+
+/** 当前操作对象（详情页只有一个容器，因此固定是它）。 */
+const operationTarget = computed(() =>
+  detail.value ? { id: detail.value.id, name: detail.value.name } : null
+)
+
+/** 容器是否处于「已暂停」状态。 */
+const isPaused = computed(() => detail.value?.state.paused === true)
+
+/** 容器是否处于「活动」一侧（运行中 / 已暂停 / 重启中）。 */
+const isRunning = computed(() => (detail.value ? isActive(detail.value.state.status) : false))
+
+/**
+ * 页头主按钮的动作。
+ *
+ * ⚠️ **按状态取**而不是给三个按钮：页头放三个「启动 / 停止 / 继续」会让用户
+ * 面对一个永远有一半不可点的按钮组，而不可点的那些没有存在的意义。
+ */
+type PrimaryAction = 'start' | 'stop' | 'resume'
+
+const primaryAction = computed<PrimaryAction>(() => {
+  if (isPaused.value) return 'resume'
+  if (isRunning.value) return 'stop'
+
+  return 'start'
+})
+
+const primaryLabelKey = computed(() => `container.action.${primaryAction.value}`)
 
 /**
  * 实时指标（0.5.0）。
@@ -159,6 +209,105 @@ function openLogs(): void {
 }
 
 /**
+ * 执行一个写操作，然后刷新详情。
+ *
+ * ⚠️ **成功也刷新**：状态变化不会推给这个页面（实时通道只推「异常退出」），
+ * 而「点了没变」是最容易被当成按钮坏了的现象。
+ */
+async function runAction(action: () => Promise<void>): Promise<void> {
+  acting.value = true
+  try {
+    await action()
+    await load()
+  } catch {
+    // 错误已由全局拦截器提示
+  } finally {
+    acting.value = false
+  }
+}
+
+/** 页头主按钮（启动 / 停止 / 继续）。 */
+async function onPrimary(): Promise<void> {
+  const id = containerId.value
+
+  await runAction(() => {
+    if (primaryAction.value === 'start') return startContainer(hostId.value, id)
+    if (primaryAction.value === 'stop') return stopContainer(hostId.value, id)
+
+    return resumeContainer(hostId.value, id)
+  })
+}
+
+/** 重启容器。 */
+async function onRestart(): Promise<void> {
+  await runAction(() => restartContainer(hostId.value, containerId.value))
+}
+
+/** 暂停容器。 */
+async function onPause(): Promise<void> {
+  await runAction(() => pauseContainer(hostId.value, containerId.value))
+}
+
+/**
+ * 终止容器（等价于 `docker kill`）。
+ *
+ * ⚠️ **单条也走信号对话框**：默认 SIGKILL，但用户可以指定别的信号，
+ * 而非终止信号可能不会真的终止容器。
+ */
+function onKill(): void {
+  operationDialogs.value?.openKill([
+    { id: containerId.value, name: detail.value?.name ?? containerId.value }
+  ])
+}
+
+/**
+ * 删除容器。
+ *
+ * 运行中的容器需要 `force`，而 force 会跳过优雅停止——未落盘的数据会丢，
+ * 因此提示必须出现在确认框里而不是藏进按钮的 tooltip。
+ */
+async function onRemove(): Promise<void> {
+  const running = isRunning.value
+
+  try {
+    await ElMessageBox.confirm(
+      t('container.confirm.remove.message', { name: detail.value?.name ?? '' }),
+      t('container.confirm.remove.title'),
+      {
+        confirmButtonText: running ? t('container.confirm.remove.force') : t('common.confirm'),
+        cancelButtonText: t('common.cancel'),
+        type: running ? 'warning' : 'info'
+      }
+    )
+  } catch {
+    return
+  }
+
+  await runAction(() => removeContainer(hostId.value, containerId.value, running))
+}
+
+/**
+ * 重建 / 编辑完成后的处理。
+ *
+ * ⚠️ **必须换到新容器的 ID 上**：重建后旧容器已让位（改名保留），
+ * 而本页的 URL 还指着旧 ID——不换的话刷新一下就是 404，
+ * 而用户看到的是「重建完页面坏了」。
+ */
+async function onRecreated(result: { containerId: string; replacedContainerId: string | null }): Promise<void> {
+  await router.replace({
+    name: 'host-container-inspect',
+    params: { hostId: hostId.value, id: result.containerId }
+  })
+
+  await load()
+}
+
+/** 对话框里的其它操作完成后刷新详情。 */
+async function onOperationDone(): Promise<void> {
+  await load()
+}
+
+/**
  * NanoCpus 是「十亿分之一核」，展示时必须换算成核数——直接显示 1500000000 没人看得懂。
  *
  * 小于 1 核时保留两位小数（0.25 核这种配额很常见）；大于等于 1 核时用整数 + 一位小数
@@ -198,6 +347,98 @@ watch(
       <template #actions>
         <el-button @click="backToList">{{ t('container.backToList') }}</el-button>
         <el-button @click="openLogs">{{ t('container.action.logs') }}</el-button>
+
+        <!--
+          生命周期操作（0.7.0）：详情页**自成一体**，不用回列表页才能操作容器。
+
+          ⚠️ **主按钮按状态取**（启动 / 停止 / 继续）：页头放三个「启动 / 停止 / 继续」
+          会让用户面对一组永远有一半不可点的按钮，而不可点的那些没有存在的意义。
+
+          ⚠️ **已暂停时不显示「重启」**：暂停的进程收不到 SIGTERM，
+          点了会先等满超时（默认 10 秒）才 SIGKILL——界面看起来就像卡住了。
+        -->
+        <el-button
+          v-if="detail"
+          :loading="acting"
+          :disabled="!canPerform(primaryAction, detail.state.status)"
+          @click="onPrimary"
+        >
+          {{ t(primaryLabelKey) }}
+        </el-button>
+
+        <el-button
+          v-if="detail && !isPaused"
+          :loading="acting"
+          :disabled="!canPerform('restart', detail.state.status)"
+          @click="onRestart"
+        >
+          {{ t('container.action.restart') }}
+        </el-button>
+
+        <!--
+          低频与危险操作收进「更多」下拉：终止 / 暂停 / 继续 / 复制 / 重建 / 编辑 / 删除。
+
+          ⚠️ **重建与编辑带警告色**：它们会**替换**容器（ID 变了），
+          而下拉菜单里没有二次确认对话框的停留时间，必须一眼看出它不一样。
+        -->
+        <el-dropdown v-if="detail" trigger="click">
+          <el-button :disabled="acting">{{ t('container.action.more') }}</el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item
+                :disabled="acting || !canPerform('kill', detail.state.status)"
+                @click="onKill"
+              >
+                <span class="i-carbon-warning" aria-hidden="true" />
+                <span class="ml-2">{{ t('container.action.kill') }}</span>
+              </el-dropdown-item>
+
+              <el-dropdown-item
+                :disabled="acting || !canPerform('pause', detail.state.status)"
+                @click="onPause"
+              >
+                <span class="i-carbon-pause" aria-hidden="true" />
+                <span class="ml-2">{{ t('container.action.pause') }}</span>
+              </el-dropdown-item>
+
+              <el-dropdown-item
+                :disabled="acting || !canPerform('resume', detail.state.status)"
+                @click="onPrimary"
+              >
+                <span class="i-carbon-play" aria-hidden="true" />
+                <span class="ml-2">{{ t('container.action.resume') }}</span>
+              </el-dropdown-item>
+
+              <el-dropdown-item :disabled="acting" @click="operationDialogs?.openDuplicate()">
+                <span class="i-carbon-copy" aria-hidden="true" />
+                <span class="ml-2">{{ t('container.action.duplicate') }}</span>
+              </el-dropdown-item>
+
+              <el-dropdown-item :disabled="acting" @click="operationDialogs?.openRecreate()">
+                <span class="i-carbon-renew" aria-hidden="true" />
+                <span class="ml-2">{{ t('container.action.recreate') }}</span>
+                <span class="ml-2 text-xs text-status-warn">{{ t('container.recreate.warning') }}</span>
+              </el-dropdown-item>
+
+              <el-dropdown-item :disabled="acting" @click="operationDialogs?.openEdit()">
+                <span class="i-carbon-edit" aria-hidden="true" />
+                <span class="ml-2">{{ t('container.action.edit') }}</span>
+                <span class="ml-2 text-xs text-status-warn">{{ t('container.recreate.warning') }}</span>
+              </el-dropdown-item>
+
+              <el-dropdown-item
+                divided
+                :disabled="acting"
+                class="text-status-down"
+                @click="onRemove"
+              >
+                <span class="i-carbon-trash-can" aria-hidden="true" />
+                <span class="ml-2">{{ t('container.action.remove') }}</span>
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+
         <el-button :loading="loading" type="primary" @click="load">
           {{ t('container.action.refresh') }}
         </el-button>
@@ -438,5 +679,18 @@ watch(
         </SectionCard>
       </div>
     </template>
+
+    <!--
+      七个操作对话框的**统一宿主**（0.7.0），与列表页共用同一个组件。
+
+      ⚠️ **重建后要换到新容器 ID 上**：旧容器已让位，而本页的 URL 还指着它——
+      不换的话用户看到的会是「重建完页面 404 了」。
+    -->
+    <ContainerOperationDialogs
+      :host-id="hostId"
+      :target="operationTarget"
+      @done="onOperationDone"
+      @recreated="onRecreated"
+    />
   </div>
 </template>

@@ -308,6 +308,22 @@
     "inspect": {
       "failed": "Failed to load details"
     },
+    "edit": {
+      "hint": "Docker cannot change the image, command, ports, mounts or networks of an existing container, so saving recreates it (the container ID changes).",
+      "loading": "Loading the container configuration…",
+      "submit": "Save and recreate",
+      "title": "Edit container configuration"
+    },
+    "kill": {
+      "confirm": {
+        "message": "About to send {signal} to the container {name}. It gets no chance to shut down cleanly and data may be lost.",
+        "submit": "Send signal",
+        "title": "Kill container"
+      },
+      "nonTerminating": "{signal} is not a terminating signal: the container **may keep running** (depending on how its main process handles the signal).",
+      "signal": "Signal",
+      "signalHint": "A signal name (SIGTERM) or number (15). Leave empty to let the daemon pick the default (SIGKILL)."
+    },
     "logs": {
       "backToBottom": "Back to bottom",
       "download": "Download logs",
@@ -331,6 +347,15 @@
       "title": "Container logs",
       "wrap": "Wrap lines"
     },
+    "recreate": {
+      "done": "Recreated as {name}; the old container was kept under a new name and can be deleted",
+      "start": "Start after recreating",
+      "startHint": "Leave unchecked to keep the original run state (a container that was not running will not be started behind your back).",
+      "submit": "Recreate container",
+      "title": "Recreate container",
+      "warning": "This recreates the container",
+      "warningHint": "Docker cannot change the configuration of an existing container, so it must be recreated. The container ID changes. The old container {name} is not deleted but renamed and kept — delete it yourself once the new one looks right."
+    },
     "rename": {
       "done": "Renamed to {name}",
       "hint": "Must start with a letter or digit, followed by letters, digits, _ . - only; must not duplicate an existing container name.",
@@ -347,6 +372,16 @@
     },
     "search": {
       "placeholder": "Search name / image / ID"
+    },
+    "signal": {
+      "custom": "Custom signal",
+      "sigint": "SIGINT — interrupt (like Ctrl-C)",
+      "sigkill": "SIGKILL — terminate immediately",
+      "sigquit": "SIGQUIT — quit and dump core",
+      "sighup": "SIGHUP — hang up (many daemons reload their config on it)",
+      "sigterm": "SIGTERM — request termination (can be caught)",
+      "sigusr1": "SIGUSR1 — user-defined signal 1",
+      "sigusr2": "SIGUSR2 — user-defined signal 2"
     },
     "state": {
       "running": "Running",

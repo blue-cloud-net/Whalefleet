@@ -308,6 +308,22 @@
     "inspect": {
       "failed": "详情加载失败"
     },
+    "edit": {
+      "hint": "Docker 无法原地修改镜像 / 命令 / 端口 / 挂载 / 网络，保存会用新配置重建容器（容器 ID 会变）。",
+      "loading": "正在读取容器配置…",
+      "submit": "保存并重建",
+      "title": "编辑容器配置"
+    },
+    "kill": {
+      "confirm": {
+        "message": "即将向容器 {name} 发送 {signal} 信号。容器不会收到退出通知，数据可能来不及落盘。",
+        "submit": "发送信号",
+        "title": "终止容器"
+      },
+      "nonTerminating": "{signal} 不是终止信号：容器**可能继续运行**（取决于它的主进程怎么处理信号）。",
+      "signal": "信号",
+      "signalHint": "可填信号名（SIGTERM）或信号号（15）。留空则由守护进程取默认值（SIGKILL）。"
+    },
     "logs": {
       "backToBottom": "回到底部",
       "download": "下载日志",
@@ -331,6 +347,15 @@
       "title": "容器日志",
       "wrap": "自动换行"
     },
+    "recreate": {
+      "done": "已重建为 {name}，旧容器已改名保留，可自行删除",
+      "start": "重建后启动",
+      "startHint": "不勾选表示沿用原容器的运行状态（不会擅自启动一个本来没运行的容器）。",
+      "submit": "重建容器",
+      "title": "重建容器",
+      "warning": "该操作会重建容器",
+      "warningHint": "Docker 无法给已存在的容器改配置，只能用新配置重建。容器 ID 会变；旧容器 {name} 不会被删除，而是改名保留——确认新容器正常后可以自行删除它。"
+    },
     "rename": {
       "done": "已重命名为 {name}",
       "hint": "必须以字母或数字开头，其后只能是字母、数字与 _ . - ；不能与已有容器重名。",
@@ -347,6 +372,16 @@
     },
     "search": {
       "placeholder": "搜索名称 / 镜像 / ID"
+    },
+    "signal": {
+      "custom": "自定义信号",
+      "sigint": "SIGINT — 中断（相当于 Ctrl-C）",
+      "sigkill": "SIGKILL — 立即终止",
+      "sigquit": "SIGQUIT — 退出并转储内核",
+      "sighup": "SIGHUP — 挂断（很多守护进程用它重载配置）",
+      "sigterm": "SIGTERM — 请求终止（可被捕获）",
+      "sigusr1": "SIGUSR1 — 用户自定义信号 1",
+      "sigusr2": "SIGUSR2 — 用户自定义信号 2"
     },
     "state": {
       "running": "运行中",
