@@ -1,6 +1,5 @@
 import { http, request } from '@/api'
 import type {
-  BatchOperationResult,
   ContainerCreatedResult,
   ContainerDetail,
   ContainerHealthResult,
@@ -389,23 +388,79 @@ export function removeContainer(
 }
 
 /**
- * 批量删除容器。
+ * 终止容器（等价于 `docker kill`：直接把信号送到容器主进程，**不等优雅退出**）。
  *
- * **部分成功也是 200**：只有「入参非法」（`1000`）与「主机不可达」（`1301`/`1302`）才是真正的错误响应，
- * 而这两类都是**整批**失败。逐条删失败时结果在 `failures` 里，错误码与单条端点完全一致
- * （例如运行中且未 `force` 的容器是 `1404`）。
+ * 与 `stopContainer` 的分工：`stop` 先发 SIGTERM 并等进程自己退出，
+ * `kill` 不给机会——正常停机用 `stop`，进程卡死时才用 `kill`。
  *
- * 返回的 `requested` 是**去重后**的个数——同一个容器传两次不会显示成「成功 1、失败 1」。
+ * @param signal 要发送的信号（如 `SIGKILL` / `SIGHUP` / `9`）；省略则由守护进程取默认值。
+ *   ⚠️ **非终止信号只是「发个信号」**：容器可能继续运行，因此界面必须写明这一点。
  */
-export function batchRemoveContainers(
+export function killContainer(
   hostId: string,
-  containerIds: string[],
-  force = false
-): Promise<BatchOperationResult> {
-  return request<BatchOperationResult>({
-    url: `${base(hostId)}/batch-remove`,
+  containerId: string,
+  signal?: string
+): Promise<void> {
+  return request<void>({
+    url: `${base(hostId)}/kill`,
     method: 'post',
-    data: { containerIds, force }
+    data: { containerId, signal }
+  })
+}
+
+/**
+ * 暂停容器（等价于 `docker pause`）。
+ *
+ * ⚠️ **暂停 ≠ 停止**：容器进程仍在，只是不再占用 CPU；
+ * 它仍占着映射的端口与挂载的卷。
+ *
+ * 幂等：已经暂停时再调一次也返回成功。
+ */
+export function pauseContainer(hostId: string, containerId: string): Promise<void> {
+  return request<void>({
+    url: `${base(hostId)}/pause`,
+    method: 'post',
+    data: { containerId }
+  })
+}
+
+/**
+ * 恢复容器（等价于 `docker unpause`）。
+ *
+ * ⚠️ **与「启动」不是一回事**：本函数只解除**暂停**，容器随即继续跑；
+ * `startContainer` 是把**已停止**的容器跑起来。
+ *
+ * 幂等：未处于暂停状态时再调一次也返回成功。
+ */
+export function resumeContainer(hostId: string, containerId: string): Promise<void> {
+  return request<void>({
+    url: `${base(hostId)}/resume`,
+    method: 'post',
+    data: { containerId }
+  })
+}
+
+/**
+ * 重建容器（⚠️ **会重建容器**，容器 ID 一定变）。
+ *
+ * Docker 没有「原地改配置」的接口——镜像、命令、端口、挂载、网络一旦要改就只能重建。
+ * 因此界面**必须**把这一点写在二次确认里。
+ *
+ * @param config 新的配置；**省略 = 按原容器的现有配置原样重建**。
+ *   给了则**整份替换**（不是补丁）：没写的字段就是「不要」。
+ *   ⚠️ `config.name` 会被后端忽略——重建沿用原名，改名走 `renameContainer`。
+ * @param start 重建后是否启动；**省略则沿用原容器的运行状态**。
+ */
+export function recreateContainer(
+  hostId: string,
+  containerId: string,
+  config?: CreateContainerPayload,
+  start?: boolean
+): Promise<ContainerRecreatedResult> {
+  return request<ContainerRecreatedResult>({
+    url: `${base(hostId)}/recreate`,
+    method: 'post',
+    data: { containerId, config, start }
   })
 }
 

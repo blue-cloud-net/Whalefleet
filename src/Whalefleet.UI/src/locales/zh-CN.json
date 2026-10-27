@@ -62,14 +62,28 @@
       "addVolumes": "追加挂载",
       "create": "新建容器",
       "detail": "详情",
+      "disabled": {
+        "kill": "容器未在运行，无法终止",
+        "pause": "容器未在运行，无法暂停",
+        "remove": "当前状态无法删除",
+        "restart": "容器未在运行，无法重启",
+        "resume": "容器未处于暂停状态",
+        "start": "容器已在运行",
+        "stop": "容器未在运行"
+      },
       "done": "{name} 操作成功",
       "duplicate": "复制",
+      "edit": "编辑并重建",
+      "kill": "终止",
       "logs": "日志",
       "more": "更多操作",
+      "pause": "暂停",
+      "recreate": "重建",
       "refresh": "刷新",
       "remove": "删除",
       "rename": "重命名",
       "restart": "重启",
+      "resume": "继续",
       "start": "启动",
       "stop": "停止",
       "update": "热更新"
@@ -123,6 +137,20 @@
         "title": "批量删除容器"
       },
       "done": "已{action} {count} 个容器",
+      "killConfirm": {
+        "message": "即将向选中的 {count} 个容器发送 SIGKILL 信号。容器不会收到退出通知，数据可能来不及落盘。",
+        "submit": "终止全部",
+        "title": "批量终止容器"
+      },
+      "noEligible": {
+        "kill": "选中的容器都没有在运行",
+        "pause": "选中的容器都没有在运行",
+        "remove": "选中的容器都不能删除",
+        "restart": "选中的容器都没有在运行",
+        "resume": "选中的容器都没有处于暂停状态",
+        "start": "选中的容器都已在运行",
+        "stop": "选中的容器都没有在运行"
+      },
       "partial": "已{action} {done} 个，{failed} 个失败：{names}",
       "selectFirst": "先勾选要操作的容器"
     },

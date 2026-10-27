@@ -353,6 +353,11 @@ export default defineConfig({
     // 后者在别处已用于「编辑表单」，两处共用会让用户以为点的是同一个功能。
     // `overflow-menu-horizontal` 是「更多操作」下拉的触发器，动态字符串，必须 safelist。
     'i-carbon-text-align-left', 'i-carbon-add-alt',
-    'i-carbon-overflow-menu-horizontal', 'i-carbon-tag'
+    'i-carbon-overflow-menu-horizontal', 'i-carbon-tag',
+    // 0.7.0 容器生命周期（暂停 / 继续 / 终止 / 编辑并重建）。
+    // ⚠️ `pause`（暂停容器）与 `play`（继续 / 启动）是**两个不同**的图标语义，
+    // 而 `play` 同时表示「启动已停止的容器」——因此「继续」在界面上仍用 play，
+    // 靠文案区分（两者不可能同时出现在同一处）。
+    'i-carbon-pause'
   ])
 })

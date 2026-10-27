@@ -62,14 +62,28 @@
       "addVolumes": "Add volumes",
       "create": "Create container",
       "detail": "Details",
+      "disabled": {
+        "kill": "The container is not running",
+        "pause": "The container is not running",
+        "remove": "The container cannot be removed in its current state",
+        "restart": "The container is not running",
+        "resume": "The container is not paused",
+        "start": "The container is already running",
+        "stop": "The container is not running"
+      },
       "done": "{name}: done",
       "duplicate": "Duplicate",
+      "edit": "Edit and recreate",
+      "kill": "Kill",
       "logs": "Logs",
       "more": "More actions",
+      "pause": "Pause",
+      "recreate": "Recreate",
       "refresh": "Refresh",
       "remove": "Remove",
       "rename": "Rename",
       "restart": "Restart",
+      "resume": "Resume",
       "start": "Start",
       "stop": "Stop",
       "update": "Update"
@@ -123,6 +137,20 @@
         "title": "Remove containers"
       },
       "done": "{action} {count} container(s)",
+      "killConfirm": {
+        "message": "About to send SIGKILL to {count} selected container(s). They get no chance to shut down cleanly and data may be lost.",
+        "submit": "Kill all",
+        "title": "Kill containers"
+      },
+      "noEligible": {
+        "kill": "None of the selected containers is running",
+        "pause": "None of the selected containers is running",
+        "remove": "None of the selected containers can be removed",
+        "restart": "None of the selected containers is running",
+        "resume": "None of the selected containers is paused",
+        "start": "All selected containers are already running",
+        "stop": "None of the selected containers is running"
+      },
       "partial": "{action} {done}, {failed} failed: {names}",
       "selectFirst": "Select the containers to operate on first"
     },

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -11,26 +11,27 @@ import IconActionButton from '@/components/common/IconActionButton.vue'
 import ListPagination from '@/components/common/ListPagination.vue'
 import ListToolbar from '@/components/common/ListToolbar.vue'
 import CreateContainerDialog from '@/components/business/CreateContainerDialog.vue'
-import ContainerRenameDialog from '@/components/business/ContainerRenameDialog.vue'
-import ContainerUpdateDialog from '@/components/business/ContainerUpdateDialog.vue'
-import ContainerDuplicateDialog from '@/components/business/ContainerDuplicateDialog.vue'
-import ContainerAddVolumesDialog from '@/components/business/ContainerAddVolumesDialog.vue'
+import ContainerBatchActions from '@/components/business/ContainerBatchActions.vue'
+import ContainerOperationDialogs from '@/components/business/ContainerOperationDialogs.vue'
 import ContainerStatusBadge from '@/components/business/ContainerStatusBadge.vue'
 import { onActionRequest } from '@/composables/useActionBus'
 import { useListSearch } from '@/composables/useListSearch'
 import {
-  batchRemoveContainers,
   getContainerHealth,
+  killContainer,
   listContainers,
+  pauseContainer,
   removeContainer,
   restartContainer,
+  resumeContainer,
   startContainer,
   stopContainer,
   type ContainerSortField,
   type ContainerStateFilter
 } from '@/api/container'
 import { ApiRequestError } from '@/api'
-import { containerTone, describePorts, type PortDisplay } from '@/utils/container-status'
+import { describePorts, type PortDisplay } from '@/utils/container-status'
+import { canPerform, isActive, type ContainerAction } from '@/utils/container-actions'
 import { formatDateTime } from '@/utils/datetime'
 import { TIP_DELAY_MS } from '@/utils/tooltip'
 import { formatMemory, formatPercent } from '@/utils/log-format'
@@ -96,18 +97,17 @@ const busyIds = ref<Set<string>>(new Set())
 const createDialogVisible = ref(false)
 
 /**
- * 0.3.0 的四个对话框共用一组「当前操作对象」状态。
+ * 0.3.0 的四个对话框与 0.7.0 新增的三个共用一组「当前操作对象」状态。
  *
- * ⚠️ 不用四个独立的 visible + id，而是共用一个 `target`：
- * 四个对话框分属四组状态时，会出现「A 对话框开着，B 的 id 却指到了另一个容器」的组合——
+ * ⚠️ 不用八个独立的 visible + id，而是共用一个 `target`：
+ * 八个对话框分属八组状态时，会出现「A 对话框开着，B 的 id 却指到了另一个容器」的组合——
  * 而那种状态下用户点确认，操作会作用在**错的容器**上。
  * 一个 `target` 从构造上排除了这种组合。
  */
 const operationTarget = ref<ContainerSummary | null>(null)
-const renameVisible = ref(false)
-const updateVisible = ref(false)
-const duplicateVisible = ref(false)
-const addVolumesVisible = ref(false)
+
+/** 对话框宿主（七个操作对话框的唯一挂载点）。 */
+const operationDialogs = ref<InstanceType<typeof ContainerOperationDialogs> | null>(null)
 
 /** 当前排序列；`null` = 不排序，后端保持守护进程返回顺序（创建时间降序） */
 const sortField = ref<ContainerSortField | null>(null)
@@ -115,6 +115,14 @@ const sortOrder = ref<'asc' | 'desc'>('desc')
 
 /** 批量操作选中的容器；`el-table` 的 selection 是受控的，得自己留一份才能算数量 */
 const selected = ref<ContainerSummary[]>([])
+
+/**
+ * 选中容器的状态列表（供动作可用性判定）。
+ *
+ * ⚠️ **不要在这里过滤**：判定逻辑自己知道哪些状态满足前置条件
+ * （批量时「一个都不满足」才禁用），而过滤过的列表会让它误以为全部满足。
+ */
+const selectedStates = computed(() => selected.value.map((container) => container.state))
 const batchBusy = ref(false)
 
 /**
@@ -211,11 +219,22 @@ async function onStateFilterChange(next: ContainerStateFilter): Promise<void> {
  * 对它显示「启动」既不符合事实（它没停），点下去也只会得到一次「目标状态已达成」的
  * 空操作——用户会以为按钮失灵。过渡态（paused / restarting / removing）全部归到「活动」一侧，
  * 因此这里复用色调映射，而不是再列一次状态名（列两次早晚会漏一个）。
+ *
+ * ✅ 判定本身放在 `utils/container-actions.ts`（与「哪些动作可做」共用一份），
+ * 列表页 / 详情页 / 批量条三处都必须给出**同一个答案**。
  */
-function isActive(container: ContainerSummary): boolean {
-  const tone = containerTone(container.state)
+function isActiveContainer(container: ContainerSummary): boolean {
+  return isActive(container.state)
+}
 
-  return tone === 'ok' || tone === 'warn'
+/**
+ * 容器是否处于「已暂停」状态。
+ *
+ * ⚠️ 单独一个判断而不是用色调：色调把 paused 与 restarting 归为同一类「过渡态」，
+ * 而这两个状态要的动作完全不同（暂停的能「继续」，重启中的不能）。
+ */
+function isPaused(container: ContainerSummary): boolean {
+  return container.state === 'paused'
 }
 
 async function load(): Promise<void> {
@@ -479,6 +498,27 @@ async function onRestart(container: ContainerSummary): Promise<void> {
   await runAction(container, () => restartContainer(hostId.value, container.id))
 }
 
+/** 暂停容器（冻结进程，不释放 CPU 以外的资源）。 */
+async function onPause(container: ContainerSummary): Promise<void> {
+  await runAction(container, () => pauseContainer(hostId.value, container.id))
+}
+
+/** 恢复容器（解除暂停，容器随即继续跑）。 */
+async function onResume(container: ContainerSummary): Promise<void> {
+  await runAction(container, () => resumeContainer(hostId.value, container.id))
+}
+
+/**
+ * 终止容器（等价于 `docker kill`：不等待优雅退出）。
+ *
+ * ⚠️ **单条走信号对话框**：默认 SIGKILL，但也允许指定别的信号，
+ * 而非终止信号只是「发个信号」、容器可能继续跑——那句话必须让用户先看到。
+ */
+function onKill(container: ContainerSummary): void {
+  operationTarget.value = container
+  operationDialogs.value?.openKill([{ id: container.id, name: container.name }])
+}
+
 /**
  * 删除容器。
  *
@@ -486,7 +526,7 @@ async function onRestart(container: ContainerSummary): Promise<void> {
  * 这是不可逆的。因此默认**不**勾选强制，提示必须出现在确认框里而不是藏进按钮 tooltip。
  */
 async function onRemove(container: ContainerSummary): Promise<void> {
-  const running = container.state === 'running'
+  const running = isActiveContainer(container)
 
   try {
     // 用 VNode 而不是带 `\n` 的字符串：EP 的 message 走 `innerText` 渲染，
@@ -577,8 +617,9 @@ function clearSelection(table: { clearSelection: () => void } | null): void {
  * 却不知道那 8 个其实已经删掉了——重试会再删一遍（已删的报 1401）。
  * 逐个 `catch` 后汇总，报错时明确列出失败项。
  *
- * 启停与重启仍是前端逐条调用：它们**幂等**，批量端点只做了删除
- * （幂等操作发一次请求省不了几个往返，而删除是不可逆的，必须留出逐条汇报失败的空间）。
+ * ⚠️ **全部动作都逐条调用**（0.7.0）：服务端不再有容器批量端点。
+ * 逐条调用的代价只是几个来回，而它换来了「哪一条失败、为什么」——
+ * 那是批量操作里唯一真正重要的信息。
  *
  * ⚠️ **失败项必须带上原因**（0.7.0）：只列名字的话，用户看到
  * 「web-api 失败」却不知道是「容器不在了」还是「端口被占」——
@@ -647,22 +688,32 @@ async function batchRestart(): Promise<void> {
   await batchRun(t('container.action.restart'), (c) => restartContainer(hostId.value, c.id))
 }
 
+async function batchPause(): Promise<void> {
+  await batchRun(t('container.action.pause'), (c) => pauseContainer(hostId.value, c.id))
+}
+
+async function batchResume(): Promise<void> {
+  await batchRun(t('container.action.resume'), (c) => resumeContainer(hostId.value, c.id))
+}
+
 /**
- * 批量删除（走服务端 `containers/batch-remove`，0.1.0）。
+ * 批量删除（逐条调 `remove`）。
+ *
+ * ⚠️ **不走服务端批量端点**：容器侧已不再提供 `batch-remove`，
+ * 逐条调用才能给出「哪一条失败、为什么」。
  *
  * 与单个删除同一条原则——不可逆，必须确认；但确认框里要说明两件单条版没说的事：
  *  1. **有多少个正在运行**（force 会跳过优雅停止，数据会丢）
  *  2. **一次性删 N 个**，让人有机会发现勾选范围不对（批量操作最常见的事故）
- * 不给"取消勾选强制"——N 个容器逐个确认强删，交互成本高到会让人闭眼点确认。
+ * 不给「取消勾选强制」——N 个容器逐个确认强删，交互成本高到会让人闭眼点确认。
  *
- * 失败是**逐条汇报**的：服务端返回的 `failures` 里每一条都带容器 ID 与原因
- * （例如运行中未 force 的 `1404`），界面把它们列出来而不是报一个笼统的「部分失败」。
+ * 失败是**逐条汇报**的：`batchRun` 会把每一条失败连原因一起列出来。
  */
 async function batchRemove(): Promise<void> {
   const targets = [...selected.value]
   if (targets.length === 0) return
 
-  const running = targets.filter((c) => c.state === 'running')
+  const running = targets.filter((c) => isActive(c.state))
 
   try {
     await ElMessageBox.confirm(
@@ -683,45 +734,72 @@ async function batchRemove(): Promise<void> {
     return
   }
 
-  batchBusy.value = true
+  await batchRun(t('container.action.remove'), (c) =>
+    removeContainer(hostId.value, c.id, isActive(c.state))
+  )
+}
+
+/**
+ * 批量动作的统一入口（工具条按动作类型分发）。
+ *
+ * ⚠️ **一处分发而不是每个按钮各绑各的**：动作表（`ContainerBatchActions`）与执行逻辑
+ * 分处两个文件，靠一张 `ContainerAction` 联合类型对齐；
+ * 若各按钮各绑各的，加一个动作要改两处，而漏改的那处症状是
+ * 「按钮出现了但点了没反应」。
+ */
+async function onBatchAction(action: ContainerAction): Promise<void> {
+  switch (action) {
+    case 'start':
+      await batchStart()
+      break
+    case 'stop':
+      await batchStop()
+      break
+    case 'restart':
+      await batchRestart()
+      break
+    case 'pause':
+      await batchPause()
+      break
+    case 'resume':
+      await batchResume()
+      break
+    case 'kill':
+      await batchKill()
+      break
+    case 'remove':
+      await batchRemove()
+      break
+  }
+}
+
+/**
+ * 批量终止（SIGKILL）。
+ *
+ * ⚠️ 走的是**逐条**删除接口而不是批量端点——服务端已不再提供容器批量端点，
+ * 而逐条调用能给出「哪一条失败、为什么」。
+ */
+async function batchKill(): Promise<void> {
+  const targets = [...selected.value]
+  if (targets.length === 0) return
 
   try {
-    const result = await batchRemoveContainers(
-      hostId.value,
-      targets.map((c) => c.id),
-      // 确认框已经说明了强删后果，这里才带 force
-      running.length > 0
+    await ElMessageBox.confirm(
+      h('div', { class: 'flex flex-col gap-1' }, [
+        h('span', t('container.batch.killConfirm.message', { count: targets.length }))
+      ]),
+      t('container.batch.killConfirm.title'),
+      {
+        confirmButtonText: t('container.batch.killConfirm.submit'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning'
+      }
     )
-
-    if (result.failures.length > 0) {
-      // 用容器名而不是 ID 报错：ID 前 12 位对用户没有意义
-      const names = result.failures
-        .map((failure) => targets.find((c) => c.id === failure.resourceId)?.name ?? failure.resourceId)
-
-      ElMessage({
-        type: 'warning',
-        message: t('container.batch.partial', {
-          action: t('container.action.remove'),
-          done: result.succeeded,
-          failed: result.failures.length,
-          names: names.join('、')
-        }),
-        showClose: true
-      })
-    } else {
-      ElMessage({
-        type: 'success',
-        message: t('container.batch.done', { action: t('container.action.remove'), count: result.succeeded })
-      })
-    }
-  } catch (e) {
-    // 只有入参非法（1000）与主机不可达（1301/1302）会走到这里，
-    // 它们都是**整批**失败，因此报通用错误即可：没有任何一个容器被删。
-    ElMessage({ type: 'error', message: e instanceof Error ? e.message : String(e), showClose: true })
-  } finally {
-    await load()
-    batchBusy.value = false
+  } catch {
+    return
   }
+
+  await batchRun(t('container.action.kill'), (c) => killContainer(hostId.value, c.id, 'SIGKILL'))
 }
 
 async function onCreated(): Promise<void> {
@@ -756,6 +834,8 @@ interface RowAction {
   /** 正在执行：主操作转圈，其余置灰 */
   loading?: boolean
   disabled?: boolean
+  /** 禁用原因（tooltip）；不写则用 `label` */
+  hint?: string
   run: (container: ContainerSummary) => void
 }
 
@@ -779,7 +859,8 @@ interface RowAction {
  */
 function rowActions(container: ContainerSummary): RowAction[] {
   const busy = busyIds.value.has(container.id)
-  const active = isActive(container)
+  const active = isActiveContainer(container)
+  const paused = isPaused(container)
 
   return [
     {
@@ -789,11 +870,14 @@ function rowActions(container: ContainerSummary): RowAction[] {
       run: openInspect
     },
     {
+      // ⚠️ **已暂停时主按钮是「继续」而不是「停止」**：暂停中的进程收不到 SIGTERM，
+      // 点「停止」会先等满超时（默认 10 秒）才 SIGKILL——界面看起来就像卡住了。
+      // 而「继续」是那个状态下唯一即时生效的动作。
       key: 'power',
-      icon: active ? 'i-carbon-stop' : 'i-carbon-play',
-      label: t(active ? 'container.action.stop' : 'container.action.start'),
+      icon: paused ? 'i-carbon-play' : active ? 'i-carbon-stop' : 'i-carbon-play',
+      label: t(paused ? 'container.action.resume' : active ? 'container.action.stop' : 'container.action.start'),
       loading: busy,
-      run: active ? onStop : onStart
+      run: paused ? onResume : active ? onStop : onStart
     },
     {
       // 用 restart 而非 renew：renew 是双箭头**对向**环绕，是「刷新 / 同步」的标准符号，
@@ -802,7 +886,8 @@ function rowActions(container: ContainerSummary): RowAction[] {
       key: 'restart',
       icon: 'i-carbon-restart',
       label: t('container.action.restart'),
-      disabled: busy,
+      disabled: busy || paused,
+      hint: paused ? t('container.action.disabled.restart') : undefined,
       run: onRestart
     },
     {
@@ -851,25 +936,66 @@ function moreActions(container: ContainerSummary): MoreAction[] {
 
   return [
     {
+      key: 'pause',
+      icon: 'i-carbon-pause',
+      label: t('container.action.pause'),
+      disabled: busy || !canPerform('pause', container.state),
+      run: onPause
+    },
+    {
+      key: 'resume',
+      icon: 'i-carbon-play',
+      label: t('container.action.resume'),
+      disabled: busy || !canPerform('resume', container.state),
+      run: onResume
+    },
+    {
+      key: 'kill',
+      icon: 'i-carbon-warning',
+      label: t('container.action.kill'),
+      disabled: busy || !canPerform('kill', container.state),
+      run: onKill
+    },
+    {
       key: 'rename',
       icon: 'i-carbon-text-align-left',
       label: t('container.action.rename'),
       disabled: busy,
-      run: (c) => openOperation(renameVisible, c)
+      run: (c) => openOperation(c, () => operationDialogs.value?.openRename())
     },
     {
       key: 'update',
       icon: 'i-carbon-settings-adjust',
       label: t('container.action.update'),
       disabled: busy,
-      run: (c) => openOperation(updateVisible, c)
+      run: (c) => openOperation(c, () => operationDialogs.value?.openUpdate())
     },
     {
       key: 'duplicate',
       icon: 'i-carbon-copy',
       label: t('container.action.duplicate'),
       disabled: busy,
-      run: (c) => openOperation(duplicateVisible, c)
+      run: (c) => openOperation(c, () => operationDialogs.value?.openDuplicate())
+    },
+    {
+      key: 'recreate',
+      icon: 'i-carbon-renew',
+      label: t('container.action.recreate'),
+      // ⚠️ 危险色 + 副标题：它与「追加挂载」一样会**替换**容器，
+      // 而菜单里没有二次确认对话框的停留时间，必须一眼看出它不一样。
+      hint: t('container.recreate.warning'),
+      tone: 'warning',
+      disabled: busy,
+      run: (c) => openOperation(c, () => operationDialogs.value?.openRecreate())
+    },
+    {
+      key: 'edit',
+      icon: 'i-carbon-edit',
+      label: t('container.action.edit'),
+      hint: t('container.recreate.warning'),
+      tone: 'warning',
+      disabled: busy,
+      run: (c) => openOperation(c, () => operationDialogs.value?.openEdit())
     },
     {
       key: 'add-volumes',
@@ -880,21 +1006,20 @@ function moreActions(container: ContainerSummary): MoreAction[] {
       hint: t('container.addVolumes.warning'),
       tone: 'warning',
       disabled: busy,
-      run: (c) => openOperation(addVolumesVisible, c)
+      run: (c) => openOperation(c, () => operationDialogs.value?.openAddVolumes())
     }
   ]
 }
 
-/** 打开某个操作对话框，并把它绑定到 `container`。 */
-function openOperation(dialog: Ref<boolean>, container: ContainerSummary): void {
+/**
+ * 打开某个操作对话框，并把它绑定到 `container`。
+ *
+ * ⚠️ **先设 `target` 再开对话框**：对话框读的是 `target`，
+ * 顺序反了就会拿到上一个容器——那是最难被发现的一类 bug。
+ */
+function openOperation(container: ContainerSummary, open: () => void): void {
   operationTarget.value = container
-  dialog.value = true
-}
-
-/** 对话框关闭后清空操作对象：否则下次打开时可能拿到上一行的容器。 */
-function closeOperation(dialog: Ref<boolean>): void {
-  dialog.value = false
-  operationTarget.value = null
+  open()
 }
 
 /** 对话框里操作成功后刷新列表（各操作的影响面不同，统一走整页刷新最省心）。 */
@@ -1077,38 +1202,20 @@ onBeforeUnmount(() => {
           </template>
 
           <template #batch="{ count, busy }">
-            <IconActionButton
-              icon="i-carbon-play"
-              :label="t('container.action.start')"
-              placement="bottom"
-              :disabled="count === 0 || busy"
-              :hint="count === 0 ? t('container.batch.selectFirst') : undefined"
-              @click="batchStart"
-            />
-            <IconActionButton
-              icon="i-carbon-stop"
-              :label="t('container.action.stop')"
-              placement="bottom"
-              :disabled="count === 0 || busy"
-              :hint="count === 0 ? t('container.batch.selectFirst') : undefined"
-              @click="batchStop"
-            />
-            <IconActionButton
-              icon="i-carbon-restart"
-              :label="t('container.action.restart')"
-              placement="bottom"
-              :disabled="count === 0 || busy"
-              :hint="count === 0 ? t('container.batch.selectFirst') : undefined"
-              @click="batchRestart"
-            />
-            <IconActionButton
-              icon="i-carbon-trash-can"
-              :label="t('container.action.remove')"
-              tone="danger"
-              placement="bottom"
-              :disabled="count === 0 || busy"
-              :hint="count === 0 ? t('container.batch.selectFirst') : undefined"
-              @click="batchRemove"
+            <!--
+              七个批量动作（启动 / 停止 / 重启 / 删除 / 终止 / 暂停 / 继续）。
+
+              ⚠️ **常驻**：早先是「选中才出现」，
+              那种模型的入口不可发现——页面上没有任何东西提示「勾选行之后能批量操作」。
+              现在按钮一直在那儿，没勾选时禁用（禁用原因写在 tooltip 里）。
+
+              ⚠️ **自适应**：宽度不够时低频的三个（终止 / 暂停 / 继续）收进「更多」下拉，
+              避免工具条折行后被读成「筛选栏的第二行」。详见 `ContainerBatchActions`。
+            -->
+            <ContainerBatchActions
+              :states="selectedStates"
+              :busy="busy || count === 0"
+              @run="onBatchAction"
             />
           </template>
 
@@ -1458,12 +1565,38 @@ onBeforeUnmount(() => {
                   :disabled="action.disabled"
                   @click="action.run(row)"
                 />
+                <!--
+                  ⚠️ **下拉的触发器必须是根节点为单一元素的组件**（这里用 `el-button`），
+                  **不能直接放 `IconActionButton`**。
+
+                  原因：EP 的 `el-dropdown` 把默认插槽交给 `ElOnlyChild`，
+                  它对插槽里的第一个节点 `cloneVNode` 并挂上 **forwardRef 运行时指令**，
+                  靠指令的 `mounted` 钩子拿到真正的 DOM 元素。
+                  而 `IconActionButton` 的根是 `el-tooltip`（→ `ElPopper`）——
+                  **多根的 fragment**。指令挂到组件上会告警
+                  「Runtime directive used on component with non-element root node」，
+                  并且**指令不生效** → 下拉拿不到触发元素 → **菜单永远点不开**。
+                  （与 `el-popover` 的 reference 插槽是同一个坑，见 AGENTS.md 陷阱 49。）
+
+                  `el-button` 的根是 `<button>`（单一元素），指令能正常落到 DOM 上。
+                  tooltip 挂**按钮内部的图标**上，与本文件「显示列」按钮的写法一致。
+                -->
                 <el-dropdown trigger="click">
-                  <IconActionButton
-                    icon="i-carbon-overflow-menu-horizontal"
-                    :label="t('container.action.more')"
+                  <el-button
+                    text
+                    circle
+                    size="small"
+                    :aria-label="t('container.action.more')"
                     :disabled="busyIds.has(row.id)"
-                  />
+                  >
+                    <el-tooltip
+                      :content="t('container.action.more')"
+                      placement="top"
+                      :show-after="TIP_DELAY_MS"
+                    >
+                      <span class="i-carbon-overflow-menu-horizontal" />
+                    </el-tooltip>
+                  </el-button>
                   <template #dropdown>
                     <el-dropdown-menu>
                       <el-dropdown-item
@@ -1519,39 +1652,17 @@ onBeforeUnmount(() => {
       @created="onCreated"
     />
 
-    <ContainerRenameDialog
-      v-model="renameVisible"
-      :host-id="hostId"
-      :container-id="operationTarget?.id ?? null"
-      :current-name="operationTarget?.name ?? ''"
-      @renamed="onOperationDone"
-      @update:model-value="(open) => !open && closeOperation(renameVisible)"
-    />
+    <!--
+      七个操作对话框的**统一宿主**（0.7.0）。
 
-    <ContainerUpdateDialog
-      v-model="updateVisible"
+      ⚠️ 详情页也挂同一个组件——两处各挂一次七个对话框会让「加一个操作」变成
+      「改两个页面」，而漏改的那个症状是「列表页有、详情页没有」。
+    -->
+    <ContainerOperationDialogs
       :host-id="hostId"
-      :container-id="operationTarget?.id ?? null"
-      @updated="onOperationDone"
-      @update:model-value="(open) => !open && closeOperation(updateVisible)"
-    />
-
-    <ContainerDuplicateDialog
-      v-model="duplicateVisible"
-      :host-id="hostId"
-      :container-id="operationTarget?.id ?? null"
-      :current-name="operationTarget?.name ?? ''"
-      @duplicated="onOperationDone"
-      @update:model-value="(open) => !open && closeOperation(duplicateVisible)"
-    />
-
-    <ContainerAddVolumesDialog
-      v-model="addVolumesVisible"
-      :host-id="hostId"
-      :container-id="operationTarget?.id ?? null"
-      :current-name="operationTarget?.name ?? ''"
+      :target="operationTarget"
+      @done="onOperationDone"
       @recreated="onOperationDone"
-      @update:model-value="(open) => !open && closeOperation(addVolumesVisible)"
     />
   </div>
 </template>
