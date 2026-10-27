@@ -208,12 +208,16 @@ public sealed class ContainerRealtimeEndpointTests : IAsyncLifetime
         }
     }
 
-    [DockerImageFact]
+    [DockerShellImageFact]
     public async Task 下载日志_返回纯文本()
     {
         using var client = await CreateAuthenticatedClientAsync();
 
-        var image = DockerAvailability.ImageReference!;
+        // ⚠️ **必须显式覆盖入口点**：本用例要的是「容器有输出」。
+        // 而 PID 1 是什么由镜像决定——入口点是应用二进制时它会忽略 cmd 直接跑自己的逻辑，
+        // 入口点是 shell 脚本时它可能一行都不输出。
+        // 显式给一个「输出一行然后继续存活」的入口点，结果才与镜像无关。
+        var image = DockerAvailability.ShellImageReference!;
         var name = $"dm-dl-{Guid.NewGuid():N}"[..16];
         string? containerId = null;
 
@@ -222,7 +226,7 @@ public sealed class ContainerRealtimeEndpointTests : IAsyncLifetime
             var created = await PostDataAsync<CreatedPayload>(
                 client,
                 "create",
-                new { image, name, cmd = _keepAliveCommand });
+                new { image, name, cmd = _keepAliveCommand, entrypoint = _singleLineEntrypoint });
 
             containerId = created.ContainerId;
 

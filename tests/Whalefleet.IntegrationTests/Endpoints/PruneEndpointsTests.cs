@@ -250,7 +250,7 @@ public class PruneEndpointsTests : IAsyncLifetime
                 $"/api/v1/hosts/{_localHost}/images/prune",
                 new { danglingOnly = true, label = _targetFilter });
 
-            response.StatusCode.Should().Be(HttpStatusCode.OK);
+            response.StatusCode.Should().Be(HttpStatusCode.OK, await DescribeAsync(response));
 
             var result = await ReadDataAsync<PrunePayload>(response);
 
@@ -285,7 +285,7 @@ public class PruneEndpointsTests : IAsyncLifetime
                 $"/api/v1/hosts/{_localHost}/images/prune",
                 new { danglingOnly = false, label = _targetFilter });
 
-            response.StatusCode.Should().Be(HttpStatusCode.OK);
+            response.StatusCode.Should().Be(HttpStatusCode.OK, await DescribeAsync(response));
 
             var result = await ReadDataAsync<PrunePayload>(response);
 
@@ -484,6 +484,19 @@ public class PruneEndpointsTests : IAsyncLifetime
 
     private static async Task<int> ReadCodeAsync(HttpResponseMessage response) =>
         (await ReadAsync(response)).GetProperty("code").GetInt32();
+
+    /// <summary>
+    /// 把响应体拼成一句可读的说明，供断言失败时展示。
+    /// </summary>
+    /// <param name="response">待描述的响应。</param>
+    /// <returns>响应体文本。</returns>
+    /// <remarks>
+    /// <b>为什么要有这个</b>：清理端点失败时状态码本身说明不了问题——
+    /// 404 可能是「主机不存在」（1300）、也可能是「Docker 说不认识」（1401），
+    /// 两者要查的地方完全不同。只看状态码就等于蒙着眼睛排查。
+    /// </remarks>
+    private static async Task<string> DescribeAsync(HttpResponseMessage response) =>
+        "响应体：" + await response.Content.ReadAsStringAsync();
 
     private static async Task<JsonElement> ReadAsync(HttpResponseMessage response)
     {

@@ -36,6 +36,18 @@ public sealed class ContainerLogHubTests : IAsyncLifetime
 
     private static readonly string[] _keepAliveCommand = ["sleep", "30"];
 
+    /// <summary>
+    /// 覆盖入口点，让容器输出多行然后继续存活。
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ **必须显式覆盖入口点**：本用例要的是「容器有日志」。
+    /// 而 PID 1 是什么由镜像决定——入口点是应用二进制时它会忽略 cmd 直接跑自己的逻辑，
+    /// 入口点是 shell 脚本时它可能一行都不输出。显式给一个输出多行的入口点，
+    /// 结果才与镜像无关（否则本用例会随机地「没日志可推」）。
+    /// </remarks>
+    private static readonly string[] _loggingEntrypoint =
+    ["/bin/sh", "-c", "echo line-one; echo line-two; echo line-three; sleep 30"];
+
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -68,12 +80,12 @@ public sealed class ContainerLogHubTests : IAsyncLifetime
     /// <inheritdoc />
     public async Task DisposeAsync() => await _factory.DisposeAsync();
 
-    [DockerImageFact]
+    [DockerShellImageFact]
     public async Task 订阅容器日志_推来行且序号单调递增()
     {
         using var client = await CreateAuthenticatedClientAsync();
 
-        var image = DockerAvailability.ImageReference!;
+        var image = DockerAvailability.ShellImageReference!;
         var name = $"dm-hub-{Guid.NewGuid():N}"[..16];
         string? containerId = null;
 
@@ -82,7 +94,7 @@ public sealed class ContainerLogHubTests : IAsyncLifetime
             var created = await PostDataAsync<CreatedPayload>(
                 client,
                 "create",
-                new { image, name, cmd = _keepAliveCommand });
+                new { image, name, cmd = _keepAliveCommand, entrypoint = _loggingEntrypoint });
 
             containerId = created.ContainerId;
 
