@@ -578,6 +578,13 @@ export interface ContainerDetail {
   hostConfig: ContainerHostConfigDetail
   mounts: ContainerMountDetail[]
   networks: ContainerNetworkDetail[]
+  /**
+   * 端口映射（已按确定性顺序排列，与列表端点同口径）。
+   *
+   * ⚠️ **详情接口也带它**是为了「编辑并重建」能回填端口编辑器：
+   * 表单里空着而重建时又整份替换，用户会在「只改了个环境变量」的动作里丢掉全部端口映射。
+   */
+  ports: ContainerPort[]
 }
 
 /** 容器日志（**整段文本**，不是行数组——见后端类型注释） */

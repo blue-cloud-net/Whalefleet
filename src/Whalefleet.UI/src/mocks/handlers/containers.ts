@@ -1,16 +1,16 @@
 import { http, HttpResponse, delay } from 'msw'
 import { ErrorCode, fail, httpStatusOf, ok } from '../envelope'
-import { delayFor, hostsFor, type MockScenario } from '../scenarios'
+import { delayFor, type MockScenario } from '../scenarios'
 import {
   MOCK_CONTAINER_DETAILS,
   MOCK_CONTAINER_LOGS,
   MOCK_CONTAINERS_DEFAULT
 } from '../data/containers'
 import type {
-  BatchOperationFailure,
   ContainerDetail,
   ContainerLogLine,
   ContainerPort,
+  ContainerState,
   ContainerSummary
 } from '@/types/api'
 
@@ -123,6 +123,19 @@ const renamedInSession = new Map<string, string>()
  */
 const updatedInSession = new Map<string, ContainerUpdateOverride>()
 
+/**
+ * 本次会话里被**改过状态**的容器：`容器 id → 新状态`。
+ *
+ * ⚠️ **为什么需要它**：夹具是模块级常量，刻意不改（改了就是「跑一次走查后夹具变了」）。
+ * 但生命周期动作（暂停 / 继续 / 终止）**必须看得见结果**——
+ * 不改的话，走查时点「暂停」会弹「已暂停」，而列表行仍然显示「运行中」，
+ * 看起来就像前端没刷新。
+ *
+ * 因此与 `renamedInSession` / `updatedInSession` 同构：**不改夹具，只记覆盖**，
+ * 读的时候叠加上去。会话新建的容器则直接改它们自己的详情（它们本来就是可变的）。
+ */
+const stateInSession = new Map<string, ContainerState>()
+
 /** 热更新覆盖项：未列出的字段保持原值。 */
 interface ContainerUpdateOverride {
   restartPolicy?: string
@@ -143,6 +156,7 @@ export function resetSessionContainers(): void {
   removedInSession.clear()
   renamedInSession.clear()
   updatedInSession.clear()
+  stateInSession.clear()
 }
 
 /** 取容器当前的名字（应用本会话的重命名覆盖）。 */
@@ -155,11 +169,50 @@ function currentName(containerId: string, fallback: string): string {
  *
  * 只有名字可改：<see cref="ContainerSummary"/> 不含 hostConfig 字段，
  * 所以热更新的结果只能从详情看到（列表上本来也不显示内存 / CPU 限制）。
+ *
+ * ⚠️ **状态覆盖也在这里叠加**：生命周期动作（暂停 / 终止）改了夹具容器的状态后，
+ * 列表必须显示新状态——否则界面会说「已暂停」而行里仍是「运行中」。
  */
 function applyOverrides(item: ContainerSummary): ContainerSummary {
   const name = currentName(item.id, item.name)
+  const state = stateInSession.get(item.id)
 
-  return name === item.name ? item : { ...item, name }
+  if (name === item.name && !state) return item
+
+  return {
+    ...item,
+    name,
+    state: state?.status ?? item.state,
+    status: state ? statusTextOfState(state, item.status) : item.status
+  }
+}
+
+/**
+ * 由状态覆盖推导列表项的人类可读状态文案。
+ *
+ * ⚠️ **必须是英文**：后端原样给守护进程的文案，前端不翻译——
+ * 因此这里产出的措辞必须与夹具里的 `Up 2 hours` / `Exited (137) 1 hour ago` 同一套。
+ *
+ * - 暂停：Docker 本身就是 `Up 2 hours (Paused)`，因此在原文后缀上 `(Paused)`。
+ * - 退出：Docker 报的是「**距退出**多久」，而不是「跑了多久」，
+ *   因此用 `Less than a second ago` 而不是原来的运行时长。
+ */
+function statusTextOfState(state: ContainerState, original: string): string {
+  if (state.status === 'paused') {
+    return original.startsWith('Up ') ? `${original} (Paused)` : `Up Less than a second (Paused)`
+  }
+
+  if (state.status === 'exited') {
+    return `Exited (${state.exitCode ?? 0}) Less than a second ago`
+  }
+
+  if (state.status === 'dead') {
+    return `Dead (${state.exitCode ?? 137}) Less than a second ago`
+  }
+
+  if (state.status === 'created') return 'Created'
+
+  return 'Up Less than a second'
 }
 
 /**
@@ -171,12 +224,14 @@ function applyOverrides(item: ContainerSummary): ContainerSummary {
 function applyDetailOverrides(detail: ContainerDetail): ContainerDetail {
   const name = currentName(detail.id, detail.name)
   const override = updatedInSession.get(detail.id)
+  const state = stateInSession.get(detail.id)
 
-  if (name === detail.name && !override) return detail
+  if (name === detail.name && !override && !state) return detail
 
   return {
     ...detail,
     name,
+    state: state ?? detail.state,
     hostConfig: {
       ...detail.hostConfig,
       restartPolicy: override?.restartPolicy ?? detail.hostConfig.restartPolicy,
@@ -540,6 +595,110 @@ export function containerHandlers(scenario: () => MockScenario) {
       })
     ),
 
+    http.post('*/api/v1/hosts/:hostId/containers/kill', async ({ request }) => {
+      await delay(delayFor(scenario()))
+
+      const body = await readBody(request)
+      const containerId = String(body.containerId ?? '')
+      const signal = body.signal == null ? null : String(body.signal)
+
+      if (containerId.trim().length === 0) {
+        return HttpResponse.json(fail(ErrorCode.ValidationFailed), {
+          status: httpStatusOf(ErrorCode.ValidationFailed)
+        })
+      }
+
+      // 信号含空白 → 1000（与后端一致）；空白串本身按「未指定」处理。
+      if (signal !== null && /\s/.test(signal.trim()) && signal.trim().length > 0) {
+        return HttpResponse.json(fail(ErrorCode.ValidationFailed), {
+          status: httpStatusOf(ErrorCode.ValidationFailed)
+        })
+      }
+
+      const container = containersFor(scenario()).find((item) => item.id === containerId)
+
+      if (!container) {
+        return HttpResponse.json(fail(ErrorCode.DockerResourceNotFound), {
+          status: httpStatusOf(ErrorCode.DockerResourceNotFound)
+        })
+      }
+
+      // ⚠️ 容器未运行时守护进程回 409 → 1404。
+      // 前端要靠它提示「先启动容器」，因此 mock 必须能产生这个分支。
+      if (!isRunningState(container.state)) {
+        return HttpResponse.json(fail(ErrorCode.DockerResourceConflict), {
+          status: httpStatusOf(ErrorCode.DockerResourceConflict)
+        })
+      }
+
+      applyStateChange(containerId, 'kill')
+
+      return HttpResponse.json(ok(null))
+    }),
+
+    http.post('*/api/v1/hosts/:hostId/containers/pause', async ({ request }) => {
+      await delay(delayFor(scenario()))
+
+      const body = await readBody(request)
+      const containerId = String(body.containerId ?? '')
+
+      if (containerId.trim().length === 0) {
+        return HttpResponse.json(fail(ErrorCode.ValidationFailed), {
+          status: httpStatusOf(ErrorCode.ValidationFailed)
+        })
+      }
+
+      const container = containersFor(scenario()).find((item) => item.id === containerId)
+
+      if (!container) {
+        return HttpResponse.json(fail(ErrorCode.DockerResourceNotFound), {
+          status: httpStatusOf(ErrorCode.DockerResourceNotFound)
+        })
+      }
+
+      if (!isRunningState(container.state)) {
+        return HttpResponse.json(fail(ErrorCode.DockerResourceConflict), {
+          status: httpStatusOf(ErrorCode.DockerResourceConflict)
+        })
+      }
+
+      // 已暂停时后端按幂等处理（200），因此 mock 也不能报 409。
+      applyStateChange(containerId, 'pause')
+
+      return HttpResponse.json(ok(null))
+    }),
+
+    http.post('*/api/v1/hosts/:hostId/containers/resume', async ({ request }) => {
+      await delay(delayFor(scenario()))
+
+      const body = await readBody(request)
+      const containerId = String(body.containerId ?? '')
+
+      if (containerId.trim().length === 0) {
+        return HttpResponse.json(fail(ErrorCode.ValidationFailed), {
+          status: httpStatusOf(ErrorCode.ValidationFailed)
+        })
+      }
+
+      const container = containersFor(scenario()).find((item) => item.id === containerId)
+
+      if (!container) {
+        return HttpResponse.json(fail(ErrorCode.DockerResourceNotFound), {
+          status: httpStatusOf(ErrorCode.DockerResourceNotFound)
+        })
+      }
+
+      if (!isRunningState(container.state)) {
+        return HttpResponse.json(fail(ErrorCode.DockerResourceConflict), {
+          status: httpStatusOf(ErrorCode.DockerResourceConflict)
+        })
+      }
+
+      applyStateChange(containerId, 'resume')
+
+      return HttpResponse.json(ok(null))
+    }),
+
     http.post('*/api/v1/hosts/:hostId/containers/remove', async ({ request }) => {
       await delay(delayFor(scenario()))
 
@@ -566,71 +725,6 @@ export function containerHandlers(scenario: () => MockScenario) {
       markRemoved(containerId)
 
       return HttpResponse.json(ok(null))
-    }),
-
-    http.post('*/api/v1/hosts/:hostId/containers/batch-remove', async ({ request }) => {
-      await delay(delayFor(scenario()))
-
-      const { hostId } = parse(request)
-      const body = await readBody(request)
-      const force = body.force === true
-      const raw = Array.isArray(body.containerIds) ? (body.containerIds as unknown[]) : []
-
-      // ⚠️ 主机不存在是**整批**失败（1300）。真实后端由 CurrentHostMiddleware 在进入端点前
-      // 抛出，mock 没有中间件，因此必须在这里补上——否则前端在 mock 下永远走不到
-      // 「主机已被删除」这条分支，而真机上刷新一个旧深链恰好会碰到它。
-      if (!hostsFor(scenario()).some((host) => host.name === hostId)) {
-        return HttpResponse.json(fail(ErrorCode.HostNotFound), {
-          status: httpStatusOf(ErrorCode.HostNotFound)
-        })
-      }
-
-      // ⚠️ 批量端点的入参校验同样是**整批**失败（1000），与逐条失败形态不同：
-      // 界面据此显示「操作无效」而不是「部分成功」。
-      const requested = normalizeBatchIds(raw)
-
-      if (requested === null) {
-        return HttpResponse.json(
-          fail(ErrorCode.ValidationFailed, batchValidationMessage(raw, 'containerIds')),
-          { status: httpStatusOf(ErrorCode.ValidationFailed) }
-        )
-      }
-
-      const containers = containersFor(scenario())
-      const failures: BatchOperationFailure[] = []
-      let succeeded = 0
-
-      for (const containerId of requested) {
-        const container = containers.find((item) => item.id === containerId)
-
-        if (!container) {
-          // 逐条失败：错误码与单条端点**完全一致**，界面才能复用同一套文案
-          failures.push({
-            resourceId: containerId,
-            code: ErrorCode.DockerResourceNotFound,
-            message: '容器不存在'
-          })
-          continue
-        }
-
-        if (container.state === 'running' && !force) {
-          failures.push({
-            resourceId: containerId,
-            code: ErrorCode.DockerResourceConflict,
-            message: '容器正在运行，需指定 force'
-          })
-          continue
-        }
-
-        createdInSession.delete(containerId)
-        removedInSession.add(containerId)
-        succeeded += 1
-      }
-
-      // 部分成功也是 200：真正的错误响应只有「入参非法」与「主机不可达」两种
-      return HttpResponse.json(
-        ok({ requested: requested.length, succeeded, failures })
-      )
     }),
 
     http.post('*/api/v1/hosts/:hostId/containers/rename', async ({ request }) => {
@@ -902,6 +996,87 @@ export function containerHandlers(scenario: () => MockScenario) {
       return HttpResponse.json(
         ok({ containerId: newId, name: source.name, replacedContainerId: containerId, running: start, warnings: [], recreated: true })
       )
+    }),
+
+    http.post('*/api/v1/hosts/:hostId/containers/recreate', async ({ request }) => {
+      await delay(delayFor(scenario()))
+
+      const current = scenario()
+      const body = await readBody(request)
+      const containerId = String(body.containerId ?? '').trim()
+
+      if (containerId.length === 0) {
+        return HttpResponse.json(fail(ErrorCode.ValidationFailed), {
+          status: httpStatusOf(ErrorCode.ValidationFailed)
+        })
+      }
+
+      const source = detailsFor(current).find((item) => item.id === containerId)
+
+      if (!source) {
+        return HttpResponse.json(fail(ErrorCode.DockerResourceNotFound), {
+          status: httpStatusOf(ErrorCode.DockerResourceNotFound)
+        })
+      }
+
+      // ⚠️ `config` 是**只覆盖出现的字段**的语义：没给的字段沿用原容器。
+      // 因此这里只在请求里出现的字段上覆盖，其余原样带过去——
+      // 整份替换会让界面上没展示的字段（能力集等）静默消失。
+      const config = (body.config ?? null) as Record<string, unknown> | null
+      const detail = structuredClone(source)
+
+      if (config) {
+        if (typeof config.image === 'string' && config.image.length > 0) {
+          detail.config.image = config.image
+          detail.image = config.image
+        }
+        if (Array.isArray(config.cmd)) detail.config.cmd = config.cmd as string[]
+        if (Array.isArray(config.entrypoint)) detail.config.entrypoint = config.entrypoint as string[]
+        if (Array.isArray(config.env)) detail.config.env = config.env as string[]
+        if (typeof config.restartPolicy === 'string') {
+          detail.hostConfig.restartPolicy = config.restartPolicy
+        }
+        if (typeof config.autoRemove === 'boolean') {
+          detail.hostConfig.autoRemove = config.autoRemove
+        }
+        if (typeof config.hostname === 'string') detail.config.hostname = config.hostname
+        if (typeof config.workingDir === 'string') detail.config.workingDir = config.workingDir
+        if (typeof config.user === 'string') detail.config.user = config.user
+        if (typeof config.tty === 'boolean') detail.config.tty = config.tty
+        if (Array.isArray(config.volumes)) {
+          detail.mounts = (config.volumes as Array<{ source?: string; destination?: string; readOnly?: boolean }>)
+            .filter((volume) => !!volume.source && !!volume.destination)
+            .map((volume) => ({
+              type: 'bind',
+              source: volume.source as string,
+              destination: volume.destination as string,
+              readWrite: volume.readOnly !== true
+            }))
+        }
+      }
+
+      // ===== 重建：旧容器让位（改名保留）→ 新容器用原名建出来 =====
+      const parkedName = `whalefleet-replaced-${containerId.slice(0, 12)}`
+
+      renamedInSession.set(containerId, parkedName)
+
+      const newId = `e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1${createdInSession.size}`
+
+      createdInSession.set(newId, {
+        detail: { ...detail, id: newId, name: source.name },
+        ports: portsOf(current, containerId)
+      })
+
+      // start 省略时**沿用原容器的运行状态**——不擅自启动一个本来没运行的容器
+      const start = typeof body.start === 'boolean' ? body.start : source.state.running
+
+      if (start) {
+        applyStateChange(newId, 'start')
+      }
+
+      return HttpResponse.json(
+        ok({ containerId: newId, name: source.name, replacedContainerId: containerId, running: start, warnings: [], recreated: true })
+      )
     })
   ]
 }
@@ -975,74 +1150,70 @@ function validateUpdate(body: {
 }
 
 /**
- * 批量入参非法的**具体**原因（与后端 `BatchRequest.NormalizeIds` 的消息一致）。
+ * 容器是否处于「运行类」状态（运行中 / 已暂停 / 重启中）。
  *
- * 为什么不直接用 `fail(code)` 的默认文案：默认文案是「参数校验失败」，
- * 而「101 个 ID 超了上限 100」这个信息只有说清楚才有用——用户看到笼统的报错
- * 只会反复重试，而重试还是同一个错误。
+ * ⚠️ 与后端的 `ContainerService.ResolveStateFilter` 同口径：
+ * 已暂停的容器在 Docker 语义里**仍在运行**，因此它算「运行类」。
  */
-function batchValidationMessage(raw: unknown[], field: string): string {
-  if (raw.length === 0) return `${field} 不能为空`
-
-  if (raw.length > 100) return `${field} 最多 100 个，当前 ${raw.length} 个`
-
-  return `${field} 不能全为空值`
+function isRunningState(state: string): boolean {
+  return ['running', 'paused', 'restarting'].includes(state)
 }
 
 /**
- * 批量 ID 列表的归一化（与后端 `BatchRequest.NormalizeIds` 同规则）。
+ * 把状态变更应用到容器上。
  *
- * @returns 去空白、去空项、去重后的 ID；**列表为空 / 超限 / 全为空串时返回 null**（对应后端 1000）。
+ * ⚠️ **两条路径**：
+ * - 会话新建的容器 → 直接改它自己的详情（它本来就是可变的）；
+ * - 夹具容器 → 记进 `stateInSession` 覆盖表（夹具是模块级常量，不能改）。
+ *
+ * 两者对外表现一致：列表与详情都会显示新状态。
+ * 不做这个区分的话，「暂停夹具容器」会**没有任何可见效果**——
+ * 界面弹了「已暂停」，行里却仍是「运行中」。
  */
-function normalizeBatchIds(raw: unknown[]): string[] | null {
-  if (raw.length === 0) return null
+function applyStateChange(
+  containerId: string,
+  action: 'start' | 'stop' | 'restart' | 'pause' | 'resume' | 'kill'
+): void {
+  const created = createdInSession.get(containerId)
+  const current =
+    created?.detail.state ??
+    stateInSession.get(containerId) ??
+    MOCK_CONTAINER_DETAILS.find((item) => item.id === containerId)?.state
 
-  // ⚠️ 上限必须与后端一致：服务端超过 100 就整批 400，而 mock 不拦的话
-  // 前端会以为「1000 条也能批量删」，到真机上才发现整批失败。
-  if (raw.length > 100) return null
+  if (!current) return
 
-  const seen = new Set<string>()
-  const normalized: string[] = []
+  const next: ContainerState = { ...current }
 
-  for (const item of raw) {
-    const trimmed = typeof item === 'string' ? item.trim() : ''
-    if (trimmed.length === 0 || seen.has(trimmed)) continue
-
-    seen.add(trimmed)
-    normalized.push(trimmed)
+  if (action === 'stop' || action === 'kill') {
+    next.status = 'exited'
+    next.running = false
+    next.paused = false
+    next.finishedAt = new Date().toISOString()
+    // 优雅停止成功，Mock 固定给 0（真实场景可能是 137，那取决于进程是否响应 SIGTERM）。
+    // ⚠️ **kill 不给 0**：SIGKILL 的退出码是 137，而给 0 会被读成「已正常退出」。
+    next.exitCode = action === 'kill' ? 137 : 0
+  } else if (action === 'pause') {
+    // ⚠️ **暂停的容器仍在运行**（Docker 语义如此），因此 `running` 保持 true。
+    next.status = 'paused'
+    next.paused = true
+  } else if (action === 'resume') {
+    next.status = 'running'
+    next.paused = false
+  } else {
+    next.status = 'running'
+    next.running = true
+    next.paused = false
+    next.startedAt = next.startedAt ?? new Date().toISOString()
+    next.finishedAt = null
+    next.exitCode = null
   }
 
-  return normalized.length > 0 ? normalized : null
-}
-
-/**
- * 把状态变更应用到会话新建的容器上。
- *
- * 夹具（`MOCK_CONTAINER_DETAILS`）是模块级常量，刻意不改它们：
- * 改了就变成「跑一次走查后夹具变了」，下一轮看到的状态与初始态不一致
- * （而且并行跑测试时互相污染）。只有本轮会话新建的容器是可变的。
- */
-function applyStateChange(containerId: string, action: 'start' | 'stop' | 'restart'): void {
-  const created = createdInSession.get(containerId)
-
-  if (!created) return
-
-  const { state } = created.detail
-
-  if (action === 'stop') {
-    state.status = 'exited'
-    state.running = false
-    state.finishedAt = new Date().toISOString()
-    // 优雅停止成功，Mock 固定给 0（真实场景可能是 137，那取决于进程是否响应 SIGTERM）。
-    state.exitCode = 0
+  if (created) {
+    created.detail.state = next
     return
   }
 
-  state.status = 'running'
-  state.running = true
-  state.startedAt = state.startedAt ?? new Date().toISOString()
-  state.finishedAt = null
-  state.exitCode = null
+  stateInSession.set(containerId, next)
 }
 
 /**
@@ -1114,7 +1285,9 @@ function createFixture(id: string, body: Record<string, unknown>): CreatedContai
           })
         )
       : [],
-    networks: []
+    networks: [],
+    // 端口与列表项同源：详情也要给出端口，否则「编辑并重建」预填不到端口编辑器。
+    ports
   }
 
   return { detail, ports }

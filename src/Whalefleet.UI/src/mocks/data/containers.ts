@@ -77,6 +77,11 @@ const RUNNING: ContainerDetail = {
       gateway: '172.17.0.1',
       macAddress: '02:42:ac:11:00:02'
     }
+  ],
+  ports: [
+    { privatePort: 80, publicPort: 8080, type: 'tcp', ip: '0.0.0.0' },
+    { privatePort: 80, publicPort: 8080, type: 'tcp', ip: '::' },
+    { privatePort: 443, publicPort: null, type: 'tcp', ip: null }
   ]
 }
 
@@ -119,7 +124,8 @@ const CRASHED: ContainerDetail = {
     nanoCpus: null
   },
   mounts: [],
-  networks: []
+  networks: [],
+  ports: []
 }
 
 /** 已暂停：过渡态，验证琥珀色与「启动/停止」按钮的互斥表现。 */
@@ -160,7 +166,8 @@ const PAUSED: ContainerDetail = {
     nanoCpus: null
   },
   mounts: [],
-  networks: []
+  networks: [],
+  ports: []
 }
 
 // ============================================================================
@@ -858,7 +865,8 @@ function buildDetail(seed: ContainerSeed, index: number): ContainerDetail {
               gateway: '172.18.0.1',
               macAddress: `02:42:ac:12:00:${((index % 250) + 2).toString(16).padStart(2, '0')}`
             }
-          ]
+          ],
+    ports: []
   }
 }
 
