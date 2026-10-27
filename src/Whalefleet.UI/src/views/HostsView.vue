@@ -378,6 +378,7 @@ watch(() => t, load, { immediate: true })
             <IconActionButton
               icon="i-carbon-tag"
               :label="t('host.tag.batch.action')"
+              show-label
               placement="bottom"
               :disabled="count === 0 || busy"
               :hint="count === 0 ? t('container.batch.selectFirst') : undefined"

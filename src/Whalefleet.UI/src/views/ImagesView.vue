@@ -519,6 +519,7 @@ watch(
               icon="i-carbon-trash-can"
               :label="t('common.delete')"
               tone="danger"
+              show-label
               placement="bottom"
               :disabled="count === 0 || busy"
               :hint="count === 0 ? t('container.batch.selectFirst') : undefined"

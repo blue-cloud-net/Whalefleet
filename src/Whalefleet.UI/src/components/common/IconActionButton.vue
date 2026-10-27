@@ -40,13 +40,31 @@ withDefaults(
     hint?: string
     /** tooltip 方位；默认顶部——行内按钮的常规位置 */
     placement?: 'top' | 'bottom' | 'left' | 'right'
+    /**
+     * 显示文字标签（图标 + 文字），用于工具条上的批量动作。
+     *
+     * 行内动作只给图标是刻意的：一行里四五个图标再配上文字会把表格撑得很宽。
+     * 但**工具条上的批量动作相反**——它是「这一页支持批量操作」的唯一提示，
+     * 只给图标时用户得逐个悬停才知道哪个是启动、哪个是删除，
+     * 而它们恰恰是高频动作，值不得让人去猜。
+     *
+     * 开启后：按钮变成**标准的 el-button**（`plain`：有边框、有底色），
+     * 而不是行内那种无边框的文字按钮——
+     * 工具条上的批量动作是「可以点的按钮」，行内动作是「表格里的小图标」，
+     * 两者用同一套外观会让用户分不清哪个是正式动作。
+     *
+     * 且 `label` 的 tooltip **不再弹**（文字已经写在按钮上，再弹一遍是噪音），
+     * 只有 `disabled` + `hint` 时仍弹——禁用原因只能靠 tooltip 说。
+     */
+    showLabel?: boolean
   }>(),
   {
     tone: 'default',
     size: 'small',
     loading: false,
     disabled: false,
-    placement: 'top'
+    placement: 'top',
+    showLabel: false
   }
 )
 
@@ -64,12 +82,19 @@ const SHOW_AFTER = 300
     :content="disabled && hint ? hint : label"
     :placement="placement"
     :show-after="SHOW_AFTER"
+    :disabled="showLabel && !(disabled && hint)"
   >
     <!-- 这层 span 是功能必需的，不是为了样式：见文件头第 2 条 -->
     <span class="inline-flex">
+      <!--
+        ⚠️ `text` 与 `plain` 互斥：行内动作用 `text`（无边框的纯图标），
+        工具条上的批量动作用 `plain`（标准带框按钮）——两套外观区分
+        「表格里的小图标」与「工具条上可以点的正式动作」。
+      -->
       <el-button
-        text
-        circle
+        :text="!showLabel"
+        :plain="showLabel"
+        :circle="!showLabel"
         :size="size"
         :type="tone"
         :loading="loading"
@@ -77,7 +102,12 @@ const SHOW_AFTER = 300
         :aria-label="label"
         @click="emit('click', $event)"
       >
-        <span :class="icon" aria-hidden="true" />
+        <!--
+          ⚠️ 图标必须放在 `icon` 插槽里（不是默认插槽）：EP 在 `loading` 时
+          会用转圈图标**替换** `icon` 插槽的内容，两个都渲染就成了「转圈 + 图标」。
+        -->
+        <template #icon><span :class="icon" aria-hidden="true" /></template>
+        <template v-if="showLabel">{{ label }}</template>
       </el-button>
     </span>
   </el-tooltip>
