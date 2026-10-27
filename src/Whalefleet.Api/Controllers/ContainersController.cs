@@ -400,38 +400,147 @@ public sealed class ContainersController : ControllerBase
     }
 
     /// <summary>
-    /// 批量删除容器（**部分成功也算成功**，逐条汇报失败）。
+    /// 终止容器（等价于 <c>docker kill</c>：直接把信号送到容器主进程，不等优雅退出）。
     /// </summary>
     /// <param name="hostId">主机标识（主机名）。</param>
-    /// <param name="request">批量删除请求（容器标识列表、是否强制）。</param>
+    /// <param name="request">终止请求（容器标识、可选信号）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>统一响应，<c>data</c> 为汇总结果（含失败明细）。</returns>
-    /// <response code="200">执行完毕（可能有部分失败，详见 <c>failures</c>）。</response>
-    /// <response code="400">列表为空或超限（<c>1000</c>）。</response>
+    /// <returns>统一响应（无 <c>data</c> 字段）。</returns>
+    /// <response code="200">终止成功。</response>
+    /// <response code="400">容器标识为空或信号非法（<c>1000</c>）。</response>
     /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
     /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
-    /// <response code="404">主机不存在（<c>1300</c>）。</response>
-    /// <response code="502">主机不可达（<c>1301</c>）——整批失败，不是逐条失败。</response>
+    /// <response code="404">主机（<c>1300</c>）或容器（<c>1401</c>）不存在。</response>
+    /// <response code="409">容器未运行（<c>1404</c>）。</response>
+    /// <response code="502">主机不可达（<c>1301</c>）。</response>
     /// <remarks>
-    /// <b>为什么需要这条端点</b>：前端原先只能对选中的每一行各发一次请求。
-    /// 选 20 个容器就是 20 个 HTTP 往返，每个都要重新握手与鉴权，
-    /// 而服务端其实能一次把客户端准备好、顺序处理完。
+    /// <b>信号省略时由守护进程取默认值</b>（SIGKILL），服务端不写死——
+    /// 写死会在守护进程改默认值时静默跑偏。
     /// </remarks>
-    [HttpPost("batch-remove")]
-    [ProducesResponseType(typeof(ApiResult<BatchOperationResult>), StatusCodes.Status200OK)]
+    [HttpPost("kill")]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status409Conflict)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status502BadGateway)]
-    public async Task<IActionResult> BatchRemoveAsync(
+    public async Task<IActionResult> KillAsync(
         string hostId,
-        [FromBody] BatchRemoveContainersRequest request,
+        [FromBody] KillContainerRequest request,
         CancellationToken cancellationToken)
     {
-        var result = await _containers.BatchRemoveAsync(hostId, request, cancellationToken).ConfigureAwait(false);
+        await _containers.KillAsync(hostId, request, cancellationToken).ConfigureAwait(false);
 
-        return this.Ok(ApiResults.Ok(result));
+        return this.Ok(ApiResults.Ok());
+    }
+
+    /// <summary>
+    /// 暂停容器（等价于 <c>docker pause</c>）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">暂停请求（容器标识）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应（无 <c>data</c> 字段）。</returns>
+    /// <response code="200">暂停成功（<b>已处于暂停状态同样返回 200</b>）。</response>
+    /// <response code="400">容器标识为空（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机（<c>1300</c>）或容器（<c>1401</c>）不存在。</response>
+    /// <response code="409">容器未运行（<c>1404</c>）。</response>
+    /// <response code="502">主机不可达（<c>1301</c>）。</response>
+    /// <remarks>
+    /// <b>暂停 ≠ 停止</b>：容器进程仍在，只是不再占用 CPU；
+    /// 它仍占着映射的端口与挂载的卷。
+    /// </remarks>
+    [HttpPost("pause")]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> PauseAsync(
+        string hostId,
+        [FromBody] PauseContainerRequest request,
+        CancellationToken cancellationToken)
+    {
+        await _containers.PauseAsync(hostId, request, cancellationToken).ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok());
+    }
+
+    /// <summary>
+    /// 恢复容器（等价于 <c>docker unpause</c>）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">恢复请求（容器标识）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应（无 <c>data</c> 字段）。</returns>
+    /// <response code="200">恢复成功（<b>未处于暂停状态同样返回 200</b>）。</response>
+    /// <response code="400">容器标识为空（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机（<c>1300</c>）或容器（<c>1401</c>）不存在。</response>
+    /// <response code="409">容器未运行（<c>1404</c>）。</response>
+    /// <response code="502">主机不可达（<c>1301</c>）。</response>
+    /// <remarks>
+    /// <b>与「启动」不是一回事</b>：本端点只解除<b>暂停</b>，容器随即继续跑；
+    /// <c>start</c> 是把<b>已停止</b>的容器跑起来。
+    /// </remarks>
+    [HttpPost("resume")]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> ResumeAsync(
+        string hostId,
+        [FromBody] ResumeContainerRequest request,
+        CancellationToken cancellationToken)
+    {
+        await _containers.ResumeAsync(hostId, request, cancellationToken).ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok());
+    }
+
+    /// <summary>
+    /// 重建容器（<b>等价于「编辑并重建」</b>，容器 ID 会变）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">重建请求（容器标识、可选新配置、是否启动）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应，<c>data</c> 为新容器 ID、名称、被让位的旧容器 ID 与运行状态。</returns>
+    /// <response code="200">重建成功；<c>replacedContainerId</c> 指向保留着的旧容器。</response>
+    /// <response code="400">容器标识为空或配置字段非法（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机（<c>1300</c>）或容器（<c>1401</c>）不存在。</response>
+    /// <response code="409">无法为旧容器找到空闲的让位名（<c>1404</c>）。</response>
+    /// <response code="502">主机不可达（<c>1301</c>）。</response>
+    /// <remarks>
+    /// <b>界面必须把「会重建容器」写在二次确认里</b>：旧容器不会被删除，
+    /// 而是改名成 <c>whalefleet-replaced-*</c> 保留——那是回滚的后手。
+    /// </remarks>
+    [HttpPost("recreate")]
+    [ProducesResponseType(typeof(ApiResult<ContainerRecreatedResult>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> RecreateAsync(
+        string hostId,
+        [FromBody] RecreateContainerRequest request,
+        CancellationToken cancellationToken)
+    {
+        var recreated = await _containers.RecreateAsync(hostId, request, cancellationToken).ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok(recreated));
     }
 
     /// <summary>
