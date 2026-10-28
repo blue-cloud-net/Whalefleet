@@ -22,6 +22,14 @@ describe('containerTone', () => {
     expect(containerTone('dead')).toBe('down')
   })
 
+  it('created（建好但从未启动）→ down，不是「未知」', () => {
+    // ⚠️ 回归用例：它曾被归进 idle → 徽标显示「未知」。
+    // 但「建好了还没启动」是一个**我们明确知道**的状态，把它和
+    // 「守护进程给了个不认识的状态」混在一起，会让人去查一个并不存在的异常。
+    // 动作集也与已停止一致（可 start / remove，不能 stop / pause / kill）。
+    expect(containerTone('created')).toBe('down')
+  })
+
   it('过渡态独立成一档，不落进 ok 或 down', () => {
     // paused 的语义是「既没正常运行、也没出错退出」——
     // 归进 ok 会让用户以为服务在跑，归进 down 会让他去查日志。
@@ -76,6 +84,9 @@ describe('containerDisplayState', () => {
     expect(containerDisplayState('exited', 'none')).toBe('stopped')
     expect(containerDisplayState('exited', 'healthy')).toBe('stopped')
     expect(containerDisplayState('dead', null)).toBe('stopped')
+    // 建好但从未启动：界面上读作「已停止」，而不是「未知」。
+    expect(containerDisplayState('created', null)).toBe('stopped')
+    expect(containerDisplayState('Created', 'none')).toBe('stopped')
   })
 
   it('过渡态仍是过渡态，不被健康覆盖', () => {

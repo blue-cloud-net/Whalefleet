@@ -12,7 +12,8 @@ import { buildPortUrl, ipRank, isWildcardIp } from '@/utils/port-link'
 
 /**
  * 语义色调。
- * ok = 运行中 / down = 已停止 / warn = 过渡态（重启、创建中）/ idle = 未知
+ * ok = 运行中 / down = 未在跑（已停止、已创建未启动）/ warn = 过渡态（暂停、重启、删除中）/
+ * idle = 未知（守护进程给了个本表没登记的状态）
  */
 export type ContainerTone = 'ok' | 'down' | 'warn' | 'idle'
 
@@ -27,9 +28,16 @@ const TONE_BY_STATE: Record<string, ContainerTone> = {
   running: 'ok',
   exited: 'down',
   dead: 'down',
+  // ⚠️ `created` 是「建好了但从未 start 过」，**不是「未知」**。
+  // 归到 `idle` 会把两件完全不同的事混为一谈：「这个容器还没启动过」与
+  // 「守护进程给了一个我们不认识的状态」——前者是正常状态，后者才是异常。
+  // 它也确实没在跑，且**动作集与已停止完全一致**（可 start / 可 remove，
+  // 不能 stop / pause / kill，见 utils/container-actions.ts 的 ELIGIBLE_STATES），
+  // 因此与 exited / dead 同档。精确信息不丢：状态列第二行仍显示守护进程的原始文案
+  // （`Created`）。
+  created: 'down',
   paused: 'warn',
   restarting: 'warn',
-  created: 'idle',
   removing: 'warn'
 }
 
