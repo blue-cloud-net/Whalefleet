@@ -277,6 +277,15 @@ before the first public release).
 
 #### Fixed
 
+- **Container metrics never arrived**: the sampler's throttle used `TimeSpan.MinValue` as the
+  "nothing published yet" initial value, and `clock.Elapsed - TimeSpan.MinValue` overflows
+  `TimeSpan` — on the **first** frame, which is the very first sample the whole pipeline
+  depends on. The subscription succeeded, the backend logged a single warning, and the
+  container detail page sat on "waiting for the first sample…" forever with no error shown
+  anywhere. The "not yet published" state is now a nullable `TimeSpan`, so the first frame is
+  published immediately instead of being throttled away. A failing stream now also **ends the
+  subscriber's channel with the exception** (previously it just stopped producing frames), so
+  the client receives an error instead of hanging.
 - **Element Plus control widths were silently dropped**: EP hard-codes `.el-select` and
   `.el-input` to `var(--el-select-width)` / `var(--el-input-width)` (both `100%`) and loads its
   stylesheet *after* UnoCSS, so utilities such as `w-40` lost the cascade and every control
