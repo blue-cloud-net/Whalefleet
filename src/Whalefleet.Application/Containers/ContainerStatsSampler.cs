@@ -203,7 +203,14 @@ public sealed class ContainerStatsSampler : IContainerStatsSampler
             var provider = scope.ServiceProvider.GetRequiredService<IContainerStatsProvider>();
 
             var clock = Stopwatch.StartNew();
-            var lastPublish = TimeSpan.MinValue;
+
+            // ⚠️ 「还没发布过」不能用 TimeSpan.MinValue 表示：
+            // `clock.Elapsed - TimeSpan.MinValue` 会越过 TimeSpan 的表示范围，
+            // **在第一帧上**就抛 OverflowException——而第一帧恰好是整条链路上
+            // 最先被消费的那一帧。症状是「订阅成功、后端日志一条警告、
+            // 界面永远停在『等待第一份采样…』」，且没有任何一条错误能指向真正的原因。
+            // 用可空值表示「尚未发布」，首帧因此立即发布（而不是被节流丢掉）。
+            TimeSpan? lastPublish = null;
 
             try
             {
@@ -213,12 +220,14 @@ public sealed class ContainerStatsSampler : IContainerStatsSampler
                 {
                     // 节流：Docker 本身约 1 秒一帧，但不同守护进程实现有差异。
                     // 客户端只画两分钟内的曲线，推得更密并不会更有用。
-                    if (clock.Elapsed - lastPublish < sampleInterval)
+                    var now = clock.Elapsed;
+
+                    if (lastPublish is { } last && now - last < sampleInterval)
                     {
                         continue;
                     }
 
-                    lastPublish = clock.Elapsed;
+                    lastPublish = now;
 
                     this.Publish(key, sample, historyCapacity);
                 }
@@ -229,10 +238,15 @@ public sealed class ContainerStatsSampler : IContainerStatsSampler
             }
             catch (Exception exception)
             {
-                logger.LogWarning(
+                logger.LogError(
                     exception,
                     "容器 {ContainerId} 的采样流异常结束，订阅者将收不到新数据",
                     containerId);
+
+                // 把失败**传递给订阅者**：频道以异常完结，订阅方的 `await foreach`
+                // 会抛出这个异常。若不传，订阅方会一直阻塞在「等下一帧」上——
+                // 界面表现为「等待第一份采样…」转圈到天荒地老，而后端只有一条日志。
+                this.FailSubscribers(key, exception);
             }
             finally
             {
@@ -253,6 +267,31 @@ public sealed class ContainerStatsSampler : IContainerStatsSampler
                 }
             }
         });
+    }
+
+    /// <summary>
+    /// 告诉所有订阅者「这条流出事了」。
+    /// </summary>
+    /// <param name="key">内部键。</param>
+    /// <param name="exception">失败原因。</param>
+    /// <remarks>
+    /// 用「带异常的完结」而不是「静默地不再发帧」：<c>Channel</c> 会先把已缓冲的帧
+    /// 交付完，再把异常抛给读者——订阅方因此既拿到了已有的数据，也知道了失败。
+    /// </remarks>
+    private void FailSubscribers(string key, Exception exception)
+    {
+        lock (_gate)
+        {
+            if (!_entries.TryGetValue(key, out var entry))
+            {
+                return;
+            }
+
+            foreach (var subscriber in entry.Subscribers)
+            {
+                subscriber.Writer.TryComplete(exception);
+            }
+        }
     }
 
     /// <summary>
