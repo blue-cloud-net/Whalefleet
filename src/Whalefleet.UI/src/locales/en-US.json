@@ -69,7 +69,8 @@
         "restart": "The container is not running",
         "resume": "The container is not paused",
         "start": "The container is already running",
-        "stop": "The container is not running"
+        "stop": "The container is not running",
+        "terminal": "Only running containers can open a terminal"
       },
       "done": "{name}: done",
       "duplicate": "Duplicate",
@@ -86,6 +87,7 @@
       "resume": "Resume",
       "start": "Start",
       "stop": "Stop",
+      "terminal": "Terminal",
       "update": "Update"
     },
     "addVolumes": {
@@ -388,6 +390,26 @@
       "stopped": "Stopped",
       "transition": "Transitioning",
       "unknown": "Unknown"
+    },
+    "terminal": {
+      "advanced": "Run a command",
+      "close": "Close",
+      "closed": "Session closed — the process inside the container ended with it.",
+      "commandHint": "Runs as “shell -c …”. Leave blank for an interactive shell.",
+      "commandPlaceholder": "Optional: a command to run right after connecting, e.g. ls -al /app",
+      "connectFailed": "Connection failed: the token expired, the container state changed, or this account lacks write access to the host.",
+      "hint": "Opens an interactive shell inside the container. Session output is not stored; only a structured log line with the session ID is kept.",
+      "notRunning": "Only running containers can open a terminal",
+      "open": "Open terminal",
+      "reconnect": "Reconnect",
+      "status": {
+        "closed": "Disconnected",
+        "connected": "Connected",
+        "connecting": "Connecting…",
+        "idle": "Not connected"
+      },
+      "title": "Terminal",
+      "warning": "⚠️ Everything typed here runs inside the container: deleted files are gone for good and broken changes take effect immediately. Requires container.write."
     },
     "update": {
       "cpus": "CPU quota (cores)",
