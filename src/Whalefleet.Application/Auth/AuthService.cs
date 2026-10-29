@@ -1,5 +1,7 @@
 using Whalefleet.Application.Abstractions;
+using Whalefleet.Application.Abstractions.Auditing;
 using Whalefleet.Application.Common;
+using Whalefleet.Core.Auditing;
 using Whalefleet.Core.Auth;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
@@ -33,6 +35,7 @@ public sealed class AuthService
     private readonly ITokenService _tokenService;
     private readonly ILoginAttemptTracker _attemptTracker;
     private readonly TimeProvider _timeProvider;
+    private readonly IAuditLogger _audit;
     private readonly ILogger<AuthService> _logger;
 
     /// <summary>
@@ -47,6 +50,7 @@ public sealed class AuthService
     /// <param name="tokenService">令牌服务。</param>
     /// <param name="attemptTracker">登录失败计数器。</param>
     /// <param name="timeProvider">时间源。</param>
+    /// <param name="audit">审计日志（认证日志的数据源）。</param>
     /// <param name="logger">日志记录器。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
     public AuthService(
@@ -59,6 +63,7 @@ public sealed class AuthService
         ITokenService tokenService,
         ILoginAttemptTracker attemptTracker,
         TimeProvider timeProvider,
+        IAuditLogger audit,
         ILogger<AuthService> logger)
     {
         ArgumentNullException.ThrowIfNull(users);
@@ -70,6 +75,7 @@ public sealed class AuthService
         ArgumentNullException.ThrowIfNull(tokenService);
         ArgumentNullException.ThrowIfNull(attemptTracker);
         ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(audit);
         ArgumentNullException.ThrowIfNull(logger);
 
         _users = users;
@@ -81,6 +87,7 @@ public sealed class AuthService
         _tokenService = tokenService;
         _attemptTracker = attemptTracker;
         _timeProvider = timeProvider;
+        _audit = audit;
         _logger = logger;
     }
 
@@ -127,6 +134,15 @@ public sealed class AuthService
         {
             _logger.LogWarning("登录被限流（IP={ClientIp}，用户名={Username}）", clientIp, username);
 
+            await this.RecordAuthenticationAsync(
+                AuditActions.Login,
+                AuditOutcome.Denied,
+                username,
+                actorId: null,
+                ErrorCodes.LoginRateLimited,
+                clientIp,
+                cancellationToken).ConfigureAwait(false);
+
             throw new BusinessException(ErrorCodes.LoginRateLimited, "登录尝试过于频繁，请稍后再试");
         }
 
@@ -137,12 +153,12 @@ public sealed class AuthService
             // 时序对齐：没有这个用户，也要付出一次等价的哈希计算成本。
             _passwordHasher.PerformDummyVerification(password);
 
-            throw this.FailLogin(clientIp, username);
+            throw await this.FailLoginAsync(clientIp, username, cancellationToken).ConfigureAwait(false);
         }
 
         if (!_passwordHasher.Verify(password, user.PasswordHash))
         {
-            throw this.FailLogin(clientIp, username);
+            throw await this.FailLoginAsync(clientIp, username, cancellationToken).ConfigureAwait(false);
         }
 
         var roleNames = await this.ResolveRoleNamesAsync(user.Id, cancellationToken).ConfigureAwait(false);
@@ -158,6 +174,15 @@ public sealed class AuthService
             cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("用户 {Username} 登录成功（IP={ClientIp}）", user.Username, clientIp);
+
+        await this.RecordAuthenticationAsync(
+            AuditActions.Login,
+            AuditOutcome.Success,
+            user.Username,
+            user.Id,
+            errorCode: null,
+            clientIp,
+            cancellationToken).ConfigureAwait(false);
 
         var globalPermissions = await _permissions
             .GetEffectivePermissionsAsync(user.Id, null, cancellationToken)
@@ -259,6 +284,17 @@ public sealed class AuthService
                     "检测到刷新令牌重放，已撤销该用户的全部刷新令牌（用户={UserId}，共撤销 {Count} 条）",
                     stored.UserId,
                     revoked);
+
+                // 重放是安全事件：必须进认证日志（用户已删除 / 令牌不存在等情况不记，避免噪声）。
+                await this.RecordAuthenticationAsync(
+                    AuditActions.RefreshTokenReplayed,
+                    AuditOutcome.Failure,
+                    stored.UserId.ToString("D"),
+                    stored.UserId,
+                    ErrorCodes.RefreshTokenRevoked,
+                    clientIp: null,
+                    cancellationToken,
+                    detail: $"已撤销 {revoked} 条刷新令牌").ConfigureAwait(false);
             }
             else
             {
@@ -339,6 +375,15 @@ public sealed class AuthService
         await _refreshTokens.UpdateAsync(stored, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("用户已登出（用户={UserId}）", stored.UserId);
+
+        await this.RecordAuthenticationAsync(
+            AuditActions.Logout,
+            AuditOutcome.Success,
+            stored.UserId.ToString("D"),
+            stored.UserId,
+            errorCode: null,
+            clientIp: null,
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -357,12 +402,16 @@ public sealed class AuthService
     /// </summary>
     /// <param name="clientIp">客户端 IP。</param>
     /// <param name="username">已归一化的用户名。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>错误码 <c>1100</c> 的业务异常。</returns>
     /// <remarks>
-    /// 把"计数 + 记日志 + 造异常"收在一处，是为了让两条失败路径<b>无法</b>长得不一样——
+    /// 把"计数 + 记日志 + 写审计 + 造异常"收在一处，是为了让两条失败路径<b>无法</b>长得不一样——
     /// 一旦有人在其中一条加了额外的日志或不同的错误码，用户名就能被枚举出来。
     /// </remarks>
-    private BusinessException FailLogin(string clientIp, string username)
+    private async Task<BusinessException> FailLoginAsync(
+        string clientIp,
+        string username,
+        CancellationToken cancellationToken)
     {
         var failures = _attemptTracker.RecordFailure(clientIp, username);
 
@@ -372,6 +421,58 @@ public sealed class AuthService
             username,
             failures);
 
+        // 全量记录（用户已确认）：可被暴力破解刷表的风险由上面的限流兜住——
+        // 同一 IP + 用户名每分钟最多 5 次，超出那一次记 Denied / 1103。
+        await this.RecordAuthenticationAsync(
+            AuditActions.Login,
+            AuditOutcome.Failure,
+            username,
+            actorId: null,
+            ErrorCodes.Unauthenticated,
+            clientIp,
+            cancellationToken,
+            detail: $"窗口内失败 {failures} 次").ConfigureAwait(false);
+
         return BusinessException.Unauthenticated(InvalidCredentialsMessage);
     }
+
+    /// <summary>
+    /// 写一条认证类审计。
+    /// </summary>
+    /// <param name="action">动作标识。</param>
+    /// <param name="outcome">结果。</param>
+    /// <param name="actorName">操作者名（登录时是<b>尝试的用户名</b>）。</param>
+    /// <param name="actorId">操作者主键；未认证时为 <see langword="null"/>。</param>
+    /// <param name="errorCode">错误码。</param>
+    /// <param name="clientIp">来源 IP。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <param name="detail">附加说明。</param>
+    /// <returns>表示异步操作的任务。</returns>
+    /// <remarks>
+    /// <b>为什么显式传 actorName</b>：登录/刷新/登出这些路径上
+    /// <c>ICurrentUser</c> 可能是匿名的（登录失败时尤其如此），
+    /// 审计必须记下**当时尝试的那个用户名**，而不是请求上下文里的身份。
+    /// </remarks>
+    private Task RecordAuthenticationAsync(
+        string action,
+        AuditOutcome outcome,
+        string actorName,
+        Guid? actorId,
+        int? errorCode,
+        string? clientIp,
+        CancellationToken cancellationToken,
+        string? detail = null) =>
+        _audit.RecordAsync(
+            new AuditLogDraft
+            {
+                Category = AuditCategory.Authentication,
+                Action = action,
+                Outcome = outcome,
+                ActorId = actorId,
+                ActorName = actorName,
+                ErrorCode = errorCode,
+                ClientIp = clientIp,
+                Detail = detail,
+            },
+            cancellationToken);
 }
