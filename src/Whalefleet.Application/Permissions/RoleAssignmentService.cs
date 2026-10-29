@@ -1,4 +1,6 @@
+using Whalefleet.Application.Abstractions.Auditing;
 using Whalefleet.Application.Common;
+using Whalefleet.Core.Auditing;
 using Whalefleet.Core.Hosts;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
@@ -27,6 +29,7 @@ public sealed class RoleAssignmentService
     private readonly IRoleRepository _roles;
     private readonly IUserRepository _users;
     private readonly IHostRepository _hosts;
+    private readonly IAuditLogger _audit;
     private readonly ILogger<RoleAssignmentService> _logger;
 
     /// <summary>
@@ -36,6 +39,7 @@ public sealed class RoleAssignmentService
     /// <param name="roles">角色仓储。</param>
     /// <param name="users">用户仓储（校验目标用户存在并取用户名）。</param>
     /// <param name="hosts">主机仓储（按名称解析作用域主机）。</param>
+    /// <param name="audit">审计日志（授权变更是安全事件，必须留痕）。</param>
     /// <param name="logger">日志。</param>
     /// <exception cref="ArgumentNullException">任一参数为 <see langword="null"/>。</exception>
     public RoleAssignmentService(
@@ -43,18 +47,21 @@ public sealed class RoleAssignmentService
         IRoleRepository roles,
         IUserRepository users,
         IHostRepository hosts,
+        IAuditLogger audit,
         ILogger<RoleAssignmentService> logger)
     {
         ArgumentNullException.ThrowIfNull(assignments);
         ArgumentNullException.ThrowIfNull(roles);
         ArgumentNullException.ThrowIfNull(users);
         ArgumentNullException.ThrowIfNull(hosts);
+        ArgumentNullException.ThrowIfNull(audit);
         ArgumentNullException.ThrowIfNull(logger);
 
         _assignments = assignments;
         _roles = roles;
         _users = users;
         _hosts = hosts;
+        _audit = audit;
         _logger = logger;
     }
 
@@ -158,6 +165,21 @@ public sealed class RoleAssignmentService
             role.Name,
             host?.Name ?? "全局");
 
+        await _audit.RecordAsync(
+            new AuditLogDraft
+            {
+                Category = AuditCategory.Activity,
+                Action = AuditActions.RoleAssign,
+                Outcome = AuditOutcome.Success,
+                HostId = hostId,
+                HostName = host?.Name,
+                TargetType = AuditTargetTypes.RoleAssignment,
+                TargetId = assignment.Id.ToString("D"),
+                TargetName = $"{user.Username} → {role.Name}",
+                Detail = $"作用域={host?.Name ?? "全局"}",
+            },
+            cancellationToken).ConfigureAwait(false);
+
         return new RoleAssignmentSummary(
             assignment.Id,
             user.Id,
@@ -213,6 +235,21 @@ public sealed class RoleAssignmentService
             userId,
             role.Name,
             request.Host?.Trim() ?? "全局");
+
+        await _audit.RecordAsync(
+            new AuditLogDraft
+            {
+                Category = AuditCategory.Activity,
+                Action = AuditActions.RoleRevoke,
+                Outcome = AuditOutcome.Success,
+                HostId = hostId,
+                HostName = request.Host?.Trim(),
+                TargetType = AuditTargetTypes.RoleAssignment,
+                TargetId = existing.Id.ToString("D"),
+                TargetName = $"{userId:D} → {role.Name}",
+                Detail = $"作用域={request.Host?.Trim() ?? "全局"}",
+            },
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

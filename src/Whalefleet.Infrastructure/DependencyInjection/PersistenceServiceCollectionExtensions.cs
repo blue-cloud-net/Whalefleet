@@ -1,11 +1,13 @@
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Persistence;
+using Whalefleet.Core.Auditing;
 using Whalefleet.Core.Auth;
 using Whalefleet.Core.Hosts;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Repositories;
 using Whalefleet.Core.Users;
 using Whalefleet.Infrastructure.Persistence;
+using Whalefleet.Infrastructure.Persistence.Auditing;
 using Whalefleet.Infrastructure.Persistence.Auth;
 using Whalefleet.Infrastructure.Persistence.Hosts;
 using Whalefleet.Infrastructure.Persistence.Permissions;
@@ -76,6 +78,10 @@ public static class PersistenceServiceCollectionExtensions
         // 0.0.3 尚无认证：审计人一律落到默认值哨兵（Guid.Empty = 系统操作）。
         services.TryAddSingleton<ICurrentUser, SystemCurrentUser>();
 
+        // 0.9.0 审计用的来源 IP：无请求上下文时返回 null（不编造占位值）。
+        // Api 层会用基于 HttpContext 的实现替换它。
+        services.TryAddSingleton<ICurrentClientIp, SystemCurrentClientIp>();
+
         services.AddScoped<IRoleRepository, SqliteRoleRepository>();
         services.AddScoped<IUserRepository, SqliteUserRepository>();
         services.AddScoped<IHostRepository, SqliteHostRepository>();
@@ -84,6 +90,9 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<IRefreshTokenRepository, SqliteRefreshTokenRepository>();
         services.AddScoped<IUserRoleAssignmentRepository, SqliteUserRoleAssignmentRepository>();
         services.AddScoped<IRepositoryCredentialRepository, SqliteRepositoryCredentialRepository>();
+
+        // 审计日志（0.9.0）：只追加 + 只查，因此不派生 RepositoryBase（那个基类带更新与软删除）。
+        services.AddScoped<IAuditLogRepository, AuditLogRepository>();
 
         return services;
     }

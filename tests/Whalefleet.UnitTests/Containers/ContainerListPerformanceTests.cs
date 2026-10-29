@@ -58,6 +58,7 @@ public class ContainerListPerformanceTests
 
         var service = new ContainerService(
             new StubDockerHostAccessor(daemon.Endpoint),
+            new NoopAuditLogger(),
             NullLogger<ContainerService>.Instance);
 
         var request = new ListContainersRequest { All = true, PageSize = 100 };
@@ -109,6 +110,7 @@ public class ContainerListPerformanceTests
 
         var service = new ContainerService(
             new StubDockerHostAccessor(daemon.Endpoint),
+            new NoopAuditLogger(),
             NullLogger<ContainerService>.Instance);
 
         var full = await service.ListAsync(

@@ -4,8 +4,10 @@ using System.Text;
 using Docker.DotNet;
 using Docker.DotNet.Models;
 using Whalefleet.Application.Abstractions;
+using Whalefleet.Application.Abstractions.Auditing;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Docker;
+using Whalefleet.Core.Auditing;
 using Microsoft.Extensions.Logging;
 using SdkState = Docker.DotNet.Models.State;
 
@@ -58,20 +60,27 @@ public sealed partial class ContainerService
     private const int MaxSignalLength = 32;
 
     private readonly IDockerHostAccessor _accessor;
+    private readonly IAuditLogger _audit;
     private readonly ILogger<ContainerService> _logger;
 
     /// <summary>
     /// 初始化容器查询用例。
     /// </summary>
     /// <param name="accessor">主机访问器（解析主机并取得 Docker 客户端）。</param>
+    /// <param name="audit">审计日志（活动日志的数据源）。</param>
     /// <param name="logger">日志。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
-    public ContainerService(IDockerHostAccessor accessor, ILogger<ContainerService> logger)
+    public ContainerService(
+        IDockerHostAccessor accessor,
+        IAuditLogger audit,
+        ILogger<ContainerService> logger)
     {
         ArgumentNullException.ThrowIfNull(accessor);
+        ArgumentNullException.ThrowIfNull(audit);
         ArgumentNullException.ThrowIfNull(logger);
 
         _accessor = accessor;
+        _audit = audit;
         _logger = logger;
     }
 
@@ -363,6 +372,21 @@ public sealed partial class ContainerService
 
         _logger.LogDebug("主机 {HostId} 查询容器 {ContainerId} 详情", hostId, containerId);
 
+        // 敏感读：详情里包含 env，而 env 常含密码与 token。
+        // 写写操作全记之外，这是少数几个值得留痕的读操作之一。
+        await _audit.RecordAsync(
+            new AuditLogDraft
+            {
+                Category = AuditCategory.Activity,
+                Action = AuditActions.ContainerInspect,
+                Outcome = AuditOutcome.Success,
+                HostName = hostId,
+                TargetType = AuditTargetTypes.Container,
+                TargetId = container.ID ?? containerId,
+                TargetName = MapInspectName(container.Name, container.ID),
+            },
+            cancellationToken).ConfigureAwait(false);
+
         return MapDetail(container);
     }
 
@@ -486,6 +510,14 @@ public sealed partial class ContainerService
             parameters.Image,
             parameters.Name ?? "（随机）");
 
+        await this.RecordContainerActivityAsync(
+            AuditActions.ContainerCreate,
+            hostId,
+            created.ID,
+            parameters.Name,
+            $"镜像={parameters.Image}",
+            cancellationToken).ConfigureAwait(false);
+
         return new ContainerCreatedResult(created.ID, created.Warnings is null ? [] : [.. created.Warnings]);
     }
 
@@ -515,6 +547,14 @@ public sealed partial class ContainerService
             cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("主机 {HostId} 启动容器 {ContainerId}", hostId, containerId);
+
+        await this.RecordContainerActivityAsync(
+            AuditActions.ContainerStart,
+            hostId,
+            containerId,
+            containerName: null,
+            detail: null,
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -552,6 +592,14 @@ public sealed partial class ContainerService
             hostId,
             containerId,
             waitSeconds?.ToString(CultureInfo.InvariantCulture) ?? "默认");
+
+        await this.RecordContainerActivityAsync(
+            AuditActions.ContainerStop,
+            hostId,
+            containerId,
+            containerName: null,
+            detail: $"等待={waitSeconds?.ToString(CultureInfo.InvariantCulture) ?? "默认"}",
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -580,6 +628,14 @@ public sealed partial class ContainerService
             cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("主机 {HostId} 重启容器 {ContainerId}", hostId, containerId);
+
+        await this.RecordContainerActivityAsync(
+            AuditActions.ContainerRestart,
+            hostId,
+            containerId,
+            containerName: null,
+            detail: null,
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -634,6 +690,14 @@ public sealed partial class ContainerService
             hostId,
             containerId,
             signal ?? "默认");
+
+        await this.RecordContainerActivityAsync(
+            AuditActions.ContainerKill,
+            hostId,
+            containerId,
+            containerName: null,
+            detail: $"信号={signal ?? "默认"}",
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -685,6 +749,14 @@ public sealed partial class ContainerService
             cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("主机 {HostId} 暂停容器 {ContainerId}", hostId, containerId);
+
+        await this.RecordContainerActivityAsync(
+            AuditActions.ContainerPause,
+            hostId,
+            containerId,
+            containerName: null,
+            detail: null,
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -736,6 +808,14 @@ public sealed partial class ContainerService
             cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("主机 {HostId} 恢复容器 {ContainerId}", hostId, containerId);
+
+        await this.RecordContainerActivityAsync(
+            AuditActions.ContainerResume,
+            hostId,
+            containerId,
+            containerName: null,
+            detail: null,
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -765,7 +845,20 @@ public sealed partial class ContainerService
         var force = request.Force ?? false;
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
 
+        // 审计要的是「删除时的名字」：删完之后守护进程再也查不到它，
+        // 而历史记录里只剩一个 64 位哈希是无法辨认的。
+        var containerName = await TryResolveContainerNameAsync(client, containerId, cancellationToken)
+            .ConfigureAwait(false);
+
         await this.RemoveAsync(client, containerId, force, hostId, cancellationToken).ConfigureAwait(false);
+
+        await this.RecordContainerActivityAsync(
+            AuditActions.ContainerRemove,
+            hostId,
+            containerId,
+            containerName,
+            $"强制={force}",
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -792,6 +885,73 @@ public sealed partial class ContainerService
             cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("主机 {HostId} 删除容器 {ContainerId}（强制={Force}）", hostId, containerId, force);
+    }
+
+    /// <summary>
+    /// 写一条容器类活动审计。
+    /// </summary>
+    /// <param name="action">动作标识。</param>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="containerId">容器标识。</param>
+    /// <param name="containerName">容器名快照（拿不到时回退为容器标识）。</param>
+    /// <param name="detail">附加说明。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>表示异步操作的任务。</returns>
+    /// <remarks>
+    /// <b>为什么大多数动作用容器标识当名字</b>：除了删除，其余动作都不会让容器消失，
+    /// 名字随时能查到；而删除必须**先取名字再删**（见 <see cref="RemoveAsync(string, RemoveContainerRequest, CancellationToken)"/>），
+    /// 否则「三个月前是谁删了那个 nginx」就只剩下一个 64 位哈希。
+    /// </remarks>
+    private Task RecordContainerActivityAsync(
+        string action,
+        string hostId,
+        string containerId,
+        string? containerName,
+        string? detail,
+        CancellationToken cancellationToken) =>
+        _audit.RecordAsync(
+            new AuditLogDraft
+            {
+                Category = AuditCategory.Activity,
+                Action = action,
+                Outcome = AuditOutcome.Success,
+                HostName = hostId,
+                TargetType = AuditTargetTypes.Container,
+                TargetId = containerId,
+                TargetName = String.IsNullOrWhiteSpace(containerName) ? containerId : containerName,
+                Detail = detail,
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// 尽力取容器名（失败不影响主流程）。
+    /// </summary>
+    /// <param name="client">该主机的 Docker 客户端。</param>
+    /// <param name="containerId">容器标识。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>容器名；取不到时为 <see langword="null"/>。</returns>
+    /// <remarks>
+    /// <b>为什么只给删除用</b>：只有删除会让名字永久消失，因此值得多一次 inspect。
+    /// 其余动作结束时容器还在，名字随时可查——给每次启停都多打一次调用是不划算的。
+    /// </remarks>
+    private static async Task<string?> TryResolveContainerNameAsync(
+        IDockerClient client,
+        string containerId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var container = await client.Containers
+                .InspectContainerAsync(containerId, cancellationToken)
+                .ConfigureAwait(false);
+
+            return MapInspectName(container.Name, container.ID);
+        }
+        catch (Exception exception) when (exception is DockerApiException or HttpRequestException)
+        {
+            // 取不到就算了：审计宁可少一个名字，也不能因为这次探测失败而阻止删除。
+            return null;
+        }
     }
 
     /// <summary>
@@ -1323,8 +1483,27 @@ public sealed partial class ContainerService
     private static string MapName(IList<string>? names, string id)
     {
         var name = names?.FirstOrDefault()?.TrimStart('/');
-
         return string.IsNullOrEmpty(name) ? ShortId(id) : name;
+    }
+
+    /// <summary>
+    /// 从 <c>inspect</c> 响应里取容器名。
+    /// </summary>
+    /// <param name="name">inspect 返回的单个名字（带前导斜杠）。</param>
+    /// <param name="id">容器 ID（无名字时用来兜底）。</param>
+    /// <returns>不带前导斜杠的名字。</returns>
+    /// <remarks>
+    /// <b>为什么不复用 <see cref="MapName(IList{string}?, string)"/></b>：list 接口给的是
+    /// 名字数组，inspect 给的是单个字符串——两者类型不同，重载即可，
+    /// 但刻意分开命名，避免调用方以为「两个接口的命名规则一样」。
+    /// </remarks>
+    private static string MapInspectName(string? name, string? id)
+    {
+        var trimmed = name?.TrimStart('/');
+
+        return !string.IsNullOrEmpty(trimmed)
+            ? trimmed
+            : ShortId(id ?? String.Empty);
     }
 
     /// <summary>

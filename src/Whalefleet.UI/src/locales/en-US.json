@@ -17,6 +17,92 @@
     },
     "logout": "Sign out"
   },
+  "audit": {
+    "action": {
+      "auditExport": "Export audit logs",
+      "containerCreate": "Create container",
+      "containerDuplicate": "Duplicate container",
+      "containerExec": "Open terminal",
+      "containerInspect": "Inspect container",
+      "containerKill": "Kill container",
+      "containerLogsDownload": "Download container logs",
+      "containerPause": "Pause container",
+      "containerRecreate": "Recreate container",
+      "containerRemove": "Remove container",
+      "containerRename": "Rename container",
+      "containerRestart": "Restart container",
+      "containerResume": "Resume container",
+      "containerStart": "Start container",
+      "containerStop": "Stop container",
+      "containerUpdate": "Update container",
+      "hostCreate": "Add host",
+      "hostRemove": "Remove host",
+      "hostUpdate": "Update host",
+      "httpError": "Server error",
+      "imageBuild": "Build image",
+      "imagePrune": "Prune images",
+      "imagePull": "Pull image",
+      "imagePush": "Push image",
+      "imageRemove": "Remove image",
+      "imageTag": "Tag image",
+      "login": "Sign in",
+      "logout": "Sign out",
+      "networkConnect": "Connect container to network",
+      "networkCreate": "Create network",
+      "networkDisconnect": "Disconnect container from network",
+      "networkRemove": "Remove network",
+      "refreshReplayed": "Refresh token replayed",
+      "roleAssign": "Grant role",
+      "roleCreate": "Create role",
+      "roleRemove": "Remove role",
+      "roleRevoke": "Revoke role assignment",
+      "roleSetPermissions": "Set role permissions",
+      "roleUpdate": "Update role",
+      "userCreate": "Create user",
+      "userRemove": "Remove user",
+      "userUpdatePassword": "Change password",
+      "volumeCreate": "Create volume",
+      "volumePrune": "Prune volumes",
+      "volumeRemove": "Remove volume"
+    },
+    "col": {
+      "action": "Action",
+      "actor": "Actor",
+      "clientIp": "Source IP",
+      "detail": "Detail",
+      "host": "Host",
+      "outcome": "Result",
+      "target": "Target",
+      "time": "Time"
+    },
+    "empty": "No matching records in the last 7 days",
+    "export": "Export CSV",
+    "exportFailed": "Export failed",
+    "exported": "Download started",
+    "filter": {
+      "actor": "Actor",
+      "anyOutcome": "Any result",
+      "anyTarget": "Any type",
+      "outcome": "Result",
+      "search": "Target / host / detail",
+      "targetType": "Target type"
+    },
+    "loadFailed": "Failed to load audit logs",
+    "outcome": {
+      "denied": "Denied",
+      "failure": "Failed",
+      "success": "Success"
+    },
+    "range": "{from}–{to} of {total}",
+    "refresh": "Refresh",
+    "subtitle": "Who did what, to which resource, and how it turned out",
+    "tab": {
+      "activity": "Activity log",
+      "authentication": "Authentication log"
+    },
+    "title": "Audit log",
+    "windowHint": "Defaults to the last 7 days when no time range is given"
+  },
   "command": {
     "createContainer": "Create container",
     "hintNavigate": "to navigate",
@@ -425,15 +511,6 @@
       "title": "Update container settings"
     }
   },
-  "events": {
-    "col": {
-      "action": "Action",
-      "actor": "Actor",
-      "result": "Result",
-      "target": "Target",
-      "time": "Time"
-    }
-  },
   "host": {
     "action": {
       "create": "New host",
@@ -811,6 +888,7 @@
     "usedBy": "{count} containers"
   },
   "nav": {
+    "audit": "Audit log",
     "backToOverview": "Back to overview",
     "containers": "Containers",
     "events": "Events",
@@ -954,11 +1032,6 @@
       "subtitle": "Inspect containers on a host, start / stop / restart / remove them, or create one from an image."
     },
     "events": {
-      "cap1": "Who did what and when",
-      "cap2": "Outcome and error details",
-      "cap3": "Filter by host or actor",
-      "note": "Requires an audit table first; docs/features.md and docs/roadmap.md schedule it for 0.9.0. Note this is platform operation auditing, not the Docker Events stream.",
-      "placeholder": "Events placeholder — waiting for the backend audit table (0.9.0)",
       "title": "Operation audit log"
     },
     "hosts": {

@@ -106,6 +106,22 @@ const routes: RouteRecordRaw[] = [
         }
       },
       {
+        // 操作审计（0.9.0）：认证日志 + 活动日志两页。
+        //
+        // ⚠️ 用 `requiresPermission`：后端这道门是 `audit.read`，内置 `auditor`
+        // 角色只带这一项而没有管理面三项——用 `requiresAdmin` 会把审计员挡在页外。
+        path: 'audit',
+        name: 'audit',
+        component: () => import('@/views/AuditLogsView.vue'),
+        meta: {
+          scope: 'global',
+          requiresPermission: 'audit.read',
+          group: 'manage',
+          icon: 'i-carbon-catalog',
+          title: 'nav.audit'
+        }
+      },
+      {
         // 全局设置：**声明在管理组之后**，侧边栏才会把它渲染成管理区下面独立的一组。
         // 菜单顺序直接取路由表声明顺序（见 SidebarNav.navItems），所以「排在下面」
         // 靠的是这里的位置，而不是额外的排序字段。

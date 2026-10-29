@@ -1391,3 +1391,77 @@ export interface PruneResult {
   reclaimedBytes: number
 }
 
+
+// ==================== 操作审计（0.9.0） ====================
+
+/**
+ * 一次操作的结果。
+ *
+ * `denied` 与 `failure` 不是一回事：前者是**规则**挡住（权限不足、限流），
+ * 资源没被碰过；后者是规则放行了但**执行**出错（守护进程不可达、容器已不存在）。
+ * 现场处置的往往是不同的人。
+ */
+export type AuditOutcome = 'success' | 'denied' | 'failure'
+
+/**
+ * 一条审计记录。
+ *
+ * ⚠️ `actorName` / `targetName` / `hostName` 都是**写入时的快照**：
+ * 用户与容器会被删除、主机名会被改，而审计要能在那之后仍然读得懂。
+ * 因此它们**不随资源变化**，这正是「删了容器还能看到当时的容器名」的实现方式。
+ */
+export interface AuditLogEntry {
+  id: string
+  /** 发生时刻（ISO 8601，UTC） */
+  occurredAt: string
+  /** 动作标识（如 `container.start`）；界面按映射表翻译，未命中时原样显示 */
+  action: string
+  /** 操作者名（快照） */
+  actorName: string
+  /** 目标类型（`container` / `image` / …）；无目标为 null */
+  targetType: string | null
+  /** 目标名（快照） */
+  targetName: string | null
+  /** 主机名（快照） */
+  hostName: string | null
+  outcome: AuditOutcome
+  /** 失败时的业务错误码 */
+  errorCode: number | null
+  clientIp: string | null
+  detail: string | null
+}
+
+/** 审计日志分页结果。 */
+export interface AuditLogListResult {
+  items: AuditLogEntry[]
+  /** 满足条件的总条数 */
+  total: number
+  /** 当前页码（从 0 开始） */
+  pageIndex: number
+  /** 每页条数（服务端夹紧后的实际值） */
+  pageSize: number
+}
+
+/**
+ * 审计日志查询条件。
+ *
+ * 时间省略时服务端取**最近 7 天**——审计表只增不减，不设窗口的查询会随运行时间变慢。
+ */
+export interface AuditLogQuery {
+  /** 起始时刻（ISO 8601，含） */
+  from?: string
+  /** 结束时刻（ISO 8601，含） */
+  to?: string
+  /** 操作者名关键字 */
+  actor?: string
+  /** 动作标识（精确匹配） */
+  action?: string
+  /** 目标类型（精确匹配） */
+  targetType?: string
+  /** 结果筛选 */
+  outcome?: AuditOutcome
+  /** 自由文本（目标名 / 主机名 / 说明） */
+  search?: string
+  pageIndex?: number
+  pageSize?: number
+}

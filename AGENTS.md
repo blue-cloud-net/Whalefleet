@@ -288,6 +288,12 @@ DDD 战术模式（聚合根 / 领域事件 / 领域服务）**已整体移除**
 | 64 | **`MultiplexedStream` 在 TTY 模式下给的是原始字节**（无 8 字节帧头） | `Exec.CreateContainerExecAsync` 带 `TTY=true` 后，`ReadOutputAsync` 直接返回数据并把来源标成 stdout——既不用自己解帧，也**不能**假设「一次读回来是一帧」。顺带两条 SDK 事实：4.3.3 里方法叫 `StartContainerExecAsync(Detach=false)`（**没有** `StartWithAttachContainerExecAsync`，那是 3.x）；`Detach=true` 只是「在后台跑起来」，拿不到输出也写不进 stdin |
 | 65 | **exec 要求容器运行中，且已暂停的同样不行** | 暂停的容器 `Running` 仍为 `true`，但 exec 会挂在启动那一刻——界面表现为「终端空白、打字没反应」。两者都归 `1404`/409，写集成测试时要显式 `start` 并覆盖入口点（见陷阱 31、59） |
 
+| 66 | **审计的名字是快照，不是外键** | `audit_logs` 里的 `actor_name` / `target_name` / `host_name` 存的是**写入那一刻的文本**，刻意不建外键。加外键的后果只有两种：删资源时连带删掉它的审计（不可接受），或写入时因目标已删而失败（审计丢一条，更糟）。推论：**删除类操作必须先取名字再删**——删完守护进程就查不到了，记录里只剩一个 64 位哈希 |
+| 67 | **审计写入是 best-effort，不能拿「接口返回 200」证明它写进去了** | `IAuditLogger` 内部吞异常并降级为 Error 日志（磁盘满时「启动容器」仍应能启动）。因此审计相关测试必须「做一次动作 → 再用查询端点把那条记录读回来」，只看状态码等于没测 |
+| 68 | **CSV 必须自带 UTF-8 BOM，行尾必须显式设成 CRLF** | 缺 BOM 时 Excel 按本地代码页解码，中文列头变乱码；而行尾交给 `StreamWriter.NewLine` 会在 Linux 上写成 `LF`，于是「同一份导出在不同平台字节不同」。`AuditCsvWriter` 因此自己写 BOM 并在写入期间临时把 `NewLine` 设为 `\r\n`（写完还原） |
+| 69 | **时间列按固定格式存文本，否则字典序 ≠ 时间序** | SQLite 没有日期类型，范围过滤与排序都是字符串比较。驱动默认可能写出**不带毫秒**的形态，与带毫秒的混在一起时 `"...12:00:00" < "...12:00:00.005"` 会把同一秒内的记录排反。`audit_logs` 统一 `yyyy-MM-dd HH:mm:ss.fff`，写入与过滤共用同一个格式化函数 |
+| 70 | **导出要「先计数再决定给不给」，不能截断** | 超上限时截断会产出一份**看起来完整、实际缺后半段**的证据文件，而且不报错。`AuditLogService.ExportAsync` 先 `CountAsync`，超过 5 万行直接抛 `1000` 并提示缩小时间范围——此时响应头还没发，仍能返回统一 `ApiResult` |
+
 > **Dapper 物化能力（已核实，勿再沿用旧判断）**：Dapper **可以**物化「非公开构造 + 非公开 setter」
 > 的充血实体，用 `skipVisibility` 动态方法。**不需要** Row DTO，**不需要** `InternalsVisibleTo`。
 > 实体给一个非公开无参构造即可。IVT 仅在 Infrastructure 需以强类型代码直接调非公开成员时才要。

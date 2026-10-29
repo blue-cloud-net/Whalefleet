@@ -1,6 +1,8 @@
 using Whalefleet.Application.Abstractions;
+using Whalefleet.Application.Abstractions.Auditing;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Security;
+using Whalefleet.Core.Auditing;
 using Whalefleet.Core.Auth;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
@@ -37,6 +39,7 @@ public sealed class UserService
     private readonly IPasswordHasher _passwordHasher;
     private readonly ICurrentUser _currentUser;
     private readonly TimeProvider _timeProvider;
+    private readonly IAuditLogger _audit;
     private readonly ILogger<UserService> _logger;
 
     /// <summary>
@@ -49,6 +52,7 @@ public sealed class UserService
     /// <param name="passwordHasher">密码哈希器。</param>
     /// <param name="currentUser">当前登录用户（判断"改自己"还是"改别人"）。</param>
     /// <param name="timeProvider">时间源（便于测试）。</param>
+    /// <param name="audit">审计日志。</param>
     /// <param name="logger">日志。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
     public UserService(
@@ -59,6 +63,7 @@ public sealed class UserService
         IPasswordHasher passwordHasher,
         ICurrentUser currentUser,
         TimeProvider timeProvider,
+        IAuditLogger audit,
         ILogger<UserService> logger)
     {
         ArgumentNullException.ThrowIfNull(users);
@@ -68,6 +73,7 @@ public sealed class UserService
         ArgumentNullException.ThrowIfNull(passwordHasher);
         ArgumentNullException.ThrowIfNull(currentUser);
         ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(audit);
         ArgumentNullException.ThrowIfNull(logger);
 
         _users = users;
@@ -77,6 +83,7 @@ public sealed class UserService
         _passwordHasher = passwordHasher;
         _currentUser = currentUser;
         _timeProvider = timeProvider;
+        _audit = audit;
         _logger = logger;
     }
 
@@ -169,6 +176,19 @@ public sealed class UserService
 
         _logger.LogInformation("已创建用户 {Username}（角色={Role}）", user.Username, role.Name);
 
+        await _audit.RecordAsync(
+            new AuditLogDraft
+            {
+                Category = AuditCategory.Activity,
+                Action = AuditActions.UserCreate,
+                Outcome = AuditOutcome.Success,
+                TargetType = AuditTargetTypes.User,
+                TargetId = user.Id.ToString("D"),
+                TargetName = user.Username,
+                Detail = $"初始角色={role.Name}",
+            },
+            cancellationToken).ConfigureAwait(false);
+
         return new UserSummary(user.Id, user.Username, [role.Name], user.CreationTime);
     }
 
@@ -209,6 +229,20 @@ public sealed class UserService
         await RevokeAllSessionsAsync(target.Id, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("已删除用户 {Username}", target.Username);
+
+        await _audit.RecordAsync(
+            new AuditLogDraft
+            {
+                Category = AuditCategory.Activity,
+                Action = AuditActions.UserRemove,
+                Outcome = AuditOutcome.Success,
+                TargetType = AuditTargetTypes.User,
+                TargetId = target.Id.ToString("D"),
+
+                // 用户被删后名字也查不到了，这里必须存快照。
+                TargetName = target.Username,
+            },
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -259,6 +293,19 @@ public sealed class UserService
             target.Username,
             _currentUser.UserId,
             isSelf);
+
+        await _audit.RecordAsync(
+            new AuditLogDraft
+            {
+                Category = AuditCategory.Activity,
+                Action = AuditActions.UserUpdatePassword,
+                Outcome = AuditOutcome.Success,
+                TargetType = AuditTargetTypes.User,
+                TargetId = target.Id.ToString("D"),
+                TargetName = target.Username,
+                Detail = $"自助={isSelf}（密码内容不入库）",
+            },
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

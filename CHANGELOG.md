@@ -89,6 +89,63 @@ before the first public release).
 - **The status filter is remembered**: it is a continuation of "which kind of containers do I
   want to look at this time"; not remembering it means clicking it again on every visit.
 
+### `0.9.0` — Operation audit log (internal draft)
+
+#### Added
+
+- **Audit table** (`audit_logs`, migration `0009`): actor id and name, action, target type and
+  name, host id and name, outcome, error code, client IP, detail, timestamp. Written to the
+  database rather than only to the log — **the names are snapshots taken at write time and there
+  are deliberately no foreign keys**, so a deleted container still shows the name it had.
+- **Authentication log** (`POST /api/v1/admin/logs/authentication/list`): login success, login
+  failure, rate limiting, logout and refresh-token replay. **Every failure is recorded**
+  individually; the flood risk is bounded by the existing login rate limiter.
+- **Activity log** (`POST /api/v1/admin/logs/activity/list`): container lifecycle (create / start /
+  stop / restart / kill / pause / resume / remove), plus the four sensitive reads —
+  container inspect (the response carries `env`, which routinely holds passwords), log download,
+  terminal sessions and the audit export itself.
+- **Host-scoped events** (`POST /api/v1/hosts/{hostId}/events/list`): the host sidebar's
+  "Events" page now renders real audit rows filtered to the current host.
+- **CSV export** (`POST /api/v1/admin/logs/{activity,authentication}/export`): UTF-8 **with BOM**
+  and **CRLF** line endings so Excel decodes the Chinese headers and keeps the columns aligned.
+- **Filtering**: by actor, action, target type, outcome and time range, with a default window of
+  the last 7 days.
+
+#### Changed
+
+- **The exec session is now audited instead of logged**: `0.8.0`'s single structured Serilog line
+  became one `container.exec` row (session id, duration, exit code, close reason). The Serilog
+  entry was demoted to `Debug`. **Keystrokes and terminal output are still never stored.**
+- **`outcome` has three values, not two**: `success`, `denied` (a rule or permission refused the
+  request) and `failure` (the external resource failed). `denied` means "change the permissions",
+  `failure` means "go look at the host" — merging them puts two unrelated follow-ups behind one
+  filter.
+
+#### Security
+
+- **Audit writes are best-effort**: failures are swallowed and downgraded to an error log. A full
+  disk must not stop an operator from starting a container — one missing audit row is the lesser
+  evil.
+- **The fallback middleware records 5xx only**: 4xx responses are normal business feedback
+  ("that container is gone", "you lack permission"), and a polling list page that races a deleted
+  container produces them once a second. Recording all of them would bury the 500 that actually
+  needs tracing. Rejections that matter are recorded precisely, with `denied`.
+- **Export refuses rather than truncates**: over 50,000 rows the request fails with `1000` and a
+  hint to narrow the range. A truncated export is a document that looks complete and silently
+  lacks half the evidence.
+- **The table is append-only**: no `is_deleted`, no updates, no automatic purge. Deleting history
+  contradicts the point of an audit trail; growth is handled by range exports and, after `1.0.0`,
+  archiving.
+
+#### Notes
+
+- **No audit for every 4xx by default**, and no `account disabled` entry — that feature arrives in
+  `0.13.0`, so there is no such fact to record yet.
+- **No replay or undo**: the audit records what happened, it is not a re-doable operation log.
+- **Timestamps are stored as fixed-format text** (`yyyy-MM-dd HH:mm:ss.fff`): SQLite has no date
+  type, so range filters and ordering are string comparisons, and a mix of values with and without
+  milliseconds would sort records inside the same second backwards.
+
 ### `0.8.0` — Interactive exec terminal (internal draft)
 
 #### Added

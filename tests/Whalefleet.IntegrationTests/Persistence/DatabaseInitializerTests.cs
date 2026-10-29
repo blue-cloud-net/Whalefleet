@@ -21,9 +21,9 @@ public class DatabaseInitializerTests
     /// </summary>
     /// <remarks>
     /// 0.1.0 新增 <c>0006_rbac.sql</c>；0.4.0 新增 <c>0007_repositories.sql</c>；
-    /// 0.6.0 新增 <c>0008_host_tags.sql</c>。
+    /// 0.6.0 新增 <c>0008_host_tags.sql</c>；0.9.0 新增 <c>0009_audit_logs.sql</c>。
     /// </remarks>
-    private const int _expectedSchemaVersion = 8;
+    private const int _expectedSchemaVersion = 9;
 
     [Fact]
     public async Task 初始化_建出业务表并推进架构版本()

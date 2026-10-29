@@ -1,6 +1,8 @@
 using Whalefleet.Application.Abstractions;
+using Whalefleet.Application.Abstractions.Auditing;
 using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Abstractions.Terminal;
+using Whalefleet.Application.Auditing;
 using Whalefleet.Application.Auth;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Containers;
@@ -139,6 +141,11 @@ public static class ApplicationServiceCollectionExtensions
         // 终端会话计数器（0.8.0）：**Singleton**——它数的是「所有连接」，
         // 注册成 Scoped 等于没有上限。
         services.AddSingleton<TerminalSessionRegistry>();
+
+        // 审计（0.9.0）：写入器与查询用例都是 Scoped——它们依赖 Scoped 的仓储
+        // 与「当前用户 / 当前 IP」这两个请求级状态。
+        services.AddScoped<IAuditLogger, AuditLogger>();
+        services.AddScoped<AuditLogService>();
 
         return services;
     }
