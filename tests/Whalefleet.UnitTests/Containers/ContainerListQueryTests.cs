@@ -26,7 +26,10 @@ public class ContainerListQueryTests
     /// <param name="daemon">假守护进程。</param>
     /// <returns>容器查询用例。</returns>
     private static ContainerService ServiceFor(FakeDockerDaemon daemon) =>
-        new(new StubDockerHostAccessor(daemon.Endpoint), NullLogger<ContainerService>.Instance);
+        new(
+            new StubDockerHostAccessor(daemon.Endpoint),
+            new NoopAuditLogger(),
+            NullLogger<ContainerService>.Instance);
 
     [Fact]
     public async Task 端口顺序_守护进程返回的顺序随机时_对外结果始终一致()
