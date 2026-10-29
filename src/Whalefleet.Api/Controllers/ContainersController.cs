@@ -1,9 +1,11 @@
 using System.Globalization;
 using Whalefleet.Application.Abstractions;
+using Whalefleet.Application.Abstractions.Auditing;
 using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Abstractions.Terminal;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Containers;
+using Whalefleet.Core.Auditing;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -33,6 +35,7 @@ public sealed class ContainersController : ControllerBase
     private readonly ContainerTerminalService _terminals;
     private readonly ITerminalTokenService _terminalTokens;
     private readonly ICurrentUser _currentUser;
+    private readonly IAuditLogger _audit;
     private readonly TimeProvider _clock;
 
     /// <summary>
@@ -44,6 +47,7 @@ public sealed class ContainersController : ControllerBase
     /// <param name="terminals">交互式终端用例（授权 + 会话）。</param>
     /// <param name="terminalTokens">terminal token 签发。</param>
     /// <param name="currentUser">当前登录用户（终端令牌要绑定到人）。</param>
+    /// <param name="audit">审计日志（敏感读留痕）。</param>
     /// <param name="clock">时间源（令牌过期时刻）。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
     public ContainersController(
@@ -53,6 +57,7 @@ public sealed class ContainersController : ControllerBase
         ContainerTerminalService terminals,
         ITerminalTokenService terminalTokens,
         ICurrentUser currentUser,
+        IAuditLogger audit,
         TimeProvider clock)
     {
         ArgumentNullException.ThrowIfNull(containers);
@@ -61,6 +66,7 @@ public sealed class ContainersController : ControllerBase
         ArgumentNullException.ThrowIfNull(terminals);
         ArgumentNullException.ThrowIfNull(terminalTokens);
         ArgumentNullException.ThrowIfNull(currentUser);
+        ArgumentNullException.ThrowIfNull(audit);
         ArgumentNullException.ThrowIfNull(clock);
 
         _containers = containers;
@@ -69,6 +75,7 @@ public sealed class ContainersController : ControllerBase
         _terminals = terminals;
         _terminalTokens = terminalTokens;
         _currentUser = currentUser;
+        _audit = audit;
         _clock = clock;
     }
 
@@ -292,6 +299,22 @@ public sealed class ContainersController : ControllerBase
 
         Response.ContentType = "text/plain; charset=utf-8";
         Response.Headers.ContentDisposition = BuildContentDisposition(containerId);
+
+        // 敏感读：日志里常含内部地址、错误堆栈甚至粘贴进去的凭据。
+        // 在开始写正文**之前**记（写完再记就晚了——客户端可能已经拿到整个文件）。
+        await _audit.RecordAsync(
+            new AuditLogDraft
+            {
+                Category = AuditCategory.Activity,
+                Action = AuditActions.ContainerLogsDownload,
+                Outcome = AuditOutcome.Success,
+                HostName = hostId,
+                TargetType = AuditTargetTypes.Container,
+                TargetId = containerId,
+                TargetName = containerId,
+                Detail = $"起始时间={request.Since?.ToString(CultureInfo.InvariantCulture) ?? "不限"}；含 stderr={request.IncludeStderr ?? true}",
+            },
+            cancellationToken).ConfigureAwait(false);
 
         await foreach (var line in _logProvider
             .ExportLogsAsync(hostId, containerId, request.Since, request.IncludeStderr ?? true, cancellationToken)

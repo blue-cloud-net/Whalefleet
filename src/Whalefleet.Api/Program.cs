@@ -124,6 +124,11 @@ app.UseSerilogRequestLogging(options =>
 // 4) 空响应体的 4xx/5xx（未知路由、405 等）统一包装为 ApiResult。
 app.UseStatusCodePages(StatusCodePageHandler.HandleAsync);
 
+// 4.1) 服务端错误兜底审计（0.9.0）：只记 5xx。
+//      必须在外层异常处理**之内**（否则看不到端点抛出的异常），
+//      且在端点之前（否则拿不到最终状态码）。
+app.UseMiddleware<AuditFallbackMiddleware>();
+
 // 5) CORS：白名单为空时不会注册默认策略，等价于完全拒绝跨域。
 app.UseCors();
 

@@ -91,6 +91,10 @@ public static class AuthenticationServiceCollectionExtensions
         services.AddHttpContextAccessor();
         services.Replace(ServiceDescriptor.Scoped<ICurrentUser, HttpContextCurrentUser>());
 
+        // 来源 IP（0.9.0 审计用）：同理替换占位实现。
+        // 与登录限流共用同一个解析器，避免「限流按 A 计数、审计记成 B」。
+        services.Replace(ServiceDescriptor.Scoped<ICurrentClientIp, HttpContextCurrentClientIp>());
+
         services.AddPermissionAuthorization();
 
         return services;

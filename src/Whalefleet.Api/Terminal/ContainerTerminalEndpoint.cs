@@ -3,9 +3,11 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using Whalefleet.Api.Errors;
+using Whalefleet.Application.Abstractions.Auditing;
 using Whalefleet.Application.Abstractions.Terminal;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Containers;
+using Whalefleet.Core.Auditing;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
@@ -80,6 +82,7 @@ internal static class ContainerTerminalEndpoint
         [FromServices] ContainerTerminalService terminals,
         [FromServices] ITerminalTokenService tokens,
         [FromServices] TerminalSessionRegistry registry,
+        [FromServices] IAuditLogger audit,
         [FromServices] IOptions<TerminalOptions> options,
         [FromServices] TimeProvider clock,
         [FromServices] ILoggerFactory loggerFactory)
@@ -140,7 +143,7 @@ internal static class ContainerTerminalEndpoint
 
         using (lease)
         {
-            await RunAsync(context, hostId, grant, terminals, clock, logger).ConfigureAwait(false);
+            await RunAsync(context, hostId, grant, terminals, audit, clock, logger).ConfigureAwait(false);
         }
     }
 
@@ -151,6 +154,7 @@ internal static class ContainerTerminalEndpoint
     /// <param name="hostId">主机标识。</param>
     /// <param name="grant">令牌里的授权内容。</param>
     /// <param name="terminals">终端用例。</param>
+    /// <param name="audit">审计写入（会话留痕）。</param>
     /// <param name="clock">时间源（记录会话时长）。</param>
     /// <param name="logger">日志。</param>
     /// <returns>表示异步操作的任务。</returns>
@@ -159,6 +163,7 @@ internal static class ContainerTerminalEndpoint
         string hostId,
         TerminalSessionGrant grant,
         ContainerTerminalService terminals,
+        IAuditLogger audit,
         TimeProvider clock,
         ILogger logger)
     {
@@ -249,10 +254,25 @@ internal static class ContainerTerminalEndpoint
 
         var elapsed = clock.GetUtcNow() - startedAt;
 
-        // 会话留痕（0.8.0）：一条结构化日志，含起止时间、退出码与结束原因。
+        // 会话留痕（0.8.0）：0.9.0 起改写入审计表（活动日志里能按容器 / 用户 / 时间查），
+        // Serilog 那行降级为 Debug 只用于现场排障。
         // **不记录**用户输入的内容与终端输出——里面可能有密码、token 与内网拓扑。
-        // 0.9.0 落地操作审计后，本条会改为写审计表。
-        logger.LogInformation(
+        await audit.RecordAsync(
+            new AuditLogDraft
+            {
+                Category = AuditCategory.Activity,
+                Action = AuditActions.ContainerExec,
+                Outcome = AuditOutcome.Success,
+                ActorId = grant.UserId,
+                HostName = handle.Target.HostName,
+                TargetType = AuditTargetTypes.Container,
+                TargetId = handle.Target.ContainerId,
+                TargetName = handle.Target.ContainerName,
+                Detail = $"会话={sessionId}；时长={elapsed.TotalSeconds:F1}s；退出码={handle.Session.ExitCode?.ToString(CultureInfo.InvariantCulture) ?? "?"}；原因={reason}",
+            },
+            CancellationToken.None).ConfigureAwait(false);
+
+        logger.LogDebug(
             "终端会话结束（会话={SessionId}，用户={UserId}，主机={HostId}，容器={ContainerName}，"
             + "Shell={Shell}，非交互={HasCommand}，开始={StartedAt}，时长毫秒={DurationMs}，"
             + "退出码={ExitCode}，结束原因={Reason}）",
