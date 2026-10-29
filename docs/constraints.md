@@ -191,7 +191,7 @@
 | JWT refresh token 有效期 | **7 天**，写入数据库可撤销表 |
 | 初始管理员引导 | 启动时若 `users` 表为空则创建：凭据取自 `ADMIN__USER` + `ADMIN__PASSWORD`；**密码未配置时自动生成**，写入 `/app/data/initial-admin.txt`（`0600`，**不进日志**）。可用 `ADMIN__AUTOBOOTSTRAP=false` 彻底关闭 |
 | JWT Secret 来源 | **优先**环境变量 `JWT__SECRET`（需 ≥ 32 字节，显式给得过短则启动失败）；**缺失时**自动生成到 `/app/data/jwt.key`（`0600`）并于后续启动复用。开发环境例外：`appsettings.Development.json` 提供公开的占位密钥 |
-| 0.8.0 终端短时 token | `POST /api/v1/auth/terminal-token` 返回 5 分钟过期 token，**仅能用于 WebSocket `/ws/hosts/{hostId}/containers/exec`** |
+| 0.8.0 终端短时 token | `POST /api/v1/hosts/{hostId}/containers/terminal-token` 返回 5 分钟过期 token，**仅能用于 WebSocket `/ws/hosts/{hostId}/containers/exec`**；令牌绑主机 / 容器 / 命令，`aud` 为独立的 `whalefleet-terminal`（因此主鉴权天然拒绝它当 access token 用） |
 | 0.18.0 个人访问令牌（PAT） | MCP 客户无法交互登录，改用 PAT：库里只存 **Argon2id 哈希**，明文仅创建时返回一次；可撤销、可设过期；**不走 `auth/refresh` 语义** |
 
 ### 0.9.0 起新增的配置键

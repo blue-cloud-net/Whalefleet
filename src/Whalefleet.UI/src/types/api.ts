@@ -642,6 +642,20 @@ export interface ContainerLogsResult {
 }
 
 /**
+ * 交互式终端的短时令牌（0.8.0）。
+ *
+ * ⚠️ **不是 access token**：它 5 分钟过期，只对一条 WebSocket
+ * （`/ws/hosts/{hostId}/containers/exec`）有效，且**不被任何 HTTP 接口接受**——
+ * 服务端给它签的是独立 audience，主鉴权在校验 audience 时就会拒绝它。
+ */
+export interface ContainerTerminalToken {
+  /** 令牌原文，放进 WebSocket 的 `?token=` */
+  terminalToken: string
+  /** 过期时间（ISO 8601） */
+  expiresAt: string
+}
+
+/**
  * 一次容器资源采样（SignalR `OnStats` 的载荷）。
  *
  * CPU 百分比由服务端算好（相邻两帧相减），因此所有客户端口径一致。

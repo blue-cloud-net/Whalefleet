@@ -7,6 +7,7 @@ import type {
   ContainerLogsResult,
   ContainerRecreatedResult,
   ContainerRenamedResult,
+  ContainerTerminalToken,
   ContainerUpdatedResult
 } from '@/types/api'
 
@@ -131,6 +132,50 @@ export interface ContainerLogsParams {
   until?: number
   /** 是否包含 stderr；省略时包含 */
   includeStderr?: boolean
+}
+
+/**
+ * 申请一个打开交互式终端的短时令牌（0.8.0）。
+ *
+ * ## 为什么是「先要令牌，再建 WebSocket」
+ * 浏览器建立 WebSocket 时**不能自定义请求头**，令牌只能出现在 URL 里，
+ * 而 URL 会进访问日志、反代日志与浏览器历史——这正是不能直接放 access token 的原因。
+ * 服务端签发的是一张 5 分钟、只对一条会话有效的票（容器与命令都绑在票里）。
+ *
+ * ## 为什么错误处理放在这一步
+ * WebSocket 握手失败时前端只拿到一个 `close` 事件（通常还是 1006），
+ * **看不到响应体、也看不到状态码**。因此「容器不存在 `1401` / 未运行 `1404` /
+ * 没权限 `1502`」这些诊断信息必须由本端点给出——它是唯一能把原因讲清楚的地方。
+ *
+ * @param hostId 主机标识。
+ * @param params 容器与可选的 shell / 命令 / 尺寸。
+ * @returns 令牌与过期时间。
+ */
+export function createTerminalToken(
+  hostId: string,
+  params: ContainerTerminalParams
+): Promise<ContainerTerminalToken> {
+  return request<ContainerTerminalToken>({
+    url: `${base(hostId)}/terminal-token`,
+    method: 'post',
+    data: params
+  })
+}
+
+/**
+ * 申请终端令牌的参数。
+ */
+export interface ContainerTerminalParams {
+  /** 容器 ID / 名称 */
+  containerId: string
+  /** 要启动的 shell 绝对路径；省略时由服务端取默认值（`/bin/sh`） */
+  shell?: string
+  /** 非交互模式下要执行的一条命令；省略表示开交互式 shell */
+  command?: string
+  /** 初始列数 */
+  columns?: number
+  /** 初始行数 */
+  rows?: number
 }
 
 /**

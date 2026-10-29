@@ -33,6 +33,7 @@ export type ContainerAction =
   | 'pause'
   | 'resume'
   | 'remove'
+  | 'terminal'
 
 /**
  * 动作 → 允许执行该动作的状态集合。
@@ -42,6 +43,9 @@ export type ContainerAction =
  * - `pause` 只对运行中的容器有意义（暂停一个已暂停的容器没有意义）。
  * - `resume` 只对**已暂停**的容器有意义。
  * - `start` 只对**没在跑**的容器有意义。
+ * - `terminal`（0.8.0）只对**运行中**的容器有意义：exec 要求容器在跑，
+ *   而**已暂停**的容器虽然 `Running` 仍为 true，exec 却会挂在启动那一刻
+ *   （界面表现为「终端空白、打字没反应」），因此 `paused` 必须被排除。
  * - `remove` 对任何状态都成立（这是它唯一与其它动作不同的地方）。
  */
 const ELIGIBLE_STATES: Record<ContainerAction, readonly ContainerStateText[]> = {
@@ -51,7 +55,8 @@ const ELIGIBLE_STATES: Record<ContainerAction, readonly ContainerStateText[]> = 
   restart: ['running', 'paused', 'restarting'],
   pause: ['running'],
   resume: ['paused'],
-  remove: []
+  remove: [],
+  terminal: ['running']
 }
 
 /** 「删除」对任何状态都成立，因此单独处理。 */

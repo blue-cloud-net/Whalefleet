@@ -69,7 +69,8 @@
         "restart": "容器未在运行，无法重启",
         "resume": "容器未处于暂停状态",
         "start": "容器已在运行",
-        "stop": "容器未在运行"
+        "stop": "容器未在运行",
+        "terminal": "只有运行中的容器才能打开终端"
       },
       "done": "{name} 操作成功",
       "duplicate": "复制",
@@ -86,6 +87,7 @@
       "resume": "继续",
       "start": "启动",
       "stop": "停止",
+      "terminal": "终端",
       "update": "热更新"
     },
     "addVolumes": {
@@ -388,6 +390,26 @@
       "stopped": "已停止",
       "transition": "过渡中",
       "unknown": "未知"
+    },
+    "terminal": {
+      "advanced": "自定义命令",
+      "close": "关闭",
+      "closed": "会话已断开，容器里的进程也随之结束。",
+      "commandHint": "会以「shell -c 命令」的方式执行；留空则进入交互式 shell。",
+      "commandPlaceholder": "可选：进入终端后立即执行的一条命令，如 ls -al /app",
+      "connectFailed": "连接失败：令牌已过期、容器状态已变化，或当前账号没有该主机的写权限。",
+      "hint": "在容器内打开一个交互式 shell。会话内容不落库，只在服务端日志里留下一条带会话 ID 的记录。",
+      "notRunning": "只有运行中的容器才能打开终端",
+      "open": "打开终端",
+      "reconnect": "重新连接",
+      "status": {
+        "closed": "已断开",
+        "connected": "已连接",
+        "connecting": "连接中…",
+        "idle": "未连接"
+      },
+      "title": "终端",
+      "warning": "⚠️ 终端里的操作直接作用于容器：删掉的文件不会进回收站，改坏的配置会立刻生效。需要写权限（container.write）。"
     },
     "update": {
       "cpus": "CPU 配额（核）",

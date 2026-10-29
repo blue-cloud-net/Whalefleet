@@ -85,7 +85,7 @@
 | ✅ 容器统计 | 实时 CPU / 内存 / 网络 I/O，SignalR `/hubs/hosts/{hostId}/container-stats` 推送；详情页以**数值卡 + 内存进度条**呈现（**无图表**） | 0.5.0 |
 | ✅ **列表指标列** | 容器列表内嵌 CPU / 内存 / 网络实时指标（**默认关闭**，按列开关启用）；数据源是 `0.5.0` 的 `ContainerStatsHub`，只对可见容器订阅 | **0.6.0** |
 | ✅ **容器健康状态与退出原因** | 健康检查状态（`healthy` / `unhealthy` / `starting` / `none`）、重启计数、退出码与 OOM 标记；**列表里并入「状态」列**（健康 / 不健康（黄）/ 运行中 / 已停止），详情页另有卡片 | **0.6.0** |
-| ⬜ 交互式终端 | WebSocket `/ws/hosts/{hostId}/containers/exec` + xterm.js；**鉴权专用 5 分钟短时 terminal token**；会话写 Serilog 留痕 | 0.8.0 |
+| ✅ 交互式终端 | WebSocket `/ws/hosts/{hostId}/containers/exec` + xterm.js；**鉴权专用 5 分钟短时 terminal token**（独立 audience，只对一条会话有效）；会话写 Serilog 留痕 | 0.8.0 |
 | ✅ 容器异常通知 | 容器非正常退出（`die` / `oom`）时 SignalR `/hubs/notification` 推送，顶栏铃铛 + 红点 + toast | 0.5.0 |
 | ⬜ **容器导出 / 导入 / commit** | 导出容器文件系统为 tar；tar 导入为镜像；容器提交为镜像（Portainer 无此能力） | **0.14.0** |
 

@@ -5,8 +5,10 @@ using Whalefleet.Api.Errors;
 using Whalefleet.Api.Middleware;
 using Whalefleet.Api.Realtime;
 using Whalefleet.Api.Serialization;
+using Whalefleet.Api.Terminal;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.FileProviders;
+using Whalefleet.Application.Abstractions.Terminal;
 using Whalefleet.Application.Abstractions.Persistence;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.DependencyInjection;
@@ -42,6 +44,10 @@ builder.Services.AddApiCors(builder.Configuration);
 // 实时通道（0.5.0）：SignalR、Hub、订阅表与 Realtime 配置节。
 // 必须在 AddInfrastructure 之后：Hub 要用主机访问器与权限判定（都由基础设施层注册）。
 builder.Services.AddApiRealtime(builder.Configuration);
+
+// 交互式终端（0.8.0）：Terminal 配置节 + 每用户会话计数器。
+// 与实时通道同理，必须在 AddInfrastructure 之后（用例服务依赖主机访问器与权限判定）。
+builder.Services.AddApiTerminal(builder.Configuration);
 
 // ASP.NET Core MVC（Controller 风格）
 // 统一 JSON 编码策略（中文原样输出而非 \uXXXX），与错误响应序列化器共用同一套默认值。
@@ -121,6 +127,18 @@ app.UseStatusCodePages(StatusCodePageHandler.HandleAsync);
 // 5) CORS：白名单为空时不会注册默认策略，等价于完全拒绝跨域。
 app.UseCors();
 
+// 5.1) WebSocket 升级（0.8.0 的交互式终端）。
+//     SignalR 自己处理升级，**不**依赖这一层；这里只服务 /ws 的原生 WebSocket。
+//     KeepAliveInterval 必须**小于**反代的读超时（示例配置是 300s）：
+//     用户盯着终端想事情时没有任何数据流，反代会把连接当空闲连接掐掉，
+//     症状是「终端莫名断开、重连又好了」。
+app.UseWebSockets(new WebSocketOptions
+{
+    KeepAliveInterval = TimeSpan.FromSeconds(
+        app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<TerminalOptions>>()
+            .Value.KeepAliveSeconds),
+});
+
 // 6) 鉴权：必须在 UseCors 之后、MapControllers() 之前。
 //    - UseAuthentication 填充 HttpContext.User（ICurrentUser 依赖它）
 //    - UseAuthorization 执行 [Authorize] / [Authorize(Roles = …)]
@@ -182,6 +200,15 @@ app.MapHealthChecks("/healthz");
 app.MapHub<ContainerLogHub>(RealtimeHubRoutes.ContainerLog);
 app.MapHub<ContainerStatsHub>(RealtimeHubRoutes.ContainerStats);
 app.MapHub<NotificationHub>(RealtimeHubRoutes.Notification);
+
+// ============================== 交互式终端（0.8.0） ==============================
+// /ws/hosts/{hostId}/containers/exec —— 容器 exec 的原生 WebSocket。
+//
+// ⚠️ 这条端点的请求在 CurrentHostMiddleware 眼里是**匿名**的：它用 terminal token
+//    （独立 audience 的短时 JWT）鉴权，而不是 access token。因此那个中间件里
+//    显式跳过了 /ws 前缀，改由端点自己解析主机并校验 container.write。
+//    不跳过的话症状是「一开终端就 1501」，而终端本身完全正常。
+app.MapContainerTerminal();
 
 // 8) 开发专用故障注入端点：仅 Development 环境注册，生产环境不存在该路由。
 //    用于验证「异常 → 统一 ApiResult 错误响应」，并供集成测试复用。

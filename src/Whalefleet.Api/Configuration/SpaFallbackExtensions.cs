@@ -1,3 +1,4 @@
+using Whalefleet.Api.Terminal;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.FileProviders;
 
@@ -30,8 +31,10 @@ internal static class SpaFallbackExtensions
     /// <remarks>
     /// <c>/hubs</c> 是 SignalR（0.5.0），<c>/ws</c> 是 exec 终端的原生 WebSocket（0.8.0）——
     /// 两者都是长连接端点，<b>不排除就会被回退成前端页面</b>。
+    /// <c>/ws</c> 从 <see cref="TerminalRoutes.Prefix"/> 取，避免"常量改了、排除列表没改"。
     /// </remarks>
-    internal static readonly string[] ApiPathPrefixes = ["/api", "/healthz", "/hubs", "/ws"];
+    internal static readonly string[] ApiPathPrefixes =
+        ["/api", "/healthz", "/hubs", TerminalRoutes.Prefix];
 
     /// <summary>
     /// 注册 SPA 回退。

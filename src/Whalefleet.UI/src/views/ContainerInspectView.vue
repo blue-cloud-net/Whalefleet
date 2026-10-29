@@ -23,7 +23,7 @@ import { usePreferencesStore } from '@/stores/preferences'
 import { formatBytes } from '@/utils/container-status'
 import { formatDateTime } from '@/utils/datetime'
 import { formatMemory, formatNetwork, formatPercent, memoryPercent } from '@/utils/log-format'
-import { canPerform, isActive } from '@/utils/container-actions'
+import { canPerform, isActive, actionDisabledReason } from '@/utils/container-actions'
 import type { ByteUnits } from '@/utils/container-status'
 import type { ContainerDetail } from '@/types/api'
 
@@ -33,6 +33,14 @@ import type { ContainerDetail } from '@/types/api'
  */
 const MetricsChart = defineAsyncComponent(
   () => import('@/components/business/MetricsChart.vue')
+)
+
+/**
+ * 终端面板同样**懒加载**（0.8.0）：xterm + FitAddon + WebLinksAddon 约 300 KB，
+ * 而绝大多数人打开详情页只是看一眼配置。`defineAsyncComponent` 让 Vite 把它拆成独立 chunk。
+ */
+const ContainerTerminal = defineAsyncComponent(
+  () => import('@/components/business/ContainerTerminal.vue')
 )
 
 /**
@@ -676,6 +684,19 @@ watch(
               <dd class="font-mono text-xs break-all">{{ value }}</dd>
             </div>
           </dl>
+        </SectionCard>
+
+        <!--
+          交互式终端（0.8.0）：面板本身**懒加载**——xterm 加两个 addon 约 300 KB，
+          只有真的点开终端的人需要它。
+        -->
+        <SectionCard :title="t('container.terminal.title')" :description="t('container.terminal.hint')">
+          <ContainerTerminal
+            :host-id="hostId"
+            :container-id="detail.id"
+            :disabled="!canPerform('terminal', detail.state.status)"
+            :disabled-reason="actionDisabledReason('terminal', detail.state.status)"
+          />
         </SectionCard>
       </div>
     </template>

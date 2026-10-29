@@ -169,6 +169,16 @@ DDD 战术模式（聚合根 / 领域事件 / 领域服务）**已整体移除**
   否则那段代码会进生产产物
 - **虚拟滚动的行高不能交给 UnoCSS 的行高类**：行高必须精确等于常量，
   否则位置计算整体偏移。`LogViewport.vue` 因此把行高写在 scoped CSS 里
+- **终端面板必须懒加载，且不与 access token 打交道**：xterm + 两个 addon 约 300 KB，
+  用 `defineAsyncComponent` + `await import(...)` 拆成独立 chunk；连的是原生 WebSocket，
+  令牌由 `POST /api/v1/hosts/{hostId}/containers/terminal-token` 现取。
+  三个配套约束：① **不引 `@xterm/addon-attach`**（attach 只是两个方向的转发，自己写约 30 行，
+  而那个包不在依赖里）；② 终端数据发**二进制帧**、resize 发**文本帧**（`{"type":"resize",…}`），
+  服务端按帧类型区分；③ `?mock=on` 走 `realtime/mock-terminal.ts` 的假 shell，
+  门控同样必须写在**调用点**（`import.meta.env.DEV && shouldUseMock()`）
+- **终端入口只按容器状态门控，不要查 `auth.hasPermission('container.write')`**：
+  那是**全局**有效权限集，而主机作用域权限不在其中——用它门控会误禁用有权限的用户。
+  权限不足由 `terminal-token` 的 `1502` 兜住（与启停按钮同一口径）
 - **通知文案只给 i18n key + 参数**（`stores/notifications.ts` 的 `describe`），
   不要在 store 里拼死文案——同一件事会出现在 toast 与铃铛下拉两处
 - **五个列表页共用 `ListToolbar`**（容器 / 镜像 / 卷 / 网络 / 主机）：
@@ -270,6 +280,13 @@ DDD 战术模式（聚合根 / 领域事件 / 领域服务）**已整体移除**
 | 58 | **`TimeSpan.MinValue` 不能当「还没发生过」的初值** | `clock.Elapsed - TimeSpan.MinValue` 越过 `TimeSpan` 的表示范围 → **第一帧上**抛 `OverflowException`。症状极具迷惑性：采样订阅**成功**、后端日志只有一条 `采样流异常结束` 的警告、界面永远停在「等待第一份采样…」——因为抛在**首帧**上，整条流从第一秒起就是空的。正确写法：用 `TimeSpan?` 表示「尚未发布」，首帧因此立即发布（而不是被节流吃掉） |
 | 59 | **容器不在运行时，Docker 给的采样是「全零」（不是「没有数据」）** | 内存 / 网络 / CPU 全为 0，`memory_stats` 整体为空。写采样相关集成测试时，若镜像自带 `ENTRYPOINT`，`cmd=["sleep","60"]` 会被入口点吃掉 → **容器秒退** → 采样全零 → 断言「内存 &gt; 0」以「指标全缺」的面貌失败，看着像业务代码坏了。必须**显式覆盖入口点**（`/bin/sh -c "sleep 60"`），并等容器真正跑起来再订阅 |
 | 60 | **`docker build -t X .` 在 `docker-container` driver 下**不更新**本地镜像** | 默认 builder `multi-platform-builder` 用的是 `docker-container` driver：构建结果**只留在 build cache**（输出末尾一句 `No output specified with docker-container driver. Build result will only remain in the build cache`），`docker images` 里的 `X` **还是旧的那一份**。症状极具迷惑性：构建「成功」、容器也重建了、但改动**一点没生效**——而日志里的堆栈行号仍指向旧代码，容易误判成「改了没用」。**必须 `docker build --load -t X .`**（或把 builder 切回 `docker` driver）。自查：`docker images X --format '{{.CreatedAt}}'` 的时间是不是本次构建的时间 |
+
+| 61 | **`/ws`（0.8.0 终端）必须在 `CurrentHostMiddleware` 里显式跳过** | 终端请求用 **terminal token** 鉴权，不是 access token——在那个中间件眼里 `HttpContext.User` 是**匿名**的，照常往下走 `host.read` 校验必然失败。症状是「一开终端就 403/1501」，而终端本身完全正常、令牌也没问题。排除只针对 `TerminalRoutes.Prefix` 一个前缀，主机校验与 `container.write` 判定改由端点内部完成（不是漏保护，是**换了凭证**） |
+| 62 | **terminal token 靠 audience 被主鉴权拒绝，不能改成手工比对 `typ`** | 它与 access token 共用签名密钥，`aud` 是独立的 `whalefleet-terminal`，而主鉴权只校验主 audience——因此框架在校验阶段就把它拒了。若改成「在 `OnTokenValidated` 里比 `typ` 再拒绝」，漏判一处就等于凭空签发了一批 5 分钟有效、权限完全相同的 access token。`TerminalEndpointsTests` 有一条用例专门拦这个 |
+| 63 | **`WebSocketOptions.KeepAliveInterval` 必须小于反代读超时** | 用户盯着终端想事情时没有任何数据流，nginx 默认 `proxy_read_timeout 60s`（示例配置给 300s）会把连接当空闲掐掉。症状是「终端莫名断开、重连又好了」，日志里只有一条正常的会话结束记录。默认 `Terminal:KeepAliveSeconds=30` |
+
+| 64 | **`MultiplexedStream` 在 TTY 模式下给的是原始字节**（无 8 字节帧头） | `Exec.CreateContainerExecAsync` 带 `TTY=true` 后，`ReadOutputAsync` 直接返回数据并把来源标成 stdout——既不用自己解帧，也**不能**假设「一次读回来是一帧」。顺带两条 SDK 事实：4.3.3 里方法叫 `StartContainerExecAsync(Detach=false)`（**没有** `StartWithAttachContainerExecAsync`，那是 3.x）；`Detach=true` 只是「在后台跑起来」，拿不到输出也写不进 stdin |
+| 65 | **exec 要求容器运行中，且已暂停的同样不行** | 暂停的容器 `Running` 仍为 `true`，但 exec 会挂在启动那一刻——界面表现为「终端空白、打字没反应」。两者都归 `1404`/409，写集成测试时要显式 `start` 并覆盖入口点（见陷阱 31、59） |
 
 > **Dapper 物化能力（已核实，勿再沿用旧判断）**：Dapper **可以**物化「非公开构造 + 非公开 setter」
 > 的充血实体，用 `skipVisibility` 动态方法。**不需要** Row DTO，**不需要** `InternalsVisibleTo`。

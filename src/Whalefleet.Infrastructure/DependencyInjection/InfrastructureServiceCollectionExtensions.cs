@@ -1,5 +1,6 @@
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Persistence;
+using Whalefleet.Application.Abstractions.Terminal;
 using Whalefleet.Core.Auth;
 using Whalefleet.Infrastructure.Docker;
 using Whalefleet.Infrastructure.Permissions;
@@ -125,6 +126,11 @@ public static class InfrastructureServiceCollectionExtensions
             .Bind(configuration.GetSection(AdminOptions.SectionName));
 
         services.AddSingleton<ITokenService, JwtTokenService>();
+
+        // terminal token（0.8.0）：与 access token 共用签名密钥，但 audience 是独立的
+        // （`whalefleet-terminal`），因此主鉴权会在校验 audience 时直接拒绝它。
+        // 详见 JwtTerminalTokenService 的 remarks。
+        services.AddSingleton<ITerminalTokenService, JwtTerminalTokenService>();
 
         // 仓库凭据加密（0.4.0）：密钥文件（registry.key）与 JWT 密钥同机制——
         // 落盘、0600、生成一次后复用。两者**分开**是为了「泄漏 JWT 密钥 ≠ 能解出口令」。
