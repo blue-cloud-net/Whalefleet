@@ -290,7 +290,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 当前用户 | `POST /api/v1/auth/me` | 0.0.4 | 需认证；返回当前登录用户摘要（`roles` + **全局**有效权限集 `permissions`）。前端刷新页面时用它校验持久化的 token 是否**仍然有效**（签名、过期、角色与权限以服务端为准），比前端自行解码 JWT 更可靠 |
 | 刷新 Token | `POST /api/v1/auth/refresh` | 0.0.5 | 用 refreshToken 换新 accessToken |
 | 登出 | `POST /api/v1/auth/logout` | 0.0.5 | 撤销当前 refreshToken |
-| 终端短时 Token | `POST /api/v1/auth/terminal-token` | 0.8.0 | 返回 5 分钟过期的 terminalToken，仅用于 WebSocket `/ws/hosts/{hostId}/containers/exec` |
+| 终端短时 Token | `POST /api/v1/hosts/{hostId}/containers/terminal-token` | 0.8.0 | 返回 5 分钟过期的 terminalToken，仅用于 WebSocket `/ws/hosts/{hostId}/containers/exec` 握手 |
 
 **请求/响应示例**：
 
@@ -2017,17 +2017,84 @@ nginx: [emerg] …
 
 ## WebSocket 终端（0.8.0）
 
-容器 exec 终端使用**原生 WebSocket**，不走 SignalR（独立的原始双向流）：
+容器 exec 终端使用**原生 WebSocket**，不走 SignalR（独立的原始双向字节流）。
+前端用 `xterm.js` 5.5 + FitAddon + WebLinksAddon 对接（不引 `AttachAddon`，attach 只涉及两个方向的转发，自己写约 30 行）。
 
-- **连接路径**：`/ws/hosts/{hostId}/containers/exec?containerId={id}&cmd=/bin/sh&token={terminalToken}`
-- **协议**：原始二进制流，前端使用 `xterm.js` + `AttachAddon` 对接
-- **认证**：使用**专门的 short-lived terminal token**（5 分钟过期，由 `POST /api/v1/auth/terminal-token` 签发），**不接受 access token**
-- **流程**：
-  1. 前端打开终端面板 → 调用 `POST /api/v1/auth/terminal-token` 获取 terminalToken
-  2. 建立 WebSocket，URL 带 `token=...` 查询参数
-  3. 后端验证 terminalToken 有效性 + 检查用户对 containerId 的权限
-  4. 建立双向流；Docker.DotNet `ExecCreateContainerAsync` + `StartWithAttachContainerExecAsync` 桥接到 WebSocket
-  5. 关闭 WebSocket 时清理 exec 实例
+### 两步流程
+
+```
+1. POST /api/v1/hosts/{hostId}/containers/terminal-token   ← 普通 ApiResult，错误可诊断
+   body: { containerId, shell?, command?, columns?, rows? }
+   →   { success, data: { terminalToken, expiresAt } }
+
+2. GET  /ws/hosts/{hostId}/containers/exec?token={terminalToken}&cols=120&rows=30
+   →  101 Switching Protocols，之后是双向字节流
+```
+
+**为什么拆成两步**：浏览器建立 WebSocket 时不能自定义请求头，令牌只能进 URL，而 URL 会进访问日志、反代日志与浏览器历史——因此不能放 access token。更要紧的是：握手失败时前端只拿到一个 `close` 事件（通常 `1006`），**看不到状态码、更看不到响应体**。所以「容器不存在 / 未运行 / 没权限」必须由第 1 步给出，那是用户唯一能看到原因的地方。
+
+### `POST /api/v1/hosts/{hostId}/containers/terminal-token`
+
+| 字段 | 必填 | 说明 |
+|------|:---:|------|
+| `containerId` | ✅ | 完整 ID / 短 ID / 容器名 |
+| `shell` | ❌ | 绝对路径，必须在 `Terminal:AllowedShells` 白名单内；省略取 `Terminal:DefaultShell`（默认 `/bin/sh`） |
+| `command` | ❌ | 省略 = 交互式 shell；给出时按 `shell -c <command>` 执行。受 `Terminal:AllowCustomCommand` 控制 |
+| `columns` / `rows` | ❌ | 首帧控制台尺寸；非正数按默认 80×24 处理 |
+
+**成功响应**：`data` 为 `{ terminalToken, expiresAt }`。
+
+**失败**（HTTP 与错误码一一对应，前端据此给出具体原因）：
+
+| 场景 | 错误码 | HTTP |
+|------|--------|:---:|
+| 容器标识为空 / shell 不在白名单 / 命令超长或被禁用 | `1000` | 400 |
+| 未认证 | `1100` / `1101` | 401 |
+| 无权访问该主机 | `1501` | 403 |
+| 缺少 `container.write` | `1502` | 403 |
+| 主机不存在 | `1300` | 404 |
+| 容器不存在 | `1401` | 404 |
+| 容器**未运行**或**已暂停** | `1404` | 409 |
+| 主机不可达 | `1301` | 502 |
+
+> **权限是 `container.write` 而不是 `container.read`**：能进容器就等于能改容器里的任何东西。
+>
+> **顺序是「主机 → 权限 → 容器」**：对一台自己看不见的主机，连「容器在不在」都不该被告知。
+
+### `GET /ws/hosts/{hostId}/containers/exec`
+
+| 查询参数 | 必填 | 说明 |
+|------|:---:|------|
+| `token` | ✅ | terminal token。**唯一的凭证** |
+| `cols` / `rows` | ❌ | 首帧尺寸 |
+
+> ⚠️ **`containerId` / `cmd` 不在查询串里**：它们被**绑进令牌**。只带门的令牌等于门禁卡——一旦允许客户端在查询串里指定目标，一条为 A 容器签发的令牌就能拿去连 B 容器，或换掉要执行的命令。
+
+**握手前的校验**（全部在 `AcceptWebSocketAsync` **之前**完成，失败写统一 `ApiResult`）：
+
+| 场景 | 错误码 | HTTP |
+|------|--------|:---:|
+| 不是 WebSocket 请求 | `1000` | 400 |
+| 令牌缺失 / 无效 / 已过期 | `1104` | 401 |
+| 路径里的 `hostId` 与令牌内的主机不一致 | `1104` | 401 |
+| 容器不存在 / 未运行 / 缺权限 / 主机不可达 | 同上一节 | 同上一节 |
+| 该用户已有 `Terminal:MaxSessionsPerUser` 条会话 | `1404` | 409 |
+
+**令牌机制**：HS256，与 access token **共用签名密钥**，但 `aud` 是独立的 `whalefleet-terminal`。主鉴权的 `ValidAudience` 是主 audience，因此它在校验阶段就被拒绝——不需要一段"手工比对 `typ` 再拒绝"的代码（少一段这种代码，就少一个漏判即提权的位置）。
+
+**帧约定**：
+
+| 方向 | 帧类型 | 内容 |
+|------|--------|------|
+| 服务端 → 客户端 | **二进制** | 终端输出原始字节（TTY 下 stdout/stderr 已合并） |
+| 客户端 → 服务端 | **二进制** | 用户输入，原样写进容器 stdin |
+| 客户端 → 服务端 | **文本** | 控制帧，目前只有 resize：`{"type":"resize","cols":120,"rows":30}` |
+
+> 文本帧解析失败**按输入处理**：用户完全可能把一段 JSON 粘进终端（比如在编辑配置文件），丢掉它会让那次回车莫名消失。
+
+**关闭语义**：一端结束即拆整条会话（两个方向是绑死的）。客户端 `close` 或容器内进程退出后，服务端释放 exec 会话并写一条结构化留痕日志（`sessionId` / `userId` / `hostId` / 容器名 / shell / 是否非交互 / 起止时间 / 时长 / 退出码 / 结束原因）。**日志不含按键内容与终端输出**——里面可能有密码与 token。
+
+**保活**：`WebSocketOptions.KeepAliveInterval`（`Terminal:KeepAliveSeconds`，默认 30s）必须小于反代的读超时，否则「用户盯着终端想事情」超过超时时间后连接会被反代掐断，症状是「终端莫名断开、重连又好了」。
 
 ---
 

@@ -89,6 +89,61 @@ before the first public release).
 - **The status filter is remembered**: it is a continuation of "which kind of containers do I
   want to look at this time"; not remembering it means clicking it again on every visit.
 
+### `0.8.0` — Interactive exec terminal (internal draft)
+
+#### Added
+
+- **Terminal tokens** (`POST /api/v1/hosts/{hostId}/containers/terminal-token`):
+  body `{ containerId, shell?, command?, columns?, rows? }`, returns
+  `{ terminalToken, expiresAt }`. The token expires after 5 minutes and is valid for
+  **exactly one WebSocket session**; host, container, shell and command are all baked into its
+  claims, so the query string deliberately accepts **neither** `containerId` nor `cmd`
+  (otherwise a ticket issued for container A could be replayed against container B).
+- **Container terminal** (`GET /ws/hosts/{hostId}/containers/exec?token=…&cols=…&rows=…`):
+  a raw, bidirectional WebSocket bridged to the container's stdin/stdout/stderr via `Exec` and a
+  hijacked stream. Terminal data travels as **binary** frames; resizes are **text** frames
+  (`{"type":"resize","cols":120,"rows":30}`).
+- **Terminal panel on the container detail page**: xterm.js 5.5 (FitAddon + WebLinksAddon) with a
+  shell picker (`/bin/sh`, `/bin/bash`, `/bin/ash`, `/bin/zsh`) and a collapsible
+  "run a command" field (executed as `shell -c …`). The panel is **lazy-loaded** into its own chunk.
+- **One structured log line per session**: `sessionId`, `userId`, `hostId`, container name, shell,
+  interactive or not, start time, duration, exit code and close reason.
+  **No keystrokes and no terminal output.**
+- **Per-user concurrent session limit** (`Terminal:MaxSessionsPerUser`, default 5):
+  exceeding it yields `1404`/409.
+
+#### Changed
+
+- **The terminal entry is gated by state**: only **running** containers can open one. Paused
+  containers are excluded as well — `Running` is still `true` for them, but `exec` hangs at startup.
+
+#### Security
+
+- **The terminal token shares the signing key with access tokens and is isolated by audience**:
+  its `aud` is a separate `whalefleet-terminal`, while the main authentication only accepts the
+  primary audience — so the framework rejects it during token validation. There is deliberately
+  **no** "compare `typ` by hand and reject" code, because that is exactly where a missed check
+  becomes privilege escalation.
+- **`/ws` bypasses `CurrentHostMiddleware`**: terminal requests authenticate with a terminal token,
+  so that middleware sees them as anonymous. Host visibility and `container.write` are enforced
+  inside the endpoint (the pipeline exclusion covers the `/ws` prefix only).
+- **The required permission is `container.write`, not `container.read`**: getting into a container
+  means being able to change everything inside it.
+- **Session content never reaches the logs**: people type passwords and paste tokens into a
+  terminal, and logs are shipped to centralized collectors.
+
+#### Notes
+
+- **No one-shot exec endpoint** (`POST /containers/exec`): it has no stdin and is not a terminal.
+- **No session recording or replay**: the `0.9.0` audit records facts about a session (who, when,
+  which container), never its content.
+- **No automatic reconnect**: once the socket drops, that exec session is over. Reconnecting
+  automatically would hand out a fresh, empty shell while the user believes their command is
+  still running.
+- **`KeepAliveInterval` must be shorter than the reverse proxy's read timeout**: while a user is
+  thinking, no data flows, and the proxy drops the connection as idle — the symptom is
+  "the terminal disconnects for no reason, and reconnecting fixes it".
+
 ### `0.7.0` — Batch operations and resource cleanup (internal draft)
 
 #### Added

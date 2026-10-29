@@ -956,19 +956,34 @@ const connection = new HubConnectionBuilder()
 
 ### WebSocket Terminal 鉴权（0.8.0）
 
-为最小化 access token 泄漏风险，**独立短时 terminal token**：
+为最小化 access token 泄漏风险，使用**独立短时 terminal token**：
 
 ```
-1. 前端请求 POST /api/v1/auth/terminal-token
+1. 前端请求 POST /api/v1/hosts/{hostId}/containers/terminal-token
    → 返回 5 分钟过期 terminalToken（仅能用于 /ws/hosts/{hostId}/containers/exec）
 
 2. 前端建立 WebSocket:
-   new WebSocket(`ws://host/ws/hosts/${hostId}/containers/exec?containerId=xxx&cmd=/bin/sh&token=${terminalToken}`)
+   new WebSocket(`wss://host/ws/hosts/${hostId}/containers/exec?token=${terminalToken}&cols=120&rows=30`)
 
-3. 后端验证 terminalToken 有效性 + 检查用户对 containerId 的权限
+3. 后端验证 terminalToken 有效性 + 主机一致 + 重新校验容器状态与 container.write
 
-4. 建立双向流；Docker.DotNet exec + attach 桥接到 WebSocket
+4. 建立双向流：Exec.CreateContainerExecAsync(TTY) + StartContainerExecAsync(Detach=false)
+   → MultiplexedStream 桥接到 WebSocket
+
+5. 关闭 WebSocket 时释放 exec 实例并写一条会话留痕日志
 ```
+
+**三条关键设计**
+
+| 决定 | 理由 |
+|------|------|
+| 令牌绑 `userId` + `hostId` + `containerId` + `shell` + `command` | 查询串是客户端完全可控的。只证明「这个人是某人」的令牌等于门禁卡：一条为 A 容器签发的票会被拿去连 B 容器 |
+| 令牌的 `aud` 是独立的 `whalefleet-terminal` | 主鉴权的 `ValidAudience` 是主 audience，于是它在**框架的校验阶段**就被拒——不需要一段"手工比对 `typ` 再拒绝"的代码（那正是漏判即提权的位置） |
+| 授权在**签发端点**里做（REST），握手只复核 | WebSocket 握手失败时前端只拿到 `close`（通常 1006），看不到状态码与响应体；可诊断的错误必须由 REST 那一步给出 |
+
+> ⚠️ `/ws` 的请求在 `CurrentHostMiddleware` 眼里是**匿名**的（它用的是 terminal token，不是 access token），
+> 因此那个中间件显式跳过了 `/ws` 前缀，改由端点自己解析主机、校验 `container.write`。
+> 不跳过的话症状是「一开终端就 1501」，而终端本身完全正常。
 
 ---
 

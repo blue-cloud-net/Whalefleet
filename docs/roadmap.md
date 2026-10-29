@@ -82,7 +82,7 @@
 | `0.5.0` | 实时通道（SignalR） | ✅ | 日志流 / stats / 通知铃铛；进度推送改实时；日志改结构化行 + 虚拟滚动 |
 | `0.6.0` | 监控与可观测性 | ✅ | 容器指标 + 健康检测；Tag / 分组边界 / 过滤 / `system/df` / daemon Info；**移除主机运行时长** |
 | `0.7.0` | 批量操作与资源清理 | ✅ | 前端逐条批量启停（七个动作，带失败原因）+ 容器生命周期端点（终止 / 暂停 / 恢复 / 重建）+ 按分组批量打标 + 资源级 prune + 网络接入/断开 |
-| `0.8.0` | exec 交互式终端 | ⬜ | WebSocket + xterm.js + 短时 terminal token |
+| `0.8.0` | exec 交互式终端 | ✅ | WebSocket + xterm.js + 独立 audience 的短时 terminal token；`/ws` 不进当前主机解析 |
 | `0.9.0` | 操作审计日志 | ⬜ | 认证日志 + 活动日志两页；exec 会话接入 |
 | `0.10.0` | Compose / Stack 基础功能 | ⬜ | 列表 / 部署 / 更新 / 停止 / 删除 / 服务列表 |
 | `0.11.0` | 告警规则体系 | ⬜ | 规则表 + 三级严重度 + 可配阈值 + 渠道 + 冷却期 |
@@ -579,17 +579,21 @@
 
 ---
 
-### 0.8.0 ⬜ — exec 交互式终端
+### 0.8.0 ✅ — exec 交互式终端
 
 **目标**：在容器内开一个可交互的 shell。
 
-- **新增 `POST /api/v1/auth/terminal-token`**：返回 5 分钟过期的独立短时 token，
-  仅能用于 WebSocket 连接 `/ws/hosts/{hostId}/containers/exec`；**不继承 access token 的全 API 权限**
-- WebSocket 端点 `/ws/hosts/{hostId}/containers/exec?containerId=…&token=…`
-  （独立于 SignalR，原始双向流；不接受 access token）
-- 错误码 `1104`（terminal token 无效或过期）在本版启用
-- **会话留痕**：每次会话写 Serilog 结构化日志（`sessionId` / `userId` / `hostId` / `containerId` / 起止时间）
-- 前端：容器详情页内嵌 xterm.js 终端面板（FitAddon + WebLinksAddon）
+- ✅ **新增 `POST /api/v1/hosts/{hostId}/containers/terminal-token`**：返回 5 分钟过期的独立短时 token，
+  仅能用于 WebSocket 连接 `/ws/hosts/{hostId}/containers/exec`；**不继承 access token 的全 API 权限**。
+  走**主机作用域**路径（而不是 `/auth/terminal-token`）：`hostId` 只出现在路径里，
+  中间件顺带把「主机存在 + 看得见」校验掉
+- ✅ WebSocket 端点 `/ws/hosts/{hostId}/containers/exec?token=…`（独立于 SignalR，原始双向流；
+  容器与命令**绑进令牌**，查询串里不接受 `containerId` / `cmd`——否则一条为 A 容器签发的票会被拿去连 B）
+- ✅ 错误码 `1104`（terminal token 无效或过期）在本版启用
+- ✅ **会话留痕**：每次会话写一条 Serilog 结构化日志
+  （`sessionId` / `userId` / `hostId` / 容器名 / shell / 起止时间 / 时长 / 退出码 / 结束原因）；
+  **不记录按键内容与终端输出**
+- ✅ 前端：容器详情页内嵌 xterm.js 终端面板（FitAddon + WebLinksAddon），懒加载成独立 chunk
 
 **验收**：打开终端能执行 `ls` / `uname` 并看到输出；
 terminal token 过期后无法重连；断开后不残留容器内进程；
@@ -597,6 +601,30 @@ terminal token 过期后无法重连；断开后不残留容器内进程；
 
 > **为什么排在审计之前**：终端能直接改生产环境，却又最容易无痕。本迭代先用 Serilog 兜住空窗，
 > `0.9.0` 审计落地后**改为写审计表**（含会话起止与时长）。
+
+#### 落地记录（实测出来的约束）
+
+1. **terminal token 与 access token 共用签名密钥，靠 audience 隔离**——`aud` 是独立的
+   `whalefleet-terminal`，而主鉴权的 `ValidAudience` 是主 audience，因此它在框架的校验阶段就被拒。
+   刻意**不写**「在 `OnTokenValidated` 里比对 `typ` 再拒绝」那种代码：那正是漏判即提权的位置。
+2. **`/ws` 必须排除在 `CurrentHostMiddleware` 之外**：终端请求用 terminal token 鉴权，
+   在中间件眼里是**匿名**的，照常走 `host.read` 校验必然 1501——症状是「一开终端就 403/1501」，
+   而终端本身完全正常。主机校验与 `container.write` 判定改由端点在内部完成。
+3. **`WebSocketOptions.KeepAliveInterval` 必须小于反代的读超时**：用户盯着终端想事情时没有数据流，
+   nginx 默认 `proxy_read_timeout 60s`（本项目示例给 300s）会把连接当空闲掐掉，
+   症状是「终端莫名断开、重连又好了」。
+4. **`MultiplexedStream` 在 TTY 模式下的读是「原始字节」**：没有 8 字节帧头，
+   `ReadOutputAsync` 直接返回数据并把来源标成 stdout，因此既不用自己解帧，
+   也不能假设「一次读回来是一帧」。
+5. **exec 要求容器运行中，已暂停的同样不行**：暂停的容器 `Running` 仍为 true，
+   但 exec 会挂在启动那一刻——界面表现为「终端空白、打字没反应」。两者都归 `1404`/409。
+6. **`ExecStartContainerExecAsync` 在 4.3.3 里叫 `StartContainerExecAsync(Detach=false)`**：
+   旧的 `StartWithAttachContainerExecAsync` 已不存在；`Detach=true` 只是「在后台跑起来」，
+   拿不到输出也写不进 stdin。
+7. **resize 是文本帧、终端数据是二进制帧**：两个方向按帧类型区分，服务端不必在字节流里猜。
+   文本帧解析失败**按输入处理**（用户可能把 JSON 粘进终端）。
+8. **`TERM` 必须显式注入**（`xterm-256color`）：不给时容器里的 `TERM` 往往是 `dumb`，
+   `ls` 不出颜色、`top` 直接报错，而界面上看不出是环境变量没给。
 
 ---
 

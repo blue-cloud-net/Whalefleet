@@ -78,6 +78,48 @@
 - **状态筛选被记住**：它是「我这次要看哪一类容器」的延续，
   不记住的话每次进页面都要重新点一遍。
 
+### `0.8.0`——exec 交互式终端（内部草稿）
+
+#### 新增
+
+- **终端令牌**（`POST /api/v1/hosts/{hostId}/containers/terminal-token`）：
+  Body `{ containerId, shell?, command?, columns?, rows? }`，返回 `{ terminalToken, expiresAt }`。
+  令牌 5 分钟过期、**只对一条 WebSocket 会话有效**，且把主机 / 容器 / shell / 命令都写进声明——
+  查询串里因此**不接受** `containerId` / `cmd`（否则一条为 A 容器签发的票会被拿去连 B）。
+- **容器终端**（`GET /ws/hosts/{hostId}/containers/exec?token=…&cols=…&rows=…`）：
+  原生 WebSocket 双向流，服务端用 `Exec` + hijacked 流桥接到容器的 stdin/stdout/stderr。
+  终端数据是**二进制帧**，resize 是**文本帧** `{"type":"resize","cols":120,"rows":30}`。
+- **容器详情页的终端面板**：xterm.js 5.5（FitAddon + WebLinksAddon），
+  shell 可选（`/bin/sh` `/bin/bash` `/bin/ash` `/bin/zsh`），另有折叠的「自定义命令」
+  （按 `shell -c …` 执行）。面板**懒加载**成独立 chunk。
+- **每次会话一条留痕日志**：`sessionId` / `userId` / `hostId` / 容器名 / shell /
+  是否非交互 / 起止时间 / 时长 / 退出码 / 结束原因。**不含按键内容与终端输出**。
+- **每用户并发会话上限**（`Terminal:MaxSessionsPerUser`，默认 5）：超出时 `1404`/409。
+
+#### 变更
+
+- **终端入口按状态门控**：只有**运行中**的容器能开终端；已暂停的同样不允许
+  （暂停的容器 `Running` 仍为 true，但 exec 会挂在启动那一刻）。
+
+#### 安全
+
+- **terminal token 与 access token 共用签名密钥，靠 audience 隔离**：
+  `aud` 是独立的 `whalefleet-terminal`，而主鉴权只接受主 audience，
+  因此它在框架的校验阶段就被拒绝——刻意不写「手工比对 `typ` 再拒绝」那种代码。
+- **`/ws` 不进 `CurrentHostMiddleware`**：终端请求用 terminal token 鉴权，在那个中间件眼里是匿名的；
+  主机可见性与 `container.write` 由端点自己判定（管道里的排除只有 `/ws` 这一个前缀）。
+- **权限是 `container.write`，不是 `container.read`**：能进容器就等于能改容器里的一切。
+- **会话内容不进日志**：终端里可能敲密码、贴 token，而日志会被采集器上报到集中式系统。
+
+#### 说明
+
+- **不做一次性 exec 端点**（`POST /containers/exec`）：它没有 stdin，也算不上终端。
+- **不做终端录制 / 回放**：`0.9.0` 的审计只记会话事实（谁、何时、对哪个容器），不记内容。
+- **不做自动重连**：断线后容器里那条 exec 已经结束，自动重连只会给出一个新的空 shell，
+  而用户会以为「命令还在跑」。
+- **`KeepAliveInterval` 必须小于反代读超时**：用户盯着终端想事情时没有数据流，
+  反代会把连接当空闲掐掉——症状是「终端莫名断开、重连又好了」。
+
 ### `0.7.0`——批量操作与资源清理（内部草稿）
 
 #### 新增

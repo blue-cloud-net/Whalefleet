@@ -57,5 +57,10 @@
 # WebSocket 与 SignalR（0.5.0 的实时通道）需要 `Upgrade` / `Connection` 头成对透传，
 # nginx 版已在 `whalefleet-proxy-params.inc` 里处理。Traefik 自动处理这两条。
 #
+# 0.8.0 的交互式终端走 `/ws/...`，同样落在这条规则里。⚠️ 它另有一个要求：
+# **反代的读超时必须大于服务端的 `Terminal:KeepAliveSeconds`（默认 30s）**——
+# 用户盯着终端想事情时没有任何数据流，连接会被当成空闲连接掐断，
+# 症状是「终端莫名断开、重连又好了」。示例配置的 `proxy_read_timeout 300s` 已满足。
+#
 # ⚠️ 漏掉这两条的症状是「普通接口正常，但实时日志连不上」——
 # 因为 HTTP/1.1 的 Upgrade 头被静默丢弃，连接停在普通响应上。
