@@ -220,7 +220,7 @@ public sealed class ContainerTerminalSocketTests : IAsyncLifetime
         return client;
     }
 
-    private async Task<string> CreateAndStartContainerAsync(HttpClient client)
+    private static async Task<string> CreateAndStartContainerAsync(HttpClient client)
     {
         var name = $"ws-{Guid.NewGuid():N}"[..16];
 
