@@ -32,14 +32,25 @@ describe('路由表', () => {
     expect(roles?.meta?.icon).toBe('i-carbon-user-role')
   })
 
-  it('管理组菜单顺序：主机 → 用户 → 角色 → Registry（日常动线是「看人再建角色」）', () => {
+  it('管理组菜单顺序：主机 → 用户 → 角色 → Registry → 审计（日常动线是「看人再建角色」）', () => {
     const manage = children()
       .filter((r) => r.meta?.scope !== 'host' && r.meta?.group === 'manage')
       .map((r) => r.name)
 
-    // Registry 排在末尾：管理组前三项是「人」的动线（看主机 → 看人 → 缺角色再建），
-    // Registry 是纯基础设施配置、一配就不动，插在中间会打断日常动线。
-    expect(manage).toEqual(['hosts', 'users', 'roles', 'repositories'])
+    // Registry 与审计排在末尾：管理组前三项是「人」的动线（看主机 → 看人 → 缺角色再建），
+    // 后两项是「配一次就不动」的基础设施（Registry）与「出事才查」的审计。
+    expect(manage).toEqual(['hosts', 'users', 'roles', 'repositories', 'audit'])
+  })
+
+  it('audit 用 audit.read 权限把门（内置 auditor 只带这一项）', () => {
+    const audit = children().find((r) => r.name === 'audit')
+
+    // ⚠️ 不能用 requiresAdmin：auditor 角色只有 audit.read、没有管理面三项，
+    // 那样会把审计员整个人挡在页外。
+    expect(audit?.meta?.requiresPermission).toBe('audit.read')
+    expect(audit?.meta?.requiresAdmin).toBeUndefined()
+    expect(audit?.meta?.scope).toBe('global')
+    expect(audit?.path).toBe('audit')
   })
 
   it('repositories 用 repository.read 权限而非 requiresAdmin 把门', () => {
