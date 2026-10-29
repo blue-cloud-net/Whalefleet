@@ -1,4 +1,5 @@
 using Whalefleet.Api.Security;
+using Whalefleet.Api.Terminal;
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Permissions;
@@ -71,6 +72,19 @@ internal sealed class CurrentHostMiddleware
         ArgumentNullException.ThrowIfNull(hosts);
         ArgumentNullException.ThrowIfNull(currentUser);
         ArgumentNullException.ThrowIfNull(permissions);
+
+        // ⚠️ /ws（0.8.0 的交互式终端）在这里是**匿名**请求：它用 terminal token 鉴权，
+        // 而不是 access token，因此 HttpContext.User 没有任何身份。若照常往下走，
+        // 下面那句 HasPermissionAsync(Guid.Empty, …) 必然为 false，
+        // 结果是「一开终端就 1501」——而终端本身完全正常。
+        //
+        // 它的主机校验与 container.write 判定在端点内部自己做（见 ContainerTerminalEndpoint），
+        // 不是"漏保护"，而是**换了一种凭证**。排除必须写在管道里、且只能排除这一个前缀。
+        if (context.Request.Path.StartsWithSegments(TerminalRoutes.Prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            await _next(context).ConfigureAwait(false);
+            return;
+        }
 
         var hostId = context.GetRouteData().Values[RouteValueKey] as string;
 

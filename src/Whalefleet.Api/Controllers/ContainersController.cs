@@ -1,5 +1,7 @@
 using System.Globalization;
+using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Realtime;
+using Whalefleet.Application.Abstractions.Terminal;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Containers;
 using Microsoft.AspNetCore.Authorization;
@@ -28,6 +30,10 @@ public sealed class ContainersController : ControllerBase
     private readonly ContainerService _containers;
     private readonly IContainerLogProvider _logProvider;
     private readonly ContainerHealthService _health;
+    private readonly ContainerTerminalService _terminals;
+    private readonly ITerminalTokenService _terminalTokens;
+    private readonly ICurrentUser _currentUser;
+    private readonly TimeProvider _clock;
 
     /// <summary>
     /// 初始化容器查询控制器。
@@ -35,19 +41,35 @@ public sealed class ContainersController : ControllerBase
     /// <param name="containers">容器查询用例。</param>
     /// <param name="logProvider">容器日志流（下载端点用）。</param>
     /// <param name="health">容器健康与退出原因的批量查询。</param>
+    /// <param name="terminals">交互式终端用例（授权 + 会话）。</param>
+    /// <param name="terminalTokens">terminal token 签发。</param>
+    /// <param name="currentUser">当前登录用户（终端令牌要绑定到人）。</param>
+    /// <param name="clock">时间源（令牌过期时刻）。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
     public ContainersController(
         ContainerService containers,
         IContainerLogProvider logProvider,
-        ContainerHealthService health)
+        ContainerHealthService health,
+        ContainerTerminalService terminals,
+        ITerminalTokenService terminalTokens,
+        ICurrentUser currentUser,
+        TimeProvider clock)
     {
         ArgumentNullException.ThrowIfNull(containers);
         ArgumentNullException.ThrowIfNull(logProvider);
         ArgumentNullException.ThrowIfNull(health);
+        ArgumentNullException.ThrowIfNull(terminals);
+        ArgumentNullException.ThrowIfNull(terminalTokens);
+        ArgumentNullException.ThrowIfNull(currentUser);
+        ArgumentNullException.ThrowIfNull(clock);
 
         _containers = containers;
         _logProvider = logProvider;
         _health = health;
+        _terminals = terminals;
+        _terminalTokens = terminalTokens;
+        _currentUser = currentUser;
+        _clock = clock;
     }
 
     /// <summary>
@@ -142,6 +164,60 @@ public sealed class ContainersController : ControllerBase
         var result = await _health.GetAsync(hostId, request, cancellationToken).ConfigureAwait(false);
 
         return this.Ok(ApiResults.Ok(result));
+    }
+
+    /// <summary>
+    /// 申请一个打开交互式终端用的短时令牌。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">终端请求（容器标识、可选 shell / 命令 / 尺寸）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应，<c>data</c> 为 <see cref="ContainerTerminalTokenResult"/>。</returns>
+    /// <response code="200">签发成功（令牌 5 分钟内有效，仅用于 <c>/ws</c> 终端握手）。</response>
+    /// <response code="400">容器标识为空、shell 不在白名单、命令超长或被禁用（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）或缺 <c>container.write</c>（<c>1502</c>）。</response>
+    /// <response code="404">主机（<c>1300</c>）或容器（<c>1401</c>）不存在。</response>
+    /// <response code="409">容器未运行或已暂停（<c>1404</c>）。</response>
+    /// <remarks>
+    /// <para><b>为什么令牌要单独签发，而不是 WebSocket 直接用 access token</b>：
+    /// 浏览器建立 WebSocket 时不能自定义请求头，令牌只能进 URL，而 URL 会进访问日志、
+    /// 反代日志与浏览器历史。把 15 分钟的 access token 放进去等于把整个 API 的钥匙抄在门口。</para>
+    /// <para><b>为什么把能诊断的错误放在这一步</b>：WebSocket 握手失败时前端只拿到一个
+    /// <c>close</c> 事件（通常还是 1006），看不到状态码。因此「容器不存在 / 未运行 / 没权限」
+    /// 必须在本端点暴露——用户点开面板看到的是具体原因，而不是"连接失败"。</para>
+    /// <para><b>权限是 <c>container.write</c></b>：能进容器就等于能改容器里的任何东西，
+    /// 因此读权限（<c>container.read</c>）不足以免责。</para>
+    /// </remarks>
+    [HttpPost("terminal-token")]
+    [ProducesResponseType(typeof(ApiResult<ContainerTerminalTokenResult>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> CreateTerminalTokenAsync(
+        string hostId,
+        [FromBody] ContainerTerminalRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = _currentUser.UserId
+            ?? throw BusinessException.Unauthenticated("签发终端令牌需要已登录用户");
+
+        var target = await _terminals
+            .AuthorizeAsync(hostId, userId, request, cancellationToken)
+            .ConfigureAwait(false);
+
+        var token = _terminalTokens.Create(
+            new TerminalSessionGrant(
+                userId,
+                target.HostName,
+                target.ContainerId,
+                target.Shell,
+                target.Command),
+            _clock.GetUtcNow().UtcDateTime);
+
+        return this.Ok(ApiResults.Ok(new ContainerTerminalTokenResult(token.Value, token.ExpiresAt)));
     }
 
     /// <summary>
