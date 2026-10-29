@@ -970,7 +970,7 @@ const connection = new HubConnectionBuilder()
 4. 建立双向流：Exec.CreateContainerExecAsync(TTY) + StartContainerExecAsync(Detach=false)
    → MultiplexedStream 桥接到 WebSocket
 
-5. 关闭 WebSocket 时释放 exec 实例并写一条会话留痕日志
+5. 关闭 WebSocket 时释放 exec 实例，并写一条 `container.exec` 审计（会话 ID / 时长 / 退出码 / 结束原因）
 ```
 
 **三条关键设计**
@@ -984,6 +984,51 @@ const connection = new HubConnectionBuilder()
 > ⚠️ `/ws` 的请求在 `CurrentHostMiddleware` 眼里是**匿名**的（它用的是 terminal token，不是 access token），
 > 因此那个中间件显式跳过了 `/ws` 前缀，改由端点自己解析主机、校验 `container.write`。
 > 不跳过的话症状是「一开终端就 1501」，而终端本身完全正常。
+
+### 操作审计（0.9.0）
+
+审计回答「谁在什么时候对什么做了什么、结果如何」，因此它**不是日志系统的一部分**：
+Serilog 写给运维看，审计写给人查责任。两者唯一的交集是故障排查。
+
+```
+Controller / Endpoint
+      │  ① 业务动作（正常路径）
+      ▼
+Application Service  ──② IAuditLogger.WriteAsync(...)──▶  audit_logs（SQLite）
+      │                                                       ▲
+      │  ③ 失败（抛 BusinessException）                        │
+      ▼                                                       │
+ExceptionHandlingMiddleware ──────────────────────────────────┘
+      （只有 5xx 才兜底，4xx 是正常业务反馈）
+
+AuditFallbackMiddleware（在 UseStatusCodePages 之后）
+      └─ 只记「没被任何应用服务记录的 5xx」，补上最后的黑洞
+```
+
+**五条设计决定**
+
+| 决定 | 理由 |
+|------|------|
+| 埋点在**应用服务层**，不在 Controller | 同一用例有多个入口（REST、未来的 AI 工具调用、定时任务）。放 Controller 会漏；放中间件只能拿到 URL 与状态码，说不出「哪个容器」 |
+| 写库，且**名字存快照** | 用户与资源都会消失。审计表刻意**不建外键**：建了就只有两种结局——删资源时连带删掉它的审计，或写入因目标已删而失败 |
+| 写入 **best-effort** | `IAuditLogger` 内部吞异常并降级成 Error 日志。磁盘满时「启动容器」仍应能启动——宁可少一条审计，也不能让运维点不动任何按钮 |
+| 兜底只记 **5xx** | 4xx 里绝大多数是正常业务反馈（容器不存在、权限不足、参数写错），而「列表页轮询撞上刚被删的容器」会稳定地每秒产生一条 404。全塞进来，真正要追溯的 500 就被淡没了 |
+| 表**只增不改** | 没有 `is_deleted`、没有 UPDATE、没有自动清理。删除历史审计与「不可篡改」直接冲突；容量靠按时间范围导出 + 归档（1.0.0 之后）解决 |
+
+**`outcome` 三级语义**（不是「成功 / 失败」二分）：
+
+| 值 | 含意 | 典型场景 |
+|----|------|----------|
+| `success` | 动作完成，外部资源已变更 | 容器已启动 |
+| `denied` | **规则不允许或权限不足**，请求被业务层拒了 | 缺 `container.write`、尝试删内置网络、登录限流 |
+| `failure` | 动作开始了但**外部资源出错** | 守护进程不可达、镜像拉取失败、exec 中途断开 |
+
+`denied` 与 `failure` 必须分开：前者要去改权限或改需求，后者要去查主机。混成一个值，
+两种完全不同的后续动作就被塞进同一个筛选项里。
+
+**`AuditFallbackMiddleware` 的位置不能挪**：它必须跑在 `ExceptionHandlingMiddleware` **之内**（即注册在它之后），
+否则异常在管道最外层就被转成响应，兜底中间件根本看不到 `500`。它同时捕获异常与状态码两条路径——
+只读状态码会漏掉那些已经被异常处理器写过响应的请求。
 
 ---
 

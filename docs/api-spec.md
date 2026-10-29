@@ -424,7 +424,8 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 容器接入 / 断开网络 | `POST /api/v1/hosts/{hostId}/networks/{connect,disconnect}` | 0.7.0 |
 | 认证日志列表 | `POST /api/v1/admin/logs/authentication/list` | 0.9.0 |
 | 活动日志列表 | `POST /api/v1/admin/logs/activity/list` | 0.9.0 |
-| 审计导出 | `POST /api/v1/admin/logs/activity/export` | 0.9.0 |
+| 审计导出 | `POST /api/v1/admin/logs/{activity,authentication}/export` | 0.9.0 |
+| 主机事件 | `POST /api/v1/hosts/{hostId}/events/list` | 0.9.0 |
 | Stack 管理 | `POST /api/v1/hosts/{hostId}/stacks/{list,deploy,update,stop,remove}` | 0.10.0 |
 | 告警规则 | `POST /api/v1/admin/alert-rules/{list,update}` | 0.11.0 |
 | 通知中心 | `POST /api/v1/notifications/{list,read}` | 0.11.0 |
@@ -2095,6 +2096,97 @@ nginx: [emerg] …
 **关闭语义**：一端结束即拆整条会话（两个方向是绑死的）。客户端 `close` 或容器内进程退出后，服务端释放 exec 会话并写一条结构化留痕日志（`sessionId` / `userId` / `hostId` / 容器名 / shell / 是否非交互 / 起止时间 / 时长 / 退出码 / 结束原因）。**日志不含按键内容与终端输出**——里面可能有密码与 token。
 
 **保活**：`WebSocketOptions.KeepAliveInterval`（`Terminal:KeepAliveSeconds`，默认 30s）必须小于反代的读超时，否则「用户盯着终端想事情」超过超时时间后连接会被反代掐断，症状是「终端莫名断开、重连又好了」。
+
+---
+
+## 操作审计（0.9.0）
+
+回答「谁在什么时候对什么做了什么、结果如何」。**写库而非只写日志**——日志会被轮转、被采样、被按保留期删掉，而审计要回答的是「三个月前是谁删了那台主机」。
+
+### 写入口径
+
+> 写入由**应用服务层统一埋点**（不是每个 Controller 各写一遍）；`AuditFallbackMiddleware` 兜底记 **5xx**。
+
+| 项 | 口径 |
+|----|------|
+| 写失败 | **best-effort**：不让业务失败，只记 Error 日志。宁可少一条审计，也不要因为审计写不进去而让运维点不动任何按钮 |
+| 名字 | `actor_name` / `target_name` / `host_name` 都是**写入时的快照**，不建外键。容器/用户被删后，记录仍能显示当时的名字 |
+| 内容约束 | **绝不写入密码、令牌、环境变量值**；`detail` 只放会话 ID / 耗时 / 退出码 / 变更字段这类排障信息 |
+| 可删性 | **没有删除、清空端点，也没有软删除**。可被删的审计等于没有审计 |
+| 认证日志 | 登录（成功 / 凭据错误 / 限流）、登出、刷新令牌重放（该用户全部会话被撤销）。**每次失败都记一条**——刷表风险由登录限流兜住（同 IP + 用户名 5 次/分钟） |
+| 活动日志 | 写操作全记 + 四类**敏感读**：`container.inspect`（响应含 env）/ `container.logs.download` / `container.exec`（终端会话）/ `audit.export`（导出本身要留痕） |
+
+### `outcome` 三档
+
+| 值 | 含义 | 典型场景 |
+|----|------|---------|
+| `success` | 成功 | 容器启动、角色授予 |
+| `denied` | **规则**挡住 | 权限不足、登录限流 |
+| `failure` | 规则放行但**执行**出错 | 守护进程不可达、容器已不存在 |
+
+> `denied` 与 `failure` 不能合并：前者资源没被碰过、要回答「该不该给他权限」；后者要排障。处置人往往不是同一个。
+
+### 端点
+
+| 操作 | 路径 | 权限 |
+|------|------|------|
+| 认证日志列表 | `POST /api/v1/admin/logs/authentication/list` | `audit.read` |
+| 活动日志列表 | `POST /api/v1/admin/logs/activity/list` | `audit.read` |
+| 认证日志导出 | `POST /api/v1/admin/logs/authentication/export` | `audit.read` |
+| 活动日志导出 | `POST /api/v1/admin/logs/activity/export` | `audit.read` |
+| 主机事件（该主机的活动日志） | `POST /api/v1/hosts/{hostId}/events/list` | `host.read`（由 `CurrentHostMiddleware` 校验） |
+
+> **为什么主机事件单独一条路径**：`hostId` 只出现在路径中（项目铁律），而请求体里多一个后端不认识的字段不会报错、只会被静默忽略——症状是「筛了这台主机却看到全部」。
+
+**请求体**（四个查询/导出端点共用）：
+
+```jsonc
+{
+  "from": "2026-10-23T00:00:00Z",   // 省略时取 to 往前 7 天
+  "to": "2026-10-30T00:00:00Z",     // 省略时取当前时间
+  "actor": "admin",                  // 操作者名模糊匹配
+  "action": "container.start",       // 精确匹配
+  "targetType": "container",         // 精确匹配
+  "outcome": "success",              // success | denied | failure；省略表示全部
+  "search": "nginx",                 // 目标名 / 主机名 / 说明 / 操作者 四处模糊匹配
+  "pageIndex": 0,
+  "pageSize": 20                     // 上限 100，超出会夹紧并回显实际值
+}
+```
+
+**响应**（列表）：
+
+```jsonc
+{
+  "success": true, "code": 0, "message": "ok",
+  "data": {
+    "items": [{
+      "id": "…", "occurredAt": "2026-10-30T09:00:00Z",
+      "action": "container.start", "actorName": "admin",
+      "targetType": "container", "targetName": "nginx", "hostName": "local",
+      "outcome": "success", "errorCode": null,
+      "clientIp": "192.168.1.10", "detail": "等待=默认"
+    }],
+    "total": 137, "pageIndex": 0, "pageSize": 20
+  }
+}
+```
+
+> **默认时间窗是 7 天**：审计表只增不减，不设窗口的查询会随运行时间变慢；「查询全部」在界面上也从来不是有意义的默认值。`from > to` 报 `1000`（**不静默交换**——交换会让人以为筛的是另一段时间）。
+
+### CSV 导出
+
+- `Content-Type: text/csv; charset=utf-8`，`Content-Disposition: attachment; filename="audit-{activity|authentication}-{yyyyMMdd-HHmm}.csv"`
+- **带 UTF-8 BOM**：Excel 靠它判定编码，缺了中文列头会乱码
+- 行尾 **CRLF**（RFC 4180），包含 `,` / `"` / 换行的字段加引号、引号成对翻倍
+- **单次上限 5 万行**：超限时返回 `1000` 并提示缩小时间范围，**不截断**——被截断的文件不会报错，却会被当成完整证据
+- 列与页面列一致：
+
+| 活动日志（10 列） | 认证日志（7 列） |
+|------|------|
+| 时间 (UTC) / 操作人 / 动作 / 目标类型 / 目标 / 主机 / 结果 / 错误码 / 来源 IP / 说明 | 时间 (UTC) / 用户 / 动作 / 结果 / 错误码 / 来源 IP / 说明 |
+
+> **容量**：审计表**不自动清理**（删历史审计与「不可篡改」直接冲突）。长期运行需运维自行导出归档；自动归档排到 1.0.0 之后。
 
 ---
 
