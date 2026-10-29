@@ -1,5 +1,6 @@
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Realtime;
+using Whalefleet.Application.Abstractions.Terminal;
 using Whalefleet.Application.Auth;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Containers;
@@ -125,6 +126,19 @@ public static class ApplicationServiceCollectionExtensions
             provider.GetRequiredService<ContainerStreamService>());
         services.AddScoped<IContainerStatsProvider>(static provider =>
             provider.GetRequiredService<ContainerStreamService>());
+
+        // 容器交互式终端（0.8.0）。Scoped：依赖 Scoped 的主机访问器与权限判定
+        // （终端是「某个人在某台主机上的某条会话」，天然带请求身份）。
+        services.AddScoped<ContainerTerminalService>();
+
+        // 终端选项（0.8.0）的**形状**定义在应用层（用例服务要用它做白名单与上限判定），
+        // 而**绑定与校验放在 Api 层**——与 RealtimeOptions 同一处理方式。
+        // 这里注册一次「空」的选项类型，保证只用应用层时也能解析出默认值。
+        services.AddOptions<TerminalOptions>();
+
+        // 终端会话计数器（0.8.0）：**Singleton**——它数的是「所有连接」，
+        // 注册成 Scoped 等于没有上限。
+        services.AddSingleton<TerminalSessionRegistry>();
 
         return services;
     }
