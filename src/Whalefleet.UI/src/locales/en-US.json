@@ -1080,6 +1080,7 @@
       "network": "Networks",
       "repository": "Repository",
       "role": "Roles",
+      "stack": "Stacks",
       "user": "Users",
       "volume": "Volumes"
     },
@@ -1108,6 +1109,10 @@
       "container": "Container scope",
       "global": "Global scope",
       "host": "Host scope"
+    },
+    "stack": {
+      "read": "View stacks",
+      "write": "Deploy / update stacks"
     },
     "user": {
       "read": "View users",

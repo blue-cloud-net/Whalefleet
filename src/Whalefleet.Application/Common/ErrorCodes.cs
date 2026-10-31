@@ -16,9 +16,10 @@ namespace Whalefleet.Application.Common;
 ///   <item><term>1300-1399</term><description>主机管理</description></item>
 ///   <item><term>1400-1499</term><description>资源操作（容器 / 镜像 / Volume / Network）</description></item>
 ///   <item><term>1500-1599</term><description>资源权限</description></item>
-///   <item><term>1800-1699</term><description>操作审计（0.9.0 起）</description></item>
-///   <item><term>1700-1799</term><description>告警与通知（0.11.0 起）</description></item>
+///   <item><term>1600-1699</term><description>操作审计（0.9.0 起，预留）</description></item>
+///   <item><term>1700-1799</term><description>告警与通知（0.11.0 起，预留）</description></item>
 ///   <item><term>1800-1899</term><description>仓库配置与镜像构建 / 推送</description></item>
+///   <item><term>1900-1999</term><description>编排 Stack（0.10.0 起）</description></item>
 ///   <item><term>9000-9999</term><description>服务器内部错误</description></item>
 /// </list>
 /// <para><b>重要</b>：同一分段内的 HTTP 语义并不统一——例如 <see cref="DockerOperationFailed"/>
@@ -219,6 +220,66 @@ public static class ErrorCodes
 
     /// <summary>镜像推送失败（HTTP 500）。</summary>
     public const int ImagePushFailed = 1807;
+
+    // ==================== 1900-1999 编排 Stack ====================
+
+    /// <summary>编排 Stack 不存在（HTTP 404）。</summary>
+    /// <remarks>
+    /// 与 <see cref="DockerResourceNotFound"/>（1401）分开：那个是「守护进程上没有这个资源」，
+    /// 本码是「本系统没登记这个 Stack」。两者的处置完全不同——一个该去 Docker 侧看，
+    /// 一个该检查是不是在另一台主机上。
+    /// </remarks>
+    public const int StackNotFound = 1900;
+
+    /// <summary>Stack 部署 / 更新失败（HTTP 500）。</summary>
+    /// <remarks>
+    /// 归 500 而不是 400：请求本身是合法的，失败发生在与守护进程交互的过程中。
+    /// 消息里带失败的具体位置（哪个服务、哪一步）。
+    /// </remarks>
+    public const int StackDeployFailed = 1901;
+
+    /// <summary>Stack 名称已被占用（HTTP 400）。</summary>
+    /// <remarks>
+    /// 与 <see cref="HostNameAlreadyExists"/> 同类：同一台主机上不能有两个同名项目，
+    /// 而 Compose 项目名同时也是容器与网络标签的组成部分，重名会让两者混作一谈。
+    /// </remarks>
+    public const int StackNameAlreadyExists = 1902;
+
+    /// <summary>该 Stack 不是本平台部署的，无法更新（HTTP 409）。</summary>
+    /// <remarks>
+    /// 「更新」需要原始 YAML，而外部 compose 项目（用户自己在命令行 <c>docker compose up</c> 的）
+    /// 的 YAML 我们没有。因此这类项目只能停止 / 删除，不能更新。
+    /// 报 409 而不是 400：请求格式没错，是<b>资源当前状态</b>不允许这个操作。
+    /// </remarks>
+    public const int StackNotManaged = 1903;
+
+    /// <summary>Compose 文件非法或含暂不支持的字段（HTTP 400）。</summary>
+    /// <remarks>
+    /// <b>必须显式报错而不是静默忽略</b>：静默忽略会产出「YAML 里写了的没生效」这种
+    /// 最难排查的故障——用户看到服务起来了，但端口没映射 / 环境变量没注入，
+    /// 而界面上没有任何提示。消息里带完整的字段路径（如 <c>services.api.healthcheck</c>）。
+    /// </remarks>
+    public const int ComposeInvalid = 1904;
+
+    /// <summary>该 Stack 已有进行中的操作（HTTP 409）。</summary>
+    /// <remarks>
+    /// 部署 / 更新 / 停止 / 删除都是「先停后建」的整套动作，两个重叠执行会互相踩
+    /// （一个在删容器，另一个在建同名容器）。因此同一 Stack 同时只允许一个任务在跑。
+    /// </remarks>
+    public const int StackOperationInProgress = 1905;
+
+    /// <summary>Webhook 令牌无效、已吊销或未启用（HTTP 404）。</summary>
+    /// <remarks>
+    /// <b>不区分三种情况</b>：区分了就成了令牌探测工具——攻击者能靠状态码差异
+    /// 确认「这个令牌曾经存在过」。一律 404。
+    /// </remarks>
+    public const int StackWebhookTokenInvalid = 1906;
+
+    /// <summary>Webhook 触发过于频繁（HTTP 429）。</summary>
+    /// <remarks>
+    /// 触发一次就是一次完整部署（可能拉镜像），不加限制的话一个循环的 CI 会把守护进程打满。
+    /// </remarks>
+    public const int StackWebhookRateLimited = 1907;
 
     // ==================== 9000-9999 服务器内部错误 ====================
 

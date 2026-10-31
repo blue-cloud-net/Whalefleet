@@ -127,6 +127,24 @@ export const ErrorCode = {
   /** 镜像推送失败 */
   ImagePushFailed: 1807,
 
+  // ===== 1900-1999 编排 Stack =====
+  /** 编排 Stack 不存在 */
+  StackNotFound: 1900,
+  /** Stack 部署 / 更新失败 */
+  StackDeployFailed: 1901,
+  /** Stack 名称已被占用 */
+  StackNameAlreadyExists: 1902,
+  /** 该 Stack 不是本平台部署的，无法更新 */
+  StackNotManaged: 1903,
+  /** Compose 文件非法或含暂不支持的字段 */
+  ComposeInvalid: 1904,
+  /** 该 Stack 已有进行中的操作 */
+  StackOperationInProgress: 1905,
+  /** Webhook 令牌无效或已吊销 */
+  StackWebhookTokenInvalid: 1906,
+  /** Webhook 触发过于频繁 */
+  StackWebhookRateLimited: 1907,
+
   // ===== 9000-9999 服务器内部错误 =====
   /** 服务器内部错误（未捕获异常） */
   InternalError: 9999

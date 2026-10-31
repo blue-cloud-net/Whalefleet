@@ -1080,6 +1080,7 @@
       "network": "网络",
       "repository": "仓库",
       "role": "角色",
+      "stack": "编排",
       "user": "用户",
       "volume": "数据卷"
     },
@@ -1108,6 +1109,10 @@
       "container": "容器作用域",
       "global": "全局作用域",
       "host": "主机作用域"
+    },
+    "stack": {
+      "read": "查看编排",
+      "write": "部署 / 更新编排"
     },
     "user": {
       "read": "查看用户",
