@@ -497,28 +497,49 @@ public class StackEndpointsTests : IAsyncLifetime
     /// <param name="client">已认证客户端。</param>
     /// <param name="name">Stack 名称。</param>
     /// <returns>表示异步操作的任务。</returns>
+    /// <remarks>
+    /// <para><b>为什么删除可能先撞上 1905</b>：同一个 Stack 不允许并发任务，
+    /// 而刚发起的部署可能还在跑。因此这里**重试**，
+    /// 而不是把一次 409 当成「删除失败」就放弃——
+    /// 放弃的话残留的网络会占掉网段，让别的集成测试（子网 / IPAM）随机地 409。</para>
+    /// <para><b>清理失败不该让用例本身失败</b>：用例的断言已经跑完了，
+    /// 而残留会在下一轮造成莫名其妙的失败。</para>
+    /// </remarks>
     private static async Task CleanupAsync(HttpClient client, string name)
     {
         try
         {
-            using var response = await client.PostAsJsonAsync(
-                $"/api/v1/hosts/{_localHost}/stacks/remove",
-                new { name, taskId = NewTaskId(), removeVolumes = true });
-
-            if (response.StatusCode == HttpStatusCode.Accepted)
+            for (var attempt = 0; attempt < 60; attempt++)
             {
-                var body = await ReadAsync(response);
-                var taskId = body.GetProperty("data").GetProperty("taskId").GetString();
+                using var response = await client.PostAsJsonAsync(
+                    $"/api/v1/hosts/{_localHost}/stacks/remove",
+                    new { name, taskId = NewTaskId(), removeVolumes = true });
 
-                if (!string.IsNullOrWhiteSpace(taskId))
+                if (response.StatusCode == HttpStatusCode.Accepted)
                 {
-                    await WaitForTerminalAsync(client, taskId);
+                    var body = await ReadAsync(response);
+                    var taskId = body.GetProperty("data").GetProperty("taskId").GetString();
+
+                    if (!string.IsNullOrWhiteSpace(taskId))
+                    {
+                        await WaitForTerminalAsync(client, taskId);
+                    }
+
+                    return;
                 }
+
+                if (response.StatusCode != HttpStatusCode.Conflict)
+                {
+                    return;
+                }
+
+                // 1905：该 Stack 还有任务在跑，等它结束再来
+                await Task.Delay(500);
             }
         }
         catch (Exception)
         {
-            // 清理失败不该让用例本身失败——用例的断言已经跑完了
+            // 清理失败不该让用例本身失败
         }
     }
 

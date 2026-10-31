@@ -281,12 +281,59 @@ public class StackWebhookEndpointsTests : IAsyncLifetime
             System.Text.Encoding.UTF8.GetBytes(token))).ToLowerInvariant();
 
     /// <summary>
-    /// 清掉本次用例留下的记录。
+    /// 清掉本次用例留下的全部资源。
     /// </summary>
     /// <param name="client">已认证客户端。</param>
     /// <param name="name">Stack 名称。</param>
     /// <returns>表示异步操作的任务。</returns>
+    /// <remarks>
+    /// <para><b>Webhook 触发会真的部署</b>：它入队的是一次真实的「更新」操作，
+    /// 因此会在守护进程上建出网络与容器。清库里的记录是不够的——
+    /// 残留的网络会占掉网段，让别的集成测试（子网 / IPAM）随机地 409。</para>
+    /// <para><b>为什么删除可能先撞上 1905</b>：同一个 Stack 不允许并发任务，
+    /// 而触发出来的部署任务可能还在跑。因此这里**重试**，
+    /// 而不是把一次 409 当成「删除失败」就放弃。</para>
+    /// </remarks>
     private async Task CleanupAsync(HttpClient client, string name)
+    {
+        for (var attempt = 0; attempt < 60; attempt++)
+        {
+            using var response = await client.PostAsJsonAsync(
+                $"/api/v1/hosts/{_localHost}/stacks/remove",
+                new { name, taskId = Guid.NewGuid().ToString("N"), removeVolumes = true });
+
+            if (response.StatusCode == HttpStatusCode.Accepted)
+            {
+                var body = await ReadAsync(response);
+                var taskId = body.GetProperty("data").GetProperty("taskId").GetString();
+
+                if (!string.IsNullOrWhiteSpace(taskId))
+                {
+                    await WaitForTerminalAsync(client, taskId);
+                }
+
+                break;
+            }
+
+            if (response.StatusCode != HttpStatusCode.Conflict)
+            {
+                break;
+            }
+
+            // 1905：该 Stack 还有任务在跑，等它结束再来
+            await Task.Delay(500);
+        }
+
+        // 兜底：删除任务失败时库里的记录仍要清掉
+        await this.DeleteRecordAsync(name);
+    }
+
+    /// <summary>
+    /// 直接删掉库里的 Stack 记录。
+    /// </summary>
+    /// <param name="name">Stack 名称。</param>
+    /// <returns>表示异步操作的任务。</returns>
+    private async Task DeleteRecordAsync(string name)
     {
         using var scope = _factory.Services.CreateScope();
         var repository = scope.ServiceProvider.GetRequiredService<IStackRepository>();
@@ -305,6 +352,51 @@ public class StackWebhookEndpointsTests : IAsyncLifetime
         {
             await repository.RemoveByIdAsync(entity.Id);
         }
+    }
+
+    /// <summary>
+    /// 轮询任务直到落到终态。
+    /// </summary>
+    /// <param name="client">已认证客户端。</param>
+    /// <param name="taskId">任务标识。</param>
+    /// <returns>终态快照。</returns>
+    private static async Task<TaskPayload> WaitForTerminalAsync(HttpClient client, string taskId)
+    {
+        for (var attempt = 0; attempt < 240; attempt++)
+        {
+            var snapshot = await PostDataAsync<TaskPayload>(client, "task", new { taskId });
+
+            if (snapshot is not null
+                && (snapshot.Status == "succeeded" || snapshot.Status == "failed"))
+            {
+                return snapshot;
+            }
+
+            await Task.Delay(250);
+        }
+
+        throw new TimeoutException($"编排任务 {taskId} 在预期时间内没有落到终态");
+    }
+
+    /// <summary>
+    /// 调用主机作用域的端点并读出 <c>data</c>。
+    /// </summary>
+    /// <param name="client">已认证客户端。</param>
+    /// <param name="action">动作名。</param>
+    /// <param name="body">请求体。</param>
+    /// <typeparam name="T">数据类型。</typeparam>
+    /// <returns>数据。</returns>
+    private static async Task<T> PostDataAsync<T>(HttpClient client, string action, object body)
+    {
+        using var response = await client.PostAsJsonAsync(
+            $"/api/v1/hosts/{_localHost}/stacks/{action}",
+            body);
+
+        response.StatusCode.Should().Be(
+            HttpStatusCode.OK,
+            $"“{action}” 应当成功：{await response.Content.ReadAsStringAsync()}");
+
+        return await ReadDataAsync<T>(response);
     }
 
     private async Task<HttpClient> CreateAuthenticatedClientAsync()
@@ -344,4 +436,12 @@ public class StackWebhookEndpointsTests : IAsyncLifetime
     }
 
     private sealed record LoginPayload(string AccessToken);
+
+    private sealed record TaskPayload(
+        string TaskId,
+        string StackName,
+        string Operation,
+        string Status,
+        int? ErrorCode,
+        string? ErrorMessage);
 }
