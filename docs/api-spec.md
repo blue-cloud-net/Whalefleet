@@ -1987,16 +1987,21 @@ nginx: [emerg] …
 > 不会推通知——那种情况由页面自己的操作触发刷新。
 > `outOfMemory` 为 `true` 时 `exitCode` 通常是 `137`。
 
-### Image Pull / Build 进度频道（0.5.0）
+### 后台操作进度频道（0.5.0；0.10.0 起泛化）
 
 进度是**按请求**的（一个令牌对应一次操作），因此放在全局 Hub 上最自然。
+
+> **0.10.0 改名**：原为 `SubscribePull` / `UnsubscribePull` / `OnPullProgress`（镜像拉取专用）。
+> 编排 Stack 的部署 / 更新也走这条通道，因此泛化为
+> `SubscribeOperation` / `UnsubscribeOperation` / `OnOperationProgress`。
+> **0.x 期间允许破坏性变更**，不保留旧名。
 
 **客户端 → 服务端**
 
 | 方法 | 参数 | 说明 |
 |------|------|------|
-| `SubscribePull` | `token: string` | 订阅某次镜像操作的进度 |
-| `UnsubscribePull` | `token: string` | 取消订阅 |
+| `SubscribeOperation` | `token: string` | 订阅某次后台操作的进度 |
+| `UnsubscribeOperation` | `token: string` | 取消订阅 |
 
 **令牌由客户端生成**：服务端没法凭空知道「这次拉取对应哪条连接」——
 拉取请求是一个独立的 HTTP 请求，与 Hub 连接没有天然关联。
@@ -2010,7 +2015,7 @@ nginx: [emerg] …
 
 | 事件 | 数据 | 说明 |
 |------|------|------|
-| `OnPullProgress` | `{ token, operation, percent, status, done, error }` | 推进度 |
+| `OnOperationProgress` | `{ token, operation, percent, status, done, error }` | 推进度 |
 
 > `percent` **可能为 `null`**——算不出总体进度时**不能给 0**（那会被读成「没进度」）。
 > `done` 为 `true` 表示操作已成功结束；失败时 `error` 给出原因。

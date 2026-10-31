@@ -234,7 +234,7 @@ public sealed class ImageBuildPushService
             return;
         }
 
-        var progress = new Abstractions.Realtime.ImageOperationProgress(
+        var progress = new Abstractions.Realtime.OperationProgress(
             progressToken,
             operation,
             percent,
@@ -536,7 +536,7 @@ public sealed class ImageBuildPushService
                 return;
             }
 
-            var progress = new Abstractions.Realtime.ImageOperationProgress(
+            var progress = new Abstractions.Realtime.OperationProgress(
                 _progressToken,
                 _operation,
                 this._aggregator.Percent,

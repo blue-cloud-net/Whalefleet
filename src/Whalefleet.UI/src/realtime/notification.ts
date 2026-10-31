@@ -3,15 +3,15 @@ import type { HubConnection } from '@microsoft/signalr'
 import { createHubConnection } from '@/realtime/connection'
 import { createMockNotificationSource } from '@/realtime/mock'
 import { shouldUseMock } from '@/mocks/switch'
-import type { ContainerDiedEvent, ImageOperationProgress } from '@/types/api'
+import type { ContainerDiedEvent, OperationProgress } from '@/types/api'
 
 /**
  * 全局通知 Hub 的**共享连接**（0.5.0）。
  *
  * ## 为什么共享
- * 通知 Hub 上有两类订阅：容器退出事件（全局）与镜像操作进度（按令牌）。
- * 它们本来会由三个地方分别建连接——顶栏铃铛、容器列表、镜像进度对话框——
- * 三个 SignalR 连接就是三条到服务端的长连接，纯粹是浪费。
+ * 通知 Hub 上有两类订阅：容器退出事件（全局）与后台操作进度（按令牌）。
+ * 它们本来会由多个地方分别建连接——顶栏铃铛、容器列表、镜像进度对话框、编排任务——
+ * 多个 SignalR 连接就是多条到服务端的长连接，纯粹是浪费。
  *
  * 这里把它们**复用**到一条连接上：第一个订阅者到达时建立连接，
  * 最后一个订阅者离开时关闭连接。中间不管有几个订阅者，连接始终只有一条。
@@ -25,8 +25,8 @@ import type { ContainerDiedEvent, ImageOperationProgress } from '@/types/api'
 /** 容器退出事件的处理函数。 */
 export type ContainerDiedHandler = (event: ContainerDiedEvent) => void
 
-/** 镜像操作进度的处理函数。 */
-export type ProgressHandler = (progress: ImageOperationProgress) => void
+/** 后台操作进度的处理函数。 */
+export type ProgressHandler = (progress: OperationProgress) => void
 
 /** 容器退出事件的订阅者。 */
 const diedHandlers = new Set<ContainerDiedHandler>()
@@ -59,7 +59,7 @@ function dispatchDied(event: ContainerDiedEvent): void {
  *
  * @param progress 进度。
  */
-function dispatchProgress(progress: ImageOperationProgress): void {
+function dispatchProgress(progress: OperationProgress): void {
   const handler = progressHandlers.get(progress.token)
   handler?.(progress)
 }
@@ -72,7 +72,7 @@ function dispatchProgress(progress: ImageOperationProgress): void {
 async function subscribeAllProgress(hub: HubConnection): Promise<void> {
   for (const token of progressHandlers.keys()) {
     try {
-      await hub.invoke('SubscribePull', token)
+      await hub.invoke('SubscribeOperation', token)
     } catch {
       // 订阅失败不影响其他订阅者；服务端会把失败写进日志。
     }
@@ -104,7 +104,7 @@ async function ensureConnected(): Promise<void> {
 
     const hub = createHubConnection('notification')
     hub.on('OnContainerDied', dispatchDied)
-    hub.on('OnPullProgress', dispatchProgress)
+    hub.on('OnOperationProgress', dispatchProgress)
     hub.onreconnected(() => {
       void subscribeAllProgress(hub)
     })
@@ -170,7 +170,7 @@ export function subscribeProgress(token: string, handler: ProgressHandler): () =
 
   const hub = connection.value
   if (hub) {
-    void hub.invoke('SubscribePull', token).catch(() => undefined)
+    void hub.invoke('SubscribeOperation', token).catch(() => undefined)
   }
 
   return () => {

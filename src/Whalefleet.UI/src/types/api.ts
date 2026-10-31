@@ -730,12 +730,14 @@ export interface ContainerDiedEvent {
 }
 
 /**
- * 镜像操作进度（SignalR `OnPullProgress` 的载荷）。
+ * 后台操作进度（SignalR `OnOperationProgress` 的载荷）。
+ *
+ * 0.10.0 起从「镜像操作进度」泛化：编排 Stack 的部署 / 更新也走这条通道。
  */
-export interface ImageOperationProgress {
+export interface OperationProgress {
   /** 进度令牌（与订阅时用的同一个） */
   token: string
-  /** 操作类型：`pull` / `build` / `push` */
+  /** 操作类型：`pull` / `build` / `push` / `deploy` / `update` / `stop` / `remove` */
   operation: string
   /** 总体进度百分比（0–100）；**无法确定时为 null**（不是 0） */
   percent: number | null
