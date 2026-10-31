@@ -439,7 +439,7 @@ HOST_TONE_RAIL[tone]                // 卡片左侧色条
   /hosts/:hostId                    → redirect → /hosts/:hostId/dashboard
   /hosts/:hostId/dashboard          → HostDashboardView（落地页，承载「主机信息」卡片；不进侧边栏）
   /hosts/:hostId/status             → HostStatusView（状态图，菜单第一项）
-  /hosts/:hostId/stacks             → StacksView（编排 / Compose，0.10.0 占位）
+  /hosts/:hostId/stacks             → StacksView（编排 / Compose，0.10.0+）
   /hosts/:hostId/containers         → ContainersView
     /hosts/:hostId/containers/:id   → ContainerDetailView (tab: info / logs / stats / inspect)
   /hosts/:hostId/images             → ImagesView

@@ -1684,13 +1684,119 @@ nginx: [emerg] …
 
 ### Docker Compose / Stack（0.10.0 / 0.15.0）
 
-| 操作 | 路径 | 说明 |
-|------|------|------|
-| 获取列表 | `POST /api/v1/hosts/{hostId}/stacks/list` | 无 Body |
-| 部署 | `POST /api/v1/hosts/{hostId}/stacks/deploy` | Body: `{ name, composeContent }`（YAML 文本） |
-| 更新 | `POST /api/v1/hosts/{hostId}/stacks/update` | Body: `{ name, composeContent }` |
-| 停止 | `POST /api/v1/hosts/{hostId}/stacks/stop` | Body: `{ name }` |
-| 删除 | `POST /api/v1/hosts/{hostId}/stacks/remove` | Body: `{ name }` |
+> **路径为 `/api/v1/hosts/{hostId}/stacks/*`**（主机作用域）。
+> 鉴权：读用 `stack.read`，写用 `stack.write`。
+> **主机是否存在（`1300`）与主机可见性（`1501`）由 `CurrentHostMiddleware` 统一处理**，
+> 端点内部不再重复校验。
+
+| 操作 | 路径 | 请求体 | 说明 |
+|------|------|--------|------|
+| 获取列表 | `POST /api/v1/hosts/{hostId}/stacks/list` | `{ search?, status?, pageIndex?, pageSize? }` | 服务端分页；`status` 可选 `running` / `partial` / `stopped` / `unknown` |
+| 获取详情 | `POST /api/v1/hosts/{hostId}/stacks/inspect` | `{ name }` | 含 YAML 原文、服务列表与解析提示 |
+| 部署 | `POST /api/v1/hosts/{hostId}/stacks/deploy` | `{ name, composeContent, taskId, pullAlways?, pruneOrphans? }` | **202**；`name` 已存在报 `1902` |
+| 更新 | `POST /api/v1/hosts/{hostId}/stacks/update` | 同上 | **202**；Stack 不存在报 `1900`，不受管报 `1903` |
+| 停止 | `POST /api/v1/hosts/{hostId}/stacks/stop` | `{ name, taskId }` | **202**；容器保留 |
+| 删除 | `POST /api/v1/hosts/{hostId}/stacks/remove` | `{ name, taskId, removeVolumes? }` | **202**；容器与网络一并清掉，**卷默认保留** |
+| 查询任务 | `POST /api/v1/hosts/{hostId}/stacks/task` | `{ taskId }` | 任务快照；**不存在时 `data` 为 `null`**（不是报错） |
+| 轮换 Webhook 令牌 | `POST /api/v1/hosts/{hostId}/stacks/webhook/rotate` | `{ name }` | **明文只此一次** |
+| 吊销 Webhook 令牌 | `POST /api/v1/hosts/{hostId}/stacks/webhook/revoke` | `{ name }` | 幂等 |
+
+#### 部署类端点返回 **202**，不是 200
+
+部署可能要拉镜像（几分钟），而 HTTP 请求抗不住那么长——反代会把连接掐掉，
+客户端拿到的是「504 网关超时」而不是「部署失败」。
+因此端点**立刻返回任务标识**，真正的执行在后台：
+
+```json
+{
+  "success": true,
+  "code": 0,
+  "message": "ok",
+  "data": { "taskId": "…", "status": "queued", "queuePosition": 1 }
+}
+```
+
+**`taskId` 由客户端生成**：它同时是实时进度的订阅令牌
+（`SubscribeOperation`）与任务查询的键。
+服务端没法知道「这次部署对应哪条 Hub 连接」——
+部署请求是一个独立的 HTTP 请求，与 Hub 连接没有天然关联。
+三者（订阅 → 请求 → 轮询）由同一个令牌串起来。
+
+> 令牌长度 **≥ 32** 个字符，字符集限 `[A-Za-z0-9-]`。
+
+#### 任务快照
+
+```json
+{
+  "taskId": "…",
+  "hostName": "local",
+  "stackName": "shop",
+  "operation": "deploy",
+  "status": "succeeded",
+  "percent": 100,
+  "step": "完成",
+  "errorCode": null,
+  "errorMessage": null,
+  "warnings": [],
+  "result": {
+    "created": 1, "recreated": 0, "removed": 0, "skippedOrphans": 0,
+    "started": 1, "stopped": 0, "networksCreated": 1, "volumesCreated": 0,
+    "volumesRemoved": 0
+  },
+  "createdAt": "2026-10-20T10:00:00Z",
+  "updatedAt": "2026-10-20T10:01:12Z"
+}
+```
+
+- `status`：`queued` / `running` / `succeeded` / `failed`。
+- `percent` **可能为 `null`**——算不出总体进度时**不能给 0**（那会被读成「没进度」）。
+- **实时通道给的是进度，轮询给的是终态**：进度通道在成功结束时只推一条 `done=true`，
+  而失败那条 `error` 并不携带后端的错误码与完整原因；**任务快照才有 `errorCode` / `errorMessage`**。
+  只订阅不轮询的话，界面会永远停在「等待中」。
+- 任务登记表**在内存里**（进程重启即丢失）。重启后正在跑的编排本来就断了，
+  容器停在「建了一半」的状态；下次打开列表页，界面会按标签把实际情况显示出来。
+
+#### 列表项的 `managed` 字段
+
+列表**合并两个来源**：守护进程上按标签发现的 Compose 项目，
+与本平台数据库里记录的（`managed=true`）。只看其中一个都会给出残缺的视图：
+只看标签会漏掉「YAML 存了但容器被手工删了」，
+只看数据库会漏掉「用户自己在命令行部署的项目」。
+
+`managed=false` 意味着「这个项目不是本平台部署的」——
+**没有 YAML，因此不能更新**（只能停止 / 删除）。界面上必须把它显示出来。
+
+#### 应用前的两个选项
+
+`pullAlways` 与 `pruneOrphans` 是**显式的勾选项**，不是隐藏在参数里的默认行为：
+
+| 选项 | 默认 | 副作用 |
+|------|------|--------|
+| `pullAlways` | `false`（只在本地缺失时拉） | 勾上后**拉取失败即整任务失败**——不静默回退到本地旧镜像 |
+| `pruneOrphans` | 更新时 `true`，部署时 `false` | 删掉「已不在 YAML 里的」**容器**；**数据卷不在清理范围内** |
+
+#### 资源 Webhook（**匿名端点**）
+
+| 操作 | 路径 | 请求体 | 说明 |
+|------|------|--------|------|
+| 触发重部署 | `POST /api/v1/webhooks/stacks/{token}` | `{ pullAlways?, pruneOrphans?, wait? }` | **202**；令牌无效报 `1906` |
+| 查询任务 | `POST /api/v1/webhooks/stacks/{token}/task` | `{ taskId }` | 任务快照 |
+
+> ⚠️ **路径里不能有 `hostId`**：这是匿名端点，主机由令牌反查得到。
+> 若路径里带上主机标识，`CurrentHostMiddleware` 会拿它去查库并做可见性校验——
+> 而此时用户还没通过令牌验证，结果是「令牌还没验，主机先报错」，
+> 表现为「怎么调都是 404 / 1501」。
+
+- **令牌在路径里**：CI 触发器（如 GitHub webhook）只能填一个 URL，
+  而「URL 里带令牌」是这类触发器唯一能用的形态。
+- **令牌只存哈希**（SHA-256），明文只在生成 / 轮换的那一刻返回一次。
+  数据库被读走也换不出可用的令牌。
+- **令牌无效一律 `1906` / 404**：不区分「不存在」「已吊销」「未启用」——
+  区分了就成了令牌探测工具。
+- **限流**：`1907` / 429，**1 分钟内最多 10 次**。
+  一次触发就是一次完整部署（含拉镜像），不加限制的话一个循环的 CI 会把守护进程打满。
+- `wait=true` 时**同步等待任务结束**（上限 45 秒，**小于反代读超时**）。
+  超时后返回 202 + 任务快照，CI 可改用轮询。
 
 ---
 
@@ -1979,6 +2085,7 @@ nginx: [emerg] …
 | 事件 | 数据 | 说明 |
 |------|------|------|
 | `OnContainerDied` | `{ hostId, containerId, containerName, exitCode, outOfMemory, occurredAt }` | 容器异常退出通知 |
+| `OnStackTaskFailed` | `{ hostName, stackName, operation, errorCode, message, occurredAt }` | 编排任务失败通知（0.10.0） |
 
 > **可见性由服务端保证**：推送前逐个连接判「该用户对这台主机有没有 `host.read`」，
 > 无权的一律不推。前端**不需要**自己按主机过滤。
@@ -1986,6 +2093,10 @@ nginx: [emerg] …
 > **「异常退出」只覆盖 `die` 与 `oom`**：容器**正常停止**（`stop`）不是异常，
 > 不会推通知——那种情况由页面自己的操作触发刷新。
 > `outOfMemory` 为 `true` 时 `exitCode` 通常是 `137`。
+>
+> **编排任务只推失败、不推成功**：成功时用户正盯着界面看着进度条走完，
+> 界面自己就会刷新；而失败可能发生在**用户已经离开页面之后**
+> （webhook 触发的 CI 部署）——那种情况下没有别的途径让用户知道出事了。
 
 ### 后台操作进度频道（0.5.0；0.10.0 起泛化）
 
@@ -2019,6 +2130,10 @@ nginx: [emerg] …
 
 > `percent` **可能为 `null`**——算不出总体进度时**不能给 0**（那会被读成「没进度」）。
 > `done` 为 `true` 表示操作已成功结束；失败时 `error` 给出原因。
+>
+> **0.10.0 起编排也走这条通道**：`operation` 取 `deploy` / `update` / `stop` / `remove`，
+> `token` 就是编排端点的 `taskId`。
+> ⚠️ **进度通道给不了终态与错误码**——失败原因要看 `POST .../stacks/task` 的任务快照。
 
 ### 订阅上限
 

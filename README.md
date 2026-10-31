@@ -29,7 +29,7 @@
 - 🔔 **Real-time push** (0.5.0): SignalR live log streams / container CPU, memory, and network metrics / container anomaly notifications; **health checks, restart counts, and inline metric columns** (0.6.0)
 - 🚨 **Alerting rules** (0.11.0): three severity levels with configurable thresholds, cooldowns, and webhook / email channels
 - 💻 **Web terminal** (0.8.0): xterm.js + a dedicated short-lived terminal token
-- 📦 **Docker Compose / Stack management** (0.10.0), with **resource webhooks and `.env` variables** (0.15.0)
+- 📦 **Docker Compose / Stack management** (0.10.0): deploy / update / stop / remove a Compose file as a unit, with live progress and a **resource webhook** for CI; **`.env` variables** (0.15.0)
 - 🤖 **MCP server** (0.18.0): expose Docker management to AI clients (VS Code Copilot, Claude Desktop) — read-only by default, with environment-variable redaction
 - 🎨 **Modern UI**: UnoCSS + Element Plus + command palette (Ctrl+K) + global shortcuts + light/dark themes + three accent colors
 

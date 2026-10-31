@@ -29,7 +29,7 @@
 - 🔔 **实时推送**（0.5.0）：SignalR 实时日志流 / 容器 CPU 内存网络监控 / 容器异常通知；**健康检查、重启计数与列表指标列**（0.6.0）
 - 🚨 **告警规则体系**（0.11.0）：三级严重度 + 可配阈值 + 冷却期 + Webhook / 邮件渠道
 - 💻 **Web 终端**（0.8.0）：xterm.js + 独立短时 terminal token
-- 📦 **Docker Compose / Stack 管理**（0.10.0），并支持**资源 Webhook 与 `.env` 变量**（0.15.0）
+- 📦 **Docker Compose / Stack 管理**（0.10.0）：把一份 Compose 文件作为整体部署 / 更新 / 停止 / 删除，带实时进度与供 CI 触发的**资源 Webhook**；**`.env` 变量**（0.15.0）
 - 🤖 **MCP 服务器**（0.18.0）：把 Docker 管理能力暴露给 AI 客户端（VS Code Copilot、Claude Desktop）——默认只读，环境变量值自动脱敏
 - 🎨 **现代 UI**：UnoCSS + Element Plus + 命令面板（Ctrl/K）+ 全局快捷键 + 亮/暗主题 + 三色主题色
 
