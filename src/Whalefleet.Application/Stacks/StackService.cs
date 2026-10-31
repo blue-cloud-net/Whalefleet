@@ -125,7 +125,7 @@ public sealed class StackService
         var summaries = Merge(discovered, recorded);
 
         var filtered = summaries
-            .Where(summary => Contains(summary.Name, request.Search))
+            .Where(summary => MatchesSearch(summary.Name, request.Search))
             .ToList();
 
         var pageIndex = Math.Max(request.PageIndex ?? 0, 0);
@@ -963,14 +963,18 @@ public sealed class StackService
     }
 
     /// <summary>
-    /// 关键字包含判断（不区分大小写）。
+    /// 关键字匹配。
     /// </summary>
     /// <param name="haystack">被检查的文本。</param>
     /// <param name="needle">关键字。</param>
     /// <returns>命中返回 <see langword="true"/>。</returns>
-    private static bool Contains(string? haystack, string? needle) =>
-        !string.IsNullOrWhiteSpace(needle)
-        && haystack?.Contains(needle.Trim(), StringComparison.OrdinalIgnoreCase) == true;
+    /// <remarks>
+    /// <b>没有关键字时一律命中</b>：写成「关键字为空 → 不匹配」会让空搜索把整个列表清空，
+    /// 而症状是「接口返回成功、列表却是空的」——极难联想到是筛选条件写反了。
+    /// </remarks>
+    private static bool MatchesSearch(string? haystack, string? needle) =>
+        string.IsNullOrWhiteSpace(needle)
+        || haystack?.Contains(needle.Trim(), StringComparison.OrdinalIgnoreCase) == true;
 
     /// <summary>
     /// 判断任务状态是否已结束。

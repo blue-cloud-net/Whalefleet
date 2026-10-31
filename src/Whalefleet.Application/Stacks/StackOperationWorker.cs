@@ -2,6 +2,8 @@ using Whalefleet.Application.Abstractions.Auditing;
 using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Auditing;
+using Whalefleet.Core.Hosts;
+using Whalefleet.Core.Stacks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -105,6 +107,8 @@ public sealed class StackOperationWorker : BackgroundService
 
             _registry.MarkSucceeded(request.TaskId, result, [], finished);
 
+            await this.RemoveRecordAsync(scope.ServiceProvider, request).ConfigureAwait(false);
+
             await this.RecordAuditAsync(scope.ServiceProvider, request, true, null, result, finished)
                 .ConfigureAwait(false);
 
@@ -157,6 +161,62 @@ public sealed class StackOperationWorker : BackgroundService
                 exception,
                 "编排任务 {TaskId} 异常退出：主机 {HostName}，编排 {StackName}",
                 request.TaskId,
+                request.HostName,
+                request.StackName);
+        }
+    }
+
+    /// <summary>
+    /// 删除操作成功后清掉数据库里的 Stack 记录。
+    /// </summary>
+    /// <param name="services">作用域的服务提供器。</param>
+    /// <param name="request">操作请求。</param>
+    /// <returns>表示异步操作的任务。</returns>
+    /// <remarks>
+    /// <para><b>为什么放在「执行成功之后」而不是请求期</b>：删除失败时记录必须还在——
+    /// 否则用户会看到「这个编排被删了」，而容器还在跑，下一次「应用」又会把它拉起来，
+    /// 变成一个用户完全看不懂的循环。</para>
+    /// <para><b>为什么只在删除操作里做</b>：其余操作（部署 / 更新 / 停止）都要留着 YAML，
+    /// 否则就失去了「更新」的能力。</para>
+    /// <para><b>清记录失败不影响任务结果</b>：容器与网络已经清掉了，
+    /// 只是列表里多一条「受管但空」的条目——那是可以事后修的，
+    /// 而把整个任务标成失败会让用户以为删除没成功（而它其实成功了）。</para>
+    /// </remarks>
+    private async Task RemoveRecordAsync(IServiceProvider services, StackOperationRequest request)
+    {
+        if (request.Operation != StackOperations.Remove)
+        {
+            return;
+        }
+
+        try
+        {
+            var repository = services.GetRequiredService<IStackRepository>();
+            var hosts = services.GetRequiredService<IHostRepository>();
+
+            var host = await hosts.FindByNameAsync(request.HostName).ConfigureAwait(false);
+
+            if (host is null)
+            {
+                return;
+            }
+
+            var entity = await repository
+                .FindByHostAndNameAsync(host.Id, request.StackName)
+                .ConfigureAwait(false);
+
+            if (entity is null)
+            {
+                return;
+            }
+
+            await repository.RemoveByIdAsync(entity.Id).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "删除编排记录失败（主机={HostName}，编排={StackName}）",
                 request.HostName,
                 request.StackName);
         }
