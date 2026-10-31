@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Whalefleet.Core.Common.Auditing;
 
 namespace Whalefleet.Core.Stacks;
@@ -24,6 +25,10 @@ namespace Whalefleet.Core.Stacks;
 /// <para><b>持久化</b>：提供非公开无参构造供 Dapper 物化，详见
 /// <c>docs/architecture.md</c> 的「持久化实体物化约定（Dapper）」。</para>
 /// </remarks>
+[SuppressMessage(
+    "Naming",
+    "CA1711:Identifiers should not have incorrect suffix",
+    Justification = "Stack 是本项目的领域名词（Docker Compose 编排项目），非 CA1711 所针对的系统命名空间后缀。")]
 public sealed class Stack : FullAuditedEntity<Guid, Guid>
 {
     /// <summary>Stack 名称最小长度。</summary>

@@ -28,4 +28,13 @@
     <PackageReference Include="YamlDotNet" />
   </ItemGroup>
 
+  <!--
+    集成测试需要直达 internal 实现（Compose 解析器 / 规划器 / 时长解析等纯函数）以逐条断言
+    它们的边界行为——这些是整个 0.10.0 里风险最高的纯逻辑，不该只能通过端点间接覆盖。
+    Infrastructure 侧已有同样的安排（见其 csproj）。
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Whalefleet.UnitTests" />
+  </ItemGroup>
+
 </Project>
