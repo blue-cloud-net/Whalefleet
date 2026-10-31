@@ -49,6 +49,10 @@ builder.Services.AddApiRealtime(builder.Configuration);
 // 与实时通道同理，必须在 AddInfrastructure 之后（用例服务依赖主机访问器与权限判定）。
 builder.Services.AddApiTerminal(builder.Configuration);
 
+// 编排 Stack（0.10.0）：后台执行器 + 失败通知。
+// 必须在 AddApplication 之后（要用例服务与队列），且在 AddApiRealtime 之后（通知器依赖 Hub 上下文）。
+builder.Services.AddApiStacks();
+
 // ASP.NET Core MVC（Controller 风格）
 // 统一 JSON 编码策略（中文原样输出而非 \uXXXX），与错误响应序列化器共用同一套默认值。
 builder.Services
