@@ -194,7 +194,7 @@ public sealed class RealtimeHubTests : IAsyncLifetime
         await using var connection = BuildConnection("/hubs/notification", token);
         await connection.StartAsync();
 
-        var result = await connection.InvokeAsync<RealtimeActionResult>("SubscribePull", "short");
+        var result = await connection.InvokeAsync<RealtimeActionResult>("SubscribeOperation", "short");
 
         result.Success.Should().BeFalse();
         result.Code.Should().Be(ErrorCodes.ValidationFailed);
@@ -209,7 +209,7 @@ public sealed class RealtimeHubTests : IAsyncLifetime
         await connection.StartAsync();
 
         var result = await connection.InvokeAsync<RealtimeActionResult>(
-            "SubscribePull",
+            "SubscribeOperation",
             new string('a', 40) + "!");
 
         result.Success.Should().BeFalse();
@@ -225,7 +225,7 @@ public sealed class RealtimeHubTests : IAsyncLifetime
         await connection.StartAsync();
 
         var result = await connection.InvokeAsync<RealtimeActionResult>(
-            "SubscribePull",
+            "SubscribeOperation",
             new string('a', 40));
 
         result.Success.Should().BeTrue();

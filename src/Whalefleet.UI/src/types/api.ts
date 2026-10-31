@@ -127,6 +127,24 @@ export const ErrorCode = {
   /** 镜像推送失败 */
   ImagePushFailed: 1807,
 
+  // ===== 1900-1999 编排 Stack =====
+  /** 编排 Stack 不存在 */
+  StackNotFound: 1900,
+  /** Stack 部署 / 更新失败 */
+  StackDeployFailed: 1901,
+  /** Stack 名称已被占用 */
+  StackNameAlreadyExists: 1902,
+  /** 该 Stack 不是本平台部署的，无法更新 */
+  StackNotManaged: 1903,
+  /** Compose 文件非法或含暂不支持的字段 */
+  ComposeInvalid: 1904,
+  /** 该 Stack 已有进行中的操作 */
+  StackOperationInProgress: 1905,
+  /** Webhook 令牌无效或已吊销 */
+  StackWebhookTokenInvalid: 1906,
+  /** Webhook 触发过于频繁 */
+  StackWebhookRateLimited: 1907,
+
   // ===== 9000-9999 服务器内部错误 =====
   /** 服务器内部错误（未捕获异常） */
   InternalError: 9999
@@ -712,12 +730,14 @@ export interface ContainerDiedEvent {
 }
 
 /**
- * 镜像操作进度（SignalR `OnPullProgress` 的载荷）。
+ * 后台操作进度（SignalR `OnOperationProgress` 的载荷）。
+ *
+ * 0.10.0 起从「镜像操作进度」泛化：编排 Stack 的部署 / 更新也走这条通道。
  */
-export interface ImageOperationProgress {
+export interface OperationProgress {
   /** 进度令牌（与订阅时用的同一个） */
   token: string
-  /** 操作类型：`pull` / `build` / `push` */
+  /** 操作类型：`pull` / `build` / `push` / `deploy` / `update` / `stop` / `remove` */
   operation: string
   /** 总体进度百分比（0–100）；**无法确定时为 null**（不是 0） */
   percent: number | null
@@ -1464,4 +1484,221 @@ export interface AuditLogQuery {
   search?: string
   pageIndex?: number
   pageSize?: number
+}
+
+/* ==================================================================
+ * 编排 Stack（0.10.0）
+ * ================================================================== */
+
+/**
+ * 编排项目的整体状态。
+ *
+ * ⚠️ **`partial` 不能省**：「部分服务没起来」是编排最常见的问题，
+ * 而只有 running / stopped 两档时它会被误报成 stopped——
+ * 用户看到「已停止」会去点启动，而真正该做的是看哪个服务挂了。
+ */
+export type StackStatus = 'running' | 'partial' | 'stopped' | 'unknown'
+
+/** 编排任务的状态。 */
+export type StackTaskStatus = 'queued' | 'running' | 'succeeded' | 'failed'
+
+/**
+ * 编排列表项。
+ *
+ * ⚠️ **`managed` 是本列表最重要的字段**：它区分「这个项目是本平台部署的
+ * （我们有它的 YAML，能更新）」与「这个项目是用户自己在命令行
+ * `docker compose up` 的（没有 YAML，只能停 / 删）」。
+ * 界面上必须把它显示出来——否则用户会对一个外部项目点「更新」，
+ * 而那必然失败。
+ */
+export interface StackSummary {
+  /** Stack 名称（= Compose 项目名） */
+  name: string
+  /** 是否由本平台部署（决定能不能「更新」） */
+  managed: boolean
+  /** 整体状态 */
+  status: StackStatus
+  /** 服务数 */
+  serviceCount: number
+  /** 容器数（含已停止的） */
+  containerCount: number
+  /** 在运行的容器数 */
+  runningCount: number
+  /** 网络数 */
+  networkCount: number
+  /** 具名卷数 */
+  volumeCount: number
+  /** 本平台是否保存着这个项目的 YAML */
+  composeAvailable: boolean
+  /** 是否启用了 Webhook */
+  webhookEnabled: boolean
+  /** Webhook 令牌提示（明文的前若干位） */
+  webhookTokenHint: string | null
+  /** Webhook 最近一次触发时间（ISO 8601） */
+  webhookLastUsedAt: string | null
+  /** 最后修改时间（ISO 8601） */
+  updatedAt: string | null
+}
+
+/** 编排项目里的一个服务。 */
+export interface StackServiceSummary {
+  /** 服务名 */
+  name: string
+  /** 镜像 */
+  image: string
+  /** 容器 ID；该服务还没有容器时为 null */
+  containerId: string | null
+  /** 容器名；该服务还没有容器时为 null */
+  containerName: string | null
+  /** 容器状态（running / exited / created …） */
+  state: string | null
+  /** 守护进程给的状态文本（如 `Up 3 minutes`） */
+  status: string | null
+  /** 健康状态（none / starting / healthy / unhealthy） */
+  health: string | null
+  /** 端口映射 */
+  ports: StackServicePort[]
+  /** 重启策略 */
+  restartPolicy: string | null
+}
+
+/** 服务的一个端口映射。 */
+export interface StackServicePort {
+  /** 容器内端口 */
+  containerPort: number
+  /** 协议（tcp / udp） */
+  protocol: string
+  /** 宿主端口；未绑定时为 null */
+  hostPort: number | null
+  /** 绑定的宿主地址 */
+  hostIp: string | null
+}
+
+/** 编排详情。 */
+export interface StackDetail {
+  /** 列表项（同样的字段，便于前端复用） */
+  summary: StackSummary
+  /** Compose 文件原文；本平台没保存时为 null */
+  composeContent: string | null
+  /** 服务列表 */
+  services: StackServiceSummary[]
+  /** 解析期的提示 */
+  warnings: string[]
+}
+
+/** 编排列表结果（服务端内存分页）。 */
+export interface StackListResult {
+  items: StackSummary[]
+  /** 分页前的总条数 */
+  total: number
+  /** 服务端实际使用的页码 */
+  pageIndex: number
+  /** 服务端实际使用的每页条数（已夹紧） */
+  pageSize: number
+}
+
+/** 编排操作的结果摘要。 */
+export interface StackOperationResult {
+  /** 新建的服务数 */
+  created: number
+  /** 因配置变化而重建的服务数 */
+  recreated: number
+  /** 被清掉的孤儿服务数 */
+  removed: number
+  /** 被保留（用户选择不清）的孤儿服务数 */
+  skippedOrphans: number
+  /** 启动的容器数 */
+  started: number
+  /** 停止的容器数 */
+  stopped: number
+  /** 新建的网络数 */
+  networksCreated: number
+  /** 新建的卷数 */
+  volumesCreated: number
+  /** 删除的卷数（只有显式要求时才非零） */
+  volumesRemoved: number
+}
+
+/** 编排任务的快照。 */
+export interface StackTaskSnapshot {
+  /** 任务标识（客户端生成的进度令牌） */
+  taskId: string
+  /** 所属主机名 */
+  hostName: string
+  /** Stack 名称 */
+  stackName: string
+  /** 操作类型（deploy / update / stop / remove） */
+  operation: string
+  /** 状态 */
+  status: StackTaskStatus
+  /** 总体进度百分比（0–100）；无法确定时为 null（不是 0） */
+  percent: number | null
+  /** 当前步骤的简短描述 */
+  step: string | null
+  /** 失败时的业务错误码 */
+  errorCode: number | null
+  /** 失败原因 */
+  errorMessage: string | null
+  /** 警告 */
+  warnings: string[]
+  /** 成功时的结果摘要 */
+  result: StackOperationResult | null
+  /** 创建时刻（ISO 8601） */
+  createdAt: string
+  /** 最后更新时刻（ISO 8601） */
+  updatedAt: string
+}
+
+/**
+ * 编排任务的受理结果。
+ *
+ * ⚠️ 部署类端点返回 **202**：部署可能要拉镜像（几分钟），
+ * 而 HTTP 请求扛不住那么长——反代会把连接掐掉，
+ * 客户端拿到的是「504 网关超时」而不是「部署失败」。
+ */
+export interface StackTaskAccepted {
+  /** 任务标识 */
+  taskId: string
+  /** 任务当前状态 */
+  status: string
+  /** 队列中的位置；0 表示正在执行 */
+  queuePosition: number
+}
+
+/**
+ * Webhook 令牌信息。
+ *
+ * ⚠️ **`token` 只在生成 / 轮换的那一刻有值**，之后一律为 null——
+ * 库里只存哈希，明文无法再看回来。界面上必须提示用户「请立刻保存」。
+ */
+export interface StackWebhookInfo {
+  /** 是否已启用 */
+  enabled: boolean
+  /** 令牌提示（明文的前若干位） */
+  tokenHint: string | null
+  /** 令牌明文；只在生成 / 轮换的那一刻有值 */
+  token: string | null
+  /** 最近一次触发时间（ISO 8601） */
+  lastUsedAt: string | null
+}
+
+/**
+ * 编排任务失败通知（SignalR `OnStackTaskFailed` 的载荷）。
+ *
+ * ⚠️ **只有失败才有通知**：成功时用户正盯着界面看着进度条走完，
+ * 界面自己就会刷新；而失败可能发生在用户已经离开页面之后。
+ */
+export interface StackTaskFailureEvent {
+  /** 所属主机名 */
+  hostName: string
+  /** Stack 名称 */
+  stackName: string
+  /** 操作类型（deploy / update / stop / remove） */
+  operation: string
+  /** 业务错误码 */
+  errorCode: number
+  /** 失败原因 */
+  message: string
+  /** 发生时刻（ISO 8601） */
+  occurredAt: string
 }

@@ -89,6 +89,64 @@ before the first public release).
 - **The status filter is remembered**: it is a continuation of "which kind of containers do I
   want to look at this time"; not remembering it means clicking it again on every visit.
 
+### `0.10.0` — Compose / Stack basics (internal draft)
+
+#### Added
+
+- **Stack management endpoints** (`POST /api/v1/hosts/{hostId}/stacks/{list,inspect,deploy,update,stop,remove,task}`):
+  deploy, update, stop, remove and the task snapshot. The list **merges two sources** — Compose
+  projects discovered on the daemon (by the `com.docker.compose.project` label) and the projects
+  this platform has recorded — because either one alone gives an incomplete view.
+- **A Compose parser with a strict whitelist**: `services` (with `image`, `environment`,
+  `command`, `ports`, `volumes`, `networks`, `depends_on`, `restart`, `healthcheck`), plus
+  top-level `networks` and `volumes`. **Unsupported fields are reported with their full path**
+  (`services.api.healthcheck`) instead of being silently ignored — a silently ignored field
+  produces the hardest-to-diagnose failure: "the service started, but the port was not mapped".
+- **Health checks**: `healthcheck.test` (string → `CMD-SHELL`, list, `disable: true` → `NONE`),
+  `interval`, `timeout`, `start_period` and `retries`.
+- **Asynchronous deployment with live progress**: deploy / update / stop / remove return **202**
+  with a task id. The work runs in the background, progress is pushed over the realtime channel
+  and the terminal state is polled from the task snapshot. **The deployment would otherwise be
+  killed by the reverse proxy's read timeout** — a long pull turns into "504 gateway timeout"
+  rather than "deployment failed".
+- **Two explicit apply options**: "pull latest images" and "remove extra containers". Both are
+  checkboxes rather than parameter defaults, because their side effects (a failed pull fails the
+  whole apply / a running container is stopped) are irreversible and invisible.
+- **A resource webhook** (`POST /api/v1/webhooks/stacks/{token}`): an **anonymous** endpoint that
+  re-applies the stored Compose file. The token is stored **only as a SHA-256 hash**; the
+  plaintext is returned exactly once. Requests are rate limited to 10 per minute.
+- **A stack page and a stack detail page** (`/hosts/:hostId/stacks` and
+  `/hosts/:hostId/stacks/{name}`): the list shows the project status, service count and running
+  containers; the detail page shows the per-service state, health, ports, restart policy, the
+  Compose source and the webhook card.
+- **Stack permissions** `stack.read` and `stack.write` (host scope), granted to admin / operator /
+  viewer / auditor as appropriate.
+- **A failed deployment reaches the bell**: `OnStackTaskFailed` on the notification hub. Only
+  failures are pushed — success is already visible on screen, but a failure may happen **after
+  the user has left the page** (a CI-triggered deployment).
+
+#### Changed
+
+- **The progress channel is generic**: `SubscribePull` / `OnPullProgress` became
+  `SubscribeOperation` / `OnOperationProgress`, because stack deployments use the same channel.
+  Breaking changes are allowed during `0.x`, so the old names are not kept.
+- **A stack's status has four values, not two**: `running` / `partial` / `stopped` / `unknown`.
+  "Some services are not running" is the most common orchestration problem, and with only
+  running / stopped it would be misreported as stopped.
+
+#### Notes
+
+- **Volumes are never pruned**: a volume holds user data, deleting it is irreversible, and it can
+  be cleaned up separately later. Removing a stack removes its containers and networks.
+- **Updating needs the stored YAML**: projects deployed outside this platform (a plain
+  `docker compose up` on the command line) can only be stopped or removed — the UI marks them as
+  external and does not offer an update.
+- **The webhook endpoint carries no host id**: the host is resolved from the token. A host id in
+  the path would make the host middleware query the database before the token was even checked.
+- **The task registry lives in memory**: it answers "how far did that request get", which is
+  valid for minutes. Losing it on restart is acceptable — the list page shows the actual state
+  from the daemon's labels.
+
 ### `0.9.0` — Operation audit log (internal draft)
 
 #### Added

@@ -82,6 +82,23 @@ public static class Permission
     /// <summary>创建 / 删除卷。</summary>
     public const string VolumeWrite = "volume.write";
 
+    /// <summary>查看编排 Stack 及其服务状态。</summary>
+    /// <remarks>
+    /// 与 <see cref="ContainerRead"/> 分开：「看到这台机器上的容器」不等于
+    /// 「看到这个 Stack 由哪些服务组成、每个服务跑在哪个容器里」——
+    /// 后者是编排视角，前者是资源视角。
+    /// </remarks>
+    public const string StackRead = "stack.read";
+
+    /// <summary>部署 / 更新 / 停止 / 删除编排 Stack。</summary>
+    /// <remarks>
+    /// <b>为什么不给 <c>container.write</c> 代劳</b>：部署一个 Stack 会创建网络、卷与一组容器，
+    /// 还会拉取镜像——它的影响面远大于「启停一个容器」。
+    /// 把它绑到 <c>container.write</c> 上会让「能启停容器的人顺手就能部署整套编排」，
+    /// 权限就名不副实了。
+    /// </remarks>
+    public const string StackWrite = "stack.write";
+
     // ==================== Global 作用域 ====================
 
     /// <summary>查看用户列表与详情。</summary>
@@ -138,6 +155,8 @@ public static class Permission
         NetworkWrite,
         VolumeRead,
         VolumeWrite,
+        StackRead,
+        StackWrite,
     ];
 
     /// <summary>目录中的全部权限标识（Host 在前、Global 在后，与界面分组顺序一致）。</summary>

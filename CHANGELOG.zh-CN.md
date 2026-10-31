@@ -78,6 +78,57 @@
 - **状态筛选被记住**：它是「我这次要看哪一类容器」的延续，
   不记住的话每次进页面都要重新点一遍。
 
+### `0.10.0`——Compose / Stack 基础功能（内部草稿）
+
+#### 新增
+
+- **Stack 管理端点**（`POST /api/v1/hosts/{hostId}/stacks/{list,inspect,deploy,update,stop,remove,task}`）：
+  部署、更新、停止、删除与任务快照。列表**合并两个来源**——守护进程上按标签
+  （`com.docker.compose.project`）发现的 Compose 项目，与本平台自己记录的项目；
+  只看其中一个都会给出残缺的视图。
+- **带白名单的 Compose 解析器**：`services`（支持 `image`、`environment`、`command`、
+  `ports`、`volumes`、`networks`、`depends_on`、`restart`、`healthcheck`），
+  以及顶层的 `networks` 与 `volumes`。
+  **不支持的字段会带着完整路径报出来**（如 `services.api.healthcheck`），而不是静默忽略——
+  静默忽略会产出最难排查的故障：「服务起来了，但端口没映射」。
+- **健康检查**：`healthcheck.test`（字符串 → `CMD-SHELL`，列表，`disable: true` → `NONE`）、
+  `interval`、`timeout`、`start_period` 与 `retries`。
+- **异步部署 + 实时进度**：部署 / 更新 / 停止 / 删除返回 **202** 与任务标识。
+  真正的执行在后台，进度走实时通道，终态靠轮询任务快照。
+  **否则部署会被反代的读超时掐掉**——一次长时间的拉取会变成「504 网关超时」而不是「部署失败」。
+- **两个显式的应用选项**：「拉取最新镜像」与「清理多余的容器」。
+  它们是**勾选项**而不是参数默认值，因为它们的副作用（拉取失败即整任务失败 /
+  正在提供服务的容器被停掉）**不可逆且不可见**。
+- **资源 Webhook**（`POST /api/v1/webhooks/stacks/{token}`）：一个**匿名**端点，
+  重新应用已保存的 Compose 文件。**令牌只存 SHA-256 哈希**，明文只返回一次；
+  限流为每分钟 10 次。
+- **编排列表页与详情页**（`/hosts/:hostId/stacks` 与 `/hosts/:hostId/stacks/{name}`）：
+  列表给出项目状态、服务数与在跑的容器数；详情页给出服务级状态、健康、端口、
+  重启策略、Compose 原文与 Webhook 卡片。
+- **Stack 权限** `stack.read` 与 `stack.write`（主机作用域），
+  按各自角色分别授予 admin / operator / viewer / auditor。
+- **部署失败会进铃铛**：通知 Hub 上的 `OnStackTaskFailed`。**只推失败**——
+  成功时用户正盯着界面，而失败可能发生在**用户已经离开页面之后**（CI 触发的部署）。
+
+#### 变更
+
+- **进度频道泛化**：`SubscribePull` / `OnPullProgress` 改为
+  `SubscribeOperation` / `OnOperationProgress`——编排部署走同一条通道。
+  `0.x` 期间允许破坏性变更，因此不保留旧名。
+- **Stack 状态有四档而不是两档**：`running` / `partial` / `stopped` / `unknown`。
+  「部分服务没起来」是编排最常见的问题，而只有 running / stopped 两档时它会被误报成 stopped。
+
+#### 说明
+
+- **卷永远不会被清理**：卷里是用户的数据，删它的后果不可逆，
+  而它可以事后单独清理。删除 Stack 清掉的是容器与网络。
+- **更新需要已保存的 YAML**：在本平台之外部署的项目（用户自己在命令行
+  `docker compose up` 的）只能停止或删除——界面会把它们标成「外部项目」并不给更新入口。
+- **Webhook 端点不带主机标识**：主机由令牌反查得到。
+  路径里若带上主机标识，主机中间件会在令牌还没验证之前就先查库。
+- **任务登记表在内存里**：它回答的是「刚才那次请求跑到哪了」，这个问题的有效期只有几分钟。
+  重启丢失是可接受的——列表页会按守护进程的标签显示实际情况。
+
 ### `0.9.0`——操作审计日志（内部草稿）
 
 #### 新增

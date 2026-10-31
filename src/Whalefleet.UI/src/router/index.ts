@@ -182,6 +182,17 @@ const routes: RouteRecordRaw[] = [
         meta: { scope: 'host', icon: 'i-carbon-layers', title: 'nav.stacks' }
       },
       {
+        // 编排详情。从列表点进去的下级页，不进侧边栏。
+        //
+        // ⚠️ `:name` 传**原始** Stack 名（调用方不要自己 encodeURIComponent）：
+        // vue-router 会再编码一次，详情页拿到的名字永远对不上。
+        // narrow：正文是 Compose YAML 原文，1600px 的行宽没法读。
+        path: 'hosts/:hostId/stacks/:name',
+        name: 'host-stack-detail',
+        component: () => import('@/views/StackDetailView.vue'),
+        meta: { scope: 'host', showInSidebar: false, title: 'nav.stacks', narrow: true }
+      },
+      {
         path: 'hosts/:hostId/containers',
         name: 'host-containers',
         component: () => import('@/views/ContainersView.vue'),

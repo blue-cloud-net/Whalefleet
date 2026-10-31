@@ -79,6 +79,8 @@ const PERMISSION_LABEL_KEYS: Record<string, string> = {
   'network.write': 'permission.network.write',
   'volume.read': 'permission.volume.read',
   'volume.write': 'permission.volume.write',
+  'stack.read': 'permission.stack.read',
+  'stack.write': 'permission.stack.write',
   'user.read': 'permission.user.read',
   'user.write': 'permission.user.write',
   'role.read': 'permission.role.read',
@@ -101,6 +103,7 @@ const DOMAIN_LABEL_KEYS: Record<string, string> = {
   image: 'permission.domain.image',
   network: 'permission.domain.network',
   volume: 'permission.domain.volume',
+  stack: 'permission.domain.stack',
   user: 'permission.domain.user',
   role: 'permission.domain.role',
   // ⚠️ 键名必须与**后端发的域标识**逐字一致：`repository.read` 取第一段得到的是

@@ -186,6 +186,7 @@ dotnet list src/Whalefleet.Application/Whalefleet.Application.csproj package
 | `UserRoleAssignment` | `Core/Permissions/UserRoleAssignment.cs` | `FullAuditedEntity<Guid, Guid>` | `(user_id, role_id, COALESCE(host_id, ''))` 部分唯一索引（`WHERE is_deleted = 0`） | 用户与角色主键非空；`host_id` 为 `NULL` 即**全局分配**，非空即仅在该主机上生效（`AppliesTo`）；撤销走软删除，因此同一组合可重新分配 |
 | `RepositoryCredential` | `Core/Repositories/RepositoryCredential.cs` | `FullAuditedEntity<Guid, Guid>` | 别名与服务地址各占一个部分唯一索引（`WHERE is_deleted = 0`） | **只存口令密文**（实体里永远没有明文）；账号与口令必须成对；地址经 `RepositoryServerAddress` 规范化 |
 | `HostTag` | `Core/Hosts/HostTag.cs` | `FullAuditedEntity<Guid, Guid>` | `name`（`COLLATE NOCASE` 部分唯一索引，`WHERE is_deleted = 0`） | 名称 1–32 且无控制字符、**不可改**；描述最长 200；`color` 只接受 `#RRGGBB`（`NULL` = 界面默认色）；**只用于过滤与批量选择**，不参与任何授权判定（多对多，与单一归属的分组不同） |
+| `Stack` | `Core/Stacks/Stack.cs` | `FullAuditedEntity<Guid, Guid>` | `(host_id, name)` 部分唯一索引（`WHERE is_deleted = 0`） | 名称即 **Compose 项目名**（`^[a-z0-9][a-z0-9_-]*$`，≤ 63）；YAML 原文 ≤ 256 KB；**Webhook 令牌只存 SHA-256 哈希**，明文不落库；`host_id` 存 `hosts.id`（主机名可改，从属关系不能因此断掉） |
 
 > **0.1.0 已落地权限目录、`role_permissions` 与 `user_role_assignments`**（迁移 `0006_rbac.sql`、仓储、DI
 > 与角色 / 分配管理端点）。权限目录是**静态封闭集**（`Core/Permissions/Permission.cs` 里的 `Permission` 常量与
@@ -345,6 +346,7 @@ protected abstract Task<bool> ExecuteUpdateAsync(DbConnection connection, TEntit
 | `repositories` | `0007_repositories.sql` | 一行 = 一条「仓库地址 + 一套登录凭据」：`server_address` 存**规范化后的明文**（它不是秘密，且必须可按它查找）；`username` 空串 = 匿名；`encrypted_password` **只存 AES-GCM 密文**（随机 nonce，每次不同，因此**不建索引**）；`ux_repositories_name` / `ux_repositories_server_address` 各为 `UNIQUE (… COLLATE NOCASE) WHERE is_deleted = 0`——**同址更危险**（会让「推镜像时该用哪条凭据」变成随机行为）。⚠️ 加密密钥**不在表里**：走 `SecretFileStore` 落到数据目录下的 `repository.key`（0600），须随数据卷一起备份 |
 | `host_tags` | `0008_host_tags.sql` | 主机标签（多对多自由打标）：`name` 唯一（部分索引 + `COLLATE NOCASE`，最长 32）、`description` 可空（最长 200）、`color` 只存规范化的 `#RRGGBB`（`NULL` = 界面默认色）；种入无固定数据 |
 | `host_tag_assignments` | `0008_host_tags.sql` | 主机 ↔ 标签的多对多关系：复合主键 `(host_id, tag_id)`——打标 / 清标天然幂等，`INSERT OR IGNORE` 把幂等性交给数据库；`host_id` 存的是 `hosts.id`（Guid 小写 36 位文本）**而不是主机名**（主机名可改，关系不能因此断掉）；`ix_host_tag_assignments_tag_id` 支撑反向查询（正向由主键前缀覆盖）；**无 `is_deleted`、无级联删除**——撤销打标就是删行，删标签时由应用服务先清关联 |
+| `stacks` | `0010_stacks.sql` | 一行 = 一个 Compose 项目的**记录**（**不是容器的当前状态**）：`host_id` 指向 `hosts(id)`；`name` 是 Compose 项目名（它会作为 `com.docker.compose.project` 标签值落到容器 / 网络 / 卷上，因此必须符合 Compose 命名规则）；`compose_content` 存 YAML 原文（≤ 256 KB）；`webhook_token_hash` 存 SHA-256（**明文不落库**）、`webhook_token_hint` 存明文前几位（界面显示「哪一个令牌」而不泄露它）；`ux_stacks_host_name` = `UNIQUE (host_id, name) WHERE is_deleted = 0`；`ux_stacks_webhook_token` = `UNIQUE (webhook_token_hash) WHERE is_deleted = 0 AND webhook_enabled = 1 AND webhook_token_hash IS NOT NULL`（**部分唯一索引**——吊销即清哈希，因此不会占住索引） |
 
 **迁移机制**：`PRAGMA user_version` 记录已应用到第几版，脚本文件名前缀即目标版本（必须从 1 起**连续**编号，
 否则启动失败）；每个脚本与其版本号写入**同一事务**，因此中断只会留下"该脚本整体未应用"。
@@ -439,6 +441,67 @@ Api.NotificationHub → 浏览器
 - 隔离 Controller 与 Docker SDK 的直接耦合
 - 封装 Dapper Repository 调用（用户、授权、主机相关数据）
 - 通过 `IDockerHostAccessor` 解析当前请求的 Docker 主机客户端
+
+### 编排 Stack 与后台任务（0.10.0）
+
+#### 为什么编排要「标签 + 数据库」两边并存
+
+| 事实源 | 回答的问题 | 为什么不能只靠另一边 |
+|--------|-----------|-------------------|
+| **守护进程**（靠 `com.docker.compose.project` 标签发现） | 「现在实际跑着什么」 | 用户可能在命令行删了容器、改了配置——数据库说不出真相 |
+| **数据库**（`stacks` 表） | 「我们认为该怎么部署它」「这个项目是不是本平台部署的」 | 外部 `docker compose up` 的项目不在库里，只看库会漏掉它们 |
+
+**标签是 Stack 与容器之间唯一的联结**：本系统不额外维护「哪个容器属于哪个 Stack」的表——
+那会与守护进程的事实产生第二份真相，而容器随时可能被用户在命令行删掉或重建。
+
+#### 部署是异步任务
+
+部署可能要拉镜像（几分钟），而 HTTP 请求抗不住那么长——反代会把连接掐掉，
+客户端拿到的是「504 网关超时」而不是「部署失败」。因此：
+
+```
+HTTP 请求（校验 + 入队）  →  202 + taskId
+                             ↓
+                    StackOperationWorker（后台）
+                             ↓
+                    StackOperationExecutor（真正碰 Docker）
+                             ↓
+              实时进度（OnOperationProgress）+ 任务快照（轮询）
+```
+
+| 组件 | 位置 | 生命周期 | 职责 |
+|------|------|---------|------|
+| `StackTaskRegistry` | `Application/Stacks/` | **Singleton** | 内存态任务登记表：状态、百分比、步骤、结果 |
+| `StackOperationQueue` | `Application/Stacks/` | **Singleton** | `Channel<StackOperationRequest>`，**单读者** |
+| `StackOperationWorker` | `Application/Stacks/` | HostedService | 取队列 → 建作用域 → 执行 → 写审计 → 失败时通知 |
+| `StackOperationExecutor` | `Application/Stacks/` | Scoped | 真正碰 Docker：建网络 / 卷、建容器、启停、清理孤儿 |
+| `StackService` / `StackWebhookService` | `Application/Stacks/` | Scoped | 用例编排：校验、落库、入队 |
+
+**三条关键约束**：
+
+1. **任务用 `CancellationToken.None` 执行**：宿主停止时的取消令牌会在进程关闭时触发，
+   而「用户点了部署，进程正要关」正是最需要把这个部署做完的时刻
+   （半途而废的部署会留下「建了一半」的资源）。
+   宿主停止只终止「不再接新任务」。
+2. **每个任务自建作用域**：执行器依赖 Scoped 的服务（主机访问器、镜像用例、审计仓储…），
+   而后台线程**不在任何请求作用域里**——借用请求作用域会拿到一个已释放的作用域。
+3. **单读者**：同一时刻只有一个编排操作在动守护进程。
+   这不只是性能取舍——两个编排同时改同一个 Docker 主机时，
+   网络与容器的创建 / 删除会互相踩。
+
+**任务登记表在内存里**：它服务的是「一次操作的状态」，
+而操作本身的状态源是**守护进程**。登记表只回答「刚才那次请求跑到哪了」，
+而这个问题的有效期就是几分钟（用户在等结果）。
+落库会带来两个新问题：过期数据要清理、重启后要恢复半截状态。
+**重启丢任务的后果可接受**：进程重启时正在跑的编排本来就断了，
+下次打开列表页，界面会按标签把实际情况显示出来。
+
+**回滚只回滚本次新建的东西**：失败时删掉本次创建的容器与网络，
+但**绝不删卷**——卷里是用户的数据，删它的后果不可逆，
+而「多出一个没被用上的卷」可以事后清理。
+
+**审计不记 YAML 全文、不记环境变量的值**：那里面常含口令，
+而审计日志会被采集器上报到集中式系统。
 
 ### Docker 接入层
 

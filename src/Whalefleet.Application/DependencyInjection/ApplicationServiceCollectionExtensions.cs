@@ -13,6 +13,7 @@ using Whalefleet.Application.Images;
 using Whalefleet.Application.Networks;
 using Whalefleet.Application.Permissions;
 using Whalefleet.Application.Repositories;
+using Whalefleet.Application.Stacks;
 using Whalefleet.Application.Users;
 using Whalefleet.Application.Volumes;
 using Microsoft.Extensions.Configuration;
@@ -94,6 +95,21 @@ public static class ApplicationServiceCollectionExtensions
 
         // 网络用例（0.2.0）。Scoped：同上。
         services.AddScoped<NetworkService>();
+
+        // 编排 Stack 用例（0.10.0）。Scoped：依赖 Scoped 的仓储与主机访问器。
+        services.AddScoped<StackService>();
+
+        // 编排操作执行器（0.10.0）。Scoped：后台工作器每个任务自建作用域后取它。
+        services.AddScoped<StackOperationExecutor>();
+
+        // 编排 Webhook 用例（0.10.0）。Scoped：依赖 Scoped 的仓储。
+        services.AddScoped<StackWebhookService>();
+
+        // 任务登记表与队列（0.10.0）。**必须 Singleton**：
+        // 登记表要在「HTTP 请求线程」与「后台工作线程」之间共享状态，
+        // 队列更是跨请求传递的唯一通道。
+        services.AddSingleton<StackTaskRegistry>();
+        services.AddSingleton<StackOperationQueue>();
 
         // 仓库配置用例（0.4.0）。Scoped：依赖 Scoped 的仓储与口令保护器。
         // 同时以 IRepositoryCredentialResolver 的身份暴露**同一实例**——

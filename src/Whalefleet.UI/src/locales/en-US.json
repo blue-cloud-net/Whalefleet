@@ -116,6 +116,7 @@
   },
   "common": {
     "actions": "Actions",
+    "back": "Back",
     "cancel": "Cancel",
     "clearSelection": "Clear selection",
     "close": "Close",
@@ -999,7 +1000,8 @@
     "exited": "Container “{name}” has exited",
     "oom": "Container “{name}” was killed for running out of memory (code {code})",
     "title": "Notifications",
-    "unread": "{count} unread notifications"
+    "unread": "{count} unread notifications",
+    "stackFailed": "Stack “{stack}” on {host} failed: {message}"
   },
   "overview": {
     "filter": {
@@ -1055,7 +1057,8 @@
       "cap3": "One-click deploy and destroy",
       "cap4": "Per-service status",
       "note": "Depends on the container and image capabilities; scheduled as a whole for 0.10.0.",
-      "title": "Compose stacks"
+      "title": "Compose stacks",
+      "subtitle": "Deploy whole service sets from a Compose file; apply, stop and clean up in one click."
     },
     "users": {
       "subtitle": "Create accounts, assign roles per host, or reset someone's password. Container-level scopes are scheduled for 0.12.0."
@@ -1080,6 +1083,7 @@
       "network": "Networks",
       "repository": "Repository",
       "role": "Roles",
+      "stack": "Stacks",
       "user": "Users",
       "volume": "Volumes"
     },
@@ -1108,6 +1112,10 @@
       "container": "Container scope",
       "global": "Global scope",
       "host": "Host scope"
+    },
+    "stack": {
+      "read": "View stacks",
+      "write": "Deploy / update stacks"
     },
     "user": {
       "read": "View users",
@@ -1328,6 +1336,110 @@
     "inputHint": "Shortcuts are inactive while typing in a field, so they never fight with normal input.",
     "title": "Keyboard shortcuts",
     "toggleSidebar": "Collapse / expand sidebar"
+  },
+  "stack": {
+    "action": {
+      "deploy": "Deploy stack",
+      "remove": "Remove stack",
+      "stop": "Stop stack",
+      "update": "Update stack"
+    },
+    "apply": {
+      "content": "Compose file",
+      "contentHint": "Supports services / networks / volumes; unsupported fields are reported with their path on apply.",
+      "contentPlaceholder": "services:\n  app:\n    image: nginx:1.27-alpine\n    ports:\n      - \"8080:80\"\n",
+      "contentRequired": "Compose file content is required",
+      "deployTitle": "Deploy stack",
+      "name": "Stack name",
+      "nameHint": "The Compose project name: lowercase letters, digits, hyphens and underscores, starting with a letter or digit.",
+      "nameInvalid": "Invalid stack name: only lowercase letters, digits, hyphens and underscores, starting with a letter or digit.",
+      "namePlaceholder": "my-stack",
+      "options": "Apply options",
+      "pruneOrphans": "Remove extra containers",
+      "pruneOrphansHint": "Removes containers that are no longer in the Compose file. Data volumes are never removed — they hold user data and must be deleted separately.",
+      "pullAlways": "Pull latest images",
+      "pullAlwaysHint": "Images are pulled before applying; a failed pull fails the whole apply (it does not fall back to the local image). When unchecked, images are pulled only when missing locally.",
+      "secretHint": "Secrets in environment variables are stored together with the Compose file — do not commit it to a repository.",
+      "updateTitle": "Update stack"
+    },
+    "column": {
+      "containers": "Containers",
+      "health": "Health",
+      "image": "Image",
+      "name": "Name",
+      "ports": "Ports",
+      "resources": "Networks / Volumes",
+      "restartPolicy": "Restart policy",
+      "service": "Service",
+      "services": "Services",
+      "state": "State",
+      "status": "Status",
+      "updatedAt": "Updated"
+    },
+    "compose": {
+      "unavailable": "No Compose file",
+      "unavailableHint": "This project was not deployed by this platform (maybe started with docker compose on the command line), so it cannot be edited or updated."
+    },
+    "empty": "No stacks yet",
+    "emptyHint": "Use “Deploy stack” in the top right to submit a Compose file.",
+    "filter": {
+      "statusAll": "All statuses"
+    },
+    "loadFailed": "Failed to load stacks",
+    "managed": {
+      "external": "External",
+      "hint": "This project was not deployed by this platform and has no Compose file, so it cannot be updated"
+    },
+    "remove": {
+      "confirm": "Remove stack “{name}”? Containers and networks are deleted; data volumes are kept by default.",
+      "title": "Remove stack"
+    },
+    "resources": "{networks} networks / {volumes} volumes",
+    "search": {
+      "placeholder": "Search by name"
+    },
+    "section": {
+      "compose": "Compose file",
+      "overview": "Overview",
+      "services": "Services",
+      "webhook": "Webhook"
+    },
+    "services": {
+      "empty": "No services",
+      "emptyHint": "There are no containers in this project yet."
+    },
+    "status": {
+      "partial": "Partially running",
+      "running": "Running",
+      "stopped": "Stopped",
+      "unknown": "Unknown"
+    },
+    "task": {
+      "failed": "Stack operation failed",
+      "running": "Stack operation in progress…",
+      "succeeded": "Stack operation finished"
+    },
+    "total": "{total} total",
+    "warnings": {
+      "title": "Stack warnings"
+    },
+    "webhook": {
+      "enable": "Generate webhook token",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "lastUsed": "Last triggered: {time}",
+      "revoke": "Revoke token",
+      "revokeConfirm": "The webhook URL of this stack stops working immediately. Continue?",
+      "revokeFailed": "Failed to revoke the webhook token",
+      "revokeTitle": "Revoke webhook token",
+      "revoked": "Webhook token revoked",
+      "rotate": "Rotate token",
+      "rotateFailed": "Failed to generate the webhook token",
+      "rotateHint": "Issues a new token and invalidates the old one immediately. The plaintext is shown only once.",
+      "tokenHint": "Save this token now — only its hash is stored, and it cannot be shown again.",
+      "tokenTitle": "Webhook token (shown only once)",
+      "urlHint": "Trigger URL: {url} (replace {token} with the token above)."
+    }
   },
   "state": {
     "loadFailed": "Failed to load the host list — check that the backend is running",

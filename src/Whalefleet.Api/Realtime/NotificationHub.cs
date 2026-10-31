@@ -25,9 +25,13 @@ namespace Whalefleet.Api.Realtime;
 public sealed class NotificationHub : Hub
 {
     /// <summary>
-    /// 镜像操作进度的订阅类别名。
+    /// 操作进度的订阅类别名。
     /// </summary>
-    public const string PullSubscriptionKind = "pull";
+    /// <remarks>
+    /// <b>0.10.0 起从 <c>pull</c> 改成 <c>operation</c></b>：编排 Stack 的部署 / 更新
+    /// 也走这条通道，而「订阅一个叫 Pull 的频道看部署进度」会长期误导后来者。
+    /// </remarks>
+    public const string OperationSubscriptionKind = "operation";
 
     /// <summary>
     /// 进度令牌的最小长度。
@@ -89,7 +93,7 @@ public sealed class NotificationHub : Hub
     }
 
     /// <summary>
-    /// 订阅某次镜像操作的进度。
+    /// 订阅某次后台操作的进度。
     /// </summary>
     /// <param name="token">进度令牌（客户端生成的随机串，与发起操作时用的同一个）。</param>
     /// <returns>订阅结果；失败时带错误码与消息。</returns>
@@ -98,7 +102,7 @@ public sealed class NotificationHub : Hub
     /// 拉取请求是一个独立的 HTTP 请求，与 Hub 连接没有天然关联。
     /// 客户端先生成令牌，订阅它，再把它带进拉取请求，三者由此串起来。
     /// </remarks>
-    public Task<RealtimeActionResult> SubscribePull(string token)
+    public Task<RealtimeActionResult> SubscribeOperation(string token)
     {
         if (string.IsNullOrWhiteSpace(token) || token.Length < MinProgressTokenLength)
         {
@@ -118,7 +122,7 @@ public sealed class NotificationHub : Hub
 
         var subscription = _subscriptions.TryRegister(
             this.Context.ConnectionId,
-            PullSubscriptionKind,
+            OperationSubscriptionKind,
             token,
             _options.Value.MaxSubscriptionsPerKind);
 
@@ -131,18 +135,18 @@ public sealed class NotificationHub : Hub
         }
 
         _logger.LogDebug(
-            "订阅镜像操作进度（连接={ConnectionId}）",
+            "订阅后台操作进度（连接={ConnectionId}）",
             this.Context.ConnectionId);
 
         return Task.FromResult(RealtimeActionResult.Ok);
     }
 
     /// <summary>
-    /// 退订某次镜像操作的进度。
+    /// 退订某次后台操作的进度。
     /// </summary>
     /// <param name="token">进度令牌。</param>
     /// <returns>退订结果。</returns>
-    public async Task<RealtimeActionResult> UnsubscribePull(string token)
+    public async Task<RealtimeActionResult> UnsubscribeOperation(string token)
     {
         if (string.IsNullOrWhiteSpace(token))
         {
@@ -150,7 +154,7 @@ public sealed class NotificationHub : Hub
         }
 
         await _subscriptions
-            .RemoveAndStopAsync(this.Context.ConnectionId, PullSubscriptionKind, token)
+            .RemoveAndStopAsync(this.Context.ConnectionId, OperationSubscriptionKind, token)
             .ConfigureAwait(false);
 
         return RealtimeActionResult.Ok;

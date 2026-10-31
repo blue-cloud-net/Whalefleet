@@ -266,7 +266,7 @@ public sealed class ImageService
             return;
         }
 
-        var progress = new Abstractions.Realtime.ImageOperationProgress(
+        var progress = new Abstractions.Realtime.OperationProgress(
             progressToken,
             operation,
             percent,
@@ -1051,7 +1051,7 @@ public sealed class ImageService
 
             var failure = message.Error?.Message;
 
-            var progress = new Abstractions.Realtime.ImageOperationProgress(
+            var progress = new Abstractions.Realtime.OperationProgress(
                 _progressToken,
                 "pull",
                 this._aggregator.Percent,

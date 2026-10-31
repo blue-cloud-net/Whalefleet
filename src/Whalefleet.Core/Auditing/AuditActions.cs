@@ -118,6 +118,34 @@ public static class AuditActions
     /// <summary>容器断开网络。</summary>
     public const string NetworkDisconnect = "network.disconnect";
 
+    // ==================== 编排 Stack ====================
+
+    /// <summary>部署 Stack。</summary>
+    public const string StackDeploy = "stack.deploy";
+
+    /// <summary>更新 Stack（重新应用 YAML）。</summary>
+    public const string StackUpdate = "stack.update";
+
+    /// <summary>停止 Stack（停掉全部服务，容器保留）。</summary>
+    public const string StackStop = "stack.stop";
+
+    /// <summary>删除 Stack。</summary>
+    public const string StackRemove = "stack.remove";
+
+    /// <summary>由 Webhook 触发重放已保存的 YAML。</summary>
+    /// <remarks>
+    /// <b>与 <see cref="StackDeploy"/> / <see cref="StackUpdate"/> 分开</b>：
+    /// 触发来源（人点按钮 vs CI 回调）在事后追责时是完全不同的两件事，
+    /// 而审计的全部价值恰恰在于「半年后还能读懂当时发生了什么」。
+    /// </remarks>
+    public const string StackWebhookReload = "stack.webhook.reload";
+
+    /// <summary>生成或轮换 Webhook 令牌。</summary>
+    public const string StackWebhookRotate = "stack.webhook.rotate";
+
+    /// <summary>吊销 Webhook 令牌。</summary>
+    public const string StackWebhookRevoke = "stack.webhook.revoke";
+
     // ==================== 主机 ====================
 
     /// <summary>新增主机。</summary>
@@ -187,6 +215,9 @@ public static class AuditTargetTypes
 
     /// <summary>网络。</summary>
     public const string Network = "network";
+
+    /// <summary>编排 Stack。</summary>
+    public const string Stack = "stack";
 
     /// <summary>主机。</summary>
     public const string Host = "host";

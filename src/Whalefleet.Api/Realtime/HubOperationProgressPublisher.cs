@@ -55,13 +55,13 @@ internal sealed class HubOperationProgressPublisher : IOperationProgressPublishe
 
     /// <inheritdoc />
     public async ValueTask PublishAsync(
-        ImageOperationProgress progress,
+        OperationProgress progress,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(progress);
 
         var targets = _subscriptions.FindByResource(
-            NotificationHub.PullSubscriptionKind,
+            NotificationHub.OperationSubscriptionKind,
             progress.Token);
 
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -74,7 +74,7 @@ internal sealed class HubOperationProgressPublisher : IOperationProgressPublishe
                 {
                     await _hubContext.Clients
                         .Client(subscription.ConnectionId)
-                        .SendAsync("OnPullProgress", progress, cancellationToken)
+                        .SendAsync("OnOperationProgress", progress, cancellationToken)
                         .ConfigureAwait(false);
                 }
                 catch (Exception exception)

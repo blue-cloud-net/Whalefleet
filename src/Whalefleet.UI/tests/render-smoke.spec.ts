@@ -49,6 +49,39 @@ vi.mock('../src/api/auth', () => ({
   refreshSession: vi.fn()
 }))
 
+// ===== 0.10.0：编排 Stack 端点 =====
+vi.mock('../src/api/stack', () => ({
+  listStacks: vi.fn(async () => ({ items: [], total: 0, pageIndex: 0, pageSize: 20 })),
+  inspectStack: vi.fn(async () => ({
+    summary: {
+      name: 'shop',
+      managed: true,
+      status: 'running',
+      serviceCount: 1,
+      containerCount: 1,
+      runningCount: 1,
+      networkCount: 1,
+      volumeCount: 0,
+      composeAvailable: true,
+      webhookEnabled: false,
+      webhookTokenHint: null,
+      webhookLastUsedAt: null,
+      updatedAt: null
+    },
+    composeContent: 'services:\n  app:\n    image: alpine:3.20\n',
+    services: [],
+    warnings: []
+  })),
+  deployStack: vi.fn(),
+  updateStack: vi.fn(),
+  stopStack: vi.fn(),
+  removeStack: vi.fn(),
+  getStackTask: vi.fn(async () => null),
+  rotateStackWebhook: vi.fn(),
+  revokeStackWebhook: vi.fn(),
+  triggerStackWebhook: vi.fn()
+}))
+
 // ===== 0.5.0：容器日志端点与实时通道 =====
 // 日志页会真的去拉日志并建立 SignalR 连接；渲染守卫不该发网络请求，
 // 也不该在 jsdom 里连 WebSocket。
@@ -178,6 +211,16 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/hosts/:hostId/containers',
     name: 'host-containers',
+    component: { template: '<div />' }
+  },
+  {
+    path: '/hosts/:hostId/stacks',
+    name: 'host-stacks',
+    component: { template: '<div />' }
+  },
+  {
+    path: '/hosts/:hostId/stacks/:name',
+    name: 'host-stack-detail',
     component: { template: '<div />' }
   }
 ]
@@ -564,7 +607,7 @@ describe('0.5.0 实时通道组件渲染冒烟', () => {
     expect(wrapper.find('.bg-danger').exists()).toBe(false)
 
     const { useNotificationStore } = await import('../src/stores/notifications')
-    useNotificationStore().push({
+    useNotificationStore().pushContainerDied({
       hostId: 'local',
       containerId: 'abc123',
       containerName: 'web',
@@ -577,6 +620,77 @@ describe('0.5.0 实时通道组件渲染冒烟', () => {
 
     expect(templateBugs(), '渲染期告警').toEqual([])
     expect(wrapper.find('.bg-danger').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('通知铃铛能渲染编排任务失败通知', async () => {
+    const NotificationBell = (await import('../src/components/common/NotificationBell.vue')).default
+
+    const wrapper = await mountSmoke(NotificationBell)
+
+    await wrapper.vm.$nextTick()
+
+    const { useNotificationStore } = await import('../src/stores/notifications')
+    useNotificationStore().pushStackTaskFailed({
+      hostName: 'local',
+      stackName: 'shop',
+      operation: 'deploy',
+      errorCode: 1901,
+      message: '拉取镜像失败',
+      occurredAt: '2026-10-20T10:00:00Z'
+    })
+
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    expect(wrapper.find('.bg-danger').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('编排列表页渲染出工具条与空态', async () => {
+    const StacksView = (await import('../src/views/StacksView.vue')).default
+
+    const wrapper = await mountSmoke(StacksView, { path: '/hosts/prod-01/stacks' })
+
+    await wrapper.vm.$nextTick()
+    await Promise.resolve()
+    await Promise.resolve()
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    // 空白页也是「无告警」的失败形态，所以必须断言内容非空
+    expect(wrapper.text()).toContain('部署编排')
+    wrapper.unmount()
+  })
+
+  it('编排详情页渲染出服务表与 Webhook 卡片', async () => {
+    const StackDetailView = (await import('../src/views/StackDetailView.vue')).default
+
+    const wrapper = await mountSmoke(StackDetailView, { path: '/hosts/prod-01/stacks/shop' })
+
+    await wrapper.vm.$nextTick()
+    await Promise.resolve()
+    await Promise.resolve()
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    expect(wrapper.text()).toContain('Webhook')
+    wrapper.unmount()
+  })
+
+  it('编排应用对话框渲染出两个选项', async () => {
+    const Dialog = (await import('../src/components/business/StackApplyDialog.vue')).default
+
+    const wrapper = await mountSmoke(Dialog, {
+      props: { visible: true, mode: 'deploy' }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    // ⚠️ 这两个选项的副作用不可逆且不可见，必须真的摆给用户看
+    expect(wrapper.text()).toContain('拉取最新镜像')
+    expect(wrapper.text()).toContain('清理多余的容器')
     wrapper.unmount()
   })
 

@@ -141,18 +141,20 @@
 
 ## Docker Compose / Stack 管理
 
-> 主菜单中的「编排」入口（`/hosts/:hostId/stacks`）**已提前创建占位页**，功能按 0.10.0 排期。
+> 主菜单中的「编排」入口（`/hosts/:hostId/stacks`）在 **0.10.0** 已转正为真实页面。
 
 | 功能 | 说明 | 阶段 |
 |------|------|------|
-| ✅ **编排菜单入口** | 主机侧边栏「编排」菜单项 + 占位页（提前创建，待 0.10.0 填充） | 0.0.7 |
-| ⬜ Stack 列表 | 展示通过 Compose 部署的 Stack（label `com.docker.compose.project` 过滤） | 0.10.0 |
-| ⬜ 部署 Stack | 上传 `docker-compose.yml` 部署 Stack | 0.10.0 |
-| ⬜ 更新 Stack | 重新上传 YAML 更新 Stack | 0.10.0 |
-| ⬜ 停止 Stack | 停止 Stack 内所有服务 | 0.10.0 |
-| ⬜ 删除 Stack | 彻底删除 Stack | 0.10.0 |
-| ⬜ 服务列表 | 查看 Stack 内服务状态 | 0.10.0 |
-| ⬜ **资源 Webhook** | `POST /api/v1/webhooks/{token}` 触发重部署；支持 `?tag=` 与 `?<VAR>=` 传参（**Portainer 商业版独占**） | **0.15.0** |
+| ✅ **编排菜单入口** | 主机侧边栏「编排」菜单项 + 列表页与详情页（`/hosts/:hostId/stacks/:name`） | 0.0.7 / 0.10.0 |
+| ✅ Stack 列表 | 展示通过 Compose 部署的 Stack（label `com.docker.compose.project` 过滤）+ **本平台记录的**（两边合并，`managed` 字段区分） | 0.10.0 |
+| ✅ 部署 Stack | 提交 `docker-compose.yml` 部署 Stack（**异步任务 + 实时进度**） | 0.10.0 |
+| ✅ 更新 Stack | 重新提交 YAML 更新 Stack（配置哈希变了才重建容器） | 0.10.0 |
+| ✅ 停止 Stack | 停止 Stack 内所有服务（**容器保留**） | 0.10.0 |
+| ✅ 删除 Stack | 删除 Stack（容器与网络一并清掉，**数据卷默认保留**） | 0.10.0 |
+| ✅ 服务列表 | 查看 Stack 内服务状态（镜像 / 状态 / 健康 / 端口 / 重启策略） | 0.10.0 |
+| ✅ **应用选项** | 应用前显式选择「拉取最新镜像」与「清理多余的容器」（**两个选项的副作用都不可逆且不可见**） | 0.10.0 |
+| ✅ **资源 Webhook** | `POST /api/v1/webhooks/stacks/{token}` 触发重部署（**匿名端点**，令牌只存哈希；限流 10 次/分钟） | **0.10.0** |
+| ⬜ **Webhook 传参** | `?tag=` 与 `?<VAR>=` 传参（**Portainer 商业版独占**） | **0.15.0** |
 | ⬜ **`.env` 变量与密钥** | 全局变量 + Stack 级变量；引用式注入 compose，**值默认遮罩** | **0.15.0** |
 | ⬜ **导出 Stack 为 YAML / 容器为 `docker run`** | 反向生成可复制的定义（不依赖模板表） | **0.14.0** |
 

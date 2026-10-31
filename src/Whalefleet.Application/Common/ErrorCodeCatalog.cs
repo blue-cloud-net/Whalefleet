@@ -78,6 +78,15 @@ public static class ErrorCodeCatalog
             [ErrorCodes.ImageBuildFailed] = (ErrorCategory.Internal, "镜像构建失败"),
             [ErrorCodes.ImagePushFailed] = (ErrorCategory.Internal, "镜像推送失败"),
 
+            [ErrorCodes.StackNotFound] = (ErrorCategory.NotFound, "编排 Stack 不存在"),
+            [ErrorCodes.StackDeployFailed] = (ErrorCategory.Internal, "Stack 部署 / 更新失败"),
+            [ErrorCodes.StackNameAlreadyExists] = (ErrorCategory.Validation, "Stack 名称已被占用"),
+            [ErrorCodes.StackNotManaged] = (ErrorCategory.Conflict, "该 Stack 不是本平台部署的，无法更新"),
+            [ErrorCodes.ComposeInvalid] = (ErrorCategory.Validation, "Compose 文件非法或含暂不支持的字段"),
+            [ErrorCodes.StackOperationInProgress] = (ErrorCategory.Conflict, "该 Stack 已有进行中的操作"),
+            [ErrorCodes.StackWebhookTokenInvalid] = (ErrorCategory.NotFound, "Webhook 令牌无效或已吊销"),
+            [ErrorCodes.StackWebhookRateLimited] = (ErrorCategory.RateLimited, "Webhook 触发过于频繁"),
+
             [ErrorCodes.InternalError] = (ErrorCategory.Internal, "服务器内部错误"),
         }.ToFrozenDictionary();
 

@@ -21,9 +21,10 @@ public class DatabaseInitializerTests
     /// </summary>
     /// <remarks>
     /// 0.1.0 新增 <c>0006_rbac.sql</c>；0.4.0 新增 <c>0007_repositories.sql</c>；
-    /// 0.6.0 新增 <c>0008_host_tags.sql</c>；0.9.0 新增 <c>0009_audit_logs.sql</c>。
+    /// 0.6.0 新增 <c>0008_host_tags.sql</c>；0.9.0 新增 <c>0009_audit_logs.sql</c>；
+    /// 0.10.0 新增 <c>0010_stacks.sql</c>。
     /// </remarks>
-    private const int _expectedSchemaVersion = 9;
+    private const int _expectedSchemaVersion = 10;
 
     [Fact]
     public async Task 初始化_建出业务表并推进架构版本()
@@ -37,12 +38,13 @@ public class DatabaseInitializerTests
         // 0.1.0 新增 role_permissions / user_role_assignments 两张表，所以清单变了：
         // 授权相关的两张新表取代了原先的角色字段。
         // 0.6.0 再新增 host_tags / host_tag_assignments（标签与关联）。
+        // 0.10.0 再新增 stacks（编排 Stack）。
         var tableCount = await host.QueryScalarAsync(
             "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' "
             + "AND name IN ('users', 'roles', 'hosts', 'refresh_tokens', 'user_role_assignments', "
-            + "'host_tags', 'host_tag_assignments')");
+            + "'host_tags', 'host_tag_assignments', 'stacks')");
 
-        tableCount.Should().Be("7");
+        tableCount.Should().Be("8");
     }
 
     [Fact]
