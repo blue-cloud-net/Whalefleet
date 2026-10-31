@@ -116,6 +116,7 @@
   },
   "common": {
     "actions": "操作",
+    "back": "返回",
     "cancel": "取消",
     "clearSelection": "取消选择",
     "close": "关闭",
@@ -999,7 +1000,8 @@
     "exited": "容器「{name}」已退出",
     "oom": "容器「{name}」因内存不足被终止（退出码 {code}）",
     "title": "通知",
-    "unread": "{count} 条未读通知"
+    "unread": "{count} 条未读通知",
+    "stackFailed": "编排「{stack}」（{host}）操作失败：{message}"
   },
   "overview": {
     "filter": {
@@ -1055,7 +1057,8 @@
       "cap3": "一键部署与销毁",
       "cap4": "服务级状态查看",
       "note": "依赖容器与镜像能力，整块排在 0.10.0。",
-      "title": "Compose 编排"
+      "title": "Compose 编排",
+      "subtitle": "用 Compose 文件部署整套服务，支持一键应用、停止与清理。"
     },
     "users": {
       "subtitle": "创建账号、按主机分配角色，或重置他人密码。容器级作用域排在 0.12.0。"
@@ -1333,6 +1336,110 @@
     "inputHint": "快捷键在输入框内不生效，避免与正常输入冲突。",
     "title": "键盘快捷键",
     "toggleSidebar": "折叠 / 展开侧边栏"
+  },
+  "stack": {
+    "action": {
+      "deploy": "部署编排",
+      "remove": "删除编排",
+      "stop": "停止编排",
+      "update": "更新编排"
+    },
+    "apply": {
+      "content": "Compose 文件",
+      "contentHint": "支持 services / networks / volumes；不支持的字段会在部署时报错并指出路径。",
+      "contentPlaceholder": "services:\n  app:\n    image: nginx:1.27-alpine\n    ports:\n      - \"8080:80\"\n",
+      "contentRequired": "Compose 文件内容不能为空",
+      "deployTitle": "部署编排",
+      "name": "Stack 名称",
+      "nameHint": "即 Compose 项目名：只能是小写字母、数字、连字符与下划线，且以字母或数字开头。",
+      "nameInvalid": "Stack 名称不合法：只能是小写字母、数字、连字符与下划线，且以字母或数字开头。",
+      "namePlaceholder": "my-stack",
+      "options": "应用选项",
+      "pruneOrphans": "清理多余的容器",
+      "pruneOrphansHint": "删掉已经不在 Compose 文件里的容器。数据卷不会被清理——卷里是用户的数据，需要时请单独删除。",
+      "pullAlways": "拉取最新镜像",
+      "pullAlwaysHint": "勾上后会在应用前拉取镜像；拉取失败则本次应用整体失败（不会退回本地旧镜像）。不勾时只在本地缺失镜像时拉取。",
+      "secretHint": "环境变量里的口令会随 Compose 文件一起保存，请不要把它提交到代码仓库。",
+      "updateTitle": "更新编排"
+    },
+    "column": {
+      "containers": "容器",
+      "health": "健康",
+      "image": "镜像",
+      "name": "名称",
+      "ports": "端口",
+      "resources": "网络 / 卷",
+      "restartPolicy": "重启策略",
+      "service": "服务",
+      "services": "服务数",
+      "state": "状态",
+      "status": "状态",
+      "updatedAt": "更新时间"
+    },
+    "compose": {
+      "unavailable": "没有 Compose 文件",
+      "unavailableHint": "这个项目不是本平台部署的（可能是用命令行 docker compose 启动的），因此无法编辑或更新。"
+    },
+    "empty": "还没有编排",
+    "emptyHint": "点右上角「部署编排」提交一份 Compose 文件。",
+    "filter": {
+      "statusAll": "全部状态"
+    },
+    "loadFailed": "加载编排列表失败",
+    "managed": {
+      "external": "外部项目",
+      "hint": "这个项目不是本平台部署的，没有 Compose 文件，无法更新"
+    },
+    "remove": {
+      "confirm": "确定删除编排「{name}」吗？容器与网络会被清掉，数据卷默认保留。",
+      "title": "删除编排"
+    },
+    "resources": "{networks} 个网络 / {volumes} 个卷",
+    "search": {
+      "placeholder": "按名称搜索"
+    },
+    "section": {
+      "compose": "Compose 文件",
+      "overview": "概览",
+      "services": "服务",
+      "webhook": "Webhook"
+    },
+    "services": {
+      "empty": "还没有服务",
+      "emptyHint": "这个项目下还没有容器。"
+    },
+    "status": {
+      "partial": "部分运行",
+      "running": "运行中",
+      "stopped": "已停止",
+      "unknown": "未知"
+    },
+    "task": {
+      "failed": "编排操作失败",
+      "running": "编排操作进行中…",
+      "succeeded": "编排操作完成"
+    },
+    "total": "共 {total} 个",
+    "warnings": {
+      "title": "编排提示"
+    },
+    "webhook": {
+      "enable": "生成 Webhook 令牌",
+      "enabled": "已启用",
+      "disabled": "未启用",
+      "lastUsed": "最近触发：{time}",
+      "revoke": "吊销令牌",
+      "revokeConfirm": "吊销后这个编排的 Webhook 地址会立即失效，确定吗？",
+      "revokeFailed": "吊销 Webhook 令牌失败",
+      "revokeTitle": "吊销 Webhook 令牌",
+      "revoked": "Webhook 令牌已吊销",
+      "rotate": "轮换令牌",
+      "rotateFailed": "生成 Webhook 令牌失败",
+      "rotateHint": "生成新的令牌，旧的立即失效。明文只显示这一次。",
+      "tokenHint": "请立刻保存这个令牌——服务端只保存哈希，之后无法再次查看。",
+      "tokenTitle": "Webhook 令牌（只显示这一次）",
+      "urlHint": "触发地址：{url}（把 {token} 换成上面的令牌）。"
+    }
   },
   "state": {
     "loadFailed": "主机列表加载失败，请检查后端是否已启动",

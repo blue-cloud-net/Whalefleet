@@ -3,7 +3,11 @@ import type { HubConnection } from '@microsoft/signalr'
 import { createHubConnection } from '@/realtime/connection'
 import { createMockNotificationSource } from '@/realtime/mock'
 import { shouldUseMock } from '@/mocks/switch'
-import type { ContainerDiedEvent, OperationProgress } from '@/types/api'
+import type {
+  ContainerDiedEvent,
+  OperationProgress,
+  StackTaskFailureEvent
+} from '@/types/api'
 
 /**
  * 全局通知 Hub 的**共享连接**（0.5.0）。
@@ -28,8 +32,14 @@ export type ContainerDiedHandler = (event: ContainerDiedEvent) => void
 /** 后台操作进度的处理函数。 */
 export type ProgressHandler = (progress: OperationProgress) => void
 
+/** 编排任务失败的处理函数。 */
+export type StackTaskFailedHandler = (event: StackTaskFailureEvent) => void
+
 /** 容器退出事件的订阅者。 */
 const diedHandlers = new Set<ContainerDiedHandler>()
+
+/** 编排任务失败的订阅者。 */
+const stackFailedHandlers = new Set<StackTaskFailedHandler>()
 
 /** 进度订阅（按令牌）。 */
 const progressHandlers = new Map<string, ProgressHandler>()
@@ -50,6 +60,17 @@ let connecting = false
  */
 function dispatchDied(event: ContainerDiedEvent): void {
   for (const handler of diedHandlers) {
+    handler(event)
+  }
+}
+
+/**
+ * 处理编排任务失败。
+ *
+ * @param event 事件。
+ */
+function dispatchStackFailed(event: StackTaskFailureEvent): void {
+  for (const handler of stackFailedHandlers) {
     handler(event)
   }
 }
@@ -105,6 +126,7 @@ async function ensureConnected(): Promise<void> {
     const hub = createHubConnection('notification')
     hub.on('OnContainerDied', dispatchDied)
     hub.on('OnOperationProgress', dispatchProgress)
+    hub.on('OnStackTaskFailed', dispatchStackFailed)
     hub.onreconnected(() => {
       void subscribeAllProgress(hub)
     })
@@ -124,7 +146,7 @@ async function ensureConnected(): Promise<void> {
  * 没有任何订阅者时关闭连接。
  */
 async function releaseIfIdle(): Promise<void> {
-  if (diedHandlers.size > 0 || progressHandlers.size > 0) return
+  if (diedHandlers.size > 0 || progressHandlers.size > 0 || stackFailedHandlers.size > 0) return
 
   stopMock?.()
   stopMock = null
@@ -153,6 +175,26 @@ export function subscribeContainerDied(handler: ContainerDiedHandler): () => voi
 
   return () => {
     diedHandlers.delete(handler)
+    void releaseIfIdle()
+  }
+}
+
+/**
+ * 订阅「编排任务失败」事件（0.10.0）。
+ *
+ * ⚠️ **只推失败、不推成功**：成功时用户正盯着界面看着进度条走完，
+ * 界面自己就会刷新；而失败可能发生在用户已经离开页面之后
+ * （webhook 触发的 CI 部署），那种情况下没有别的途径让用户知道出事了。
+ *
+ * @param handler 处理函数。
+ * @returns 退订函数。
+ */
+export function subscribeStackTaskFailed(handler: StackTaskFailedHandler): () => void {
+  stackFailedHandlers.add(handler)
+  void ensureConnected()
+
+  return () => {
+    stackFailedHandlers.delete(handler)
     void releaseIfIdle()
   }
 }
