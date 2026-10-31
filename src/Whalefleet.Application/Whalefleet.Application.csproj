@@ -23,6 +23,9 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options" />
+    <!-- 后台工作器（0.10.0 编排 Stack）：BackgroundService 位于 Hosting.Abstractions。
+         只引 Abstractions（不含 Hosting 本体），避免把宿主外壳带进应用层。 -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <!-- YAML 解析（0.10.0 编排 Stack）：解析 Compose 文件。
          ⚠️ 只在本项目引用——Core 必须保持零 NuGet（见 docs/architecture.md 的分层约束）。 -->
     <PackageReference Include="YamlDotNet" />
