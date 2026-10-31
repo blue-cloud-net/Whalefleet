@@ -12,6 +12,16 @@ public sealed record ListStacksRequest
     /// <summary>关键字搜索：按 Stack 名称模糊匹配（不区分大小写）。</summary>
     public string? Search { get; init; }
 
+    /// <summary>
+    /// 状态筛选：<c>running</c> / <c>partial</c> / <c>stopped</c> / <c>unknown</c>；
+    /// 省略表示不过滤。
+    /// </summary>
+    /// <remarks>
+    /// <b>筛选在服务端做</b>：分页也是服务端切片，
+    /// 前端过滤只能筛到当前页——页脚会显示一个与翻页结果对不上的数字。
+    /// </remarks>
+    public string? Status { get; init; }
+
     /// <summary>页码（从 0 开始）；省略时按 0 处理，负数同样按 0 处理。</summary>
     public int? PageIndex { get; init; }
 

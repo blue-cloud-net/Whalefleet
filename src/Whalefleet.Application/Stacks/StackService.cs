@@ -126,6 +126,7 @@ public sealed class StackService
 
         var filtered = summaries
             .Where(summary => MatchesSearch(summary.Name, request.Search))
+            .Where(summary => MatchesStatus(summary.Status, request.Status))
             .ToList();
 
         var pageIndex = Math.Max(request.PageIndex ?? 0, 0);
@@ -975,6 +976,27 @@ public sealed class StackService
     private static bool MatchesSearch(string? haystack, string? needle) =>
         string.IsNullOrWhiteSpace(needle)
         || haystack?.Contains(needle.Trim(), StringComparison.OrdinalIgnoreCase) == true;
+
+    /// <summary>
+    /// 状态匹配。
+    /// </summary>
+    /// <param name="status">实际状态。</param>
+    /// <param name="filter">筛选值；为空表示不过滤。</param>
+    /// <returns>命中返回 <see langword="true"/>。</returns>
+    /// <remarks>
+    /// <b>筛选值无效时不过滤</b>（而不是返回空列表）：
+    /// 界面上的下拉值来自后端定义的封闭集合，
+    /// 而手写请求可能带上别的值——那时报「一个都没有」比报「全部」更让人困惑。
+    /// </remarks>
+    private static bool MatchesStatus(string status, string? filter)
+    {
+        if (string.IsNullOrWhiteSpace(filter))
+        {
+            return true;
+        }
+
+        return string.Equals(status, filter.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>
     /// 判断任务状态是否已结束。
