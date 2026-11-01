@@ -2,11 +2,15 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Endpoints;
@@ -65,7 +69,7 @@ public class RepositoryEndpointsTests : IAsyncLifetime
     /// <inheritdoc />
     public async Task DisposeAsync() => await _factory.DisposeAsync();
 
-    // ===== 鉴权 =====
+    #region 鉴权
 
     [Theory]
     [InlineData("list")]
@@ -87,7 +91,7 @@ public class RepositoryEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 无registry权限_返回403()
     {
-        using var client = await CreateAuthenticatedClientAsync(_operatorName);
+        using var client = await this.CreateAuthenticatedClientAsync(_operatorName);
 
         using var response = await client.PostAsJsonAsync("/api/v1/admin/repositories/list", new { });
 
@@ -97,19 +101,20 @@ public class RepositoryEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 无任何角色_返回403()
     {
-        using var client = await CreateAuthenticatedClientAsync(_noRoleName);
+        using var client = await this.CreateAuthenticatedClientAsync(_noRoleName);
 
         using var response = await client.PostAsJsonAsync("/api/v1/admin/repositories/list", new { });
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
+    #endregion
 
-    // ===== 列表 =====
+    #region 列表
 
     [Fact]
     public async Task 列表_无配置时返回空数组()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync("/api/v1/admin/repositories/list", new { });
 
@@ -123,7 +128,7 @@ public class RepositoryEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 列表_新增后可查到()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var created = await client.PostAsJsonAsync(
             "/api/v1/admin/repositories/add",
@@ -151,7 +156,7 @@ public class RepositoryEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 列表_按关键字过滤()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         await AddRegistryAsync(client, "内网 Harbor", "harbor.local:5000");
         await AddRegistryAsync(client, "公网备份", "backup.example.com");
@@ -165,13 +170,14 @@ public class RepositoryEndpointsTests : IAsyncLifetime
         items.Should().ContainSingle();
         items[0].Name.Should().Be("公网备份");
     }
+    #endregion
 
-    // ===== 新增 =====
+    #region 新增
 
     [Fact]
     public async Task 新增_成功且地址被规范化()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/repositories/add",
@@ -197,7 +203,7 @@ public class RepositoryEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 新增_响应中不含口令明文也不含密文()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/repositories/add",
@@ -219,7 +225,7 @@ public class RepositoryEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 新增_别名重复_返回1801()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         await AddRegistryAsync(client, "内网 Harbor", "harbor.local:5000");
 
@@ -237,7 +243,7 @@ public class RepositoryEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 新增_地址重复_返回1802()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         await AddRegistryAsync(client, "内网 Harbor", "harbor.local:5000");
 
@@ -252,7 +258,7 @@ public class RepositoryEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 新增_地址大小写不同仍算重复()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         await AddRegistryAsync(client, "内网 Harbor", "harbor.local:5000");
 
@@ -271,7 +277,7 @@ public class RepositoryEndpointsTests : IAsyncLifetime
     [InlineData("名字", "不是合法地址")]
     public async Task 新增_参数非法_返回1000(string? name, string? serverAddress)
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/repositories/add",
@@ -287,7 +293,7 @@ public class RepositoryEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 新增_只有账号没有口令_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/repositories/add",
@@ -300,7 +306,7 @@ public class RepositoryEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 新增_只有口令没有账号_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/repositories/add",
@@ -309,13 +315,14 @@ public class RepositoryEndpointsTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await ReadCodeAsync(response)).Should().Be(1000);
     }
+    #endregion
 
-    // ===== 删除 =====
+    #region 删除
 
     [Fact]
     public async Task 删除_成功后列表里没有()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var created = await AddRegistryAsync(client, "内网 Harbor", "harbor.local:5000");
 
@@ -333,7 +340,7 @@ public class RepositoryEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 删除_不存在的配置_返回1800()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/repositories/remove",
@@ -346,7 +353,7 @@ public class RepositoryEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 删除_重复调用_第二次返回1800()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var created = await AddRegistryAsync(client, "内网 Harbor", "harbor.local:5000");
 
@@ -369,7 +376,7 @@ public class RepositoryEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 删除后_同名可再次创建()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var created = await AddRegistryAsync(client, "内网 Harbor", "harbor.local:5000");
 
@@ -385,13 +392,14 @@ public class RepositoryEndpointsTests : IAsyncLifetime
 
         recreated.StatusCode.Should().Be(HttpStatusCode.OK);
     }
+    #endregion
 
-    // ===== 连通性测试 =====
+    #region 连通性测试
 
     [Fact]
     public async Task 测试_地址不可达_返回1805()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         // 用 RFC 5737 保留的文档地址段（TEST-NET-1）：保证不可路由，且不会误连到真实服务
         using var response = await client.PostAsJsonAsync(
@@ -405,7 +413,7 @@ public class RepositoryEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 测试_指定不存在的配置_返回1800()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/repositories/test",
@@ -418,7 +426,7 @@ public class RepositoryEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 测试_既没给主键也没给地址_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/repositories/test",
@@ -427,8 +435,9 @@ public class RepositoryEndpointsTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await ReadCodeAsync(response)).Should().Be(1000);
     }
+    #endregion
 
-    // ===== 辅助 =====
+    #region 辅助
 
     private static async Task<RepositoryPayload> AddRegistryAsync(HttpClient client, string name, string serverAddress)
     {
@@ -476,6 +485,7 @@ public class RepositoryEndpointsTests : IAsyncLifetime
 
         return JsonDocument.Parse(text).RootElement.Clone();
     }
+    #endregion
 
     private sealed record LoginPayload(string AccessToken, string RefreshToken);
 

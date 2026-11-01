@@ -1,14 +1,18 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+
+using FluentAssertions;
+
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Realtime;
@@ -31,7 +35,9 @@ public sealed class ContainerLogHubTests : IAsyncLifetime
     private const string _adminName = "admin";
     private const string _localHost = "local";
 
-    /// <summary>等待日志到达的上限。</summary>
+    /// <summary>
+    /// 等待日志到达的上限。
+    /// </summary>
     private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(30);
 
     private static readonly string[] _keepAliveCommand = ["sleep", "30"];
@@ -83,7 +89,7 @@ public sealed class ContainerLogHubTests : IAsyncLifetime
     [DockerShellImageFact]
     public async Task 订阅容器日志_推来行且序号单调递增()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var image = DockerAvailability.ShellImageReference!;
         var name = $"dm-hub-{Guid.NewGuid():N}"[..16];
@@ -101,7 +107,7 @@ public sealed class ContainerLogHubTests : IAsyncLifetime
             await PostOkAsync(client, "start", new { containerId });
             await Task.Delay(TimeSpan.FromSeconds(2));
 
-            var token = await LoginAsync();
+            var token = await this.LoginAsync();
 
             await using var connection = new HubConnectionBuilder()
                 .WithUrl($"http://localhost/hubs/hosts/{_localHost}/container-log", options =>
@@ -187,7 +193,7 @@ public sealed class ContainerLogHubTests : IAsyncLifetime
         var client = _factory.CreateClient();
 
         client.DefaultRequestHeaders.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", await LoginAsync());
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", await this.LoginAsync());
 
         return client;
     }

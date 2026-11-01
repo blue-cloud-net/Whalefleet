@@ -1,5 +1,7 @@
-using Whalefleet.Infrastructure.Persistence;
 using FluentAssertions;
+
+using Whalefleet.Infrastructure.Persistence;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Persistence;

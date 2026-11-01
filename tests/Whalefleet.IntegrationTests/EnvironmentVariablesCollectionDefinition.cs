@@ -14,6 +14,8 @@ namespace Whalefleet.IntegrationTests;
 [CollectionDefinition(Name, DisableParallelization = true)]
 public sealed class EnvironmentVariablesCollectionDefinition
 {
-    /// <summary>集合名称。</summary>
+    /// <summary>
+    /// 集合名称。
+    /// </summary>
     public const string Name = "EnvironmentVariables";
 }

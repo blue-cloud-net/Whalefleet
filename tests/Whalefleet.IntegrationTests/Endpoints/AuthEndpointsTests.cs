@@ -3,14 +3,18 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.IdentityModel.JsonWebTokens;
+using Microsoft.IdentityModel.Tokens;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.IdentityModel.JsonWebTokens;
-using Microsoft.IdentityModel.Tokens;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Endpoints;
@@ -180,7 +184,7 @@ public class AuthEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 当前用户_携带有效令牌_返回用户摘要()
     {
-        using var client = CreateAuthorizedClient(CreateToken(_userId, DateTime.UtcNow));
+        using var client = this.CreateAuthorizedClient(this.CreateToken(_userId, DateTime.UtcNow));
 
         using var response = await client.PostAsync("/api/v1/auth/me", content: null);
 
@@ -213,9 +217,9 @@ public class AuthEndpointsTests : IAsyncLifetime
     public async Task 当前用户_令牌已过期_返回401与令牌过期错误码()
     {
         // 关键区分：过期必须回 1101 而不是 1100，否则前端无法判断「该静默刷新」还是「该跳登录页」。
-        var expired = CreateToken(_userId, DateTime.UtcNow.AddMinutes(-20));
+        var expired = this.CreateToken(_userId, DateTime.UtcNow.AddMinutes(-20));
 
-        using var client = CreateAuthorizedClient(expired);
+        using var client = this.CreateAuthorizedClient(expired);
         using var response = await client.PostAsync("/api/v1/auth/me", content: null);
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
@@ -227,7 +231,7 @@ public class AuthEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 当前用户_签名被篡改_返回401与未认证错误码()
     {
-        var valid = CreateToken(_userId, DateTime.UtcNow);
+        var valid = this.CreateToken(_userId, DateTime.UtcNow);
 
         // 改签名段的**首个**字符。刻意不碰末字符：Base64url 末字符的低位属于被丢弃的填充位，
         // 改了也可能解出完全相同的签名字节，使这条测试变成假阳性。
@@ -237,7 +241,7 @@ public class AuthEndpointsTests : IAsyncLifetime
 
         tampered.Should().NotBe(valid);
 
-        using var client = CreateAuthorizedClient(tampered);
+        using var client = this.CreateAuthorizedClient(tampered);
         using var response = await client.PostAsync("/api/v1/auth/me", content: null);
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
@@ -251,7 +255,7 @@ public class AuthEndpointsTests : IAsyncLifetime
     [InlineData("a.b.c")]
     public async Task 当前用户_令牌格式非法_返回401与未认证错误码(string token)
     {
-        using var client = CreateAuthorizedClient(token);
+        using var client = this.CreateAuthorizedClient(token);
         using var response = await client.PostAsync("/api/v1/auth/me", content: null);
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
@@ -269,7 +273,7 @@ public class AuthEndpointsTests : IAsyncLifetime
             _userId,
             DateTime.UtcNow);
 
-        using var client = CreateAuthorizedClient(foreignKeyToken);
+        using var client = this.CreateAuthorizedClient(foreignKeyToken);
         using var response = await client.PostAsync("/api/v1/auth/me", content: null);
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);

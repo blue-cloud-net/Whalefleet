@@ -2,16 +2,20 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+
+using FluentAssertions;
+
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Realtime;
@@ -69,7 +73,7 @@ public sealed class RealtimeHubTests : IAsyncLifetime
     [Fact]
     public async Task 未认证连接通知Hub_被拒()
     {
-        await using var connection = BuildConnection("/hubs/notification", token: null);
+        await using var connection = this.BuildConnection("/hubs/notification", token: null);
 
         await Assert.ThrowsAsync<HttpRequestException>(async () => await connection.StartAsync());
     }
@@ -77,7 +81,7 @@ public sealed class RealtimeHubTests : IAsyncLifetime
     [Fact]
     public async Task 未认证连接日志Hub_被拒()
     {
-        await using var connection = BuildConnection($"/hubs/hosts/{_localHost}/container-log", token: null);
+        await using var connection = this.BuildConnection($"/hubs/hosts/{_localHost}/container-log", token: null);
 
         await Assert.ThrowsAsync<HttpRequestException>(async () => await connection.StartAsync());
     }
@@ -87,13 +91,13 @@ public sealed class RealtimeHubTests : IAsyncLifetime
     {
         // 浏览器发起的 WebSocket 握手不能带自定义头，令牌只能走 ?access_token=。
         // 服务端只在 /hubs 路径上接受它（见 HubTokenQueryReader）。
-        var token = await LoginAsync(_adminName);
+        var token = await this.LoginAsync(_adminName);
 
         using var client = _factory.CreateClient();
 
         using var response = await client.PostAsync(
             $"/hubs/notification/negotiate?access_token={Uri.EscapeDataString(token)}&negotiateVersion=1",
-            content: new StringContent(string.Empty));
+            content: new StringContent(String.Empty));
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
@@ -103,7 +107,7 @@ public sealed class RealtimeHubTests : IAsyncLifetime
     {
         // 令牌**只**在 /hubs 上生效：否则任何带 ?access_token= 的普通接口
         // 都会被「顺带」鉴权，而那会让 CORS / 缓存 / 日志的行为都变得不可预测。
-        var token = await LoginAsync(_adminName);
+        var token = await this.LoginAsync(_adminName);
 
         using var client = _factory.CreateClient();
 
@@ -121,7 +125,7 @@ public sealed class RealtimeHubTests : IAsyncLifetime
 
         using var response = await client.PostAsync(
             "/hubs/notification/negotiate?negotiateVersion=1",
-            content: new StringContent(string.Empty));
+            content: new StringContent(String.Empty));
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
@@ -131,9 +135,9 @@ public sealed class RealtimeHubTests : IAsyncLifetime
     {
         // 主机可见性在**协商阶段**就被中间件拦下（403）——
         // 根本轮不到 Hub 方法执行，因此这里断言的是「连不上」而不是某个错误码。
-        var token = await LoginAsync(_noRoleName);
+        var token = await this.LoginAsync(_noRoleName);
 
-        await using var connection = BuildConnection($"/hubs/hosts/{_localHost}/container-log", token);
+        await using var connection = this.BuildConnection($"/hubs/hosts/{_localHost}/container-log", token);
 
         await Assert.ThrowsAsync<HttpRequestException>(async () => await connection.StartAsync());
     }
@@ -169,9 +173,9 @@ public sealed class RealtimeHubTests : IAsyncLifetime
     [Fact]
     public async Task 重复订阅同一个容器_被拒()
     {
-        var token = await LoginAsync(_adminName);
+        var token = await this.LoginAsync(_adminName);
 
-        await using var connection = BuildConnection($"/hubs/hosts/{_localHost}/container-log", token);
+        await using var connection = this.BuildConnection($"/hubs/hosts/{_localHost}/container-log", token);
         await connection.StartAsync();
 
         await connection.InvokeAsync<RealtimeActionResult>("SubscribeLogs", "container-a", 1, (long?)null);
@@ -189,9 +193,9 @@ public sealed class RealtimeHubTests : IAsyncLifetime
     [Fact]
     public async Task 进度令牌太短_被拒()
     {
-        var token = await LoginAsync(_adminName);
+        var token = await this.LoginAsync(_adminName);
 
-        await using var connection = BuildConnection("/hubs/notification", token);
+        await using var connection = this.BuildConnection("/hubs/notification", token);
         await connection.StartAsync();
 
         var result = await connection.InvokeAsync<RealtimeActionResult>("SubscribeOperation", "short");
@@ -203,9 +207,9 @@ public sealed class RealtimeHubTests : IAsyncLifetime
     [Fact]
     public async Task 进度令牌含非法字符_被拒()
     {
-        var token = await LoginAsync(_adminName);
+        var token = await this.LoginAsync(_adminName);
 
-        await using var connection = BuildConnection("/hubs/notification", token);
+        await using var connection = this.BuildConnection("/hubs/notification", token);
         await connection.StartAsync();
 
         var result = await connection.InvokeAsync<RealtimeActionResult>(
@@ -219,9 +223,9 @@ public sealed class RealtimeHubTests : IAsyncLifetime
     [Fact]
     public async Task 合法进度令牌_订阅成功()
     {
-        var token = await LoginAsync(_adminName);
+        var token = await this.LoginAsync(_adminName);
 
-        await using var connection = BuildConnection("/hubs/notification", token);
+        await using var connection = this.BuildConnection("/hubs/notification", token);
         await connection.StartAsync();
 
         var result = await connection.InvokeAsync<RealtimeActionResult>(
@@ -257,7 +261,7 @@ public sealed class RealtimeHubTests : IAsyncLifetime
             // 而 /hubs 必须走 Hub 的管道：未认证 → 401（不是 200 + HTML）。
             using var hub = await client.PostAsync(
                 "/hubs/notification/negotiate?negotiateVersion=1",
-                content: new StringContent(string.Empty));
+                content: new StringContent(String.Empty));
 
             hub.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
             hub.Content.Headers.ContentType?.MediaType.Should().NotBe("text/html");

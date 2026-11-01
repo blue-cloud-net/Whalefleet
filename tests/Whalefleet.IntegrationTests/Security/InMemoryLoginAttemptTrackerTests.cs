@@ -1,8 +1,11 @@
+using FluentAssertions;
+
+using Microsoft.Extensions.Caching.Memory;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Infrastructure.Security;
 using Whalefleet.IntegrationTests.Infrastructure;
-using FluentAssertions;
-using Microsoft.Extensions.Caching.Memory;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Security;

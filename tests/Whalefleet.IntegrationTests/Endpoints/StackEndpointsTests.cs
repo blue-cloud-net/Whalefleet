@@ -2,6 +2,11 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Hosts;
@@ -9,8 +14,7 @@ using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Stacks;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Endpoints;
@@ -43,7 +47,9 @@ public class StackEndpointsTests : IAsyncLifetime
         PropertyNameCaseInsensitive = true,
     };
 
-    /// <summary>轮询任务时的最大等待次数（每次 250ms → 最长约 60 秒）。</summary>
+    /// <summary>
+    /// 轮询任务时的最大等待次数（每次 250ms → 最长约 60 秒）。
+    /// </summary>
     private const int _maxPollAttempts = 240;
 
     private ApiFactory _factory = null!;
@@ -73,12 +79,12 @@ public class StackEndpointsTests : IAsyncLifetime
     /// <inheritdoc />
     public async Task DisposeAsync() => await _factory.DisposeAsync();
 
-    // ==================== 部署 ====================
+    #region 部署
 
     [DockerImageFact]
     public async Task 部署成功后列表出现该编排且状态为运行中()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var name = NewStackName();
         var image = DockerAvailability.ImageReference!;
@@ -111,7 +117,7 @@ public class StackEndpointsTests : IAsyncLifetime
     [DockerImageFact]
     public async Task 部署后详情给出服务与端口()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var name = NewStackName();
         var image = DockerAvailability.ImageReference!;
@@ -142,12 +148,12 @@ public class StackEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 重复部署同名编排_返回1902()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var name = NewStackName();
 
         // 先塞一条记录（不真的部署——用例会话里没有镜像也会走到这一步）
-        await SeedStackAsync(name);
+        await this.SeedStackAsync(name);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/stacks/deploy",
@@ -160,7 +166,7 @@ public class StackEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 更新不存在的编排_返回1900()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/stacks/update",
@@ -178,7 +184,7 @@ public class StackEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 非法YAML_返回1904并带出字段路径()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/stacks/deploy",
@@ -199,7 +205,7 @@ public class StackEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 名称含大写字母_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/stacks/deploy",
@@ -225,13 +231,14 @@ public class StackEndpointsTests : IAsyncLifetime
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
+    #endregion
 
-    // ==================== 停止与删除 ====================
+    #region 停止与删除
 
     [DockerImageFact]
     public async Task 停止后容器退出但仍保留()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var name = NewStackName();
         var image = DockerAvailability.ImageReference!;
@@ -271,7 +278,7 @@ public class StackEndpointsTests : IAsyncLifetime
     [DockerImageFact]
     public async Task 删除后容器与网络被清理()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var name = NewStackName();
         var image = DockerAvailability.ImageReference!;
@@ -303,13 +310,14 @@ public class StackEndpointsTests : IAsyncLifetime
             await CleanupAsync(client, name);
         }
     }
+    #endregion
 
-    // ==================== 任务查询 ====================
+    #region 任务查询
 
     [DockerImageFact]
     public async Task 任务快照可查询且带进度()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var name = NewStackName();
         var image = DockerAvailability.ImageReference!;
@@ -335,19 +343,20 @@ public class StackEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 查询不存在的任务_返回空数据()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var snapshot = await PostDataAsync<TaskPayload?>(client, "task", new { taskId = NewTaskId() });
 
         snapshot.Should().BeNull();
     }
+    #endregion
 
-    // ==================== Webhook ====================
+    #region Webhook
 
     [DockerImageFact]
     public async Task 轮换Webhook后明文只出现一次()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var name = NewStackName();
         var image = DockerAvailability.ImageReference!;
@@ -384,7 +393,7 @@ public class StackEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 轮换不存在的编排Webhook_返回1900()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/stacks/webhook/rotate",
@@ -393,8 +402,9 @@ public class StackEndpointsTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await ReadCodeAsync(response)).Should().Be(1900);
     }
+    #endregion
 
-    // ==================== 辅助 ====================
+    #region 辅助
 
     /// <summary>
     /// 生成一个本次用例专用的 Stack 名称。
@@ -520,7 +530,7 @@ public class StackEndpointsTests : IAsyncLifetime
                     var body = await ReadAsync(response);
                     var taskId = body.GetProperty("data").GetProperty("taskId").GetString();
 
-                    if (!string.IsNullOrWhiteSpace(taskId))
+                    if (!String.IsNullOrWhiteSpace(taskId))
                     {
                         await WaitForTerminalAsync(client, taskId);
                     }
@@ -602,6 +612,7 @@ public class StackEndpointsTests : IAsyncLifetime
 
         return JsonDocument.Parse(json).RootElement.Clone();
     }
+    #endregion
 
     private sealed record LoginPayload(string AccessToken);
 

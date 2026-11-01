@@ -2,13 +2,17 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Endpoints;
@@ -60,7 +64,9 @@ public class ContainerLifecycleEndpointsTests : IAsyncLifetime
         "trap 'exit 0' TERM; while true; do sleep 1; done",
     ];
 
-    /// <summary>重建前后的环境变量对照（一个字段一个值，避免内联数组触发 CA1861）。</summary>
+    /// <summary>
+    /// 重建前后的环境变量对照（一个字段一个值，避免内联数组触发 CA1861）。
+    /// </summary>
     private static readonly string[] _keepEnv = ["KEEP=1"];
 
     private static readonly string[] _oldEnv = ["OLD=1"];
@@ -96,12 +102,12 @@ public class ContainerLifecycleEndpointsTests : IAsyncLifetime
     /// <inheritdoc />
     public async Task DisposeAsync() => await _factory.DisposeAsync();
 
-    // ==================== pause / resume ====================
+    #region pause / resume
 
     [DockerImageFact]
     public async Task 暂停后详情显示已暂停_恢复后回到运行中()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var name = $"lc-pause-{Guid.NewGuid():N}"[..16];
         string? containerId = null;
@@ -138,7 +144,7 @@ public class ContainerLifecycleEndpointsTests : IAsyncLifetime
     [DockerImageFact]
     public async Task 暂停未运行的容器_返回1404()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var name = $"lc-nopause-{Guid.NewGuid():N}"[..16];
         string? containerId = null;
@@ -165,7 +171,7 @@ public class ContainerLifecycleEndpointsTests : IAsyncLifetime
     [DockerImageFact]
     public async Task 恢复未运行的容器_返回1404()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var name = $"lc-noresume-{Guid.NewGuid():N}"[..16];
         string? containerId = null;
@@ -186,13 +192,14 @@ public class ContainerLifecycleEndpointsTests : IAsyncLifetime
             await CleanupAsync(client, containerId);
         }
     }
+    #endregion
 
-    // ==================== kill ====================
+    #region kill
 
     [DockerImageFact]
     public async Task 终止运行中的容器_进程退出()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var name = $"lc-kill-{Guid.NewGuid():N}"[..16];
         string? containerId = null;
@@ -216,7 +223,7 @@ public class ContainerLifecycleEndpointsTests : IAsyncLifetime
     [DockerShellImageFact]
     public async Task 终止_自定义信号_被守护进程接受()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var name = $"lc-signal-{Guid.NewGuid():N}"[..16];
         string? containerId = null;
@@ -249,7 +256,7 @@ public class ContainerLifecycleEndpointsTests : IAsyncLifetime
     [DockerImageFact]
     public async Task 终止未运行的容器_返回1404()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var name = $"lc-nokill-{Guid.NewGuid():N}"[..16];
         string? containerId = null;
@@ -270,13 +277,14 @@ public class ContainerLifecycleEndpointsTests : IAsyncLifetime
             await CleanupAsync(client, containerId);
         }
     }
+    #endregion
 
-    // ==================== recreate ====================
+    #region recreate
 
     [DockerImageFact]
     public async Task 重建_不给配置时按原配置重建()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var name = $"lc-recreate-{Guid.NewGuid():N}"[..16];
         string? containerId = null;
@@ -316,7 +324,7 @@ public class ContainerLifecycleEndpointsTests : IAsyncLifetime
     [DockerImageFact]
     public async Task 重建_给新配置时按新配置重建()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var name = $"lc-edit-{Guid.NewGuid():N}"[..16];
         string? containerId = null;
@@ -359,7 +367,7 @@ public class ContainerLifecycleEndpointsTests : IAsyncLifetime
     [DockerImageFact]
     public async Task 重建_只改环境变量时其余字段保持原样()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var name = $"lc-patch-{Guid.NewGuid():N}"[..16];
         string? containerId = null;
@@ -395,7 +403,7 @@ public class ContainerLifecycleEndpointsTests : IAsyncLifetime
     [DockerImageFact]
     public async Task 重建_未运行的容器_保持未运行()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var name = $"lc-nostart-{Guid.NewGuid():N}"[..16];
         string? containerId = null;
@@ -417,8 +425,9 @@ public class ContainerLifecycleEndpointsTests : IAsyncLifetime
             await CleanupAsync(client, newId, containerId);
         }
     }
+    #endregion
 
-    // ==================== 辅助 ====================
+    #region 辅助
 
     private static async Task<string> CreateAsync(
         HttpClient client,
@@ -461,7 +470,10 @@ public class ContainerLifecycleEndpointsTests : IAsyncLifetime
         {
             var state = await PostDataAsync<StatePayload>(client, "inspect", new { containerId });
 
-            if (!state.State.Running) return true;
+            if (!state.State.Running)
+            {
+                return true;
+            }
 
             await Task.Delay(250);
         }
@@ -473,7 +485,7 @@ public class ContainerLifecycleEndpointsTests : IAsyncLifetime
     {
         foreach (var containerId in containerIds)
         {
-            if (string.IsNullOrWhiteSpace(containerId))
+            if (String.IsNullOrWhiteSpace(containerId))
             {
                 continue;
             }
@@ -543,6 +555,7 @@ public class ContainerLifecycleEndpointsTests : IAsyncLifetime
 
         return JsonDocument.Parse(json).RootElement.Clone();
     }
+    #endregion
 
     private sealed record LoginPayload(string AccessToken);
 

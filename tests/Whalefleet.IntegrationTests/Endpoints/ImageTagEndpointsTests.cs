@@ -2,13 +2,17 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Endpoints;
@@ -65,7 +69,7 @@ public class ImageTagEndpointsTests : IAsyncLifetime
     /// <inheritdoc />
     public async Task DisposeAsync() => await _factory.DisposeAsync();
 
-    // ==================== 守卫链 ====================
+    #region 守卫链
 
     [Fact]
     public async Task 打标签_未认证_返回401()
@@ -80,7 +84,7 @@ public class ImageTagEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 打标签_未知主机_返回1300()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_unknownHost}/images/tag",
@@ -93,7 +97,7 @@ public class ImageTagEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 打标签_无任何角色分配_返回1501()
     {
-        using var client = await CreateAuthenticatedClientAsync(_noRoleName);
+        using var client = await this.CreateAuthenticatedClientAsync(_noRoleName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/images/tag",
@@ -102,13 +106,14 @@ public class ImageTagEndpointsTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await ReadCodeAsync(response)).Should().Be(ErrorCodes.HostForbidden);
     }
+    #endregion
 
-    // ==================== 参数校验 ====================
+    #region 参数校验
 
     [Fact]
     public async Task 打标签_镜像标识为空_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/images/tag",
@@ -121,7 +126,7 @@ public class ImageTagEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 打标签_仓库名为空_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/images/tag",
@@ -134,7 +139,7 @@ public class ImageTagEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 打标签_仓库名里含标签_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/images/tag",
@@ -153,7 +158,7 @@ public class ImageTagEndpointsTests : IAsyncLifetime
     [InlineData("有:冒号")]
     public async Task 打标签_标签非法_返回1000(string tag)
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/images/tag",
@@ -169,7 +174,7 @@ public class ImageTagEndpointsTests : IAsyncLifetime
     [InlineData("")]
     public async Task 打标签_标签省略或空串_按latest处理(string? tag)
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         // 与 pull 端点保持一致：空串与省略都取 latest。
         // 「同一个概念在两个端点上有两种含义」比「悄悄给默认值」更难排查。
@@ -188,13 +193,14 @@ public class ImageTagEndpointsTests : IAsyncLifetime
             await CleanupTagAsync(client, reference);
         }
     }
+    #endregion
 
-    // ==================== 真实守护进程路径 ====================
+    #region 真实守护进程路径
 
     [DockerFact]
     public async Task 打标签_镜像不存在_返回1401()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/images/tag",
@@ -208,7 +214,7 @@ public class ImageTagEndpointsTests : IAsyncLifetime
     [DockerImageFact]
     public async Task 打标签后新标签可见且与原标签同属一个镜像()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var source = DockerAvailability.ImageReference;
         source.Should().NotBeNullOrWhiteSpace("DockerImageFact 已保证宿主上有现成镜像");
@@ -219,7 +225,7 @@ public class ImageTagEndpointsTests : IAsyncLifetime
         {
             var tagged = await TagAsync<TaggedPayload>(
                 client,
-                new { imageId = source, repository = TagRepository, tag = TagOf(reference) });
+                new { imageId = source, repository = _tagRepository, tag = TagOf(reference) });
 
             tagged.Reference.Should().Be(reference);
             tagged.ImageId.Should().NotBeNullOrWhiteSpace();
@@ -243,7 +249,7 @@ public class ImageTagEndpointsTests : IAsyncLifetime
     [DockerImageFact]
     public async Task 删除新标签不影响原镜像ID()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var source = DockerAvailability.ImageReference;
         source.Should().NotBeNullOrWhiteSpace("DockerImageFact 已保证宿主上有现成镜像");
@@ -254,7 +260,7 @@ public class ImageTagEndpointsTests : IAsyncLifetime
         {
             var tagged = await TagAsync<TaggedPayload>(
                 client,
-                new { imageId = source, repository = TagRepository, tag = TagOf(reference) });
+                new { imageId = source, repository = _tagRepository, tag = TagOf(reference) });
 
             // 删掉新标签：这是「解绑引用」，不是「删镜像」
             await RemoveAsync(client, reference);
@@ -268,15 +274,18 @@ public class ImageTagEndpointsTests : IAsyncLifetime
             await CleanupTagAsync(client, reference);
         }
     }
+    #endregion
 
-    // ==================== 辅助方法 ====================
+    #region 辅助方法
 
-    /// <summary>测试统一使用的目标仓库名。</summary>
+    /// <summary>
+    /// 测试统一使用的目标仓库名。
+    /// </summary>
     /// <remarks>
     /// 固定成一个明显是测试产物的名字：万一清理失败，下一个在界面上看到的人
     /// 也能一眼认出「这是测试留下的」而不是误当成真实镜像。
     /// </remarks>
-    private const string TagRepository = "whalefleet-test/tag";
+    private const string _tagRepository = "whalefleet-test/tag";
 
     /// <summary>
     /// 生成一个唯一的测试标签引用。
@@ -287,9 +296,11 @@ public class ImageTagEndpointsTests : IAsyncLifetime
     /// 于是真正的成功路径反而没被测到。
     /// </remarks>
     private static string NewTagReference() =>
-        $"{TagRepository}:t-{Guid.NewGuid().ToString("N")[..8]}";
+        $"{_tagRepository}:t-{Guid.NewGuid().ToString("N")[..8]}";
 
-    /// <summary>从完整引用里取出标签部分。</summary>
+    /// <summary>
+    /// 从完整引用里取出标签部分。
+    /// </summary>
     /// <param name="reference">形如 <c>repo/name:tag</c> 的引用。</param>
     /// <returns>标签部分。</returns>
     /// <remarks>
@@ -415,6 +426,7 @@ public class ImageTagEndpointsTests : IAsyncLifetime
 
         return JsonDocument.Parse(json).RootElement.Clone();
     }
+    #endregion
 
     private sealed record LoginPayload(string AccessToken);
 

@@ -1,5 +1,7 @@
 using Dapper;
+
 using FluentAssertions;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Persistence;

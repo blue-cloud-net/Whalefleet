@@ -5,13 +5,17 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Endpoints;
@@ -39,7 +43,9 @@ public class ImageBuildPushEndpointsTests : IAsyncLifetime
     private const string _unknownHost = "no-such-host";
     private const string _unknownImage = "no-such-image-0123456789:latest";
 
-    /// <summary>本组用例构建出来的镜像标签前缀（便于识别与清理）。</summary>
+    /// <summary>
+    /// 本组用例构建出来的镜像标签前缀（便于识别与清理）。
+    /// </summary>
     private const string _buildTagPrefix = "whalefleet-build-test";
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
@@ -80,7 +86,7 @@ public class ImageBuildPushEndpointsTests : IAsyncLifetime
         await _factory.DisposeAsync();
     }
 
-    // ===== 鉴权 =====
+    #region 鉴权
 
     [Fact]
     public async Task 构建_未认证_返回401()
@@ -109,7 +115,7 @@ public class ImageBuildPushEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 构建_未知主机_返回1300()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         using var response = await client.PostAsync(
             $"/api/v1/hosts/{_unknownHost}/images/build",
@@ -122,7 +128,7 @@ public class ImageBuildPushEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 推送_未知主机_返回1300()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_unknownHost}/images/push",
@@ -131,13 +137,14 @@ public class ImageBuildPushEndpointsTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await ReadCodeAsync(response)).Should().Be(ErrorCodes.HostNotFound);
     }
+    #endregion
 
-    // ===== 构建参数校验（不需要 Docker：这些校验发生在取客户端之前） =====
+    #region 构建参数校验（不需要 Docker：这些校验发生在取客户端之前）
 
     [Fact]
     public async Task 构建_未知主机时仍先报主机不存在_证明主机校验在前()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         using var response = await client.PostAsync(
             $"/api/v1/hosts/{_unknownHost}/images/build",
@@ -150,7 +157,7 @@ public class ImageBuildPushEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 构建_未提供上下文_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         using var content = new MultipartFormDataContent();
         content.Add(new StringContent(_buildTagPrefix), "tag");
@@ -166,7 +173,7 @@ public class ImageBuildPushEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 构建_构建参数不是合法JSON_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var form = new MultipartFormDataContent();
         form.Add(BuildContextContent("FROM scratch\n"), "context", "context.tar");
@@ -184,7 +191,7 @@ public class ImageBuildPushEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 构建_标签为空_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var form = new MultipartFormDataContent();
         form.Add(BuildContextContent("FROM scratch\n"), "context", "context.tar");
@@ -197,13 +204,14 @@ public class ImageBuildPushEndpointsTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await ReadCodeAsync(response)).Should().Be(ErrorCodes.ValidationFailed);
     }
+    #endregion
 
-    // ===== 构建 =====
+    #region 构建
 
     [DockerFact]
     public async Task 构建_成功_产出带标签的镜像()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
         var tag = NewTag();
 
         try
@@ -245,7 +253,7 @@ public class ImageBuildPushEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 构建_构建参数传入ARG()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
         var tag = NewTag();
 
         try
@@ -282,7 +290,7 @@ public class ImageBuildPushEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 构建_Dockerfile缺失_返回1806且带构建日志()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         using var form = new MultipartFormDataContent();
 
@@ -305,7 +313,7 @@ public class ImageBuildPushEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 构建_指定不存在的Dockerfile路径_返回1806()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         using var form = new MultipartFormDataContent();
         form.Add(BuildContextContent("FROM scratch\n"), "context", "context.tar");
@@ -319,13 +327,14 @@ public class ImageBuildPushEndpointsTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
         (await ReadCodeAsync(response)).Should().Be(ErrorCodes.ImageBuildFailed);
     }
+    #endregion
 
-    // ===== 推送 =====
+    #region 推送
 
     [DockerFact]
     public async Task 推送_镜像不存在_返回1401()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/images/push",
@@ -338,7 +347,7 @@ public class ImageBuildPushEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 推送_镜像标识为空_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/images/push",
@@ -355,7 +364,7 @@ public class ImageBuildPushEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 推送_镜像无标签_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         // 构造一个悬挂镜像：build 出一个镜像后立刻删掉它的标签
         var tag = NewTag();
@@ -405,7 +414,7 @@ public class ImageBuildPushEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 推送_指定的Registry配置不存在_返回1800()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
         var tag = NewTag();
 
         try
@@ -433,8 +442,9 @@ public class ImageBuildPushEndpointsTests : IAsyncLifetime
             await RemoveImageAsync(client, tag);
         }
     }
+    #endregion
 
-    // ===== 辅助 =====
+    #region 辅助
 
     /// <summary>
     /// 生成一个只含 <see cref="_dockerfile"/> 的构建上下文 tar。
@@ -576,6 +586,7 @@ public class ImageBuildPushEndpointsTests : IAsyncLifetime
 
         return JsonDocument.Parse(text).RootElement.Clone();
     }
+    #endregion
 
     private sealed record LoginPayload(string AccessToken, string RefreshToken);
 

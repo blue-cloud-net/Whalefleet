@@ -2,6 +2,11 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Hosts;
@@ -9,8 +14,7 @@ using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Stacks;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Endpoints;
@@ -95,10 +99,10 @@ public class StackWebhookEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 有效令牌触发重放_返回202()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var name = NewStackName();
-        var token = await SeedStackWithWebhookAsync(name);
+        var token = await this.SeedStackWithWebhookAsync(name);
 
         try
         {
@@ -118,17 +122,17 @@ public class StackWebhookEndpointsTests : IAsyncLifetime
         }
         finally
         {
-            await CleanupAsync(client, name);
+            await this.CleanupAsync(client, name);
         }
     }
 
     [Fact]
     public async Task 吊销后触发_返回1906()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var name = NewStackName();
-        var token = await SeedStackWithWebhookAsync(name);
+        var token = await this.SeedStackWithWebhookAsync(name);
 
         try
         {
@@ -149,17 +153,17 @@ public class StackWebhookEndpointsTests : IAsyncLifetime
         }
         finally
         {
-            await CleanupAsync(client, name);
+            await this.CleanupAsync(client, name);
         }
     }
 
     [Fact]
     public async Task 触发后可以查询任务快照()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var name = NewStackName();
-        var token = await SeedStackWithWebhookAsync(name);
+        var token = await this.SeedStackWithWebhookAsync(name);
 
         try
         {
@@ -188,22 +192,22 @@ public class StackWebhookEndpointsTests : IAsyncLifetime
         }
         finally
         {
-            await CleanupAsync(client, name);
+            await this.CleanupAsync(client, name);
         }
     }
 
     [Fact]
     public async Task 用别的编排的令牌查任务_返回空数据()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var name = NewStackName();
         var otherName = NewStackName();
-        var token = await SeedStackWithWebhookAsync(name);
+        var token = await this.SeedStackWithWebhookAsync(name);
 
         try
         {
-            await SeedStackWithWebhookAsync(otherName);
+            await this.SeedStackWithWebhookAsync(otherName);
 
             using var anonymous = _factory.CreateClient();
 
@@ -218,12 +222,12 @@ public class StackWebhookEndpointsTests : IAsyncLifetime
         }
         finally
         {
-            await CleanupAsync(client, name);
-            await CleanupAsync(client, otherName);
+            await this.CleanupAsync(client, name);
+            await this.CleanupAsync(client, otherName);
         }
     }
 
-    // ==================== 辅助 ====================
+    #region 辅助
 
     /// <summary>
     /// 生成一个本次用例专用的 Stack 名称。
@@ -307,7 +311,7 @@ public class StackWebhookEndpointsTests : IAsyncLifetime
                 var body = await ReadAsync(response);
                 var taskId = body.GetProperty("data").GetProperty("taskId").GetString();
 
-                if (!string.IsNullOrWhiteSpace(taskId))
+                if (!String.IsNullOrWhiteSpace(taskId))
                 {
                     await WaitForTerminalAsync(client, taskId);
                 }
@@ -434,6 +438,7 @@ public class StackWebhookEndpointsTests : IAsyncLifetime
 
         return JsonDocument.Parse(json).RootElement.Clone();
     }
+    #endregion
 
     private sealed record LoginPayload(string AccessToken);
 

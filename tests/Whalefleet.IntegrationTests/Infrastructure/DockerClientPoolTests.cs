@@ -1,10 +1,13 @@
+using FluentAssertions;
+
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Hosts;
 using Whalefleet.Infrastructure.Docker;
-using FluentAssertions;
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Infrastructure;
@@ -21,14 +24,14 @@ namespace Whalefleet.IntegrationTests.Infrastructure;
 /// </remarks>
 public class DockerClientPoolTests
 {
-    private const string LocalSocket = "/var/run/docker.sock";
-    private const string RemoteTcp = "tcp://127.0.0.1:2375";
+    private const string _localSocket = "/var/run/docker.sock";
+    private const string _remoteTcp = "tcp://127.0.0.1:2375";
 
     [Fact]
     public void GetOrCreate_ShouldReturnSameInstanceForRepeatedCalls()
     {
         using var pool = CreatePool();
-        var connection = Connection("local", DockerHostType.Socket, LocalSocket);
+        var connection = Connection("local", DockerHostType.Socket, _localSocket);
 
         var first = pool.GetOrCreate(connection);
         var second = pool.GetOrCreate(connection);
@@ -54,8 +57,8 @@ public class DockerClientPoolTests
     {
         using var pool = CreatePool();
 
-        var local = pool.GetOrCreate(Connection("local", DockerHostType.Socket, LocalSocket));
-        var remote = pool.GetOrCreate(Connection("remote", DockerHostType.Tcp, RemoteTcp));
+        var local = pool.GetOrCreate(Connection("local", DockerHostType.Socket, _localSocket));
+        var remote = pool.GetOrCreate(Connection("remote", DockerHostType.Tcp, _remoteTcp));
 
         remote.Should().NotBeSameAs(local);
     }
@@ -67,7 +70,7 @@ public class DockerClientPoolTests
 
         var act = () => pool.GetOrCreate(Connection("local", DockerHostType.Socket, "relative/docker.sock"));
 
-        (act.Should().Throw<BusinessException>())
+        act.Should().Throw<BusinessException>()
             .Which.Code.Should().Be(ErrorCodes.HostUnreachable);
     }
 
@@ -81,7 +84,7 @@ public class DockerClientPoolTests
         var failed = () => pool.GetOrCreate(Connection("local", DockerHostType.Socket, "relative/docker.sock"));
         failed.Should().Throw<BusinessException>();
 
-        var client = pool.GetOrCreate(Connection("local", DockerHostType.Socket, LocalSocket));
+        var client = pool.GetOrCreate(Connection("local", DockerHostType.Socket, _localSocket));
 
         client.Should().NotBeNull();
     }
@@ -90,7 +93,7 @@ public class DockerClientPoolTests
     public async Task Invalidate_ShouldDisposeAndRebuildClient()
     {
         using var pool = CreatePool();
-        var connection = Connection("local", DockerHostType.Socket, LocalSocket);
+        var connection = Connection("local", DockerHostType.Socket, _localSocket);
 
         var before = pool.GetOrCreate(connection);
 
@@ -100,7 +103,7 @@ public class DockerClientPoolTests
 
         after.Should().NotBeSameAs(before);
 
-        var ping = async () => await before.System.PingAsync(CancellationToken.None);
+        async Task ping() => await before.System.PingAsync(CancellationToken.None);
         await FluentActions.Awaiting(ping).Should().ThrowAsync<ObjectDisposedException>("失效即释放旧客户端");
     }
 
@@ -109,7 +112,7 @@ public class DockerClientPoolTests
     {
         using var pool = CreatePool();
 
-        var act = () => pool.Invalidate(Connection("missing", DockerHostType.Socket, LocalSocket));
+        var act = () => pool.Invalidate(Connection("missing", DockerHostType.Socket, _localSocket));
 
         act.Should().NotThrow();
     }
@@ -130,7 +133,7 @@ public class DockerClientPoolTests
     {
         var timeProvider = new TestTimeProvider(DateTimeOffset.UnixEpoch);
         using var pool = CreatePool(timeProvider, idleTimeout: TimeSpan.FromMinutes(30));
-        var connection = Connection("local", DockerHostType.Socket, LocalSocket);
+        var connection = Connection("local", DockerHostType.Socket, _localSocket);
 
         var first = pool.GetOrCreate(connection);
 
@@ -146,7 +149,7 @@ public class DockerClientPoolTests
     {
         var timeProvider = new TestTimeProvider(DateTimeOffset.UnixEpoch);
         using var pool = CreatePool(timeProvider, idleTimeout: TimeSpan.FromMinutes(30));
-        var connection = Connection("local", DockerHostType.Socket, LocalSocket);
+        var connection = Connection("local", DockerHostType.Socket, _localSocket);
 
         var first = pool.GetOrCreate(connection);
 
@@ -161,8 +164,8 @@ public class DockerClientPoolTests
         var timeProvider = new TestTimeProvider(DateTimeOffset.UnixEpoch);
         using var pool = CreatePool(timeProvider, idleTimeout: TimeSpan.FromMinutes(30));
 
-        var localConnection = Connection("local", DockerHostType.Socket, LocalSocket);
-        var remoteConnection = Connection("remote", DockerHostType.Tcp, RemoteTcp);
+        var localConnection = Connection("local", DockerHostType.Socket, _localSocket);
+        var remoteConnection = Connection("remote", DockerHostType.Tcp, _remoteTcp);
 
         var local = pool.GetOrCreate(localConnection);
 
@@ -182,7 +185,7 @@ public class DockerClientPoolTests
     {
         var timeProvider = new TestTimeProvider(DateTimeOffset.UnixEpoch);
         using var pool = CreatePool(timeProvider, idleTimeout: TimeSpan.Zero);
-        var connection = Connection("local", DockerHostType.Socket, LocalSocket);
+        var connection = Connection("local", DockerHostType.Socket, _localSocket);
 
         var first = pool.GetOrCreate(connection);
 
@@ -196,11 +199,11 @@ public class DockerClientPoolTests
     public void GetOrCreate_ShouldThrowAfterDispose()
     {
         var pool = CreatePool();
-        pool.GetOrCreate(Connection("local", DockerHostType.Socket, LocalSocket));
+        pool.GetOrCreate(Connection("local", DockerHostType.Socket, _localSocket));
 
         pool.Dispose();
 
-        var act = () => pool.GetOrCreate(Connection("local", DockerHostType.Socket, LocalSocket));
+        var act = () => pool.GetOrCreate(Connection("local", DockerHostType.Socket, _localSocket));
 
         act.Should().Throw<ObjectDisposedException>();
     }
@@ -210,11 +213,11 @@ public class DockerClientPoolTests
     {
         var pool = CreatePool();
 
-        var client = pool.GetOrCreate(Connection("local", DockerHostType.Socket, LocalSocket));
+        var client = pool.GetOrCreate(Connection("local", DockerHostType.Socket, _localSocket));
 
         pool.Dispose();
 
-        var ping = async () => await client.System.PingAsync(CancellationToken.None);
+        async Task ping() => await client.System.PingAsync(CancellationToken.None);
         await FluentActions.Awaiting(ping).Should().ThrowAsync<ObjectDisposedException>();
     }
 

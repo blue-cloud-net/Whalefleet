@@ -1,6 +1,9 @@
-using Whalefleet.Core.Hosts;
 using FluentAssertions;
+
 using Microsoft.Extensions.DependencyInjection;
+
+using Whalefleet.Core.Hosts;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Persistence;
@@ -80,7 +83,7 @@ public class DatabaseInitializerTests
 
         // 启动引导没有登录用户，审计人取默认值哨兵
         local.CreatorId.Should().Be(Guid.Empty);
-        local.CreationTime.Should().Be(PersistenceTestHost.Now.UtcDateTime);
+        local.CreationTime.Should().Be(PersistenceTestHost._now.UtcDateTime);
     }
 
     [Fact]

@@ -1,8 +1,11 @@
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Auth;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Auth;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Auth;
@@ -28,7 +31,7 @@ public class AuthServiceTests
         var userId = await host.CreateUserAsync("admin");
 
         var response = await host.CreateAuthService().LoginAsync(
-            new LoginRequest { Username = "admin", Password = AuthTestHost.Password },
+            new LoginRequest { Username = "admin", Password = AuthTestHost._password },
             _ip);
 
         response.AccessToken.Should().NotBeNullOrWhiteSpace();
@@ -47,7 +50,7 @@ public class AuthServiceTests
         stored.Should().NotBeNull();
         stored!.UserId.Should().Be(userId);
         stored.TokenHash.Should().NotBe(response.RefreshToken);
-        stored.ExpiresAt.Should().Be(AuthTestHost.Now.UtcDateTime.AddDays(7));
+        stored.ExpiresAt.Should().Be(AuthTestHost._now.UtcDateTime.AddDays(7));
         stored.RevokedAt.Should().BeNull();
     }
 
@@ -59,7 +62,7 @@ public class AuthServiceTests
         await host.CreateUserAsync("admin");
 
         var response = await host.CreateAuthService().LoginAsync(
-            new LoginRequest { Username = "ADMIN", Password = AuthTestHost.Password },
+            new LoginRequest { Username = "ADMIN", Password = AuthTestHost._password },
             _ip);
 
         response.User.Username.Should().Be("admin", "响应应回显库中保存的大小写");
@@ -73,7 +76,7 @@ public class AuthServiceTests
         await host.CreateUserAsync("admin");
 
         var response = await host.CreateAuthService().LoginAsync(
-            new LoginRequest { Username = "  admin  ", Password = AuthTestHost.Password },
+            new LoginRequest { Username = "  admin  ", Password = AuthTestHost._password },
             _ip);
 
         response.User.Username.Should().Be("admin");
@@ -102,7 +105,7 @@ public class AuthServiceTests
         await host.CreateUserAsync("admin");
 
         var wrongPassword = await AssertLoginFailsAsync(host, "admin", "WrongP@ss123");
-        var unknownUser = await AssertLoginFailsAsync(host, "no-such-user", AuthTestHost.Password);
+        var unknownUser = await AssertLoginFailsAsync(host, "no-such-user", AuthTestHost._password);
 
         unknownUser.Code.Should().Be(wrongPassword.Code);
         unknownUser.Message.Should().Be(wrongPassword.Message);
@@ -124,10 +127,10 @@ public class AuthServiceTests
 
         for (var i = 0; i < 5; i++)
         {
-            await AssertLoginFailsAsync(host, "no-such-user", AuthTestHost.Password);
+            await AssertLoginFailsAsync(host, "no-such-user", AuthTestHost._password);
         }
 
-        var exception = await AssertLoginFailsAsync(host, "no-such-user", AuthTestHost.Password);
+        var exception = await AssertLoginFailsAsync(host, "no-such-user", AuthTestHost._password);
 
         exception.Code.Should().Be(ErrorCodes.LoginRateLimited);
     }
@@ -148,7 +151,7 @@ public class AuthServiceTests
         exception.Code.Should().Be(ErrorCodes.LoginRateLimited);
 
         // 即使这时给出正确密码，也应被拦（限流先于校验）。
-        var withCorrectPassword = await AssertLoginFailsAsync(host, "admin", AuthTestHost.Password);
+        var withCorrectPassword = await AssertLoginFailsAsync(host, "admin", AuthTestHost._password);
         withCorrectPassword.Code.Should().Be(ErrorCodes.LoginRateLimited);
     }
 
@@ -164,7 +167,7 @@ public class AuthServiceTests
         await AssertLoginFailsAsync(host, "admin", "WrongP@ss123");
 
         await service.LoginAsync(
-            new LoginRequest { Username = "admin", Password = AuthTestHost.Password },
+            new LoginRequest { Username = "admin", Password = AuthTestHost._password },
             _ip);
 
         // 计数已清零：再失败 4 次仍不应触发限流（上限为 5）。
@@ -190,16 +193,16 @@ public class AuthServiceTests
         host.TimeProvider.Advance(TimeSpan.FromMinutes(1));
 
         var response = await host.CreateAuthService().LoginAsync(
-            new LoginRequest { Username = "admin", Password = AuthTestHost.Password },
+            new LoginRequest { Username = "admin", Password = AuthTestHost._password },
             _ip);
 
         response.AccessToken.Should().NotBeNullOrWhiteSpace();
     }
 
     [Theory]
-    [InlineData(null, AuthTestHost.Password)]
-    [InlineData("", AuthTestHost.Password)]
-    [InlineData("   ", AuthTestHost.Password)]
+    [InlineData(null, AuthTestHost._password)]
+    [InlineData("", AuthTestHost._password)]
+    [InlineData("   ", AuthTestHost._password)]
     [InlineData("admin", null)]
     [InlineData("admin", "")]
     public async Task LoginAsync_用户名或密码为空_抛出参数校验失败(string? username, string? password)

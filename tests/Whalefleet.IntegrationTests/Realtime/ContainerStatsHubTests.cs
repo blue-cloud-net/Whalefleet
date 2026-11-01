@@ -1,14 +1,18 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+
+using FluentAssertions;
+
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Realtime;
@@ -32,14 +36,18 @@ public sealed class ContainerStatsHubTests : IAsyncLifetime
     private const string _adminName = "admin";
     private const string _localHost = "local";
 
-    /// <summary>等待采样到达的上限。</summary>
+    /// <summary>
+    /// 等待采样到达的上限。
+    /// </summary>
     /// <remarks>
     /// Docker 的 stats 流本身是 1 秒一帧，订阅后还要经过采样器的节流窗口，
     /// 因此给到 30 秒——宁可等久一点，也不要让用例在慢机器上随机失败。
     /// </remarks>
     private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(30);
 
-    /// <summary>让容器保持存活，采样流才有持续的数据。</summary>
+    /// <summary>
+    /// 让容器保持存活，采样流才有持续的数据。
+    /// </summary>
     /// <remarks>
     /// ⚠️ **必须显式覆盖入口点**：镜像自带的 <c>ENTRYPOINT</c> 会抢在命令之前执行，
     /// 那样容器往往<b>秒退</b>——而容器一旦退出，Docker 给的采样就是<b>全零</b>
@@ -83,7 +91,7 @@ public sealed class ContainerStatsHubTests : IAsyncLifetime
     [DockerShellImageFact]
     public async Task 订阅容器采样_推来采样且内容合理()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var image = DockerAvailability.ShellImageReference!;
         var name = $"ds-hub-{Guid.NewGuid():N}"[..16];
@@ -103,7 +111,7 @@ public sealed class ContainerStatsHubTests : IAsyncLifetime
             // 等容器真正跑起来：刚 start 完的那一瞬，采样可能还是「启动前」的空数据。
             await Task.Delay(TimeSpan.FromSeconds(2));
 
-            var token = await LoginAsync();
+            var token = await this.LoginAsync();
 
             await using var connection = new HubConnectionBuilder()
                 .WithUrl($"http://localhost/hubs/hosts/{_localHost}/container-stats", options =>
@@ -192,7 +200,7 @@ public sealed class ContainerStatsHubTests : IAsyncLifetime
         var client = _factory.CreateClient();
 
         client.DefaultRequestHeaders.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", await LoginAsync());
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", await this.LoginAsync());
 
         return client;
     }

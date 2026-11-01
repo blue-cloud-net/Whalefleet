@@ -3,14 +3,18 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Persistence;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Endpoints;
@@ -76,7 +80,7 @@ public sealed class AuditLogEndpointsTests : IAsyncLifetime
 
         failed.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
 
-        using var admin = await CreateAuthenticatedClientAsync(_adminName);
+        using var admin = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var result = await QueryAsync(admin, "authentication", new { actor = "ghost" });
 
@@ -93,7 +97,7 @@ public sealed class AuditLogEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 没有audit_read的角色返回1502()
     {
-        using var viewer = await CreateAuthenticatedClientAsync(_viewerName);
+        using var viewer = await this.CreateAuthenticatedClientAsync(_viewerName);
 
         using var response = await viewer.PostAsJsonAsync(
             "/api/v1/admin/logs/activity/list",
@@ -109,7 +113,7 @@ public sealed class AuditLogEndpointsTests : IAsyncLifetime
     [DockerShellImageFact]
     public async Task 删除容器后活动日志仍显示原容器名()
     {
-        using var admin = await CreateAuthenticatedClientAsync(_adminName);
+        using var admin = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var name = $"audit-{Guid.NewGuid():N}"[..18];
 
@@ -153,7 +157,7 @@ public sealed class AuditLogEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 导出CSV_带BOM且表头与页面列一致()
     {
-        using var admin = await CreateAuthenticatedClientAsync(_adminName);
+        using var admin = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await admin.PostAsJsonAsync(
             "/api/v1/admin/logs/activity/export",

@@ -2,12 +2,16 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Endpoints;
@@ -46,11 +50,13 @@ public class RoleEndpointsTests : IAsyncLifetime
         PropertyNameCaseInsensitive = true,
     };
 
-    /// <summary>不在权限目录里的标识，用于触发 1514。</summary>
-    private static readonly string[] _unknownPermissions = ["container.explode"];
-
-    /// <summary><see cref="_unknownPermissions"/> 的 PascalCase 包装，避免 CA1861（常量数组参数）。</summary>
-    private static string[] UnknownPermissions => _unknownPermissions;
+    /// <summary>
+    /// 不在权限目录里的标识，用于触发 1514。
+    /// </summary>
+    /// <remarks>
+    /// 用属性而不是常量字段承载数组，避免 CA1861（把常量数组作为参数传入）。
+    /// </remarks>
+    private static string[] UnknownPermissions { get; } = ["container.explode"];
 
     private ApiFactory _factory = null!;
     private Guid _operatorUserId = Guid.Empty;
@@ -78,12 +84,12 @@ public class RoleEndpointsTests : IAsyncLifetime
     /// <inheritdoc />
     public async Task DisposeAsync() => await _factory.DisposeAsync();
 
-    // ===== 权限目录 =====
+    #region 权限目录
 
     [Fact]
     public async Task 权限目录_与代码内的目录逐项一致()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsync("/api/v1/admin/roles/permissions", content: null);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -97,11 +103,12 @@ public class RoleEndpointsTests : IAsyncLifetime
         // 每一条都要能带出作用域，否则前端分不出 Host 与 Global 两组。
         // 写成 Equals 而非 is 模式：FluentAssertions 走表达式树，不能含模式匹配。
         catalog.Should().OnlyContain(item =>
-            string.Equals(item.Scope, "global", StringComparison.Ordinal)
-            || string.Equals(item.Scope, "host", StringComparison.Ordinal));
+            String.Equals(item.Scope, "global", StringComparison.Ordinal)
+            || String.Equals(item.Scope, "host", StringComparison.Ordinal));
     }
+    #endregion
 
-    // ===== 角色列表 =====
+    #region 角色列表
 
     [Fact]
     public async Task 列表_未认证返回401()
@@ -116,7 +123,7 @@ public class RoleEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 列表_无roleRead权限返回403()
     {
-        using var client = await CreateAuthenticatedClientAsync(_operatorName);
+        using var client = await this.CreateAuthenticatedClientAsync(_operatorName);
 
         using var response = await client.PostAsync("/api/v1/admin/roles/list", content: null);
 
@@ -130,7 +137,7 @@ public class RoleEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 列表_customOnly排除内置角色()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync("/api/v1/admin/roles/list", new { customOnly = true });
         var roles = await ReadDataAsync<List<RolePayload>>(response);
@@ -141,13 +148,14 @@ public class RoleEndpointsTests : IAsyncLifetime
         var withBuiltIn = await ReadDataAsync<List<RolePayload>>(all);
         withBuiltIn.Should().Contain(role => role.Name == Role.AdminName);
     }
+    #endregion
 
-    // ===== 创建 =====
+    #region 创建
 
     [Fact]
     public async Task 创建_成功且标识被转小写()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/roles/create",
@@ -164,7 +172,7 @@ public class RoleEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_重复标识返回1511且不区分大小写()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var first = await client.PostAsJsonAsync(
             "/api/v1/admin/roles/create",
@@ -182,7 +190,7 @@ public class RoleEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_未知权限返回1514()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/roles/create",
@@ -195,7 +203,7 @@ public class RoleEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_空标识返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/roles/create",
@@ -204,13 +212,14 @@ public class RoleEndpointsTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await ReadCodeAsync(response)).Should().Be(ErrorCodes.ValidationFailed);
     }
+    #endregion
 
-    // ===== 内置角色的不对称保护（1513）=====
+    #region 内置角色的不对称保护（1513）
 
     [Fact]
     public async Task 内置角色_权限集不可改返回1513()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/roles/set-permissions",
@@ -223,7 +232,7 @@ public class RoleEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 内置角色_不可删返回1513()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/roles/remove",
@@ -236,7 +245,7 @@ public class RoleEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 内置角色_可读信息可以改()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         // ⚠️ 「内置角色受保护」**只覆盖权限集与删除**。
         // 一律拦掉会让「给内置角色改个中文名」这条完全正常的路径变成 400。
@@ -250,15 +259,16 @@ public class RoleEndpointsTests : IAsyncLifetime
         updated.DisplayName.Should().Be("超级管理员");
         updated.Name.Should().Be(Role.AdminName, "标识不可改");
     }
+    #endregion
 
-    // ===== 修改 / 权限集 =====
+    #region 修改 / 权限集
 
     [Fact]
     public async Task 设置权限集_自定义角色可覆盖为空()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
-        var created = await CreateRoleAsync(client, "temp", new[] { Permission.ContainerRead });
+        var created = await CreateRoleAsync(client, "temp", [Permission.ContainerRead]);
 
         using var cleared = await client.PostAsJsonAsync(
             "/api/v1/admin/roles/set-permissions",
@@ -271,7 +281,7 @@ public class RoleEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 设置权限集_未知角色返回1510()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/roles/set-permissions",
@@ -280,13 +290,14 @@ public class RoleEndpointsTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await ReadCodeAsync(response)).Should().Be(ErrorCodes.RoleNotFound);
     }
+    #endregion
 
-    // ===== 默认角色（单向）=====
+    #region 默认角色（单向）
 
     [Fact]
     public async Task 设为默认_全库至多一个()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var created = await CreateRoleAsync(client, "newdefault");
 
@@ -301,13 +312,14 @@ public class RoleEndpointsTests : IAsyncLifetime
         roles.Where(role => role.IsDefault).Should().ContainSingle();
         roles.Single(role => role.IsDefault).Id.Should().Be(created.Id);
     }
+    #endregion
 
-    // ===== 删除 =====
+    #region 删除
 
     [Fact]
     public async Task 删除_自定义角色成功()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
         var created = await CreateRoleAsync(client, "disposable");
 
         using var removed = await client.PostAsJsonAsync(
@@ -323,7 +335,7 @@ public class RoleEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 删除_仍有分配返回1512且不级联撤销()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
         var created = await CreateRoleAsync(client, "stillused");
 
         using var assign = await client.PostAsJsonAsync(
@@ -345,13 +357,14 @@ public class RoleEndpointsTests : IAsyncLifetime
         var list = await ReadDataAsync<List<AssignmentPayload>>(assignments);
         list.Should().Contain(item => item.RoleId == created.Id);
     }
+    #endregion
 
-    // ===== 用户视角的分配 =====
+    #region 用户视角的分配
 
     [Fact]
     public async Task 分配_省略host即全局分配()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
         var created = await CreateRoleAsync(client, "globalrole");
 
         using var assign = await client.PostAsJsonAsync(
@@ -367,7 +380,7 @@ public class RoleEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 分配_带host即主机作用域()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
         var created = await CreateRoleAsync(client, "hostrole");
 
         // ⚠️ 字段名是 `host`（主机名）而不是 `hostId`：
@@ -385,7 +398,7 @@ public class RoleEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 分配_重复分配幂等且不换主键()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
         var created = await CreateRoleAsync(client, "idemrole");
 
         using var first = await client.PostAsJsonAsync(
@@ -404,7 +417,7 @@ public class RoleEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 分配_未知角色返回1510()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/admin/users/{_operatorUserId}/roles/assign",
@@ -417,7 +430,7 @@ public class RoleEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 分配_未知主机返回1300()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
         var created = await CreateRoleAsync(client, "badhostrole");
 
         using var response = await client.PostAsJsonAsync(
@@ -427,13 +440,14 @@ public class RoleEndpointsTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await ReadCodeAsync(response)).Should().Be(ErrorCodes.HostNotFound);
     }
+    #endregion
 
-    // ===== 撤销 =====
+    #region 撤销
 
     [Fact]
     public async Task 撤销_已撤销再撤返回1515()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
         var created = await CreateRoleAsync(client, "revokeme");
 
         using var assign = await client.PostAsJsonAsync(
@@ -457,7 +471,7 @@ public class RoleEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 撤销_软删除后可以重新分配同一组合()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
         var created = await CreateRoleAsync(client, "recycle");
 
         using var assign = await client.PostAsJsonAsync(
@@ -477,13 +491,14 @@ public class RoleEndpointsTests : IAsyncLifetime
             new { roleId = created.Id, host = _localHost });
         reassign.StatusCode.Should().Be(HttpStatusCode.OK);
     }
+    #endregion
 
-    // ===== 主机视角的分配 =====
+    #region 主机视角的分配
 
     [Fact]
     public async Task 主机视角列表_不含全局分配()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
         var created = await CreateRoleAsync(client, "mixedrole");
 
         using var globalAssign = await client.PostAsJsonAsync(
@@ -519,8 +534,9 @@ public class RoleEndpointsTests : IAsyncLifetime
             .And.Contain(item => item.HostId == null, "全局分配")
             .And.Contain(item => item.HostName == _localHost, "主机分配");
     }
+    #endregion
 
-    // ===== 夹具 =====
+    #region 夹具
 
     private static async Task<RolePayload> CreateRoleAsync(HttpClient client, string name, string[]? permissions = null)
     {
@@ -568,6 +584,7 @@ public class RoleEndpointsTests : IAsyncLifetime
 
         return JsonDocument.Parse(text).RootElement.Clone();
     }
+    #endregion
 
     private sealed record LoginPayload(string AccessToken, string RefreshToken);
 

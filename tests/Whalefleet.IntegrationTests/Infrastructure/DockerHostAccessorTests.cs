@@ -1,13 +1,17 @@
 using Docker.DotNet;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Hosts;
 using Whalefleet.Infrastructure.Docker;
 using Whalefleet.IntegrationTests.Persistence;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Infrastructure;
@@ -22,8 +26,8 @@ namespace Whalefleet.IntegrationTests.Infrastructure;
 /// </remarks>
 public class DockerHostAccessorTests
 {
-    private const string LocalSocket = "/var/run/docker.sock";
-    private const string UnreachableTcp = "tcp://127.0.0.1:1";
+    private const string _localSocket = "/var/run/docker.sock";
+    private const string _unreachableTcp = "tcp://127.0.0.1:1";
 
     [Fact]
     public async Task GetClientAsync_ShouldResolveSeededDefaultHost()
@@ -160,7 +164,7 @@ public class DockerHostAccessorTests
     public async Task TestConnectionAsync_ShouldReturnFalseWhenDaemonUnreachable(DockerHostType type)
     {
         // 指向必然不存在的端点：期望优雅返回 false（而不是抛出或挂起）。
-        var endpoint = type == DockerHostType.Tcp ? UnreachableTcp : "/nonexistent/docker.sock";
+        var endpoint = type == DockerHostType.Tcp ? _unreachableTcp : "/nonexistent/docker.sock";
 
         await using var host = new PersistenceTestHost();
         await host.InitializeAsync();
@@ -199,7 +203,7 @@ public class DockerHostAccessorTests
 
         var pooled = await accessor.GetClientAsync("local");
 
-        await accessor.TestConnectionAsync(Connection("local", DockerHostType.Socket, LocalSocket));
+        await accessor.TestConnectionAsync(Connection("local", DockerHostType.Socket, _localSocket));
 
         (await accessor.GetClientAsync("local"))
             .Should().BeSameAs(pooled, "连通性测试不得重建池中的客户端");

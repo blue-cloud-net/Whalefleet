@@ -1,16 +1,20 @@
 using System.Net;
 using System.Net.Http.Json;
+
+using FluentAssertions;
+
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Api.DependencyInjection;
 using Whalefleet.Api.Middleware;
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Hosts;
 using Whalefleet.Core.Permissions;
-using FluentAssertions;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.TestHost;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Middleware;
@@ -170,7 +174,7 @@ public class CurrentHostMiddlewareTests : IAsyncLifetime
             await next(context);
         }
         catch (BusinessException exception)
-            when (exception.Code == ErrorCodes.HostNotFound || exception.Code == ErrorCodes.HostForbidden)
+            when (exception.Code is ErrorCodes.HostNotFound or ErrorCodes.HostForbidden)
         {
             context.Response.StatusCode = exception.Code == ErrorCodes.HostNotFound
                 ? StatusCodes.Status404NotFound
@@ -178,25 +182,30 @@ public class CurrentHostMiddlewareTests : IAsyncLifetime
         }
     }
 
-    /// <summary>探针端点的响应体：回显端点读到的「当前主机」。</summary>
+    /// <summary>
+    /// 探针端点的响应体：回显端点读到的「当前主机」。
+    /// </summary>
     private sealed record ProbePayload(string? HostId);
 
-    /// <summary>当前用户替身：角色可切换，用于验证已认证 / 未认证两条路径。</summary>
+    /// <summary>
+    /// 当前用户替身：角色可切换，用于验证已认证 / 未认证两条路径。
+    /// </summary>
     /// <remarks>
     /// 用显式字段而不是主构造器参数：主构造器参数同时被捕获进状态又用来初始化属性时会触发 CS9124。
     /// </remarks>
     private sealed class StubCurrentUser : ICurrentUser
     {
-        private readonly bool _authenticated;
-
         internal StubCurrentUser(string? role)
         {
-            _authenticated = role is not null;
+            this.IsAuthenticated = role is not null;
             this.UserId = role is null ? null : Guid.NewGuid();
             this.Roles = role is null ? [] : [role];
         }
 
-        public bool IsAuthenticated => _authenticated;
+        public bool IsAuthenticated
+        {
+            get;
+        }
 
         public Guid? UserId { get; }
 
@@ -211,7 +220,9 @@ public class CurrentHostMiddlewareTests : IAsyncLifetime
     /// <remarks>真实实现（全局 / 主机分配的作用域规则）由权限判定的集成测试覆盖。</remarks>
     private sealed class StubPermissionChecker : IPermissionChecker
     {
-        /// <summary>是否拒绝访问（模拟无权看这台主机）。</summary>
+        /// <summary>
+        /// 是否拒绝访问（模拟无权看这台主机）。
+        /// </summary>
         internal bool Deny { get; set; }
 
         public Task EnsurePermissionAsync(

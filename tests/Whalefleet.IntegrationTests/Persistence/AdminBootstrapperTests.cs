@@ -1,3 +1,9 @@
+using FluentAssertions;
+
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Persistence;
 using Whalefleet.Application.Security;
@@ -5,10 +11,7 @@ using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.Infrastructure.DependencyInjection;
 using Whalefleet.Infrastructure.Persistence;
-using FluentAssertions;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Persistence;
@@ -25,17 +28,17 @@ public class AdminBootstrapperTests
     private const string _strongPassword = "AdminP@ssw0rd1";
 
     [Fact]
-    public async Task users表为空且配置齐全_创建可用密码登录的管理员()
+    public async Task Users表为空且配置齐全_创建可用密码登录的管理员()
     {
         await using var host = await AdminTestHost.CreateAsync(
             ("Admin:User", "admin"),
             ("Admin:Password", _strongPassword));
 
-        var users = host.Services.GetRequiredService<IUserRepository>();
+        var _users = host.Services.GetRequiredService<IUserRepository>();
         var hasher = host.Services.GetRequiredService<IPasswordHasher>();
         var roles = host.Services.GetRequiredService<IRoleRepository>();
 
-        var admin = await users.FindByUsernameAsync("admin");
+        var admin = await _users.FindByUsernameAsync("admin");
 
         admin.Should().NotBeNull();
         hasher.Verify(_strongPassword, admin!.PasswordHash).Should().BeTrue();
@@ -57,13 +60,13 @@ public class AdminBootstrapperTests
     }
 
     [Fact]
-    public async Task users表非空_不重复创建()
+    public async Task Users表非空_不重复创建()
     {
         await using var host = await AdminTestHost.CreateAsync(
             ("Admin:User", "admin"),
             ("Admin:Password", _strongPassword));
 
-        var users = host.Services.GetRequiredService<IUserRepository>();
+        var _users = host.Services.GetRequiredService<IUserRepository>();
         var assignments = host.Services.GetRequiredService<IUserRoleAssignmentRepository>();
         var hasher = host.Services.GetRequiredService<IPasswordHasher>();
 
@@ -71,7 +74,7 @@ public class AdminBootstrapperTests
         var defaultRole = await host.Services.GetRequiredService<IRoleRepository>()
             .GetDefaultAsync();
         await TestAccounts.CreateUserAsync(
-            users,
+            _users,
             assignments,
             "someone",
             hasher.Hash(_strongPassword),
@@ -79,8 +82,8 @@ public class AdminBootstrapperTests
 
         await host.Services.GetRequiredService<IAdminBootstrapper>().InitializeAsync();
 
-        (await users.FindByUsernameAsync("admin")).Should().NotBeNull();
-        (await users.ListAsync(0, 10)).Should().HaveCount(2);
+        (await _users.FindByUsernameAsync("admin")).Should().NotBeNull();
+        (await _users.ListAsync(0, 10)).Should().HaveCount(2);
     }
 
     [Fact]
@@ -90,17 +93,17 @@ public class AdminBootstrapperTests
             ("Admin:User", "admin"),
             ("Admin:Password", _strongPassword));
 
-        var users = host.Services.GetRequiredService<IUserRepository>();
-        var admin = await users.FindByUsernameAsync("admin");
+        var _users = host.Services.GetRequiredService<IUserRepository>();
+        var admin = await _users.FindByUsernameAsync("admin");
 
         // 软删除后业务计数为 0，但物理行仍在——若按业务计数判空就会重复种入
         // 并与残留行撞部分唯一索引，把启动搞崩。
-        await users.RemoveByIdAsync(admin!.Id);
+        await _users.RemoveByIdAsync(admin!.Id);
 
         await host.Services.GetRequiredService<IAdminBootstrapper>().InitializeAsync();
 
         // 物理行数仍为 1，因此引导应当跳过（不会因唯一索引冲突而抛异常）。
-        (await users.QueryAllListAsync()).Should().BeEmpty();
+        (await _users.QueryAllListAsync()).Should().BeEmpty();
     }
 
     [Fact]
@@ -108,10 +111,10 @@ public class AdminBootstrapperTests
     {
         await using var host = await AdminTestHost.CreateAsync();
 
-        var users = host.Services.GetRequiredService<IUserRepository>();
+        var _users = host.Services.GetRequiredService<IUserRepository>();
         var hasher = host.Services.GetRequiredService<IPasswordHasher>();
 
-        var admin = await users.FindByUsernameAsync("admin");
+        var admin = await _users.FindByUsernameAsync("admin");
         admin.Should().NotBeNull();
 
         // 密码写在数据目录的凭据文件里（不进日志），且必须真的能登录。
@@ -146,10 +149,10 @@ public class AdminBootstrapperTests
         // 用户名是部署方明确表达的意图，应当被尊重；只有密码必须保密，改由生成。
         await using var host = await AdminTestHost.CreateAsync(("Admin:User", "custom-admin"));
 
-        var users = host.Services.GetRequiredService<IUserRepository>();
+        var _users = host.Services.GetRequiredService<IUserRepository>();
         var hasher = host.Services.GetRequiredService<IPasswordHasher>();
 
-        var custom = await users.FindByUsernameAsync("custom-admin");
+        var custom = await _users.FindByUsernameAsync("custom-admin");
         custom.Should().NotBeNull();
 
         // 密码是自动生成的，且确实能登录。
@@ -158,7 +161,7 @@ public class AdminBootstrapperTests
         hasher.Verify(password, custom!.PasswordHash).Should().BeTrue();
 
         // 默认用户名不应被创建——用户明确指定了别的名字。
-        (await users.FindByUsernameAsync("admin")).Should().BeNull();
+        (await _users.FindByUsernameAsync("admin")).Should().BeNull();
     }
 
     [Fact]
@@ -166,10 +169,10 @@ public class AdminBootstrapperTests
     {
         await using var host = await AdminTestHost.CreateAsync(("Admin:Password", _strongPassword));
 
-        var users = host.Services.GetRequiredService<IUserRepository>();
+        var _users = host.Services.GetRequiredService<IUserRepository>();
         var hasher = host.Services.GetRequiredService<IPasswordHasher>();
 
-        var admin = await users.FindByUsernameAsync("admin");
+        var admin = await _users.FindByUsernameAsync("admin");
         admin.Should().NotBeNull();
         hasher.Verify(_strongPassword, admin!.PasswordHash).Should().BeTrue();
 
@@ -251,21 +254,27 @@ public class AdminBootstrapperTests
     private sealed class AdminTestHost : IAsyncDisposable
     {
         private readonly ServiceProvider _provider;
-        private readonly string _directory;
 
         private AdminTestHost(ServiceProvider provider, string directory, string capturedLogs)
         {
             _provider = provider;
-            _directory = directory;
-            CapturedLogs = capturedLogs;
+            this.DataDirectory = directory;
+            this.CapturedLogs = capturedLogs;
         }
 
         internal IServiceProvider Services => _provider;
 
-        /// <summary>数据目录（密钥与凭据文件所在处）。</summary>
-        internal string DataDirectory => _directory;
+        /// <summary>
+        /// 数据目录（密钥与凭据文件所在处）。
+        /// </summary>
+        internal string DataDirectory
+        {
+            get;
+        }
 
-        /// <summary>引导期间捕获的全部日志文本。</summary>
+        /// <summary>
+        /// 引导期间捕获的全部日志文本。
+        /// </summary>
         internal string CapturedLogs { get; }
 
         internal static async Task<AdminTestHost> CreateAsync(params (string Key, string Value)[] settings)
@@ -324,9 +333,9 @@ public class AdminBootstrapperTests
         {
             _provider.Dispose();
 
-            if (Directory.Exists(_directory))
+            if (Directory.Exists(this.DataDirectory))
             {
-                Directory.Delete(_directory, recursive: true);
+                Directory.Delete(this.DataDirectory, recursive: true);
             }
 
             return ValueTask.CompletedTask;

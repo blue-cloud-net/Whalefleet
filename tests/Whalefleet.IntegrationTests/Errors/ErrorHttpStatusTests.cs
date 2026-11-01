@@ -1,8 +1,11 @@
 using System.Net;
 using System.Reflection;
+
+using FluentAssertions;
+
 using Whalefleet.Api.Errors;
 using Whalefleet.Application.Common;
-using FluentAssertions;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Errors;
@@ -20,7 +23,7 @@ public class ErrorHttpStatusTests
     /// <summary>
     /// 错误码 → 期望 HTTP 状态码，逐行对应 <c>docs/api-spec.md</c> 的错误码表格。
     /// </summary>
-    private static readonly Dictionary<int, int> DocumentedCodeToHttpStatus = new()
+    private static readonly Dictionary<int, int> _documentedCodeToHttpStatus = new()
     {
         [ErrorCodes.Success] = 200,
 
@@ -115,7 +118,7 @@ public class ErrorHttpStatusTests
             .Select(field => (int)field.GetRawConstantValue()!)
             .ToArray();
 
-        DocumentedCodeToHttpStatus.Keys.Should().BeEquivalentTo(
+        _documentedCodeToHttpStatus.Keys.Should().BeEquivalentTo(
             allCodes,
             "新增错误码时必须同时在本测试的期望表中登记其 HTTP 状态码");
     }
@@ -123,7 +126,7 @@ public class ErrorHttpStatusTests
     [Fact]
     public void FromErrorCode_ShouldMatchDocumentedHttpStatusForEveryCode()
     {
-        foreach (var (code, expectedHttpStatus) in DocumentedCodeToHttpStatus)
+        foreach (var (code, expectedHttpStatus) in _documentedCodeToHttpStatus)
         {
             ErrorHttpStatus.FromErrorCode(code).Should().Be(
                 expectedHttpStatus,

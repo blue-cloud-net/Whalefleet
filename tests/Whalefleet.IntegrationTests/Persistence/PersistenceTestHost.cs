@@ -1,14 +1,16 @@
 using System.Data.Common;
 using System.Globalization;
+
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Persistence;
 using Whalefleet.Infrastructure.DependencyInjection;
 using Whalefleet.Infrastructure.Persistence;
 using Whalefleet.IntegrationTests.Infrastructure;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Whalefleet.IntegrationTests.Persistence;
 
@@ -31,7 +33,7 @@ internal sealed class PersistenceTestHost : IAsyncDisposable
     /// <summary>
     /// 测试基准时刻（UTC）。
     /// </summary>
-    internal static readonly DateTimeOffset Now = new(2026, 10, 10, 8, 0, 0, TimeSpan.Zero);
+    internal static readonly DateTimeOffset _now = new(2026, 10, 10, 8, 0, 0, TimeSpan.Zero);
 
     private readonly ServiceProvider _provider;
     private readonly string _directory;
@@ -46,7 +48,7 @@ internal sealed class PersistenceTestHost : IAsyncDisposable
         Directory.CreateDirectory(_directory);
         this.DatabasePath = Path.Combine(_directory, "whalefleet.db");
 
-        this.TimeProvider = new TestTimeProvider(Now);
+        this.TimeProvider = new TestTimeProvider(_now);
         this.CurrentUser = new StubCurrentUser(currentUserId);
 
         var configuration = new ConfigurationBuilder()
@@ -110,7 +112,7 @@ internal sealed class PersistenceTestHost : IAsyncDisposable
     /// <returns>标量值的字符串形式；<c>NULL</c> 返回 <see langword="null"/>。</returns>
     public async Task<string?> QueryScalarAsync(string sql)
     {
-        await using var connection = CreateConnection();
+        await using var connection = this.CreateConnection();
         await connection.OpenAsync();
 
         await using var command = connection.CreateCommand();
@@ -136,7 +138,7 @@ internal sealed class PersistenceTestHost : IAsyncDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(table);
         ArgumentException.ThrowIfNullOrWhiteSpace(column);
 
-        await using var connection = CreateConnection();
+        await using var connection = this.CreateConnection();
         await connection.OpenAsync();
 
         await using var command = connection.CreateCommand();
@@ -178,7 +180,7 @@ internal sealed class PersistenceTestHost : IAsyncDisposable
     /// </remarks>
     public async Task<int> ExecuteAsync(string sql, IReadOnlyList<(string Name, object Value)> parameters)
     {
-        await using var connection = CreateConnection();
+        await using var connection = this.CreateConnection();
         await connection.OpenAsync();
 
         await using var command = connection.CreateCommand();

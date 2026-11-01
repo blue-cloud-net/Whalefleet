@@ -1,5 +1,7 @@
 using System.Net;
+
 using FluentAssertions;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Security;
@@ -13,7 +15,7 @@ namespace Whalefleet.IntegrationTests.Security;
 /// </remarks>
 public class CorsTests
 {
-    private const string AllowedOriginKey = "Cors:AllowedOrigins:0";
+    private const string _allowedOriginKey = "Cors:AllowedOrigins:0";
 
     [Fact]
     public async Task WithoutWhitelist_ShouldNotEmitAnyCorsHeader()
@@ -99,7 +101,7 @@ public class CorsTests
     }
 
     private static ApiFactory CreateFactoryWithAllowedOrigin(string origin) =>
-        new ApiFactory().WithSetting(AllowedOriginKey, origin);
+        new ApiFactory().WithSetting(_allowedOriginKey, origin);
 
     private static HttpRequestMessage CreatePreflight(string origin)
     {

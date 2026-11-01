@@ -1,7 +1,10 @@
-using Whalefleet.Core.Users;
 using FluentAssertions;
+
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
+
+using Whalefleet.Core.Users;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Persistence;
@@ -23,10 +26,14 @@ public class SqliteUserRepositoryTests
 
     private static readonly Guid _operatorId = new("11111111-1111-1111-1111-111111111111");
 
-    /// <summary>迁移种入的 operator 角色（“普通可操作”）。</summary>
+    /// <summary>
+    /// 迁移种入的 operator 角色（“普通可操作”）。
+    /// </summary>
     private static readonly Guid _operatorRoleId = new("00000000-0000-0000-0000-0000000000a2");
 
-    /// <summary>迁移种入的 admin 角色。</summary>
+    /// <summary>
+    /// 迁移种入的 admin 角色。
+    /// </summary>
     private static readonly Guid _adminRoleId = new("00000000-0000-0000-0000-0000000000a1");
 
     [Fact]
@@ -49,7 +56,7 @@ public class SqliteUserRepositoryTests
         loaded.PasswordHash.Should().Be(_passwordHash);
 
         // 审计填充：时间取自 TimeProvider，操作人取自 ICurrentUser
-        loaded.CreationTime.Should().Be(PersistenceTestHost.Now.UtcDateTime);
+        loaded.CreationTime.Should().Be(PersistenceTestHost._now.UtcDateTime);
         loaded.CreationTime.Kind.Should().Be(DateTimeKind.Utc);
         loaded.CreatorId.Should().Be(_operatorId);
         loaded.LastModificationTime.Should().BeNull();
@@ -205,7 +212,7 @@ public class SqliteUserRepositoryTests
 
         var loaded = (await users.QueryByIdAsync(user.Id))!;
         loaded.PasswordHash.Should().Be("$argon2id$v=19$m=65536,t=3,p=1$bmV3$aGFzaA");
-        loaded.LastModificationTime.Should().Be(PersistenceTestHost.Now.AddHours(2).UtcDateTime);
+        loaded.LastModificationTime.Should().Be(PersistenceTestHost._now.AddHours(2).UtcDateTime);
         loaded.LastModifierId.Should().Be(_operatorId);
     }
 
@@ -292,6 +299,6 @@ public class SqliteUserRepositoryTests
         (await users.CountAsync()).Should().Be(1);
     }
 
-    private static User CreateUser(string username, Guid? roleId = null) =>
+    private static User CreateUser(string username) =>
         User.Create(Guid.NewGuid(), username, _passwordHash);
 }

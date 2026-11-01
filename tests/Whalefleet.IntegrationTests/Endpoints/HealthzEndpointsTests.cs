@@ -1,6 +1,9 @@
 using System.Text.Json;
-using Whalefleet.IntegrationTests;
+
 using FluentAssertions;
+
+using Whalefleet.IntegrationTests;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Endpoints;

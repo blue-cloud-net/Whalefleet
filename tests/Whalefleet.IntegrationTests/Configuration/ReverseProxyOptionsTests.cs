@@ -1,7 +1,10 @@
 using System.Net;
 using System.Net.Sockets;
-using Whalefleet.Api.Configuration;
+
 using FluentAssertions;
+
+using Whalefleet.Api.Configuration;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Configuration;

@@ -1,10 +1,14 @@
 using Docker.DotNet;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Core.Hosts;
 using Whalefleet.Infrastructure.Docker;
-using FluentAssertions;
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Infrastructure;

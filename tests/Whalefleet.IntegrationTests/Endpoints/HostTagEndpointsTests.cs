@@ -2,14 +2,18 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Persistence;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Endpoints;
@@ -80,7 +84,7 @@ public class HostTagEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 列表_非管理员可读且初始为空()
     {
-        using var client = await CreateAuthenticatedClientAsync(_operatorName);
+        using var client = await this.CreateAuthenticatedClientAsync(_operatorName);
 
         using var response = await client.PostAsync("/api/v1/host-tags/list", content: null);
 
@@ -92,7 +96,7 @@ public class HostTagEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_颜色被规范化且主机数为零()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var created = await CreateTagAsync(client, "Production", "#1a2b3c");
 
@@ -108,7 +112,7 @@ public class HostTagEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_重名不区分大小写返回1307()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         await CreateTagAsync(client, "gpu", null);
 
@@ -123,7 +127,7 @@ public class HostTagEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_非法颜色返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/host-tags/create",
@@ -136,12 +140,12 @@ public class HostTagEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 更新_改名并清空颜色()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
         var tag = await CreateTagAsync(client, "old-name", "#112233");
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/admin/host-tags/{tag.Id}/update",
-            new { name = "new-name", color = string.Empty });
+            new { name = "new-name", color = String.Empty });
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
@@ -153,7 +157,7 @@ public class HostTagEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 更新_不存在的标签返回1306()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/admin/host-tags/{Guid.NewGuid()}/update",
@@ -166,7 +170,7 @@ public class HostTagEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 打标_幂等且回带在主机列表上()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
         var tag = await CreateTagAsync(client, "prod", "#22C55E");
 
         for (var attempt = 0; attempt < 2; attempt++)
@@ -191,7 +195,7 @@ public class HostTagEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 打标_未知标签返回1306_未知主机返回1300()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
         var tag = await CreateTagAsync(client, "known", null);
 
         using var unknownTag = await client.PostAsJsonAsync(
@@ -212,7 +216,7 @@ public class HostTagEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 清标_幂等且主机仍在()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
         var tag = await CreateTagAsync(client, "temp", null);
 
         using var assigned = await client.PostAsJsonAsync(
@@ -236,7 +240,7 @@ public class HostTagEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 删除标签_解除关联但不删主机()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
         var tag = await CreateTagAsync(client, "doomed", null);
 
         using var assigned = await client.PostAsJsonAsync(
@@ -262,7 +266,7 @@ public class HostTagEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 过滤_按标签任一命中()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
         var tag = await CreateTagAsync(client, "filter-me", null);
 
         using var assigned = await client.PostAsJsonAsync(
@@ -280,10 +284,10 @@ public class HostTagEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 过滤_未分组用空串表达()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         // 默认主机由迁移归入「本机」分组，因此「未分组」应当筛不出任何主机
-        (await ListHostsAsync(client, new { groupId = string.Empty })).Should().BeEmpty();
+        (await ListHostsAsync(client, new { groupId = String.Empty })).Should().BeEmpty();
 
         // 移出分组之后就能筛到
         using var cleared = await client.PostAsJsonAsync(
@@ -291,7 +295,7 @@ public class HostTagEndpointsTests : IAsyncLifetime
             new { groupId = (Guid?)null });
         cleared.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        (await ListHostsAsync(client, new { groupId = string.Empty }))
+        (await ListHostsAsync(client, new { groupId = String.Empty }))
             .Should().ContainSingle(host => host.Id == _localHost);
 
         // 缺失 groupId = 不过滤（与空串不是一回事）
@@ -302,7 +306,7 @@ public class HostTagEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 过滤_状态与关键字()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         (await ListHostsAsync(client, new { status = "online" }))
             .Should().ContainSingle(host => host.Id == _localHost);
@@ -318,7 +322,7 @@ public class HostTagEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 过滤_非法状态与非法分组标识返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var badStatus = await client.PostAsJsonAsync(
             "/api/v1/hosts/list",

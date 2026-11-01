@@ -1,9 +1,12 @@
-using Whalefleet.Infrastructure.DependencyInjection;
-using Whalefleet.Infrastructure.Docker;
 using FluentAssertions;
+
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+
+using Whalefleet.Infrastructure.DependencyInjection;
+using Whalefleet.Infrastructure.Docker;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Infrastructure;

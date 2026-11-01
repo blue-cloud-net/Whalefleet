@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net.Sockets;
 using System.Text.Json;
+
 using Docker.DotNet;
 using Docker.DotNet.Models;
 
@@ -21,34 +22,44 @@ namespace Whalefleet.IntegrationTests.Infrastructure;
 /// </remarks>
 public static class DockerAvailability
 {
-    /// <summary>默认的宿主 socket 路径（Linux / macOS）。</summary>
+    /// <summary>
+    /// 默认的宿主 socket 路径（Linux / macOS）。
+    /// </summary>
     public const string DefaultSocketPath = "/var/run/docker.sock";
 
-    /// <summary>探测连接的超时（毫秒）。</summary>
+    /// <summary>
+    /// 探测连接的超时（毫秒）。
+    /// </summary>
     /// <remarks>取值要小：它在测试发现阶段同步执行，卡住会拖慢整个测试会话。</remarks>
     public const int ProbeTimeoutMilliseconds = 500;
 
-    /// <summary>Docker Hub 清单服务的 HTTPS 端口。</summary>
-    private const int RegistryPort = 443;
+    /// <summary>
+    /// Docker Hub 清单服务的 HTTPS 端口。
+    /// </summary>
+    private const int _registryPort = 443;
 
-    /// <summary>探测用容器的存活时长（秒）。</summary>
-    private const int ProbeContainerSeconds = 30;
+    /// <summary>
+    /// 探测用容器的存活时长（秒）。
+    /// </summary>
+    private const int _probeContainerSeconds = 30;
 
-    /// <summary>启动后等多久再查状态（毫秒）。</summary>
+    /// <summary>
+    /// 启动后等多久再查状态（毫秒）。
+    /// </summary>
     /// <remarks>
     /// 必须给容器一点时间「秒退」：入口点吃掉命令的容器是「启动成功后立刻退出」的，
     /// 立即查状态可能赶在退出之前而误判为可用。
     /// </remarks>
-    private const int ProbeSettleMilliseconds = 1000;
-    private static readonly Lazy<bool> ProbeResult = new(Probe, LazyThreadSafetyMode.ExecutionAndPublication);
+    private const int _probeSettleMilliseconds = 1000;
+    private static readonly Lazy<bool> _probeResult = new(Probe, LazyThreadSafetyMode.ExecutionAndPublication);
 
-    private static readonly Lazy<string?> AvailableImage =
+    private static readonly Lazy<string?> _availableImage =
         new(DiscoverKeepAliveCapableImage, LazyThreadSafetyMode.ExecutionAndPublication);
 
     /// <summary>
     /// 宿主 Docker 守护进程是否可用。
     /// </summary>
-    public static bool IsAvailable => ProbeResult.Value;
+    public static bool IsAvailable => _probeResult.Value;
 
     /// <summary>
     /// 不可用时的跳过原因（可直接展示给测试报告）。
@@ -109,9 +120,9 @@ public static class DockerAvailability
     /// 守护进程只走加速器、不直连 Docker Hub。若只探 Docker Hub，在这类机器上会永远判定
     /// 「不可达」，把本来能跑的成功路径用例全部跳过——比不探测更糟。</para>
     /// </remarks>
-    public static bool IsRegistryReachable => RepositoryProbe.Value;
+    public static bool IsRegistryReachable => _repositoryProbe.Value;
 
-    private static readonly Lazy<bool> RepositoryProbe =
+    private static readonly Lazy<bool> _repositoryProbe =
         new(ProbeRegistry, LazyThreadSafetyMode.ExecutionAndPublication);
 
     private static bool ProbeRegistry()
@@ -187,7 +198,7 @@ public static class DockerAvailability
             }
 
             // 加速器常写成 https://mirror.example.com/ 或裸主机名，两种都要能处理。
-            if (!string.IsNullOrWhiteSpace(uri.Host))
+            if (!String.IsNullOrWhiteSpace(uri.Host))
             {
                 yield return uri.Host;
             }
@@ -206,7 +217,7 @@ public static class DockerAvailability
             using var client = new TcpClient();
 
             return client
-                .ConnectAsync(host, RegistryPort)
+                .ConnectAsync(host, _registryPort)
                 .Wait(ProbeTimeoutMilliseconds);
         }
         catch (Exception exception) when (exception is SocketException or IOException or TimeoutException or AggregateException)
@@ -232,7 +243,7 @@ public static class DockerAvailability
     /// 取决于「那台机器恰好拉过哪张镜像」，在干净环境里必然红。挑一张现成镜像则让用例只依赖
     /// 「有镜像」这个真正必要的前提，且不会引入网络依赖。</para>
     /// </remarks>
-    public static string? ImageReference => AvailableImage.Value;
+    public static string? ImageReference => _availableImage.Value;
 
     /// <summary>
     /// 宿主上「能起一个 <c>/bin/sh</c> 容器」的第一张有标签镜像；没有则 <see langword="null"/>。
@@ -247,14 +258,16 @@ public static class DockerAvailability
     /// <para><b>探测方式</b>：真起一个 <c>/bin/sh -c 'exit 0'</c> 的容器看它是否正常退出——
     /// 只有「有没有 shell」这种问题才问得准（<c>Config.Entrypoint</c> 里看不出镜像里有没有 shell）。</para>
     /// </remarks>
-    public static string? ShellImageReference => ShellCapableImage.Value;
+    public static string? ShellImageReference => _shellCapableImage.Value;
 
-    /// <summary>「能跑 shell 的镜像」的跳过原因。</summary>
+    /// <summary>
+    /// 「能跑 shell 的镜像」的跳过原因。
+    /// </summary>
     public const string ShellImageSkipReason =
         "宿主上没有能跑 /bin/sh 的镜像（可能是 scratch 类镜像）——"
         + "需要显式覆盖入口点的用例已跳过。";
 
-    private static readonly Lazy<string?> ShellCapableImage =
+    private static readonly Lazy<string?> _shellCapableImage =
         new(DiscoverShellCapableImage, LazyThreadSafetyMode.ExecutionAndPublication);
 
     private static string? DiscoverShellCapableImage()
@@ -319,7 +332,7 @@ public static class DockerAvailability
                     // ⚠️ **不覆盖入口点**：与用例的建容器方式完全一致。
                     // 覆盖了量到的就是「这张镜像有没有 shell」——那是另一个问题
                     // （由 ShellImageReference 回答）。
-                    Cmd = ["sleep", ProbeContainerSeconds.ToString(CultureInfo.InvariantCulture)],
+                    Cmd = ["sleep", _probeContainerSeconds.ToString(CultureInfo.InvariantCulture)],
                 })
                 .GetAwaiter()
                 .GetResult();

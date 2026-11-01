@@ -1,8 +1,11 @@
 using System.Security.Cryptography;
 using System.Text;
+
+using FluentAssertions;
+
 using Whalefleet.Application.Common;
 using Whalefleet.Infrastructure.Security;
-using FluentAssertions;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Security;
@@ -70,7 +73,7 @@ public class RepositorySecretCipherTests
     public void 用错密钥解密失败()
     {
         var cipher = RepositorySecretCipher.Encrypt("s3cr3t", _key);
-        var otherKey = RandomNumberGenerator.GetBytes(RepositorySecretCipher.KeySizeBytes);
+        var otherKey = RandomNumberGenerator.GetBytes(RepositorySecretCipher._keySizeBytes);
 
         var act = () => RepositorySecretCipher.Decrypt(cipher, otherKey);
 

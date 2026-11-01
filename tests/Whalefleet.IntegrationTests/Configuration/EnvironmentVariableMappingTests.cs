@@ -1,6 +1,9 @@
-using Whalefleet.Api.Configuration;
 using FluentAssertions;
+
 using Microsoft.Extensions.Configuration;
+
+using Whalefleet.Api.Configuration;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Configuration;
@@ -19,13 +22,13 @@ namespace Whalefleet.IntegrationTests.Configuration;
 [Collection(EnvironmentVariablesCollectionDefinition.Name)]
 public class EnvironmentVariableMappingTests
 {
-    private const string IdleTimeoutVariable = "DOCKER__POOL__IDLETIMEOUT";
-    private const string CorsOriginVariable = "CORS__ALLOWEDORIGINS__0";
+    private const string _idleTimeoutVariable = "DOCKER__POOL__IDLETIMEOUT";
+    private const string _corsOriginVariable = "CORS__ALLOWEDORIGINS__0";
 
     [Fact]
     public void DoubleUnderscore_ShouldMapToConfigurationSectionSeparator()
     {
-        RunWithEnvironmentVariable(IdleTimeoutVariable, "00:07:00", () =>
+        RunWithEnvironmentVariable(_idleTimeoutVariable, "00:07:00", () =>
         {
             var configuration = BuildFromEnvironment();
 
@@ -36,7 +39,7 @@ public class EnvironmentVariableMappingTests
     [Fact]
     public void DoubleUnderscore_ShouldBeCaseInsensitiveWhenReadingBack()
     {
-        RunWithEnvironmentVariable(IdleTimeoutVariable, "00:07:00", () =>
+        RunWithEnvironmentVariable(_idleTimeoutVariable, "00:07:00", () =>
         {
             var configuration = BuildFromEnvironment();
 
@@ -49,7 +52,7 @@ public class EnvironmentVariableMappingTests
     [Fact]
     public void NumberedSuffix_ShouldMapToArrayIndex()
     {
-        RunWithEnvironmentVariable(CorsOriginVariable, "http://env.example", () =>
+        RunWithEnvironmentVariable(_corsOriginVariable, "http://env.example", () =>
         {
             var configuration = BuildFromEnvironment();
 
@@ -60,7 +63,7 @@ public class EnvironmentVariableMappingTests
     [Fact]
     public void BoundOptions_ShouldReceiveMappedValues()
     {
-        RunWithEnvironmentVariable(CorsOriginVariable, "http://env.example", () =>
+        RunWithEnvironmentVariable(_corsOriginVariable, "http://env.example", () =>
         {
             var configuration = BuildFromEnvironment();
 

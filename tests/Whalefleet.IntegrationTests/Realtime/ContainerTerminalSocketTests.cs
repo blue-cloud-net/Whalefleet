@@ -4,15 +4,19 @@ using System.Net.Http.Json;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+
+using FluentAssertions;
+
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Persistence;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
-using FluentAssertions;
-using Microsoft.AspNetCore.TestHost;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Realtime;
@@ -38,10 +42,14 @@ public sealed class ContainerTerminalSocketTests : IAsyncLifetime
     private const string _localHost = "local";
     private const string _execPath = "/ws/hosts/local/containers/exec";
 
-    /// <summary>容器里要跑的东西：保持存活即可（exec 会另起进程）。</summary>
+    /// <summary>
+    /// 容器里要跑的东西：保持存活即可（exec 会另起进程）。
+    /// </summary>
     private static readonly string[] _keepAliveCommand = ["sleep", "120"];
 
-    /// <summary>覆盖入口点，保证镜像里确实有 <c>/bin/sh</c>。</summary>
+    /// <summary>
+    /// 覆盖入口点，保证镜像里确实有 <c>/bin/sh</c>。
+    /// </summary>
     private static readonly string[] _shellEntrypoint = ["/bin/sh", "-c", "sleep 120"];
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
@@ -116,7 +124,7 @@ public sealed class ContainerTerminalSocketTests : IAsyncLifetime
     [DockerShellImageFact]
     public async Task 运行中的容器_能执行命令并读回输出()
     {
-        using var http = await CreateAuthenticatedClientAsync();
+        using var http = await this.CreateAuthenticatedClientAsync();
 
         var containerId = await CreateAndStartContainerAsync(http);
 

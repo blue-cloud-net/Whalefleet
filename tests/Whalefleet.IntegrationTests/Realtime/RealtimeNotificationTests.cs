@@ -1,14 +1,18 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+
+using FluentAssertions;
+
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Realtime;
@@ -36,10 +40,14 @@ public sealed class RealtimeNotificationTests : IAsyncLifetime
     private const string _adminName = "admin";
     private const string _localHost = "local";
 
-    /// <summary>等待通知到达的上限。</summary>
+    /// <summary>
+    /// 等待通知到达的上限。
+    /// </summary>
     private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(15);
 
-    /// <summary>重复发布的间隔。</summary>
+    /// <summary>
+    /// 重复发布的间隔。
+    /// </summary>
     private static readonly TimeSpan _retryInterval = TimeSpan.FromMilliseconds(200);
 
     private ApiFactory _factory = null!;
@@ -80,9 +88,9 @@ public sealed class RealtimeNotificationTests : IAsyncLifetime
     [Fact]
     public async Task 容器异常退出_推到通知Hub()
     {
-        var received = await ConnectAndReceiveAsync();
+        var received = await this.ConnectAndReceiveAsync();
 
-        var result = await PublishUntilReceivedAsync(
+        var result = await this.PublishUntilReceivedAsync(
             new ContainerEventNotification(
                 _localHost,
                 "container-abc",
@@ -101,9 +109,9 @@ public sealed class RealtimeNotificationTests : IAsyncLifetime
     [Fact]
     public async Task 容器正常退出_也推送但退出码为0()
     {
-        var received = await ConnectAndReceiveAsync();
+        var received = await this.ConnectAndReceiveAsync();
 
-        var result = await PublishUntilReceivedAsync(
+        var result = await this.PublishUntilReceivedAsync(
             new ContainerEventNotification(
                 _localHost,
                 "container-normal",
@@ -123,9 +131,9 @@ public sealed class RealtimeNotificationTests : IAsyncLifetime
     /// <returns>接收任务。</returns>
     private async Task<TaskCompletionSource<ContainerDiedEvent>> ConnectAndReceiveAsync()
     {
-        var token = await LoginAsync(_adminName);
+        var token = await this.LoginAsync(_adminName);
 
-        var connection = BuildConnection(token);
+        var connection = this.BuildConnection(token);
 
         var received = new TaskCompletionSource<ContainerDiedEvent>(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -140,7 +148,9 @@ public sealed class RealtimeNotificationTests : IAsyncLifetime
         return received;
     }
 
-    /// <summary>测试期间保持打开的连接。</summary>
+    /// <summary>
+    /// 测试期间保持打开的连接。
+    /// </summary>
     private HubConnection? _connection;
 
     /// <summary>

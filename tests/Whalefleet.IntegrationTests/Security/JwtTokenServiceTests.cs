@@ -1,9 +1,8 @@
 using System.Security.Claims;
 using System.Text;
-using Whalefleet.Application.Abstractions;
-using Whalefleet.Infrastructure.DependencyInjection;
-using Whalefleet.Infrastructure.Security;
+
 using FluentAssertions;
+
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -11,6 +10,11 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
+
+using Whalefleet.Application.Abstractions;
+using Whalefleet.Infrastructure.DependencyInjection;
+using Whalefleet.Infrastructure.Security;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Security;
@@ -21,7 +25,7 @@ namespace Whalefleet.IntegrationTests.Security;
 /// <remarks>
 /// <para><b>为什么要用同一套校验参数把令牌验回来</b>：只断言"字符串长得像 JWT"毫无价值——
 /// 真正的契约是「Api 层的 <c>AddJwtBearer</c> 能用同一份配置验签通过」。
-/// 这里用 <see cref="JsonWebTokenHandler.ValidateTokenAsync(string, TokenValidationParameters)"/>
+/// 这里用 <see cref="JsonWebTokenHandler.ValidateTokenAsync(String, TokenValidationParameters)"/>
 /// 走一遍验签，就把"签发侧与验证侧的算法/issuer/audience 对得上"变成了可执行的断言。</para>
 /// <para>测试只创建令牌、不启动宿主，因此密钥可以写死在测试里。</para>
 /// </remarks>

@@ -3,13 +3,17 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Realtime;
@@ -91,9 +95,9 @@ public sealed class ContainerRealtimeEndpointTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task tail越界_返回1000()
+    public async Task Tail越界_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         // 上限是 5000：5001 越界 → 报错，而不是静默截断。
         using var response = await client.PostAsJsonAsync(
@@ -107,7 +111,7 @@ public sealed class ContainerRealtimeEndpointTests : IAsyncLifetime
     [Fact]
     public async Task 容器不存在_返回1401()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/logs",
@@ -120,7 +124,7 @@ public sealed class ContainerRealtimeEndpointTests : IAsyncLifetime
     [Fact]
     public async Task 下载日志_容器不存在_返回JSON错误而不是文本()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/logs/download",
@@ -148,7 +152,7 @@ public sealed class ContainerRealtimeEndpointTests : IAsyncLifetime
     [DockerShellImageFact]
     public async Task 日志_返回结构化行()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var image = DockerAvailability.ShellImageReference!;
         var name = $"dm-rt-{Guid.NewGuid():N}"[..16];
@@ -211,7 +215,7 @@ public sealed class ContainerRealtimeEndpointTests : IAsyncLifetime
     [DockerShellImageFact]
     public async Task 下载日志_返回纯文本()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         // ⚠️ **必须显式覆盖入口点**：本用例要的是「容器有输出」。
         // 而 PID 1 是什么由镜像决定——入口点是应用二进制时它会忽略 cmd 直接跑自己的逻辑，

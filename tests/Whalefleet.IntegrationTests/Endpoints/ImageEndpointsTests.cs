@@ -2,15 +2,20 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+
 using Docker.DotNet;
 using Docker.DotNet.Models;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Endpoints;
@@ -34,7 +39,9 @@ public class ImageEndpointsTests : IAsyncLifetime
     private const string _adminName = "admin";
     private const string _operatorName = "operator";
 
-    /// <summary>没有任何角色分配的账号：用于验证 fail-closed。</summary>
+    /// <summary>
+    /// 没有任何角色分配的账号：用于验证 fail-closed。
+    /// </summary>
     private const string _noRoleName = "norole";
     private const string _localHost = "local";
     private const string _unknownHost = "no-such-host";
@@ -51,11 +58,15 @@ public class ImageEndpointsTests : IAsyncLifetime
     private const string _pullableImage = "hello-world";
     private const string _pullableTag = "latest";
 
-    /// <summary>等待新标签可见的上限（秒）。</summary>
-    private static readonly TimeSpan TagPropagationTimeout = TimeSpan.FromSeconds(5);
+    /// <summary>
+    /// 等待新标签可见的上限（秒）。
+    /// </summary>
+    private static readonly TimeSpan _tagPropagationTimeout = TimeSpan.FromSeconds(5);
 
-    /// <summary>等待新标签可见时的轮询间隔（毫秒）。</summary>
-    private const int TagPropagationInterval = 100;
+    /// <summary>
+    /// 等待新标签可见时的轮询间隔（毫秒）。
+    /// </summary>
+    private const int _tagPropagationInterval = 100;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -118,7 +129,7 @@ public class ImageEndpointsTests : IAsyncLifetime
     [InlineData("remove")]
     public async Task 未知主机_返回1300(string action)
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_unknownHost}/images/{action}",
@@ -135,7 +146,7 @@ public class ImageEndpointsTests : IAsyncLifetime
     [InlineData("remove")]
     public async Task 无任何角色分配访问主机_返回1501(string action)
     {
-        using var client = await CreateAuthenticatedClientAsync(_noRoleName);
+        using var client = await this.CreateAuthenticatedClientAsync(_noRoleName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/images/{action}",
@@ -150,7 +161,7 @@ public class ImageEndpointsTests : IAsyncLifetime
     [InlineData("remove")]
     public async Task 镜像标识为空_返回1000(string action)
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/images/{action}",
@@ -163,7 +174,7 @@ public class ImageEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 拉取_仓库名为空_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/images/pull",
@@ -176,7 +187,7 @@ public class ImageEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 拉取_仓库名已含标签又传标签_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/images/pull",
@@ -190,7 +201,7 @@ public class ImageEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 列表_字段回显且分页自洽()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/images/list",
@@ -209,7 +220,7 @@ public class ImageEndpointsTests : IAsyncLifetime
         {
             item.Id.Should().StartWith("sha256:");
             item.Size.Should().BeGreaterThan(0);
-            item.Created.Should().NotBe(default(DateTimeOffset));
+            item.Created.Should().NotBe(default);
 
             // Docker 的 <none> 占位标签被过滤掉了，界面上不该出现叫「<none>:<none>」的镜像。
             item.RepoTags.Should().NotContain(tag => tag.Contains("<none>", StringComparison.Ordinal));
@@ -219,7 +230,7 @@ public class ImageEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 列表_每页条数超上限会被夹紧()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/images/list",
@@ -234,7 +245,7 @@ public class ImageEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 列表_搜索缩小结果集()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var all = await ListAsync(client, search: null);
         var some = await ListAsync(client, search: _unknownImage.Split(':')[0]);
@@ -248,7 +259,7 @@ public class ImageEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 详情_镜像不存在_返回1401()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/images/inspect",
@@ -261,7 +272,7 @@ public class ImageEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 删除_镜像不存在_返回1401()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/images/remove",
@@ -274,7 +285,7 @@ public class ImageEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 详情_本机镜像可读()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var reference = DockerAvailability.ImageReference!;
 
@@ -293,7 +304,7 @@ public class ImageEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 拉取_镜像不存在_返回1401()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/images/pull",
@@ -310,7 +321,7 @@ public class ImageEndpointsTests : IAsyncLifetime
     [DockerRegistryFact]
     public async Task 拉取_公开镜像_返回镜像ID与大小()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
         var reference = $"{_pullableImage}:{_pullableTag}";
 
         try
@@ -347,7 +358,7 @@ public class ImageEndpointsTests : IAsyncLifetime
     [DockerRegistryFact]
     public async Task 删除_自造镜像_返回解绑与删除结果()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
         var reference = $"{_pullableImage}:{_pullableTag}";
 
         await PostDataAsync<PullPayload>(client, "pull", new { image = _pullableImage, tag = _pullableTag });
@@ -378,7 +389,7 @@ public class ImageEndpointsTests : IAsyncLifetime
     [DockerImageFact]
     public async Task 删除_只解绑标签时镜像本体保留()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         // 用本机现成的镜像打一个**临时标签**当夹具：不联网、不碰别人的标签，
         // 删完之后原标签与镜像都完好无损。
@@ -459,7 +470,7 @@ public class ImageEndpointsTests : IAsyncLifetime
         // 轮询等标签可见：Docker 的标签更新是**异步传播**的（经由内部事件队列），
         // 打完之后立刻 List 有可能读不到——头一次 List 看不到、隔几十毫秒再读就有了。
         // 直接等待并给出明确超时，比让后续断言带着 1401「假失败」要好排查得多。
-        var deadline = DateTime.UtcNow.Add(TagPropagationTimeout);
+        var deadline = DateTime.UtcNow.Add(_tagPropagationTimeout);
 
         while (DateTime.UtcNow < deadline)
         {
@@ -474,11 +485,11 @@ public class ImageEndpointsTests : IAsyncLifetime
                 return;
             }
 
-            Thread.Sleep(TagPropagationInterval);
+            Thread.Sleep(_tagPropagationInterval);
         }
 
         throw new InvalidOperationException(
-            $"打标签 {image} → {reference} 在 {TagPropagationTimeout.TotalSeconds:F0} 秒内没有生效；"
+            $"打标签 {image} → {reference} 在 {_tagPropagationTimeout.TotalSeconds:F0} 秒内没有生效；"
             + "后续断言会因此变成假失败");    }
 
     private static async Task<ListPayload> ListAsync(HttpClient client, string? search)
@@ -539,7 +550,9 @@ public class ImageEndpointsTests : IAsyncLifetime
         return JsonDocument.Parse(json).RootElement.Clone();
     }
 
-    /// <summary>镜像列表响应的投影（只取断言用得到的字段）。</summary>
+    /// <summary>
+    /// 镜像列表响应的投影（只取断言用得到的字段）。
+    /// </summary>
     private sealed record ListPayload(List<ImagePayload> Items, int Total, int PageIndex, int PageSize);
 
     private sealed record ImagePayload(

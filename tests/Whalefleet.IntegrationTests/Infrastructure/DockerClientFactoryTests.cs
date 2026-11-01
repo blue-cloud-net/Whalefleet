@@ -1,12 +1,17 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+
 using Docker.DotNet;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.Logging.Abstractions;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Hosts;
 using Whalefleet.Infrastructure.Docker;
-using FluentAssertions;
-using Microsoft.Extensions.Logging.Abstractions;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Infrastructure;
@@ -56,7 +61,7 @@ public class DockerClientFactoryTests
 
         var act = () => factory.CreateClient(Connection("local", (DockerHostType)999, "tcp://127.0.0.1:2375"));
 
-        (act.Should().Throw<BusinessException>())
+        act.Should().Throw<BusinessException>()
             .Which.Code.Should().Be(ErrorCodes.HostUnreachable);
     }
 
@@ -71,7 +76,7 @@ public class DockerClientFactoryTests
 
         var act = () => factory.CreateClient(Connection("local", DockerHostType.Socket, endpoint));
 
-        (act.Should().Throw<BusinessException>())
+        act.Should().Throw<BusinessException>()
             .Which.Code.Should().Be(ErrorCodes.HostUnreachable);
     }
 
@@ -153,7 +158,7 @@ public class DockerClientFactoryTests
 
         var act = () => factory.CreateClient(connection);
 
-        (act.Should().Throw<BusinessException>())
+        act.Should().Throw<BusinessException>()
             .Which.Code.Should().Be(ErrorCodes.HostUnreachable);
         act.Should().Throw<BusinessException>().WithMessage("*https://*");
     }
@@ -175,7 +180,7 @@ public class DockerClientFactoryTests
 
         var act = () => factory.CreateClient(connection);
 
-        (act.Should().Throw<BusinessException>())
+        act.Should().Throw<BusinessException>()
             .Which.Code.Should().Be(ErrorCodes.HostUnreachable);
     }
 
@@ -189,7 +194,7 @@ public class DockerClientFactoryTests
 
         var act = () => factory.CreateClient(connection);
 
-        (act.Should().Throw<BusinessException>())
+        act.Should().Throw<BusinessException>()
             .Which.Code.Should().Be(ErrorCodes.HostUnreachable);
     }
 

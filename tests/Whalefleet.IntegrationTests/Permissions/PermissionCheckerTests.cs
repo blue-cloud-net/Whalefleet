@@ -1,3 +1,8 @@
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Hosts;
@@ -5,9 +10,7 @@ using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.Infrastructure.Permissions;
 using Whalefleet.IntegrationTests.Persistence;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Permissions;
@@ -31,17 +34,19 @@ namespace Whalefleet.IntegrationTests.Permissions;
 /// </remarks>
 public class PermissionCheckerTests
 {
-    /// <summary>占位哈希：本组用例不经过登录流程，只为满足 <c>users.password_hash</c> 的非空约束。</summary>
+    /// <summary>
+    /// 占位哈希：本组用例不经过登录流程，只为满足 <c>users.password_hash</c> 的非空约束。
+    /// </summary>
     private const string _passwordHash = "$argon2id$v=19$m=1,t=1,p=1$0000$0000";
 
-    // ===== 验收 2：作用域隔离 =====
+    #region 验收 2：作用域隔离
 
     [Fact]
     public async Task 同一用户在两台主机上角色不同_权限互不串味()
     {
         await using var fixture = await Fixture.CreateAsync();
-        var operatorRole = await fixture.FindRoleAsync(RoleNames.Operator);
-        var viewerRole = await fixture.FindRoleAsync(RoleNames.Viewer);
+        var operatorRole = await fixture.FindRoleAsync(RoleNames._operator);
+        var viewerRole = await fixture.FindRoleAsync(RoleNames._viewer);
 
         // A 主机 = operator（可写），B 主机 = viewer（只读）
         await fixture.AssignAsync(operatorRole, fixture.HostAId);
@@ -63,7 +68,7 @@ public class PermissionCheckerTests
     public async Task 缓存键必须带主机_交替查询两台主机不会互相污染()
     {
         await using var fixture = await Fixture.CreateAsync();
-        await fixture.AssignAsync(await fixture.FindRoleAsync(RoleNames.Operator), fixture.HostAId);
+        await fixture.AssignAsync(await fixture.FindRoleAsync(RoleNames._operator), fixture.HostAId);
 
         var checker = fixture.CreateChecker();
 
@@ -82,15 +87,16 @@ public class PermissionCheckerTests
     public async Task 主机分配在别的主机上完全不生效()
     {
         await using var fixture = await Fixture.CreateAsync();
-        await fixture.AssignAsync(await fixture.FindRoleAsync(RoleNames.Operator), fixture.HostAId);
+        await fixture.AssignAsync(await fixture.FindRoleAsync(RoleNames._operator), fixture.HostAId);
 
         var checker = fixture.CreateChecker();
 
         var elsewhere = await checker.GetEffectivePermissionsAsync(fixture.UserId, fixture.HostBId);
         elsewhere.Should().BeEmpty();
     }
+    #endregion
 
-    // ===== 验收 5：主机分配里的 admin 不带来全局权限 =====
+    #region 验收 5：主机分配里的 admin 不带来全局权限
 
     [Fact]
     public async Task 主机分配的admin只带来主机域权限_全局权限被忽略()
@@ -147,14 +153,15 @@ public class PermissionCheckerTests
 
         (await checker.IsAdministratorAsync()).Should().BeTrue();
     }
+    #endregion
 
-    // ===== 验收 1 的判定侧：viewer / operator =====
+    #region 验收 1 的判定侧：viewer / operator
 
     [Fact]
-    public async Task viewer只有读权限_ensure拒绝写操作()
+    public async Task Viewer只有读权限_ensure拒绝写操作()
     {
         await using var fixture = await Fixture.CreateAsync();
-        await fixture.AssignAsync(await fixture.FindRoleAsync(RoleNames.Viewer), fixture.HostAId);
+        await fixture.AssignAsync(await fixture.FindRoleAsync(RoleNames._viewer), fixture.HostAId);
 
         var checker = fixture.CreateChecker();
 
@@ -174,8 +181,8 @@ public class PermissionCheckerTests
     public async Task 改授operator后下一次请求即可写_无需等待令牌过期()
     {
         await using var fixture = await Fixture.CreateAsync();
-        var operatorRole = await fixture.FindRoleAsync(RoleNames.Operator);
-        var viewerRole = await fixture.FindRoleAsync(RoleNames.Viewer);
+        var operatorRole = await fixture.FindRoleAsync(RoleNames._operator);
+        var viewerRole = await fixture.FindRoleAsync(RoleNames._viewer);
 
         var viewerAssignment = await fixture.AssignAsync(viewerRole, fixture.HostAId);
 
@@ -192,8 +199,9 @@ public class PermissionCheckerTests
         (await next.HasPermissionAsync(fixture.UserId, fixture.HostAId, Permission.ContainerWrite))
             .Should().BeTrue();
     }
+    #endregion
 
-    // ===== 并集 =====
+    #region 并集
 
     [Fact]
     public async Task 同一主机上的多条分配取权限并集()
@@ -203,8 +211,8 @@ public class PermissionCheckerTests
         // ⚠️ 必须用**全局**分配才能观察到并集里 auditor 独有的 audit.read：
         // audit.read 属 Global 域，主机分配会把它正确地忽略掉。
         // （主机分配下 viewer 与 auditor 的 Host 域权限完全相同，看不出并集差异。）
-        await fixture.AssignAsync(await fixture.FindRoleAsync(RoleNames.Operator), hostId: null);
-        await fixture.AssignAsync(await fixture.FindRoleAsync(RoleNames.Auditor), hostId: null);
+        await fixture.AssignAsync(await fixture.FindRoleAsync(RoleNames._operator), hostId: null);
+        await fixture.AssignAsync(await fixture.FindRoleAsync(RoleNames._auditor), hostId: null);
 
         var checker = fixture.CreateChecker();
         var effective = await checker.GetEffectivePermissionsAsync(fixture.UserId, hostId: null);
@@ -223,8 +231,8 @@ public class PermissionCheckerTests
 
         // viewer 与 auditor 的 Host 域权限完全相同，唯一的差异是 auditor 多一条
         // Global 域的 audit.read——主机分配下它必须不出现。
-        await fixture.AssignAsync(await fixture.FindRoleAsync(RoleNames.Viewer), fixture.HostAId);
-        await fixture.AssignAsync(await fixture.FindRoleAsync(RoleNames.Auditor), fixture.HostAId);
+        await fixture.AssignAsync(await fixture.FindRoleAsync(RoleNames._viewer), fixture.HostAId);
+        await fixture.AssignAsync(await fixture.FindRoleAsync(RoleNames._auditor), fixture.HostAId);
 
         var checker = fixture.CreateChecker();
         var effective = await checker.GetEffectivePermissionsAsync(fixture.UserId, fixture.HostAId);
@@ -233,8 +241,9 @@ public class PermissionCheckerTests
         effective.Should().Contain(Permission.ContainerRead);
         effective.Should().NotContain(Permission.ContainerWrite);
     }
+    #endregion
 
-    // ===== 未认证 =====
+    #region 未认证
 
     [Fact]
     public async Task 未认证用户拿不到任何权限()
@@ -262,14 +271,15 @@ public class PermissionCheckerTests
 
         (await checker.HasPermissionAsync(fixture.UserId, null, "  ")).Should().BeFalse();
     }
+    #endregion
 
-    // ===== 主机可见性 =====
+    #region 主机可见性
 
     [Fact]
     public async Task 主机分配只让该主机可见()
     {
         await using var fixture = await Fixture.CreateAsync();
-        await fixture.AssignAsync(await fixture.FindRoleAsync(RoleNames.Viewer), fixture.HostAId);
+        await fixture.AssignAsync(await fixture.FindRoleAsync(RoleNames._viewer), fixture.HostAId);
 
         var checker = fixture.CreateChecker();
 
@@ -282,7 +292,7 @@ public class PermissionCheckerTests
     public async Task 全局分配让所有主机可见()
     {
         await using var fixture = await Fixture.CreateAsync();
-        await fixture.AssignAsync(await fixture.FindRoleAsync(RoleNames.Operator), hostId: null);
+        await fixture.AssignAsync(await fixture.FindRoleAsync(RoleNames._operator), hostId: null);
 
         var checker = fixture.CreateChecker();
 
@@ -314,15 +324,16 @@ public class PermissionCheckerTests
 
         result.Should().BeEmpty();
     }
+    #endregion
 
-    // ===== 撤销后即时失效 =====
+    #region 撤销后即时失效
 
     [Fact]
     public async Task 撤销分配后新请求不再有权限()
     {
         await using var fixture = await Fixture.CreateAsync();
         var assignment = await fixture.AssignAsync(
-            await fixture.FindRoleAsync(RoleNames.Operator),
+            await fixture.FindRoleAsync(RoleNames._operator),
             fixture.HostAId);
 
         var before = fixture.CreateChecker();
@@ -335,18 +346,20 @@ public class PermissionCheckerTests
         (await after.HasPermissionAsync(fixture.UserId, fixture.HostAId, Permission.ContainerWrite))
             .Should().BeFalse();
     }
+    #endregion
 
-    // ===== 夹具 =====
+    #region 夹具
 
     /// <summary>
     /// 内置角色名。<see cref="Role"/> 只把 <c>admin</c> 提升为常量
     /// （它被短路逻辑与「至少保留一名管理员」引用），其余三个仅测试与种子使用。
     /// </summary>
+    #endregion
     private static class RoleNames
     {
-        internal const string Operator = "operator";
-        internal const string Viewer = "viewer";
-        internal const string Auditor = "auditor";
+        internal const string _operator = "operator";
+        internal const string _viewer = "viewer";
+        internal const string _auditor = "auditor";
     }
 
     /// <summary>
@@ -371,19 +384,29 @@ public class PermissionCheckerTests
             this.Hosts = hosts;
         }
 
-        /// <summary>被测用户主键。</summary>
+        /// <summary>
+        /// 被测用户主键。
+        /// </summary>
         internal Guid UserId { get; }
 
-        /// <summary>主机 A（授权 operator）。</summary>
+        /// <summary>
+        /// 主机 A（授权 operator）。
+        /// </summary>
         internal Guid HostAId { get; }
 
-        /// <summary>主机 B（授权 viewer 或不授权）。</summary>
+        /// <summary>
+        /// 主机 B（授权 viewer 或不授权）。
+        /// </summary>
         internal Guid HostBId { get; }
 
-        /// <summary>两台主机的实体，供可见性过滤使用。</summary>
+        /// <summary>
+        /// 两台主机的实体，供可见性过滤使用。
+        /// </summary>
         internal IReadOnlyList<DockerHost> Hosts { get; }
 
-        /// <summary>建夹具。</summary>
+        /// <summary>
+        /// 建夹具。
+        /// </summary>
         internal static async Task<Fixture> CreateAsync()
         {
             var host = new PersistenceTestHost();
@@ -409,7 +432,9 @@ public class PermissionCheckerTests
             return new Fixture(host, user.Id, hostA.Id, hostB.Id, [hostA, hostB]);
         }
 
-        /// <summary>按名字取内置角色。</summary>
+        /// <summary>
+        /// 按名字取内置角色。
+        /// </summary>
         internal async Task<Role> FindRoleAsync(string name)
         {
             var role = await this.Get<IRoleRepository>().FindByNameAsync(name);
@@ -418,7 +443,9 @@ public class PermissionCheckerTests
             return role!;
         }
 
-        /// <summary>建立一条分配，返回该记录以便后续撤销。</summary>
+        /// <summary>
+        /// 建立一条分配，返回该记录以便后续撤销。
+        /// </summary>
         internal async Task<UserRoleAssignment> AssignAsync(Role role, Guid? hostId)
         {
             var assignment = UserRoleAssignment.Assign(Guid.NewGuid(), this.UserId, role.Id, hostId);
@@ -427,15 +454,21 @@ public class PermissionCheckerTests
             return assignment;
         }
 
-        /// <summary>撤销一条分配（软删除）。</summary>
+        /// <summary>
+        /// 撤销一条分配（软删除）。
+        /// </summary>
         internal Task<bool> RemoveAssignmentAsync(UserRoleAssignment assignment) =>
             this.Get<IUserRoleAssignmentRepository>().RemoveByIdAsync(assignment.Id);
 
-        /// <summary>建一个判定实例，主体为夹具用户。</summary>
+        /// <summary>
+        /// 建一个判定实例，主体为夹具用户。
+        /// </summary>
         internal PermissionChecker CreateChecker(string? role = null) =>
             this.Build(new StubCurrentUser(this.UserId, username: "tester", role: role));
 
-        /// <summary>建一个**未认证**的判定实例。</summary>
+        /// <summary>
+        /// 建一个**未认证**的判定实例。
+        /// </summary>
         /// <remarks>
         /// 刻意与方法分开而不是给 <see cref="CreateChecker"/> 一个可空 userId 参数：
         /// 后者写成 <c>userId ?? this.UserId</c> 时，<c>null</c>（未认证）

@@ -3,15 +3,20 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+
 using Docker.DotNet;
 using Docker.DotNet.Models;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Endpoints;
@@ -35,7 +40,9 @@ public class VolumeEndpointsTests : IAsyncLifetime
     private const string _password = "StrongP@ss123";
     private const string _adminName = "admin";
 
-    /// <summary>没有任何角色分配的账号：用于验证 fail-closed。</summary>
+    /// <summary>
+    /// 没有任何角色分配的账号：用于验证 fail-closed。
+    /// </summary>
     private const string _noRoleName = "norole";
     private const string _localHost = "local";
     private const string _unknownHost = "no-such-host";
@@ -48,20 +55,30 @@ public class VolumeEndpointsTests : IAsyncLifetime
 
     private static readonly string[] _blanks = ["  ", "", "\t"];
 
-    /// <summary>非法卷名样例（抛 1000）。</summary>
+    /// <summary>
+    /// 非法卷名样例（抛 1000）。
+    /// </summary>
     private static readonly string[] _badNames =
         ["  ", "", "\t", "-bad-start", "bad space", "bad/slash"];
 
-    /// <summary>只求占位的单元素名（用于验证 1300 早于业务校验）。</summary>
+    /// <summary>
+    /// 只求占位的单元素名（用于验证 1300 早于业务校验）。
+    /// </summary>
     private static readonly string[] _singleName = ["x"];
 
-    /// <summary>验证卷被占用时用的常驻容器命令（与镜像测试同一套）。</summary>
+    /// <summary>
+    /// 验证卷被占用时用的常驻容器命令（与镜像测试同一套）。
+    /// </summary>
     private static readonly string[] _sleepCommand = ["sleep", "600"];
 
-    /// <summary>读回探针文件的命令。</summary>
+    /// <summary>
+    /// 读回探针文件的命令。
+    /// </summary>
     private static readonly string[] _readProbe = ["cat", "/data/probe.txt"];
 
-    /// <summary>全批不存在的批量删除夹具。</summary>
+    /// <summary>
+    /// 全批不存在的批量删除夹具。
+    /// </summary>
     private static readonly string[] _ghostVolumes = ["ghost-a", "ghost-b"];
 
     private ApiFactory _factory = null!;
@@ -258,7 +275,7 @@ public class VolumeEndpointsTests : IAsyncLifetime
         // DockerImageFact 已保证本机有可用的带标签镜像，运行时不会再是 null。
         var image = DockerAvailability.ImageReference!;
         var probe = "whalefleet-probe-" + Guid.NewGuid().ToString("N")[..8];
-        var docker = await GetDockerClientAsync();
+        var docker = await this.GetDockerClientAsync();
 
         try
         {
@@ -275,7 +292,7 @@ public class VolumeEndpointsTests : IAsyncLifetime
 
             try
             {
-                (await ExecAsync(docker, writerId, new[] { "sh", "-c", $"echo {probe} > /data/probe.txt" }))
+                (await ExecAsync(docker, writerId, ["sh", "-c", $"echo {probe} > /data/probe.txt"]))
                     .Should().Be(0, "写入卷的容器内 shell 必须可执行");
             }
             finally
@@ -382,7 +399,7 @@ public class VolumeEndpointsTests : IAsyncLifetime
 
         // DockerImageFact 已保证本机有可用的带标签镜像。
         var image = DockerAvailability.ImageReference!;
-        var docker = await GetDockerClientAsync();
+        var docker = await this.GetDockerClientAsync();
 
         try
         {
@@ -465,12 +482,14 @@ public class VolumeEndpointsTests : IAsyncLifetime
 
         // 带 force：这是 force 对卷**唯一**的作用——让重试变安全。
         // 批量删除的前端会把上一轮已删项再提交一次，这时不该整批报错。
-        using (var forced = await client.PostAsJsonAsync(
+        using var forced = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/volumes/remove",
-            new { name = ghost, force = true }))
-        {
-            forced.StatusCode.Should().Be(HttpStatusCode.OK);
-        }
+            new
+            {
+                name = ghost,
+                force = true
+            });
+        forced.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     [Fact]
@@ -531,7 +550,9 @@ public class VolumeEndpointsTests : IAsyncLifetime
         (await ReadCodeAsync(response)).Should().Be(ErrorCodes.DockerResourceNotFound);
     }
 
-    /// <summary>批量删除夹具：重复项会被去重，因此<b>不算</b>入参非法。</summary>
+    /// <summary>
+    /// 批量删除夹具：重复项会被去重，因此<b>不算</b>入参非法。
+    /// </summary>
     /// <remarks>
     /// 列表去重是 <c>BatchRequest.NormalizeIds</c> 的既定行为：
     /// 「删 1 个，成功 1 个」正是用户期望的语义，把重复项当错误反而会让人以为系统在胡说。

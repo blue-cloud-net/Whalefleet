@@ -1,8 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Whalefleet.Application.Common;
+
 using FluentAssertions;
+
+using Whalefleet.Application.Common;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Endpoints;

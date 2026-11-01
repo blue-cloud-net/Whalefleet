@@ -2,6 +2,11 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Persistence;
 using Whalefleet.Application.Common;
@@ -9,8 +14,7 @@ using Whalefleet.Core.Hosts;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Endpoints;
@@ -37,7 +41,9 @@ public class HostGroupsEndpointsTests : IAsyncLifetime
     private const string _localHost = "local";
     private const string _unknownHost = "no-such-host";
 
-    /// <summary>迁移种入的「测试环境」分组主键（与 <c>0005_host_groups.sql</c> 一致）。</summary>
+    /// <summary>
+    /// 迁移种入的「测试环境」分组主键（与 <c>0005_host_groups.sql</c> 一致）。
+    /// </summary>
     private static readonly Guid _stagingGroupId = new("00000000-0000-0000-0000-0000000000a2");
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
@@ -93,7 +99,7 @@ public class HostGroupsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 列表_非管理员可读()
     {
-        using var client = await CreateAuthenticatedClientAsync(_operatorName);
+        using var client = await this.CreateAuthenticatedClientAsync(_operatorName);
 
         using var response = await client.PostAsync("/api/v1/host-groups/list", content: null);
 
@@ -107,7 +113,7 @@ public class HostGroupsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 列表_按排序权重升序且内置分组带主机数()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsync("/api/v1/host-groups/list", content: null);
         var groups = await ReadDataAsync<List<GroupPayload>>(response);
@@ -123,7 +129,7 @@ public class HostGroupsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_非管理员返回403()
     {
-        using var client = await CreateAuthenticatedClientAsync(_operatorName);
+        using var client = await this.CreateAuthenticatedClientAsync(_operatorName);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/host-groups/create",
@@ -136,7 +142,7 @@ public class HostGroupsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_名称重复返回1304()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/host-groups/create",
@@ -149,7 +155,7 @@ public class HostGroupsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_名称非法返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/host-groups/create",
@@ -162,7 +168,7 @@ public class HostGroupsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建与改名_成功且改名不与自己冲突()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var created = await client.PostAsJsonAsync(
             "/api/v1/admin/host-groups/create",
@@ -187,7 +193,7 @@ public class HostGroupsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 更新_分组不存在返回1305()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/admin/host-groups/{Guid.NewGuid()}/update",
@@ -200,7 +206,7 @@ public class HostGroupsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 归属_未知主机返回1300()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/admin/hosts/{_unknownHost}/group",
@@ -213,7 +219,7 @@ public class HostGroupsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 归属_目标分组不存在返回1305()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/admin/hosts/{_localHost}/group",
@@ -227,7 +233,7 @@ public class HostGroupsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 归属_可移入也可移出分组()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var moved = await client.PostAsJsonAsync(
             $"/api/v1/admin/hosts/{_localHost}/group",
@@ -258,7 +264,7 @@ public class HostGroupsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 删除分组_主机回到未分组而不是被删掉()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         // 先把本机挪进 staging，再删掉 staging
         using var assigned = await client.PostAsJsonAsync(
@@ -290,7 +296,7 @@ public class HostGroupsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 概览_带出分组归属供总览页聚合()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsync("/api/v1/hosts/list", content: null);
         var hosts = await ReadDataAsync<List<HostPayload>>(response);

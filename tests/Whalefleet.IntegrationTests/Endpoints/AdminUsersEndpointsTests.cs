@@ -2,12 +2,16 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Endpoints;
@@ -85,7 +89,7 @@ public class AdminUsersEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 非管理员_列表与创建均返回403()
     {
-        using var client = await LoginAsync(_operatorName, _userPassword);
+        using var client = await this.LoginAsync(_operatorName, _userPassword);
 
         using var list = await client.PostAsJsonAsync("/api/v1/admin/users/list", new { });
         using var create = await client.PostAsJsonAsync(
@@ -99,7 +103,7 @@ public class AdminUsersEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_省略角色时取默认角色()
     {
-        using var client = await LoginAsync(_adminName, _adminPassword);
+        using var client = await this.LoginAsync(_adminName, _adminPassword);
 
         var created = await CreateUserAsync(client, "no-role-user", "NoRoleP@ss1");
 
@@ -110,7 +114,7 @@ public class AdminUsersEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_可指定角色()
     {
-        using var client = await LoginAsync(_adminName, _adminPassword);
+        using var client = await this.LoginAsync(_adminName, _adminPassword);
 
         var created = await CreateUserAsync(client, "viewer-user", "ViewerP@ss1", role: "viewer");
 
@@ -120,7 +124,7 @@ public class AdminUsersEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_用户名重复返回1200()
     {
-        using var client = await LoginAsync(_adminName, _adminPassword);
+        using var client = await this.LoginAsync(_adminName, _adminPassword);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/users/create",
@@ -133,7 +137,7 @@ public class AdminUsersEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_弱密码返回1202()
     {
-        using var client = await LoginAsync(_adminName, _adminPassword);
+        using var client = await this.LoginAsync(_adminName, _adminPassword);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/users/create",
@@ -146,7 +150,7 @@ public class AdminUsersEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_角色不存在返回1000()
     {
-        using var client = await LoginAsync(_adminName, _adminPassword);
+        using var client = await this.LoginAsync(_adminName, _adminPassword);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/users/create",
@@ -159,7 +163,7 @@ public class AdminUsersEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 列表_分页参数被夹紧且返回总数()
     {
-        using var client = await LoginAsync(_adminName, _adminPassword);
+        using var client = await this.LoginAsync(_adminName, _adminPassword);
         await CreateUserAsync(client, "page-user-1", "PageUserP@ss1");
         await CreateUserAsync(client, "page-user-2", "PageUserP@ss2");
 
@@ -177,7 +181,7 @@ public class AdminUsersEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 删除_不能删当前登录账号()
     {
-        using var client = await LoginAsync(_adminName, _adminPassword);
+        using var client = await this.LoginAsync(_adminName, _adminPassword);
 
         var me = (await ListAsync(client)).Items.Single(item => item.Username == _adminName);
 
@@ -192,12 +196,12 @@ public class AdminUsersEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 删除_有其他管理员时可删除管理员账号()
     {
-        using var client = await LoginAsync(_adminName, _adminPassword);
+        using var client = await this.LoginAsync(_adminName, _adminPassword);
         await CreateUserAsync(client, "admin-2", "Admin2P@ssw0rd", role: Role.AdminName);
 
         // 换成 admin-2 来删 admin：此刻有 2 个管理员，删除是允许的
         // （反之若只剩一个，删它就会撞上"不能删自己"或"最后一个管理员"两道护栏）。
-        using var client2 = await LoginAsync("admin-2", "Admin2P@ssw0rd");
+        using var client2 = await this.LoginAsync("admin-2", "Admin2P@ssw0rd");
         var adminUser = (await ListAsync(client2)).Items.Single(item => item.Username == _adminName);
 
         using var response = await client2.PostAsJsonAsync(
@@ -213,7 +217,7 @@ public class AdminUsersEndpointsTests : IAsyncLifetime
     {
         // 系统里只有一个管理员时，两种护栏都会挡住删除：先撞"不能删当前登录账号"。
         // 这条守的是"永远留存至少一个管理员"这个不变式（HTTP 侧能观察到的那一面）。
-        using var client = await LoginAsync(_adminName, _adminPassword);
+        using var client = await this.LoginAsync(_adminName, _adminPassword);
         var me = (await ListAsync(client)).Items.Single(item => item.Username == _adminName);
 
         using var response = await client.PostAsJsonAsync(
@@ -226,7 +230,7 @@ public class AdminUsersEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 删除_成功后不再出现在列表里()
     {
-        using var client = await LoginAsync(_adminName, _adminPassword);
+        using var client = await this.LoginAsync(_adminName, _adminPassword);
         var victim = await CreateUserAsync(client, "deletable-user", "DeletableP@ss1");
 
         using var response = await client.PostAsJsonAsync(
@@ -241,7 +245,7 @@ public class AdminUsersEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 改密_自助需正确原密码()
     {
-        using var client = await LoginAsync(_operatorName, _userPassword);
+        using var client = await this.LoginAsync(_operatorName, _userPassword);
 
         using var wrong = await client.PostAsJsonAsync(
             "/api/v1/admin/users/update-password",
@@ -267,10 +271,10 @@ public class AdminUsersEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 改密_非管理员不能重置他人密码()
     {
-        using var adminClient = await LoginAsync(_adminName, _adminPassword);
+        using var adminClient = await this.LoginAsync(_adminName, _adminPassword);
         var target = await CreateUserAsync(adminClient, "reset-target", "ResetP@ssw0rd1");
 
-        using var operatorClient = await LoginAsync(_operatorName, _userPassword);
+        using var operatorClient = await this.LoginAsync(_operatorName, _userPassword);
         using var response = await operatorClient.PostAsJsonAsync(
             "/api/v1/admin/users/update-password",
             new { userId = target.Id, newPassword = "HijackedP@ss1" });
@@ -282,7 +286,7 @@ public class AdminUsersEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 改密_管理员重置他人无需原密码()
     {
-        using var client = await LoginAsync(_adminName, _adminPassword);
+        using var client = await this.LoginAsync(_adminName, _adminPassword);
         var target = await CreateUserAsync(client, "reset-by-admin", "OriginalP@ss1");
 
         using var response = await client.PostAsJsonAsync(
@@ -301,7 +305,7 @@ public class AdminUsersEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 改密_旧刷新令牌随之失效()
     {
-        using var client = await LoginAsync(_operatorName, _userPassword);
+        using var client = await this.LoginAsync(_operatorName, _userPassword);
         var staleRefreshToken = await ReadRefreshTokenAsync(await client.PostAsJsonAsync(
             "/api/v1/auth/login",
             new { username = _operatorName, password = _userPassword }));
@@ -386,9 +390,13 @@ public class AdminUsersEndpointsTests : IAsyncLifetime
     private static async Task<JsonElement> ReadAsync(HttpResponseMessage response) =>
         JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.Clone();
 
-    /// <summary>用户对象的响应投影（只取断言用得到的字段）。</summary>
+    /// <summary>
+    /// 用户对象的响应投影（只取断言用得到的字段）。
+    /// </summary>
     private sealed record UserPayload(Guid Id, string Username, IReadOnlyList<string> Roles);
 
-    /// <summary>分页结果的响应投影。</summary>
+    /// <summary>
+    /// 分页结果的响应投影。
+    /// </summary>
     private sealed record PagedPayload(List<UserPayload> Items, int Total, int PageIndex, int PageSize);
 }

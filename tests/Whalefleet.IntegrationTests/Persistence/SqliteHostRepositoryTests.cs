@@ -1,7 +1,10 @@
-using Whalefleet.Core.Hosts;
 using FluentAssertions;
+
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
+
+using Whalefleet.Core.Hosts;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Persistence;
@@ -38,7 +41,7 @@ public class SqliteHostRepositoryTests
         loaded.Enabled.Should().BeTrue();
         loaded.Credentials.Should().Be(HostCredentials.None);
 
-        loaded.CreationTime.Should().Be(PersistenceTestHost.Now.UtcDateTime);
+        loaded.CreationTime.Should().Be(PersistenceTestHost._now.UtcDateTime);
         loaded.CreatorId.Should().Be(_operatorId);
         loaded.IsDeleted.Should().BeFalse();
     }
@@ -152,7 +155,7 @@ public class SqliteHostRepositoryTests
         loaded.Credentials.Kind.Should().Be(DockerHostAuthKind.Basic);
         loaded.Credentials.ConfigJson.Should().Be("""{"user":"admin"}""");
 
-        loaded.LastModificationTime.Should().Be(PersistenceTestHost.Now.AddHours(1).UtcDateTime);
+        loaded.LastModificationTime.Should().Be(PersistenceTestHost._now.AddHours(1).UtcDateTime);
         loaded.LastModifierId.Should().Be(_operatorId);
 
         (await host.QueryScalarAsync("SELECT type FROM hosts")).Should().Be("tcp");

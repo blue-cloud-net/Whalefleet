@@ -1,7 +1,10 @@
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Persistence;
@@ -96,7 +99,7 @@ public class SqliteRoleRepositoryTests
         loaded!.Name.Should().Be("nightshift");
         loaded.DisplayName.Should().Be("夜班运维");
         loaded.IsBuiltIn.Should().BeFalse();
-        loaded.CreationTime.Should().Be(PersistenceTestHost.Now.UtcDateTime);
+        loaded.CreationTime.Should().Be(PersistenceTestHost._now.UtcDateTime);
         loaded.CreatorId.Should().Be(_operatorId);
 
         (await host.QueryScalarAsync($"SELECT name FROM roles WHERE id = '{role.Id:D}'"))
@@ -163,7 +166,7 @@ public class SqliteRoleRepositoryTests
 
         // 模拟"调用方图省事直接调基类 Delete"：实体绕过了 Retire 的内置检查，
         // 仓储的 WHERE is_built_in = 0 才是无法绕过的兜底。
-        admin.Delete(PersistenceTestHost.Now.UtcDateTime, _operatorId);
+        admin.Delete(PersistenceTestHost._now.UtcDateTime, _operatorId);
 
         (await roles.RemoveByIdAsync(admin.Id)).Should().BeFalse();
         (await host.QueryScalarAsync("SELECT is_deleted FROM roles WHERE name = 'admin'")).Should().Be("0");

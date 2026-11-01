@@ -2,14 +2,18 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Persistence;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Endpoints;
@@ -36,10 +40,14 @@ public sealed class TerminalEndpointsTests : IAsyncLifetime
     private const string _unknownHost = "no-such-host";
     private const string _unknownContainer = "no-such-container-0123456789";
 
-    /// <summary>让容器起得来但又不会自己退出。</summary>
+    /// <summary>
+    /// 让容器起得来但又不会自己退出。
+    /// </summary>
     private static readonly string[] _keepAliveCommand = ["sleep", "120"];
 
-    /// <summary>覆盖入口点：保证容器里一定跑着 <c>/bin/sh</c> 可用的环境。</summary>
+    /// <summary>
+    /// 覆盖入口点：保证容器里一定跑着 <c>/bin/sh</c> 可用的环境。
+    /// </summary>
     private static readonly string[] _shellEntrypoint = ["/bin/sh", "-c", "sleep 120"];
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
@@ -100,7 +108,7 @@ public sealed class TerminalEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 主机不存在_返回1300()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_unknownHost}/containers/terminal-token",
@@ -111,9 +119,9 @@ public sealed class TerminalEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task viewer没有写权限_返回1502()
+    public async Task Viewer没有写权限_返回1502()
     {
-        using var client = await CreateAuthenticatedClientAsync(_viewerName);
+        using var client = await this.CreateAuthenticatedClientAsync(_viewerName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/terminal-token",
@@ -128,7 +136,7 @@ public sealed class TerminalEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task Shell不在白名单_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/terminal-token",
@@ -141,7 +149,7 @@ public sealed class TerminalEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 容器不存在_返回1401()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/terminal-token",
@@ -154,7 +162,7 @@ public sealed class TerminalEndpointsTests : IAsyncLifetime
     [DockerShellImageFact]
     public async Task 容器未运行_返回1404()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var name = NewName();
         var containerId = await CreateContainerAsync(client, name, start: false);
@@ -178,7 +186,7 @@ public sealed class TerminalEndpointsTests : IAsyncLifetime
     [DockerShellImageFact]
     public async Task 运行中的容器_签发令牌但该令牌不能访问普通接口()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var name = NewName();
         var containerId = await CreateContainerAsync(client, name, start: true);

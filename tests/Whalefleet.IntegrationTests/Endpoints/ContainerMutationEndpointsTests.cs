@@ -2,13 +2,17 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Endpoints;
@@ -43,28 +47,44 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
 
     private static readonly string[] _sleepCommand = ["sleep", "60"];
 
-    /// <summary>单个 capability：既测「既增又删同一项」也用作合法对照项。</summary>
+    /// <summary>
+    /// 单个 capability：既测「既增又删同一项」也用作合法对照项。
+    /// </summary>
     private static readonly string[] _netAdmin = ["NET_ADMIN"];
 
-    /// <summary>含空项的 capability 列表：模拟前端把空输入框也提交了。</summary>
+    /// <summary>
+    /// 含空项的 capability 列表：模拟前端把空输入框也提交了。
+    /// </summary>
     private static readonly string[] _capWithBlank = ["", "NET_ADMIN"];
 
-    /// <summary>空的 healthcheck 命令列表。</summary>
+    /// <summary>
+    /// 空的 healthcheck 命令列表。
+    /// </summary>
     private static readonly string[] _emptyTest = [];
 
-    /// <summary>关闭健康检查。</summary>
+    /// <summary>
+    /// 关闭健康检查。
+    /// </summary>
     private static readonly string[] _noneTest = ["NONE"];
 
-    /// <summary>一个确定会失败的健康检查命令（这里只看能否写入，判定结果与用例无关）。</summary>
+    /// <summary>
+    /// 一个确定会失败的健康检查命令（这里只看能否写入，判定结果与用例无关）。
+    /// </summary>
     private static readonly string[] _failingTest = ["CMD-SHELL", "true"];
 
-    /// <summary>capDrop ALL：验证高级能力参数能真的写进去。</summary>
+    /// <summary>
+    /// capDrop ALL：验证高级能力参数能真的写进去。
+    /// </summary>
     private static readonly string[] _dropAll = ["ALL"];
 
-    /// <summary>环境变量：验证复制出的容器保留了原容器的 Env。</summary>
+    /// <summary>
+    /// 环境变量：验证复制出的容器保留了原容器的 Env。
+    /// </summary>
     private static readonly string[] _keepEnv = ["KEEP=1"];
 
-    /// <summary>内存下限：6 MiB（Docker 守护进程的硬性下限，实测 6291455 会被拒、6291456 才过）。</summary>
+    /// <summary>
+    /// 内存下限：6 MiB（Docker 守护进程的硬性下限，实测 6291455 会被拒、6291456 才过）。
+    /// </summary>
     private const long _sixMiB = 6L * 1024 * 1024;
 
     private ApiFactory _factory = null!;
@@ -96,7 +116,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     /// <inheritdoc />
     public async Task DisposeAsync() => await _factory.DisposeAsync();
 
-    // ==================== 守卫链 ====================
+    #region 守卫链
 
     [Theory]
     [InlineData("rename")]
@@ -119,7 +139,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [InlineData("add-volumes")]
     public async Task 基础操作_未知主机_返回1300(string action)
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_unknownHost}/containers/{action}",
@@ -136,7 +156,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [InlineData("add-volumes")]
     public async Task 基础操作_无任何角色分配_返回1501(string action)
     {
-        using var client = await CreateAuthenticatedClientAsync(_noRoleName);
+        using var client = await this.CreateAuthenticatedClientAsync(_noRoleName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/{action}",
@@ -145,13 +165,14 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await ReadCodeAsync(response)).Should().Be(ErrorCodes.HostForbidden);
     }
+    #endregion
 
-    // ==================== rename 的参数校验 ====================
+    #region rename 的参数校验
 
     [Fact]
     public async Task 重命名_容器标识为空_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/rename",
@@ -168,7 +189,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [InlineData("有/斜杠")]
     public async Task 重命名_新名称非法_返回1000(string name)
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/rename",
@@ -178,13 +199,14 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await ReadCodeAsync(response)).Should().Be(ErrorCodes.ValidationFailed);
     }
+    #endregion
 
-    // ==================== update 的参数校验 ====================
+    #region update 的参数校验
 
     [Fact]
     public async Task 更新_三个字段全省略_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/update",
@@ -198,7 +220,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 更新_重启策略非法_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/update",
@@ -211,7 +233,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 更新_内存上限为负_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/update",
@@ -224,7 +246,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 更新_内存上限低于守护进程下限_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/update",
@@ -239,7 +261,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 更新_CPU配额超过上限_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         // 上限是 1024 核 × 10^9。这里传 2000 核——它**不是**一个常见的错值，
         // 因此这条用例守的是「上限确实存在」而不是某个具体数字的校验。
@@ -250,13 +272,14 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await ReadCodeAsync(response)).Should().Be(ErrorCodes.ValidationFailed);
     }
+    #endregion
 
-    // ==================== duplicate 的参数校验 ====================
+    #region duplicate 的参数校验
 
     [Fact]
     public async Task 复制_目标名称非法_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/duplicate",
@@ -265,13 +288,14 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await ReadCodeAsync(response)).Should().Be(ErrorCodes.ValidationFailed);
     }
+    #endregion
 
-    // ==================== add-volumes 的参数校验 ====================
+    #region add-volumes 的参数校验
 
     [Fact]
     public async Task 追加挂载_挂载列表为null_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/add-volumes",
@@ -285,7 +309,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 追加挂载_挂载列表为空数组_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/add-volumes",
@@ -298,7 +322,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 追加挂载_挂载项缺目标路径_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/add-volumes",
@@ -307,13 +331,14 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await ReadCodeAsync(response)).Should().Be(ErrorCodes.ValidationFailed);
     }
+    #endregion
 
-    // ==================== 高级创建参数的本地校验 ====================
+    #region 高级创建参数的本地校验
 
     [Fact]
     public async Task 创建_能力既增又删同一项_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/create",
@@ -328,7 +353,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_能力列表含空项_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/create",
@@ -342,7 +367,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_健康检查命令为空_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/create",
@@ -355,7 +380,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_健康检查关闭却带时间参数_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/create",
@@ -373,7 +398,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_健康检查重试次数为零_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/create",
@@ -391,7 +416,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_设备权限含非法字符_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/create",
@@ -408,7 +433,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_ulimit缺名称_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/create",
@@ -421,7 +446,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_ulimit软限制为负_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/create",
@@ -434,7 +459,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_日志驱动类型为空_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/create",
@@ -447,7 +472,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_内存上限低于守护进程下限_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/create",
@@ -456,8 +481,9 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await ReadCodeAsync(response)).Should().Be(ErrorCodes.ValidationFailed);
     }
+    #endregion
 
-    // ==================== 真实守护进程路径 ====================
+    #region 真实守护进程路径
 
     [DockerTheory]
     [InlineData("rename")]
@@ -465,7 +491,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [InlineData("duplicate")]
     public async Task 基础操作_容器不存在_返回1401(string action)
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/{action}",
@@ -478,7 +504,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [DockerImageFact]
     public async Task 重命名后详情能读到新名字()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var name = $"dm-ren-{Guid.NewGuid():N}"[..16];
         string? containerId = null;
@@ -507,7 +533,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [DockerImageFact]
     public async Task 重命名到已占用名称_返回1404()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var name = $"dm-busy-{Guid.NewGuid():N}"[..16];
         var other = name + "-b";
@@ -536,7 +562,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [DockerImageFact]
     public async Task 更新重启策略后详情读到新值()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var name = $"dm-upd-{Guid.NewGuid():N}"[..16];
         string? containerId = null;
@@ -566,7 +592,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [DockerImageFact]
     public async Task 只改重启策略时内存上限保持不变()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var name = $"dm-keep-{Guid.NewGuid():N}"[..16];
         string? containerId = null;
@@ -594,7 +620,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [DockerImageFact]
     public async Task 更新_内存上限为零_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/update",
@@ -610,7 +636,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 更新_CPU配额为零_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/update",
@@ -623,7 +649,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 更新_未限制内存的容器时只给重启策略仍返回无限制()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var name = $"dm-nolim-{Guid.NewGuid():N}"[..16];
         string? containerId = null;
@@ -649,7 +675,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [DockerImageFact]
     public async Task 复制出的容器与原容器配置一致且原容器仍在()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var name = $"dm-dup-{Guid.NewGuid():N}"[..16];
         string? sourceId = null;
@@ -689,7 +715,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [DockerImageFact]
     public async Task 复制到已占用名称时自动避让()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var name = $"dm-avoid-{Guid.NewGuid():N}"[..16];
         string? sourceId = null;
@@ -725,7 +751,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [DockerImageFact]
     public async Task 追加挂载后新容器多出该挂载且旧容器让位保留()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var name = $"dm-vol-{Guid.NewGuid():N}"[..16];
         string? oldId = null;
@@ -769,7 +795,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [DockerImageFact]
     public async Task 追加挂载到已挂载的同一目标路径_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var name = $"dm-dupvol-{Guid.NewGuid():N}"[..16];
         string? containerId = null;
@@ -802,7 +828,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [DockerImageFact]
     public async Task 高级参数创建出的容器能inspect到内存上限与能力()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var name = $"dm-adv-{Guid.NewGuid():N}"[..16];
         string? containerId = null;
@@ -836,7 +862,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     [DockerImageFact]
     public async Task 健康检查关闭后inspect返回none()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var name = $"dm-hc-{Guid.NewGuid():N}"[..16];
         string? containerId = null;
@@ -865,8 +891,9 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
             await CleanupAsync(client, containerId);
         }
     }
+    #endregion
 
-    // ==================== 辅助方法 ====================
+    #region 辅助方法
 
     /// <summary>
     /// 建一个容器，返回其 ID。
@@ -904,7 +931,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
     {
         foreach (var containerId in containerIds)
         {
-            if (string.IsNullOrWhiteSpace(containerId))
+            if (String.IsNullOrWhiteSpace(containerId))
             {
                 continue;
             }
@@ -961,6 +988,7 @@ public class ContainerMutationEndpointsTests : IAsyncLifetime
 
         return JsonDocument.Parse(json).RootElement.Clone();
     }
+    #endregion
 
     private sealed record LoginPayload(string AccessToken);
 

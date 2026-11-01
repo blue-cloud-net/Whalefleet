@@ -1,7 +1,9 @@
+using FluentAssertions;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Core.Hosts;
 using Whalefleet.Infrastructure.Docker;
-using FluentAssertions;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Infrastructure;

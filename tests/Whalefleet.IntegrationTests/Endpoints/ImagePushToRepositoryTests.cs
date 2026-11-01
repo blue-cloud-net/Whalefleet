@@ -2,12 +2,16 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Endpoints;
@@ -71,7 +75,7 @@ public class ImagePushToRepositoryTests : IAsyncLifetime
     [DockerRegistryServerFact]
     public async Task 推送_到本机Registry_成功且产物能拉回来()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var repository = $"whalefleet-test/{Guid.NewGuid():N}";
         var reference = $"{DockerAvailability.DefaultRegistryEndpoint}/{repository}:v1";
@@ -131,7 +135,7 @@ public class ImagePushToRepositoryTests : IAsyncLifetime
     [DockerRegistryServerFact]
     public async Task 推送_成功后本地镜像仍在()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var repository = $"whalefleet-test/{Guid.NewGuid():N}";
         var reference = $"{DockerAvailability.DefaultRegistryEndpoint}/{repository}:v1";
@@ -159,7 +163,7 @@ public class ImagePushToRepositoryTests : IAsyncLifetime
         }
     }
 
-    // ===== 辅助 =====
+    #region 辅助
 
     private static async Task<BuildPayload> BuildAsync(HttpClient client, string reference)
     {
@@ -249,6 +253,7 @@ public class ImagePushToRepositoryTests : IAsyncLifetime
 
         return JsonDocument.Parse(text).RootElement.Clone();
     }
+    #endregion
 
     private sealed record LoginPayload(string AccessToken, string RefreshToken);
 

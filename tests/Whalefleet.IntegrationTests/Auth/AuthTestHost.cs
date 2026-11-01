@@ -1,3 +1,10 @@
+using FluentAssertions;
+
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Auth;
 using Whalefleet.Application.DependencyInjection;
@@ -7,11 +14,6 @@ using Whalefleet.Infrastructure.DependencyInjection;
 using Whalefleet.Infrastructure.Persistence;
 using Whalefleet.IntegrationTests.Infrastructure;
 using Whalefleet.IntegrationTests.Persistence;
-using FluentAssertions;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Whalefleet.IntegrationTests.Auth;
 
@@ -31,12 +33,12 @@ internal sealed class AuthTestHost : IAsyncDisposable
     /// <summary>
     /// 所有测试用户共用的明文密码。
     /// </summary>
-    internal const string Password = "StrongP@ss123";
+    internal const string _password = "StrongP@ss123";
 
     /// <summary>
     /// 测试基准时刻（UTC）。
     /// </summary>
-    internal static readonly DateTimeOffset Now = new(2026, 10, 13, 8, 0, 0, TimeSpan.Zero);
+    internal static readonly DateTimeOffset _now = new(2026, 10, 13, 8, 0, 0, TimeSpan.Zero);
 
     private const string _jwtSecret = "auth-service-test-signing-key-0123456789abcdef";
 
@@ -52,7 +54,7 @@ internal sealed class AuthTestHost : IAsyncDisposable
         Directory.CreateDirectory(_directory);
 
         this.DatabasePath = Path.Combine(_directory, "whalefleet.db");
-        this.TimeProvider = new TestTimeProvider(Now);
+        this.TimeProvider = new TestTimeProvider(_now);
 
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>(StringComparer.Ordinal)
@@ -109,7 +111,7 @@ internal sealed class AuthTestHost : IAsyncDisposable
         _provider.GetRequiredService<IDatabaseInitializer>().InitializeAsync();
 
     /// <summary>
-    /// 创建一个用户，密码统一为 <see cref="Password"/>。
+    /// 创建一个用户，密码统一为 <see cref="_password"/>。
     /// </summary>
     /// <param name="username">用户名。</param>
     /// <param name="roleName">角色名（须为迁移种入的内置角色，如 <c>admin</c>）。</param>
@@ -130,7 +132,7 @@ internal sealed class AuthTestHost : IAsyncDisposable
             users,
             assignments,
             username,
-            hasher.Hash(Password),
+            hasher.Hash(_password),
             role);
     }
 

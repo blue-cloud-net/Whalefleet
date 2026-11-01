@@ -2,12 +2,16 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Endpoints;
@@ -93,7 +97,7 @@ public class AdminHostsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 非管理员_返回403()
     {
-        using var client = await CreateAuthenticatedClientAsync(_operatorName);
+        using var client = await this.CreateAuthenticatedClientAsync(_operatorName);
 
         using var response = await client.PostAsync("/api/v1/admin/hosts/list", content: null);
 
@@ -103,7 +107,7 @@ public class AdminHostsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 列表_包含启动时种入的本机主机()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var hosts = await ListAsync(client);
 
@@ -113,7 +117,7 @@ public class AdminHostsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_成功后出现在列表里()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/hosts/create",
@@ -136,7 +140,7 @@ public class AdminHostsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_主机名重复返回1303()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/hosts/create",
@@ -152,7 +156,7 @@ public class AdminHostsEndpointsTests : IAsyncLifetime
     [InlineData("udp")]
     public async Task 创建_连接方式非法返回1000(string type)
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/hosts/create",
@@ -165,7 +169,7 @@ public class AdminHostsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_TLS凭据不完整返回1000且指明字段()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/hosts/create",
@@ -185,7 +189,7 @@ public class AdminHostsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_两种凭据同时给出返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/hosts/create",
@@ -210,7 +214,7 @@ public class AdminHostsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_合法TLS配置只存路径且不回显私钥()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/hosts/create",
@@ -239,7 +243,7 @@ public class AdminHostsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 更新_改端点后生效且不改名()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
         await CreateHostAsync(client, "updatable", "tcp://127.0.0.1:2375");
 
         using var response = await client.PostAsJsonAsync(
@@ -257,7 +261,7 @@ public class AdminHostsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 更新_主机不存在返回1300()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/hosts/nope/update",
@@ -270,7 +274,7 @@ public class AdminHostsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 更新_清空凭据与提供凭据互斥()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
         await CreateHostAsync(client, "clear-creds", "tcp://127.0.0.1:2375");
 
         using var response = await client.PostAsJsonAsync(
@@ -288,7 +292,7 @@ public class AdminHostsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 删除_之后不再出现在列表里()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
         await CreateHostAsync(client, "deletable", "tcp://127.0.0.1:2375");
 
         using var response = await client.PostAsync("/api/v1/admin/hosts/deletable/delete", content: null);
@@ -305,7 +309,7 @@ public class AdminHostsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 测试未保存配置_连不上返回false而不是报错()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         // 1 号端口上不会有 Docker 守护进程；这里要的是"连不上"这一正常结果。
         using var response = await client.PostAsJsonAsync(
@@ -320,7 +324,7 @@ public class AdminHostsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 测试未保存配置_字段非法仍返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/hosts/test",
@@ -387,7 +391,9 @@ public class AdminHostsEndpointsTests : IAsyncLifetime
         return JsonDocument.Parse(json).RootElement.Clone();
     }
 
-    /// <summary>主机列表项的响应投影（只取断言用得到的字段）。</summary>
+    /// <summary>
+    /// 主机列表项的响应投影（只取断言用得到的字段）。
+    /// </summary>
     private sealed record HostPayload(
         string Name,
         string Type,

@@ -30,7 +30,6 @@ public class ApiFactory : WebApplicationFactory<Program>
     public const string TestJwtSecret = "integration-test-signing-key-0123456789abcdef";
 
     private readonly Dictionary<string, string?> _settings = new(StringComparer.Ordinal);
-    private readonly string _logDirectory;
     private readonly string _databasePath;
 
     /// <summary>
@@ -43,14 +42,17 @@ public class ApiFactory : WebApplicationFactory<Program>
             "whalefleet-tests",
             Guid.NewGuid().ToString("N"));
 
-        _logDirectory = Path.Combine(workingDirectory, "logs");
+        this.LogDirectory = Path.Combine(workingDirectory, "logs");
         _databasePath = Path.Combine(workingDirectory, "whalefleet.db");
     }
 
     /// <summary>
     /// 本次测试专属的日志目录（可能不存在——仅当确有日志写入时才会创建）。
     /// </summary>
-    public string LogDirectory => _logDirectory;
+    public string LogDirectory
+    {
+        get;
+    }
 
     /// <summary>
     /// 叠加一项配置。必须在首次创建 <c>HttpClient</c>（即宿主构建）之前调用。
@@ -81,7 +83,7 @@ public class ApiFactory : WebApplicationFactory<Program>
                 // 显式给出 Name，使本覆盖不依赖 appsettings.json 中 WriteTo 数组的下标布局；
                 // 同时把落盘位置改到临时目录。
                 ["Serilog:WriteTo:1:Name"] = "File",
-                ["Serilog:WriteTo:1:Args:path"] = Path.Combine(_logDirectory, "app-.log"),
+                ["Serilog:WriteTo:1:Args:path"] = Path.Combine(this.LogDirectory, "app-.log"),
 
                 // 测试只关心响应契约，压低日志级别减少噪声。
                 ["Serilog:MinimumLevel:Default"] = "Warning",
@@ -130,7 +132,7 @@ public class ApiFactory : WebApplicationFactory<Program>
             return;
         }
 
-        var workingDirectory = Path.GetDirectoryName(_logDirectory);
+        var workingDirectory = Path.GetDirectoryName(this.LogDirectory);
         if (workingDirectory is null || !Directory.Exists(workingDirectory))
         {
             return;

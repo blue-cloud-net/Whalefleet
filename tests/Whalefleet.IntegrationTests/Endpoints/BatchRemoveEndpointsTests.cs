@@ -2,13 +2,17 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Endpoints;
@@ -211,7 +215,7 @@ public class BatchRemoveEndpointsTests : IAsyncLifetime
         (await ReadAsync(response)).GetProperty("code").GetInt32();
 
     private static async Task<string> ReadMessageAsync(HttpResponseMessage response) =>
-        (await ReadAsync(response)).GetProperty("message").GetString() ?? string.Empty;
+        (await ReadAsync(response)).GetProperty("message").GetString() ?? String.Empty;
 
     private static async Task<JsonElement> ReadAsync(HttpResponseMessage response)
     {
@@ -231,15 +235,15 @@ public class BatchRemoveEndpointsTests : IAsyncLifetime
 
     private sealed class FailurePayload
     {
-        public string ResourceId { get; init; } = string.Empty;
+        public string ResourceId { get; init; } = String.Empty;
 
         public int Code { get; init; }
 
-        public string Message { get; init; } = string.Empty;
+        public string Message { get; init; } = String.Empty;
     }
 
     private sealed class LoginPayload
     {
-        public string AccessToken { get; init; } = string.Empty;
+        public string AccessToken { get; init; } = String.Empty;
     }
 }

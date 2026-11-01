@@ -1,8 +1,11 @@
-using Whalefleet.Api.Configuration;
-using Whalefleet.Infrastructure.Docker;
 using FluentAssertions;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+
+using Whalefleet.Api.Configuration;
+using Whalefleet.Infrastructure.Docker;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Configuration;
@@ -20,13 +23,13 @@ namespace Whalefleet.IntegrationTests.Configuration;
 [Collection(EnvironmentVariablesCollectionDefinition.Name)]
 public class EnvironmentOverrideTests
 {
-    private const string IdleTimeoutVariable = "DOCKER__POOL__IDLETIMEOUT";
-    private const string CorsOriginVariable = "CORS__ALLOWEDORIGINS__0";
+    private const string _idleTimeoutVariable = "DOCKER__POOL__IDLETIMEOUT";
+    private const string _corsOriginVariable = "CORS__ALLOWEDORIGINS__0";
 
     [Fact]
     public void WithoutOverride_ShouldUseDocumentedDefaultIdleTimeout()
     {
-        RunWithEnvironmentVariable(IdleTimeoutVariable, null, () =>
+        RunWithEnvironmentVariable(_idleTimeoutVariable, null, () =>
         {
             using var factory = new ApiFactory();
             using var client = factory.CreateClient();
@@ -40,7 +43,7 @@ public class EnvironmentOverrideTests
     [Fact]
     public void EnvironmentVariable_ShouldOverridePoolIdleTimeout()
     {
-        RunWithEnvironmentVariable(IdleTimeoutVariable, "00:07:00", () =>
+        RunWithEnvironmentVariable(_idleTimeoutVariable, "00:07:00", () =>
         {
             using var factory = new ApiFactory();
             using var client = factory.CreateClient();
@@ -69,7 +72,7 @@ public class EnvironmentOverrideTests
     [Fact]
     public void EnvironmentVariable_ShouldConfigureCorsWhitelist()
     {
-        RunWithEnvironmentVariable(CorsOriginVariable, "http://env.example", () =>
+        RunWithEnvironmentVariable(_corsOriginVariable, "http://env.example", () =>
         {
             using var factory = new ApiFactory();
             using var client = factory.CreateClient();

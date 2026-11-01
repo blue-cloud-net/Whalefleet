@@ -2,14 +2,18 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Persistence;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Endpoints;
@@ -35,10 +39,14 @@ public class ObservabilityEndpointsTests : IAsyncLifetime
     private const string _adminName = "admin";
     private const string _localHost = "local";
 
-    /// <summary>容器启动命令：足够长，保证它在测试期间一直运行。</summary>
+    /// <summary>
+    /// 容器启动命令：足够长，保证它在测试期间一直运行。
+    /// </summary>
     private static readonly string[] _sleepCommand = ["sleep", "300"];
 
-    /// <summary>必然不存在的容器 ID，用于验证「查不到就缺席」。</summary>
+    /// <summary>
+    /// 必然不存在的容器 ID，用于验证「查不到就缺席」。
+    /// </summary>
     private static readonly string[] _noSuchContainerIds = ["no-such-container"];
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
@@ -75,7 +83,7 @@ public class ObservabilityEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 磁盘用量_四类全查时都给出桶()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         using var response = await client.PostAsync(
             $"/api/v1/hosts/{_localHost}/system/df",
@@ -99,7 +107,7 @@ public class ObservabilityEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 磁盘用量_type过滤只查一类其余为null()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         using var response = await client.PostAsync(
             $"/api/v1/hosts/{_localHost}/system/df?type=image",
@@ -121,7 +129,7 @@ public class ObservabilityEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 磁盘用量_非法type返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         using var response = await client.PostAsync(
             $"/api/v1/hosts/{_localHost}/system/df?type=layer",
@@ -134,7 +142,7 @@ public class ObservabilityEndpointsTests : IAsyncLifetime
     [DockerImageFact]
     public async Task 健康查询_返回healthStatus与重启计数()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         var name = $"obs-hc-{Guid.NewGuid():N}"[..16];
         var containerId = await CreateContainerAsync(client, name);
@@ -166,7 +174,7 @@ public class ObservabilityEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 健康查询_查不到的容器直接缺席()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/health",
@@ -183,7 +191,7 @@ public class ObservabilityEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 健康查询_空列表返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync();
+        using var client = await this.CreateAuthenticatedClientAsync();
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/health",

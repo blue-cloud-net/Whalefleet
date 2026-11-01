@@ -4,15 +4,20 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+
 using Docker.DotNet;
 using Docker.DotNet.Models;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Endpoints;
@@ -44,16 +49,24 @@ public class PruneEndpointsTests : IAsyncLifetime
     private const string _localHost = "local";
     private const string _unknownHost = "no-such-host";
 
-    /// <summary>本组夹具专用的标签键。</summary>
+    /// <summary>
+    /// 本组夹具专用的标签键。
+    /// </summary>
     private const string _labelKey = "whalefleet.test";
 
-    /// <summary>清理时的过滤表达式（目标夹具用它）。</summary>
+    /// <summary>
+    /// 清理时的过滤表达式（目标夹具用它）。
+    /// </summary>
     private const string _targetFilter = "whalefleet.test=1";
 
-    /// <summary>目标夹具的标签值。</summary>
+    /// <summary>
+    /// 目标夹具的标签值。
+    /// </summary>
     private const string _targetValue = "1";
 
-    /// <summary>对照组夹具的标签值：带它的资源<b>不该</b>被目标过滤碰到。</summary>
+    /// <summary>
+    /// 对照组夹具的标签值：带它的资源<b>不该</b>被目标过滤碰到。
+    /// </summary>
     private const string _controlValue = "2";
 
     private const string _imageTagPrefix = "whalefleet-prune-test";
@@ -90,7 +103,7 @@ public class PruneEndpointsTests : IAsyncLifetime
     /// <inheritdoc />
     public async Task DisposeAsync() => await _factory.DisposeAsync();
 
-    // ===== 鉴权与参数校验（不需要 Docker） =====
+    #region 鉴权与参数校验（不需要 Docker）
 
     [Theory]
     [InlineData("images")]
@@ -150,8 +163,9 @@ public class PruneEndpointsTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await ReadCodeAsync(response)).Should().Be(ErrorCodes.ValidationFailed);
     }
+    #endregion
 
-    // ===== 卷清理 =====
+    #region 卷清理
 
     [DockerFact]
     public async Task 清理数据卷_只删带标签的未引用卷()
@@ -228,8 +242,9 @@ public class PruneEndpointsTests : IAsyncLifetime
             await RemoveVolumeAsync(client, volume);
         }
     }
+    #endregion
 
-    // ===== 镜像清理 =====
+    #region 镜像清理
 
     [DockerFact]
     public async Task 清理镜像_只清悬空镜像时不动带标签的镜像()
@@ -329,8 +344,9 @@ public class PruneEndpointsTests : IAsyncLifetime
             .SelectMany(item => item.GetProperty("repoTags").EnumerateArray())
             .Any(reference => reference.GetString() == tag);
     }
+    #endregion
 
-    // ===== 夹具与工具 =====
+    #region 夹具与工具
 
     /// <summary>
     /// 生成一个带唯一后缀的卷名。
@@ -504,6 +520,7 @@ public class PruneEndpointsTests : IAsyncLifetime
 
         return JsonDocument.Parse(json).RootElement.Clone();
     }
+    #endregion
 
     private sealed record LoginPayload(string AccessToken);
 

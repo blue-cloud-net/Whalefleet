@@ -2,13 +2,17 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Endpoints;
@@ -31,7 +35,9 @@ public class HostsEndpointsTests : IAsyncLifetime
     private const string _adminName = "admin";
     private const string _operatorName = "operator";
 
-    /// <summary>没有任何角色分配的账号：用于验证 fail-closed。</summary>
+    /// <summary>
+    /// 没有任何角色分配的账号：用于验证 fail-closed。
+    /// </summary>
     private const string _noRoleName = "norole";
     private const string _localHost = "local";
     private const string _unknownHost = "no-such-host";
@@ -93,7 +99,7 @@ public class HostsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 列表_无任何角色分配的用户返回空数组而不是403()
     {
-        using var client = await CreateAuthenticatedClientAsync(_noRoleName);
+        using var client = await this.CreateAuthenticatedClientAsync(_noRoleName);
 
         using var response = await client.PostAsync("/api/v1/hosts/list", content: null);
 
@@ -109,7 +115,7 @@ public class HostsEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 列表_管理员可见本机且状态为在线()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsync("/api/v1/hosts/list", content: null);
 
@@ -135,7 +141,7 @@ public class HostsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 概览_未知主机返回1300()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsync($"/api/v1/hosts/{_unknownHost}/overview", content: null);
 
@@ -146,7 +152,7 @@ public class HostsEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 概览_无任何角色分配的用户返回1501()
     {
-        using var client = await CreateAuthenticatedClientAsync(_noRoleName);
+        using var client = await this.CreateAuthenticatedClientAsync(_noRoleName);
 
         using var response = await client.PostAsync($"/api/v1/hosts/{_localHost}/overview", content: null);
 
@@ -158,7 +164,7 @@ public class HostsEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 概览_返回版本与资源计数()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsync($"/api/v1/hosts/{_localHost}/overview", content: null);
 
@@ -279,7 +285,9 @@ public class HostsEndpointsTests : IAsyncLifetime
         return JsonDocument.Parse(json).RootElement.Clone();
     }
 
-    /// <summary>主机概览响应的投影（只取断言用得到的字段；对应前端的 <c>HostOverview</c>）。</summary>
+    /// <summary>
+    /// 主机概览响应的投影（只取断言用得到的字段；对应前端的 <c>HostOverview</c>）。
+    /// </summary>
     private sealed record HostPayload(
         string Id,
         string Name,

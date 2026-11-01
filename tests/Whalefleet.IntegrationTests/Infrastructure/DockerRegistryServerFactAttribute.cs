@@ -1,4 +1,5 @@
 using System.Net.Sockets;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Infrastructure;
@@ -39,11 +40,13 @@ public sealed class DockerRegistryServerFactAttribute : FactAttribute
 /// </summary>
 public static class LocalRegistryServer
 {
-    private static readonly Lazy<bool> ProbeResult =
+    private static readonly Lazy<bool> _probeResult =
         new(Probe, LazyThreadSafetyMode.ExecutionAndPublication);
 
-    /// <summary>探测连接的超时（毫秒）。</summary>
-    private const int ProbeTimeoutMilliseconds = 500;
+    /// <summary>
+    /// 探测连接的超时（毫秒）。
+    /// </summary>
+    private const int _probeTimeoutMilliseconds = 500;
 
     /// <summary>
     /// 本机 Registry 是否可连。
@@ -54,7 +57,7 @@ public static class LocalRegistryServer
     /// 这里刻意不去做 <c>GET /v2/</c> ——那会引入一次真实 HTTP 往返，
     /// 让「探测」本身有了依赖与超时两种失败模式。
     /// </remarks>
-    public static bool IsRunning => ProbeResult.Value;
+    public static bool IsRunning => _probeResult.Value;
 
     private static bool Probe()
     {
@@ -64,7 +67,7 @@ public static class LocalRegistryServer
 
             return client
                 .ConnectAsync(DockerAvailability.DefaultRegistryHost, DockerAvailability.DefaultRegistryPort)
-                .Wait(ProbeTimeoutMilliseconds);
+                .Wait(_probeTimeoutMilliseconds);
         }
         catch (SocketException)
         {

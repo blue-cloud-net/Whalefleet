@@ -1,6 +1,8 @@
+using FluentAssertions;
+
 using Whalefleet.Api.Configuration;
 using Whalefleet.IntegrationTests;
-using FluentAssertions;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Configuration;

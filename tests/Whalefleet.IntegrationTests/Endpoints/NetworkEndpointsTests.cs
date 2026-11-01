@@ -2,15 +2,20 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+
 using Docker.DotNet;
 using Docker.DotNet.Models;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Endpoints;
@@ -36,13 +41,17 @@ public class NetworkEndpointsTests : IAsyncLifetime
     private const string _password = "StrongP@ss123";
     private const string _adminName = "admin";
 
-    /// <summary>没有任何角色分配的账号：用于验证 fail-closed。</summary>
+    /// <summary>
+    /// 没有任何角色分配的账号：用于验证 fail-closed。
+    /// </summary>
     private const string _noRoleName = "norole";
     private const string _localHost = "local";
     private const string _unknownHost = "no-such-host";
     private const string _unknownNetwork = "no-such-network-0123456789";
 
-    /// <summary>Docker 固定提供的内置网络。</summary>
+    /// <summary>
+    /// Docker 固定提供的内置网络。
+    /// </summary>
     /// <remarks>
     /// <b>只列当前守护进程上真实存在的</b>：Docker 26 把「禁用网络」从 <c>null</c>
     /// 改名为 <c>none</c>，而 26 之前的版本两者行为不同。硬列全部三个会让
@@ -58,11 +67,15 @@ public class NetworkEndpointsTests : IAsyncLifetime
 
     private static readonly string[] _blanks = ["  ", "", "\t"];
 
-    /// <summary>非法网络名样例（抛 1000）。</summary>
+    /// <summary>
+    /// 非法网络名样例（抛 1000）。
+    /// </summary>
     private static readonly string[] _badNames =
         ["  ", "", "\t", "-bad-start", "bad space", "bad/slash"];
 
-    /// <summary>验证网络被占用时用的常驻容器命令。</summary>
+    /// <summary>
+    /// 验证网络被占用时用的常驻容器命令。
+    /// </summary>
     private static readonly string[] _sleepCommand = ["sleep", "600"];
 
     private ApiFactory _factory = null!;
@@ -391,9 +404,9 @@ public class NetworkEndpointsTests : IAsyncLifetime
 
         // DockerImageFact 已保证本机有可用的带标签镜像。
         var image = DockerAvailability.ImageReference!;
-        var docker = await GetDockerClientAsync();
+        var docker = await this.GetDockerClientAsync();
 
-        string containerId = string.Empty;
+        string containerId = String.Empty;
 
         try
         {
@@ -546,9 +559,9 @@ public class NetworkEndpointsTests : IAsyncLifetime
         var network = NewName("conn");
         var containerName = NewName("connc");
         var image = DockerAvailability.ImageReference!;
-        var docker = await GetDockerClientAsync();
+        var docker = await this.GetDockerClientAsync();
 
-        string containerId = string.Empty;
+        string containerId = String.Empty;
 
         try
         {
@@ -614,9 +627,9 @@ public class NetworkEndpointsTests : IAsyncLifetime
         var network = NewName("disc");
         var containerName = NewName("discc");
         var image = DockerAvailability.ImageReference!;
-        var docker = await GetDockerClientAsync();
+        var docker = await this.GetDockerClientAsync();
 
-        string containerId = string.Empty;
+        string containerId = String.Empty;
 
         try
         {

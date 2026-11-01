@@ -1,6 +1,9 @@
-using Whalefleet.Core.Auth;
 using FluentAssertions;
+
 using Microsoft.Extensions.DependencyInjection;
+
+using Whalefleet.Core.Auth;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Persistence;
@@ -26,7 +29,7 @@ public class SqliteRefreshTokenRepositoryTests
         await host.InitializeAsync();
 
         var tokens = host.Services.GetRequiredService<IRefreshTokenRepository>();
-        var token = IssueToken("hash-a", PersistenceTestHost.Now.UtcDateTime.AddDays(7));
+        var token = IssueToken("hash-a", PersistenceTestHost._now.UtcDateTime.AddDays(7));
 
         await tokens.AddAsync(token);
         var loaded = await tokens.FindByHashAsync("hash-a");
@@ -35,12 +38,12 @@ public class SqliteRefreshTokenRepositoryTests
         loaded!.Id.Should().Be(token.Id);
         loaded.UserId.Should().Be(_operatorId);
         loaded.TokenHash.Should().Be("hash-a");
-        loaded.ExpiresAt.Should().Be(PersistenceTestHost.Now.UtcDateTime.AddDays(7));
+        loaded.ExpiresAt.Should().Be(PersistenceTestHost._now.UtcDateTime.AddDays(7));
         loaded.ExpiresAt.Kind.Should().Be(DateTimeKind.Utc);
         loaded.RevokedAt.Should().BeNull();
         loaded.ReplacedByTokenHash.Should().BeNull();
 
-        loaded.CreationTime.Should().Be(PersistenceTestHost.Now.UtcDateTime);
+        loaded.CreationTime.Should().Be(PersistenceTestHost._now.UtcDateTime);
         loaded.CreatorId.Should().Be(_operatorId);
     }
 
@@ -51,7 +54,7 @@ public class SqliteRefreshTokenRepositoryTests
         await host.InitializeAsync();
 
         var tokens = host.Services.GetRequiredService<IRefreshTokenRepository>();
-        await tokens.AddAsync(IssueToken(_tokenHash, PersistenceTestHost.Now.UtcDateTime.AddDays(7)));
+        await tokens.AddAsync(IssueToken(_tokenHash, PersistenceTestHost._now.UtcDateTime.AddDays(7)));
 
         (await host.QueryScalarAsync("SELECT user_id FROM refresh_tokens")).Should().Be(_operatorId.ToString("D"));
         (await host.QueryScalarAsync("SELECT token_hash FROM refresh_tokens")).Should().Be(_tokenHash);
@@ -78,7 +81,7 @@ public class SqliteRefreshTokenRepositoryTests
         await host.InitializeAsync();
 
         var tokens = host.Services.GetRequiredService<IRefreshTokenRepository>();
-        var token = IssueToken("hash-a", PersistenceTestHost.Now.UtcDateTime.AddDays(7));
+        var token = IssueToken("hash-a", PersistenceTestHost._now.UtcDateTime.AddDays(7));
         await tokens.AddAsync(token);
 
         var byId = await tokens.QueryByIdAsync(token.Id);
@@ -96,8 +99,8 @@ public class SqliteRefreshTokenRepositoryTests
         await host.InitializeAsync();
 
         var tokens = host.Services.GetRequiredService<IRefreshTokenRepository>();
-        var token = IssueToken("hash-a", PersistenceTestHost.Now.UtcDateTime.AddDays(7));
-        var other = IssueToken("hash-b", PersistenceTestHost.Now.UtcDateTime.AddDays(7));
+        var token = IssueToken("hash-a", PersistenceTestHost._now.UtcDateTime.AddDays(7));
+        var other = IssueToken("hash-b", PersistenceTestHost._now.UtcDateTime.AddDays(7));
 
         await tokens.AddAsync(token);
         await tokens.AddAsync(other);
@@ -118,15 +121,15 @@ public class SqliteRefreshTokenRepositoryTests
         await host.InitializeAsync();
 
         var tokens = host.Services.GetRequiredService<IRefreshTokenRepository>();
-        var token = IssueToken("hash-a", PersistenceTestHost.Now.UtcDateTime.AddDays(7));
+        var token = IssueToken("hash-a", PersistenceTestHost._now.UtcDateTime.AddDays(7));
         await tokens.AddAsync(token);
 
-        token.Revoke(PersistenceTestHost.Now.UtcDateTime.AddMinutes(5), "hash-b");
+        token.Revoke(PersistenceTestHost._now.UtcDateTime.AddMinutes(5), "hash-b");
         (await tokens.UpdateAsync(token)).Should().BeTrue();
 
         var loaded = (await tokens.FindByHashAsync("hash-a"))!;
-        loaded.IsActiveAt(PersistenceTestHost.Now.UtcDateTime.AddMinutes(6)).Should().BeFalse();
-        loaded.RevokedAt.Should().Be(PersistenceTestHost.Now.UtcDateTime.AddMinutes(5));
+        loaded.IsActiveAt(PersistenceTestHost._now.UtcDateTime.AddMinutes(6)).Should().BeFalse();
+        loaded.RevokedAt.Should().Be(PersistenceTestHost._now.UtcDateTime.AddMinutes(5));
         loaded.ReplacedByTokenHash.Should().Be("hash-b");
 
         (await host.QueryScalarAsync("SELECT revoked_at FROM refresh_tokens")).Should().StartWith("2026-10-10 08:05:00");
@@ -139,7 +142,7 @@ public class SqliteRefreshTokenRepositoryTests
         await host.InitializeAsync();
 
         var tokens = host.Services.GetRequiredService<IRefreshTokenRepository>();
-        var token = IssueToken("hash-ghost", PersistenceTestHost.Now.UtcDateTime.AddDays(7));
+        var token = IssueToken("hash-ghost", PersistenceTestHost._now.UtcDateTime.AddDays(7));
 
         (await tokens.UpdateAsync(token)).Should().BeFalse();
     }
@@ -152,25 +155,25 @@ public class SqliteRefreshTokenRepositoryTests
 
         var tokens = host.Services.GetRequiredService<IRefreshTokenRepository>();
 
-        var active1 = IssueToken("hash-1", PersistenceTestHost.Now.UtcDateTime.AddDays(7));
-        var active2 = IssueToken("hash-2", PersistenceTestHost.Now.UtcDateTime.AddDays(7));
-        var alreadyRevoked = IssueToken("hash-3", PersistenceTestHost.Now.UtcDateTime.AddDays(7));
+        var active1 = IssueToken("hash-1", PersistenceTestHost._now.UtcDateTime.AddDays(7));
+        var active2 = IssueToken("hash-2", PersistenceTestHost._now.UtcDateTime.AddDays(7));
+        var alreadyRevoked = IssueToken("hash-3", PersistenceTestHost._now.UtcDateTime.AddDays(7));
         var otherUser = RefreshToken.Issue(
             Guid.NewGuid(),
             _otherUserId,
             "hash-other",
-            PersistenceTestHost.Now.UtcDateTime.AddDays(7));
+            PersistenceTestHost._now.UtcDateTime.AddDays(7));
 
         await tokens.AddAsync(active1);
         await tokens.AddAsync(active2);
         await tokens.AddAsync(alreadyRevoked);
         await tokens.AddAsync(otherUser);
 
-        var earlierRevocation = PersistenceTestHost.Now.UtcDateTime.AddHours(1);
+        var earlierRevocation = PersistenceTestHost._now.UtcDateTime.AddHours(1);
         alreadyRevoked.Revoke(earlierRevocation);
         await tokens.UpdateAsync(alreadyRevoked);
 
-        var revokedAt = PersistenceTestHost.Now.UtcDateTime.AddHours(2);
+        var revokedAt = PersistenceTestHost._now.UtcDateTime.AddHours(2);
         var affected = await tokens.RevokeAllForUserAsync(_operatorId, revokedAt);
 
         affected.Should().Be(2);
@@ -190,13 +193,13 @@ public class SqliteRefreshTokenRepositoryTests
 
         var tokens = host.Services.GetRequiredService<IRefreshTokenRepository>();
 
-        var expired = IssueToken("hash-expired", PersistenceTestHost.Now.UtcDateTime.AddDays(-1));
-        var stillValid = IssueToken("hash-valid", PersistenceTestHost.Now.UtcDateTime.AddDays(1));
+        var expired = IssueToken("hash-expired", PersistenceTestHost._now.UtcDateTime.AddDays(-1));
+        var stillValid = IssueToken("hash-valid", PersistenceTestHost._now.UtcDateTime.AddDays(1));
 
         await tokens.AddAsync(expired);
         await tokens.AddAsync(stillValid);
 
-        var deleted = await tokens.DeleteExpiredAsync(PersistenceTestHost.Now.UtcDateTime);
+        var deleted = await tokens.DeleteExpiredAsync(PersistenceTestHost._now.UtcDateTime);
 
         deleted.Should().Be(1);
         (await tokens.FindByHashAsync("hash-expired")).Should().BeNull();
@@ -211,9 +214,9 @@ public class SqliteRefreshTokenRepositoryTests
         await host.InitializeAsync();
 
         var tokens = host.Services.GetRequiredService<IRefreshTokenRepository>();
-        await tokens.AddAsync(IssueToken(_tokenHash, PersistenceTestHost.Now.UtcDateTime.AddDays(7)));
+        await tokens.AddAsync(IssueToken(_tokenHash, PersistenceTestHost._now.UtcDateTime.AddDays(7)));
 
-        var act = () => tokens.AddAsync(IssueToken(_tokenHash, PersistenceTestHost.Now.UtcDateTime.AddDays(7)));
+        var act = () => tokens.AddAsync(IssueToken(_tokenHash, PersistenceTestHost._now.UtcDateTime.AddDays(7)));
 
         await act.Should().ThrowAsync<Microsoft.Data.Sqlite.SqliteException>();
     }

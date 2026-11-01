@@ -2,13 +2,17 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+
+using FluentAssertions;
+
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Whalefleet.IntegrationTests.Endpoints;
@@ -32,7 +36,9 @@ public class ContainerEndpointsTests : IAsyncLifetime
     private const string _adminName = "admin";
     private const string _operatorName = "operator";
 
-    /// <summary>没有任何角色分配的账号：用于验证 fail-closed。</summary>
+    /// <summary>
+    /// 没有任何角色分配的账号：用于验证 fail-closed。
+    /// </summary>
     private const string _noRoleName = "norole";
     private const string _localHost = "local";
     private const string _unknownHost = "no-such-host";
@@ -100,7 +106,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 未知主机_返回1300()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_unknownHost}/containers/list",
@@ -113,7 +119,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 无任何角色分配访问主机_返回1501()
     {
-        using var client = await CreateAuthenticatedClientAsync(_noRoleName);
+        using var client = await this.CreateAuthenticatedClientAsync(_noRoleName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/list",
@@ -127,7 +133,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 详情_容器标识为空_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/inspect",
@@ -142,7 +148,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [InlineData(10001)]
     public async Task 日志_tail越界_返回1000(int tail)
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/logs",
@@ -156,7 +162,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 列表_字段回显且分页自洽()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/list",
@@ -182,7 +188,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 列表_每页条数超上限会被夹紧()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/list",
@@ -197,7 +203,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 列表_含已停止时总数不小于仅运行()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var all = await ListAsync(client, all: true);
         var runningOnly = await ListAsync(client, all: false);
@@ -209,7 +215,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 列表_状态筛选_仅未运行不含运行中的容器()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/list",
@@ -227,7 +233,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 列表_状态筛选_仅运行中不含已退出的容器()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/list",
@@ -244,7 +250,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 列表_搜索_不可能命中的关键字总数为零()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/list",
@@ -261,7 +267,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [DockerImageFact]
     public async Task 列表_搜索_按容器名命中刚创建的容器()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var name = $"dl-search-{Guid.NewGuid():N}"[..16];
         string? containerId = null;
@@ -289,7 +295,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
         }
         finally
         {
-            if (!string.IsNullOrWhiteSpace(containerId))
+            if (!String.IsNullOrWhiteSpace(containerId))
             {
                 using var removed = await client.PostAsJsonAsync(
                     $"/api/v1/hosts/{_localHost}/containers/remove",
@@ -301,7 +307,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 列表_端口按容器端口升序()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/list",
@@ -322,7 +328,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 详情_容器不存在_返回1401()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/inspect",
@@ -335,7 +341,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 日志_容器不存在_返回1401()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/logs",
@@ -359,7 +365,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_镜像为空_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/create",
@@ -372,7 +378,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_重启策略非法_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/create",
@@ -385,7 +391,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_环境变量缺少等号_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         // 不带等号的环境变量在守护进程侧只会得到一句「invalid parameter」，
         // 因此由服务端提前拒掉并指出到底是哪一项。
@@ -400,7 +406,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_容器端口越界_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/create",
@@ -413,7 +419,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 创建_容器名非法_返回1000()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/create",
@@ -428,7 +434,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [InlineData(301)]
     public async Task 停止_waitSeconds越界_返回1000(int waitSeconds)
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/stop",
@@ -448,7 +454,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [InlineData("resume")]
     public async Task 变更_容器标识为空_返回1000(string action)
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/{action}",
@@ -463,7 +469,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [InlineData("SIG\tKILL")]
     public async Task 终止_信号非法_返回1000(string signal)
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/kill",
@@ -476,7 +482,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 终止_信号为空白_按未指定处理()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/kill",
@@ -491,7 +497,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 变更_未知主机_返回1300()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_unknownHost}/containers/start",
@@ -504,7 +510,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task 变更_无任何角色分配_返回1501()
     {
-        using var client = await CreateAuthenticatedClientAsync(_noRoleName);
+        using var client = await this.CreateAuthenticatedClientAsync(_noRoleName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/start",
@@ -517,7 +523,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [DockerFact]
     public async Task 创建_镜像不存在_返回1401()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/create",
@@ -539,7 +545,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [InlineData("resume")]
     public async Task 变更_容器不存在_返回1401(string action)
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/hosts/{_localHost}/containers/{action}",
@@ -552,7 +558,7 @@ public class ContainerEndpointsTests : IAsyncLifetime
     [DockerImageFact]
     public async Task 生命周期_创建启动停止删除()
     {
-        using var client = await CreateAuthenticatedClientAsync(_adminName);
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
 
         var image = DockerAvailability.ImageReference!;
         var name = $"dm-test-{Guid.NewGuid():N}"[..16];
@@ -675,18 +681,24 @@ public class ContainerEndpointsTests : IAsyncLifetime
         return JsonDocument.Parse(json).RootElement.Clone();
     }
 
-    /// <summary>容器列表响应的投影（只取断言用得到的字段）。</summary>
+    /// <summary>
+    /// 容器列表响应的投影（只取断言用得到的字段）。
+    /// </summary>
     /// <remarks>属性名是 PascalCase 而线上是 camelCase，靠 <see cref="_jsonOptions"/> 的大小写不敏感兜住。</remarks>
     private sealed record ListPayload(List<ContainerPayload> Items, int Total, int PageIndex, int PageSize);
 
-    /// <summary>带端口的容器列表投影（用于断言端口顺序）。</summary>
+    /// <summary>
+    /// 带端口的容器列表投影（用于断言端口顺序）。
+    /// </summary>
     private sealed record ListWithPortsPayload(
         List<ContainerWithPortsPayload> Items,
         int Total,
         int PageIndex,
         int PageSize);
 
-    /// <summary>带端口的容器列表项。</summary>
+    /// <summary>
+    /// 带端口的容器列表项。
+    /// </summary>
     private sealed record ContainerWithPortsPayload(
         string Id,
         string Name,
@@ -695,7 +707,9 @@ public class ContainerEndpointsTests : IAsyncLifetime
         string Status,
         List<PortPayload> Ports);
 
-    /// <summary>端口映射项。</summary>
+    /// <summary>
+    /// 端口映射项。
+    /// </summary>
     private sealed record PortPayload(int PrivatePort, int? PublicPort, string Type, string? Ip);
 
     private sealed record ContainerPayload(string Id, string Name, string Image, string State, string Status);
