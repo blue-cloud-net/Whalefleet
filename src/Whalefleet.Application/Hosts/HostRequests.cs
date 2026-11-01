@@ -13,19 +13,29 @@ namespace Whalefleet.Application.Hosts;
 /// </remarks>
 public sealed record CreateHostRequest
 {
-    /// <summary>主机名（对外标识，创建后不可改）。</summary>
+    /// <summary>
+    /// 主机名（对外标识，创建后不可改）。
+    /// </summary>
     public string? Name { get; init; }
 
-    /// <summary>连接方式：<c>socket</c> 或 <c>tcp</c>。</summary>
+    /// <summary>
+    /// 连接方式：<c>socket</c> 或 <c>tcp</c>。
+    /// </summary>
     public string? Type { get; init; }
 
-    /// <summary>端点，如 <c>/var/run/docker.sock</c>、<c>tcp://host:2375</c>、<c>https://host:2376</c>。</summary>
+    /// <summary>
+    /// 端点，如 <c>/var/run/docker.sock</c>、<c>tcp://host:2375</c>、<c>https://host:2376</c>。
+    /// </summary>
     public string? Endpoint { get; init; }
 
-    /// <summary>TLS 凭据；与 <see cref="BasicAuth"/> 互斥。</summary>
+    /// <summary>
+    /// TLS 凭据；与 <see cref="BasicAuth"/> 互斥。
+    /// </summary>
     public TlsConfigInput? TlsConfig { get; init; }
 
-    /// <summary>Basic 凭据；与 <see cref="TlsConfig"/> 互斥。</summary>
+    /// <summary>
+    /// Basic 凭据；与 <see cref="TlsConfig"/> 互斥。
+    /// </summary>
     public BasicAuthInput? BasicAuth { get; init; }
 }
 
@@ -38,16 +48,24 @@ public sealed record CreateHostRequest
 /// </remarks>
 public sealed record UpdateHostRequest
 {
-    /// <summary>新的端点；未提供表示不改。</summary>
+    /// <summary>
+    /// 新的端点；未提供表示不改。
+    /// </summary>
     public string? Endpoint { get; init; }
 
-    /// <summary>新的 TLS 凭据；未提供表示不改。</summary>
+    /// <summary>
+    /// 新的 TLS 凭据；未提供表示不改。
+    /// </summary>
     public TlsConfigInput? TlsConfig { get; init; }
 
-    /// <summary>新的 Basic 凭据；未提供表示不改。</summary>
+    /// <summary>
+    /// 新的 Basic 凭据；未提供表示不改。
+    /// </summary>
     public BasicAuthInput? BasicAuth { get; init; }
 
-    /// <summary>启用 / 停用；未提供表示不改。</summary>
+    /// <summary>
+    /// 启用 / 停用；未提供表示不改。
+    /// </summary>
     public bool? Enabled { get; init; }
 
     /// <summary>
@@ -67,16 +85,24 @@ public sealed record UpdateHostRequest
 /// <remarks>刻意不带 <c>hostId</c>：测的是「还没保存的那份配置」。</remarks>
 public sealed record TestHostRequest
 {
-    /// <summary>连接方式：<c>socket</c> 或 <c>tcp</c>。</summary>
+    /// <summary>
+    /// 连接方式：<c>socket</c> 或 <c>tcp</c>。
+    /// </summary>
     public string? Type { get; init; }
 
-    /// <summary>端点。</summary>
+    /// <summary>
+    /// 端点。
+    /// </summary>
     public string? Endpoint { get; init; }
 
-    /// <summary>TLS 凭据；与 <see cref="BasicAuth"/> 互斥。</summary>
+    /// <summary>
+    /// TLS 凭据；与 <see cref="BasicAuth"/> 互斥。
+    /// </summary>
     public TlsConfigInput? TlsConfig { get; init; }
 
-    /// <summary>Basic 凭据；与 <see cref="TlsConfig"/> 互斥。</summary>
+    /// <summary>
+    /// Basic 凭据；与 <see cref="TlsConfig"/> 互斥。
+    /// </summary>
     public BasicAuthInput? BasicAuth { get; init; }
 }
 
@@ -89,16 +115,24 @@ public sealed record TestHostRequest
 /// </remarks>
 public sealed record TlsConfigInput
 {
-    /// <summary>CA 证书路径（PEM）。</summary>
+    /// <summary>
+    /// CA 证书路径（PEM）。
+    /// </summary>
     public string? CaCertificatePath { get; init; }
 
-    /// <summary>客户端证书路径（PEM）。</summary>
+    /// <summary>
+    /// 客户端证书路径（PEM）。
+    /// </summary>
     public string? ClientCertificatePath { get; init; }
 
-    /// <summary>客户端私钥路径（PEM）。</summary>
+    /// <summary>
+    /// 客户端私钥路径（PEM）。
+    /// </summary>
     public string? ClientKeyPath { get; init; }
 
-    /// <summary>私钥口令；未加密时为 <see langword="null"/>。</summary>
+    /// <summary>
+    /// 私钥口令；未加密时为 <see langword="null"/>。
+    /// </summary>
     public string? ClientKeyPassword { get; init; }
 }
 
@@ -107,9 +141,13 @@ public sealed record TlsConfigInput
 /// </summary>
 public sealed record BasicAuthInput
 {
-    /// <summary>用户名。</summary>
+    /// <summary>
+    /// 用户名。
+    /// </summary>
     public string? Username { get; init; }
 
-    /// <summary>密码。</summary>
+    /// <summary>
+    /// 密码。
+    /// </summary>
     public string? Password { get; init; }
 }

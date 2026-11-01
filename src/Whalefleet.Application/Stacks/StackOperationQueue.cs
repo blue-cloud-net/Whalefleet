@@ -12,16 +12,24 @@ namespace Whalefleet.Application.Stacks;
 /// </remarks>
 public static class StackOperations
 {
-    /// <summary>部署（新项目）。</summary>
+    /// <summary>
+    /// 部署（新项目）。
+    /// </summary>
     public const string Deploy = "deploy";
 
-    /// <summary>更新（重新应用 YAML）。</summary>
+    /// <summary>
+    /// 更新（重新应用 YAML）。
+    /// </summary>
     public const string Update = "update";
 
-    /// <summary>停止（停掉全部服务，容器保留）。</summary>
+    /// <summary>
+    /// 停止（停掉全部服务，容器保留）。
+    /// </summary>
     public const string Stop = "stop";
 
-    /// <summary>删除（连容器与网络一起清掉）。</summary>
+    /// <summary>
+    /// 删除（连容器与网络一起清掉）。
+    /// </summary>
     public const string Remove = "remove";
 }
 

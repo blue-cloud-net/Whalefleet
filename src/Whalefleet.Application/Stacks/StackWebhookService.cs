@@ -1,11 +1,13 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
+
+using Microsoft.Extensions.Logging;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Hosts;
 using Whalefleet.Core.Stacks;
-using Microsoft.Extensions.Logging;
 
 namespace Whalefleet.Application.Stacks;
 
@@ -27,27 +29,39 @@ namespace Whalefleet.Application.Stacks;
 /// </remarks>
 public sealed class StackWebhookService
 {
-    /// <summary>令牌明文的字节数（32 字节 → Base64url 43 字符）。</summary>
-    private const int TokenSizeBytes = 32;
+    /// <summary>
+    /// 令牌明文的字节数（32 字节 → Base64url 43 字符）。
+    /// </summary>
+    private const int _tokenSizeBytes = 32;
 
-    /// <summary>令牌提示的长度（明文的前若干位）。</summary>
-    private const int TokenHintLength = 8;
+    /// <summary>
+    /// 令牌提示的长度（明文的前若干位）。
+    /// </summary>
+    private const int _tokenHintLength = 8;
 
-    /// <summary>限流窗口。</summary>
-    private static readonly TimeSpan RateLimitWindow = TimeSpan.FromMinutes(1);
+    /// <summary>
+    /// 限流窗口。
+    /// </summary>
+    private static readonly TimeSpan _rateLimitWindow = TimeSpan.FromMinutes(1);
 
-    /// <summary>限流窗口内允许的最大触发次数。</summary>
-    private const int RateLimitMaxTriggers = 10;
+    /// <summary>
+    /// 限流窗口内允许的最大触发次数。
+    /// </summary>
+    private const int _rateLimitMaxTriggers = 10;
 
-    /// <summary>同步等待任务结束的上限（秒）。</summary>
+    /// <summary>
+    /// 同步等待任务结束的上限（秒）。
+    /// </summary>
     /// <remarks>
     /// 反代的读超时（nginx 默认 60s）比它小一点，
     /// 这样「等不到结果」时是我们自己返回 202 + 任务快照，而不是被反代掐成 504。
     /// </remarks>
-    private const int WaitTimeoutSeconds = 45;
+    private const int _waitTimeoutSeconds = 45;
 
-    /// <summary>同步等待时的轮询间隔（毫秒）。</summary>
-    private const int WaitPollIntervalMs = 250;
+    /// <summary>
+    /// 同步等待时的轮询间隔（毫秒）。
+    /// </summary>
+    private const int _waitPollIntervalMs = 250;
 
     private readonly IStackRepository _repository;
     private readonly IHostRepository _hosts;
@@ -56,7 +70,9 @@ public sealed class StackWebhookService
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<StackWebhookService> _logger;
 
-    /// <summary>各 Stack 的最近触发时刻（用于限流）。</summary>
+    /// <summary>
+    /// 各 Stack 的最近触发时刻（用于限流）。
+    /// </summary>
     private readonly ConcurrentDictionary<Guid, Queue<DateTime>> _triggers = new();
 
     /// <summary>
@@ -116,7 +132,7 @@ public sealed class StackWebhookService
         var token = GenerateToken();
         var hash = HashToken(token);
 
-        stack.SetWebhook(hash, token[..TokenHintLength]);
+        stack.SetWebhook(hash, token[.._tokenHintLength]);
         await _repository.UpdateAsync(stack, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation(
@@ -240,7 +256,7 @@ public sealed class StackWebhookService
 
         var taskId = request.TaskId?.Trim();
 
-        if (string.IsNullOrWhiteSpace(taskId))
+        if (String.IsNullOrWhiteSpace(taskId))
         {
             throw BusinessException.Validation("taskId 不能为空");
         }
@@ -248,7 +264,7 @@ public sealed class StackWebhookService
         var snapshot = _tasks.Get(taskId);
 
         if (snapshot is null
-            || !string.Equals(snapshot.StackName, stack.Name, StringComparison.Ordinal))
+            || !String.Equals(snapshot.StackName, stack.Name, StringComparison.Ordinal))
         {
             return null;
         }
@@ -264,7 +280,7 @@ public sealed class StackWebhookService
     /// <returns>表示异步操作的任务。</returns>
     private async Task WaitAsync(string taskId, CancellationToken cancellationToken)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(WaitTimeoutSeconds);
+        var deadline = DateTime.UtcNow.AddSeconds(_waitTimeoutSeconds);
 
         while (DateTime.UtcNow < deadline)
         {
@@ -276,7 +292,7 @@ public sealed class StackWebhookService
                 return;
             }
 
-            await Task.Delay(WaitPollIntervalMs, cancellationToken).ConfigureAwait(false);
+            await Task.Delay(_waitPollIntervalMs, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -292,7 +308,7 @@ public sealed class StackWebhookService
         string? name,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(name))
+        if (String.IsNullOrWhiteSpace(name))
         {
             throw BusinessException.Validation("Stack 名称不能为空");
         }
@@ -317,7 +333,7 @@ public sealed class StackWebhookService
     /// <exception cref="BusinessException">令牌无效（<c>1906</c>）。</exception>
     private async Task<Stack> RequireStackByTokenAsync(string? token, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(token))
+        if (String.IsNullOrWhiteSpace(token))
         {
             throw new BusinessException(ErrorCodes.StackWebhookTokenInvalid, "Webhook 令牌无效");
         }
@@ -364,7 +380,7 @@ public sealed class StackWebhookService
             },
             (_, existing) =>
             {
-                while (existing.Count > 0 && now - existing.Peek() > RateLimitWindow)
+                while (existing.Count > 0 && now - existing.Peek() > _rateLimitWindow)
                 {
                     existing.Dequeue();
                 }
@@ -373,11 +389,11 @@ public sealed class StackWebhookService
                 return existing;
             });
 
-        if (allowed.Count > RateLimitMaxTriggers)
+        if (allowed.Count > _rateLimitMaxTriggers)
         {
             throw new BusinessException(
                 ErrorCodes.StackWebhookRateLimited,
-                $"Webhook 触发过于频繁（{RateLimitWindow.TotalSeconds:F0} 秒内最多 {RateLimitMaxTriggers} 次）");
+                $"Webhook 触发过于频繁（{_rateLimitWindow.TotalSeconds:F0} 秒内最多 {_rateLimitMaxTriggers} 次）");
         }
     }
 
@@ -386,7 +402,7 @@ public sealed class StackWebhookService
     /// </summary>
     /// <returns>Base64url 文本。</returns>
     private static string GenerateToken() =>
-        Base64UrlEncode(RandomNumberGenerator.GetBytes(TokenSizeBytes));
+        Base64UrlEncode(RandomNumberGenerator.GetBytes(_tokenSizeBytes));
 
     /// <summary>
     /// 计算令牌哈希。
@@ -404,7 +420,7 @@ public sealed class StackWebhookService
     /// </summary>
     /// <returns>Base64url 文本。</returns>
     private static string GenerateTaskId() =>
-        Base64UrlEncode(RandomNumberGenerator.GetBytes(TokenSizeBytes));
+        Base64UrlEncode(RandomNumberGenerator.GetBytes(_tokenSizeBytes));
 
     /// <summary>
     /// Base64url 编码（无填充）。

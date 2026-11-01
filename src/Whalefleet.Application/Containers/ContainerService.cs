@@ -1,14 +1,18 @@
 using System.Globalization;
 using System.Net;
 using System.Text;
+
 using Docker.DotNet;
 using Docker.DotNet.Models;
+
+using Microsoft.Extensions.Logging;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Auditing;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Docker;
 using Whalefleet.Core.Auditing;
-using Microsoft.Extensions.Logging;
+
 using SdkState = Docker.DotNet.Models.State;
 
 namespace Whalefleet.Application.Containers;
@@ -31,14 +35,20 @@ namespace Whalefleet.Application.Containers;
 /// </remarks>
 public sealed partial class ContainerService
 {
-    /// <summary>列表默认每页条数。</summary>
-    private const int DefaultPageSize = 20;
+    /// <summary>
+    /// 列表默认每页条数。
+    /// </summary>
+    private const int _defaultPageSize = 20;
 
-    /// <summary>列表每页条数上限。</summary>
+    /// <summary>
+    /// 列表每页条数上限。
+    /// </summary>
     /// <remarks>上限用于挡住「pageSize=100000」这种把整台宿主机容器一次吐出去的要求，避免响应体失控。</remarks>
-    private const int MaxPageSize = 100;
+    private const int _maxPageSize = 100;
 
-    /// <summary><c>tail</c> 上限。</summary>
+    /// <summary>
+    /// <c>tail</c> 上限。
+    /// </summary>
     /// <remarks>
     /// <para>日志是一次性整体返回的，<c>tail</c> 多大响应就多大。这里<b>报错</b>而不是悄悄夹紧：
     /// 调用方要 100 万行却只拿到 1 万行，会以为「日志就这么多」——错误比静默截断诚实。</para>
@@ -47,17 +57,21 @@ public sealed partial class ContainerService
     /// 而一次首屏加载 5000 行已经远超「看清问题」的需要——
     /// 真要更多，前端可以用 <c>until</c> 逐页往前翻，下载端点则完全不受此上限约束。</para>
     /// </remarks>
-    private const int MaxLogTail = 5000;
+    private const int _maxLogTail = 5000;
 
-    /// <summary><c>waitSeconds</c> 上限。</summary>
-    private const int MaxWaitSeconds = 300;
+    /// <summary>
+    /// <c>waitSeconds</c> 上限。
+    /// </summary>
+    private const int _maxWaitSeconds = 300;
 
-    /// <summary><c>signal</c> 长度上限。</summary>
+    /// <summary>
+    /// <c>signal</c> 长度上限。
+    /// </summary>
     /// <remarks>
     /// 信号名最长也就十来个字符（<c>SIGRTMIN</c> / <c>SIGRTMAX</c> 一类），
     /// 上限给到 32 已足够宽松；再长就只能是注入内容或拼错了。
     /// </remarks>
-    private const int MaxSignalLength = 32;
+    private const int _maxSignalLength = 32;
 
     private readonly IDockerHostAccessor _accessor;
     private readonly IAuditLogger _audit;
@@ -125,14 +139,14 @@ public sealed partial class ContainerService
         var ordered = Sort(filtered, request.SortBy, request.SortDir);
 
         var pageIndex = Math.Max(request.PageIndex ?? 0, 0);
-        var pageSize = Math.Clamp(request.PageSize ?? DefaultPageSize, 1, MaxPageSize);
+        var pageSize = Math.Clamp(request.PageSize ?? _defaultPageSize, 1, _maxPageSize);
 
         _logger.LogDebug(
             "主机 {HostId} 容器列表：共 {Total} 个（状态={State}，搜索={Search}，排序={SortBy}/{SortDir}），返回第 {PageIndex} 页（每页 {PageSize}）",
             hostId,
             ordered.Count,
             filter.Kind,
-            string.IsNullOrWhiteSpace(request.Search) ? "无" : request.Search.Trim(),
+            String.IsNullOrWhiteSpace(request.Search) ? "无" : request.Search.Trim(),
             request.SortBy ?? "默认",
             request.SortDir ?? "desc",
             pageIndex,
@@ -158,13 +172,19 @@ public sealed partial class ContainerService
         bool OnlyRunning,
         bool OnlyStopped)
     {
-        /// <summary>全部容器。</summary>
+        /// <summary>
+        /// 全部容器。
+        /// </summary>
         public static StateFilter All { get; } = new(ContainerStateFilter.All, true, false, false);
 
-        /// <summary>仅运行中。</summary>
+        /// <summary>
+        /// 仅运行中。
+        /// </summary>
         public static StateFilter Running { get; } = new(ContainerStateFilter.Running, false, true, false);
 
-        /// <summary>仅未运行。</summary>
+        /// <summary>
+        /// 仅未运行。
+        /// </summary>
         public static StateFilter Stopped { get; } = new(ContainerStateFilter.Stopped, true, false, true);
 
         /// <summary>
@@ -174,8 +194,15 @@ public sealed partial class ContainerService
         /// <returns>命中返回 <see langword="true"/>。</returns>
         public bool Matches(string? state)
         {
-            if (OnlyRunning) return IsRunningState(state);
-            if (OnlyStopped) return !IsRunningState(state);
+            if (this.OnlyRunning)
+            {
+                return IsRunningState(state);
+            }
+
+            if (this.OnlyStopped)
+            {
+                return !IsRunningState(state);
+            }
 
             return true;
         }
@@ -198,7 +225,7 @@ public sealed partial class ContainerService
     {
         var state = request.State?.Trim();
 
-        if (string.IsNullOrEmpty(state))
+        if (String.IsNullOrEmpty(state))
         {
             return request.All == true ? StateFilter.All : StateFilter.Running;
         }
@@ -243,14 +270,14 @@ public sealed partial class ContainerService
         string? search,
         StateFilter filter)
     {
-        IEnumerable<ContainerListResponse> query = containers.Where(c => filter.Matches(c.State));
+        var query = containers.Where(c => filter.Matches(c.State));
 
-        if (!string.IsNullOrWhiteSpace(search))
+        if (!String.IsNullOrWhiteSpace(search))
         {
             var keyword = search.Trim();
 
             query = query.Where(container =>
-                Contains(MapName(container.Names, container.ID ?? string.Empty), keyword)
+                Contains(MapName(container.Names, container.ID ?? String.Empty), keyword)
                 || Contains(container.Image, keyword)
                 || Contains(container.ID, keyword));
         }
@@ -287,22 +314,22 @@ public sealed partial class ContainerService
         string? sortBy,
         string? sortDir)
     {
-        if (string.IsNullOrWhiteSpace(sortBy))
+        if (String.IsNullOrWhiteSpace(sortBy))
         {
             return [.. containers];
         }
 
         var field = sortBy.Trim();
-        var descending = !string.Equals(sortDir?.Trim(), "asc", StringComparison.OrdinalIgnoreCase);
+        var descending = !String.Equals(sortDir?.Trim(), "asc", StringComparison.OrdinalIgnoreCase);
 
         Comparison<ContainerListResponse> comparison = field switch
         {
             ContainerSortField.Name => (x, y) =>
-                string.CompareOrdinal(NameKey(x), NameKey(y)),
+                String.CompareOrdinal(NameKey(x), NameKey(y)),
             ContainerSortField.Image => (x, y) =>
-                string.CompareOrdinal(ImageKey(x), ImageKey(y)),
+                String.CompareOrdinal(ImageKey(x), ImageKey(y)),
             ContainerSortField.State => (x, y) =>
-                string.CompareOrdinal(x.State ?? string.Empty, y.State ?? string.Empty),
+                String.CompareOrdinal(x.State ?? String.Empty, y.State ?? String.Empty),
             // 默认分支（含未知的未来字段）：退回创建时间，而不是拒绝请求
             _ => (x, y) => x.Created.CompareTo(y.Created),
         };
@@ -318,7 +345,7 @@ public sealed partial class ContainerService
             // 同值时用 ID 兜底，保证顺序稳定；ID 也相同（理论上不会）时回退到原下标
             if (result != 0)
             {
-                var byId = string.CompareOrdinal(x.Container.ID ?? string.Empty, y.Container.ID ?? string.Empty);
+                var byId = String.CompareOrdinal(x.Container.ID ?? String.Empty, y.Container.ID ?? String.Empty);
 
                 return byId != 0 ? byId : x.Index.CompareTo(y.Index);
             }
@@ -338,11 +365,13 @@ public sealed partial class ContainerService
     /// （因为用户看到的名字是去掉斜杠后的，键却带着斜杠），而这很难自查。
     /// </remarks>
     private static string NameKey(ContainerListResponse container) =>
-        MapName(container.Names, container.ID ?? string.Empty);
+        MapName(container.Names, container.ID ?? String.Empty);
 
-    /// <summary>镜像名排序键：缺失时依次回退到镜像 ID、容器 ID。</summary>
+    /// <summary>
+    /// 镜像名排序键：缺失时依次回退到镜像 ID、容器 ID。
+    /// </summary>
     private static string ImageKey(ContainerListResponse container) =>
-        container.Image ?? container.ImageID ?? container.ID ?? string.Empty;
+        container.Image ?? container.ImageID ?? container.ID ?? String.Empty;
 
     /// <summary>
     /// 查询容器详情。
@@ -899,7 +928,7 @@ public sealed partial class ContainerService
     /// <returns>表示异步操作的任务。</returns>
     /// <remarks>
     /// <b>为什么大多数动作用容器标识当名字</b>：除了删除，其余动作都不会让容器消失，
-    /// 名字随时能查到；而删除必须**先取名字再删**（见 <see cref="RemoveAsync(string, RemoveContainerRequest, CancellationToken)"/>），
+    /// 名字随时能查到；而删除必须**先取名字再删**（见 <see cref="RemoveAsync(String, RemoveContainerRequest, CancellationToken)"/>），
     /// 否则「三个月前是谁删了那个 nginx」就只剩下一个 64 位哈希。
     /// </remarks>
     private Task RecordContainerActivityAsync(
@@ -1005,6 +1034,11 @@ public sealed partial class ContainerService
     // 而传空数组 / 空串会被当成「显式清空」——例如把 Cmd 传成 [] 会让容器不带任何启动命令。
     // 因此这里必须传 null，只用 pragma 关掉与 SDK 标注的不一致。
 #pragma warning disable CS8601
+    /// <summary>
+    /// 把创建请求转换为守护进程的创建参数。
+    /// </summary>
+    /// <param name="request">容器创建请求。</param>
+    /// <returns>守护进程的创建参数。</returns>
     private static CreateContainerParameters BuildCreateParameters(CreateContainerRequest request)
     {
         var (exposedPorts, portBindings) = BuildPorts(request.Ports);
@@ -1026,7 +1060,7 @@ public sealed partial class ContainerService
             OpenStdin = request.StdinOpen ?? false,
             // 空串会被守护进程当成「显式指定空用户」，而不是「用镜像里的 USER」，
             // 因此这里把空串一并归一成 null。
-            User = string.IsNullOrWhiteSpace(request.User) ? null : request.User.Trim(),
+            User = String.IsNullOrWhiteSpace(request.User) ? null : request.User.Trim(),
             ExposedPorts = exposedPorts,
             Healthcheck = AdvancedCreateOptions.BuildHealthCheck(request.HealthCheck),
             HostConfig = new HostConfig
@@ -1098,7 +1132,7 @@ public sealed partial class ContainerService
                 {
                     HostPort = hostPort.ToString(CultureInfo.InvariantCulture),
                     // 空字符串会被守护进程当成「未指定」，显式转成 null 免得依赖它对空串的宽容。
-                    HostIP = string.IsNullOrWhiteSpace(port.HostIp) ? null : port.HostIp.Trim(),
+                    HostIP = String.IsNullOrWhiteSpace(port.HostIp) ? null : port.HostIp.Trim(),
                 },
             ];
         }
@@ -1114,7 +1148,7 @@ public sealed partial class ContainerService
     /// <returns>去空白后的镜像名。</returns>
     /// <exception cref="BusinessException">为空时抛 <c>1000</c>。</exception>
     private static string RequireImage(string? image) =>
-        string.IsNullOrWhiteSpace(image)
+        String.IsNullOrWhiteSpace(image)
             ? throw new BusinessException(ErrorCodes.ValidationFailed, "image 不能为空")
             : image.Trim();
 
@@ -1127,14 +1161,14 @@ public sealed partial class ContainerService
     /// <remarks>规则来自 <c>docker run --name</c>：以字母或数字开头，其后只允许字母、数字与 <c>_ . -</c>。</remarks>
     private static string? RequireContainerName(string? name)
     {
-        if (string.IsNullOrWhiteSpace(name))
+        if (String.IsNullOrWhiteSpace(name))
         {
             return null;
         }
 
         var trimmed = name.Trim();
-        var isValid = char.IsAsciiLetterOrDigit(trimmed[0])
-            && trimmed.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '.' or '-');
+        var isValid = Char.IsAsciiLetterOrDigit(trimmed[0])
+            && trimmed.All(c => Char.IsAsciiLetterOrDigit(c) || c is '_' or '.' or '-');
 
         return isValid
             ? trimmed
@@ -1212,7 +1246,7 @@ public sealed partial class ContainerService
     /// <exception cref="BusinessException">取值非法时抛 <c>1000</c>。</exception>
     private static RestartPolicy BuildRestartPolicy(string? policy)
     {
-        if (string.IsNullOrWhiteSpace(policy))
+        if (String.IsNullOrWhiteSpace(policy))
         {
             return new RestartPolicy { Name = RestartPolicyKind.No };
         }
@@ -1255,7 +1289,7 @@ public sealed partial class ContainerService
     /// <exception cref="BusinessException">取值非法时抛 <c>1000</c>。</exception>
     private static string RequireProtocol(string? protocol)
     {
-        if (string.IsNullOrWhiteSpace(protocol))
+        if (String.IsNullOrWhiteSpace(protocol))
         {
             return "tcp";
         }
@@ -1277,7 +1311,7 @@ public sealed partial class ContainerService
     /// <returns>去空白后的文本。</returns>
     /// <exception cref="BusinessException">为空时抛 <c>1000</c>。</exception>
     private static string RequireText(string? value, string field) =>
-        string.IsNullOrWhiteSpace(value)
+        String.IsNullOrWhiteSpace(value)
             ? throw new BusinessException(ErrorCodes.ValidationFailed, $"{field} 不能为空")
             : value.Trim();
 
@@ -1291,9 +1325,9 @@ public sealed partial class ContainerService
     private static uint? RequireWaitSeconds(int? waitSeconds) => waitSeconds switch
     {
         null => null,
-        < 0 or > MaxWaitSeconds => throw new BusinessException(
+        < 0 or > _maxWaitSeconds => throw new BusinessException(
             ErrorCodes.ValidationFailed,
-            $"waitSeconds 必须在 0 到 {MaxWaitSeconds} 之间（省略表示用 Docker 默认值）"),
+            $"waitSeconds 必须在 0 到 {_maxWaitSeconds} 之间（省略表示用 Docker 默认值）"),
         _ => (uint)waitSeconds.Value,
     };
 
@@ -1308,7 +1342,7 @@ public sealed partial class ContainerService
     /// 而本项目对外统一用中文可读消息（错误码 <c>1000</c> 的 message 会直接展示给用户）。
     /// </remarks>
     private static string RequireContainerId(string? containerId) =>
-        string.IsNullOrWhiteSpace(containerId)
+        String.IsNullOrWhiteSpace(containerId)
             ? throw new BusinessException(ErrorCodes.ValidationFailed, "containerId 不能为空")
             : containerId.Trim();
 
@@ -1329,21 +1363,21 @@ public sealed partial class ContainerService
     /// </remarks>
     private static string? RequireSignal(string? signal)
     {
-        if (string.IsNullOrWhiteSpace(signal))
+        if (String.IsNullOrWhiteSpace(signal))
         {
             return null;
         }
 
         var trimmed = signal.Trim();
 
-        if (trimmed.Length > MaxSignalLength)
+        if (trimmed.Length > _maxSignalLength)
         {
             throw new BusinessException(
                 ErrorCodes.ValidationFailed,
-                $"signal 长度不能超过 {MaxSignalLength} 个字符");
+                $"signal 长度不能超过 {_maxSignalLength} 个字符");
         }
 
-        if (trimmed.Any(char.IsWhiteSpace))
+        if (trimmed.Any(Char.IsWhiteSpace))
         {
             throw new BusinessException(ErrorCodes.ValidationFailed, "signal 不能包含空白字符");
         }
@@ -1385,9 +1419,9 @@ public sealed partial class ContainerService
     private static int? RequireTail(int? tail) => tail switch
     {
         null => null,
-        < 0 or > MaxLogTail => throw new BusinessException(
+        < 0 or > _maxLogTail => throw new BusinessException(
             ErrorCodes.ValidationFailed,
-            $"tail 必须在 0 到 {MaxLogTail} 之间（省略表示全部）"),
+            $"tail 必须在 0 到 {_maxLogTail} 之间（省略表示全部）"),
         _ => tail,
     };
 
@@ -1442,9 +1476,9 @@ public sealed partial class ContainerService
                 .OrderBy(port => port.PrivatePort)
                 .ThenBy(port => port.Type, StringComparer.Ordinal)
                 // 未映射的端口（只暴露不绑定）排在最后：它们没有宿主端口可比
-                .ThenBy(port => port.PublicPort ?? int.MaxValue)
+                .ThenBy(port => port.PublicPort ?? Int32.MaxValue)
                 .ThenBy(port => IpRank(port.Ip))
-                .ThenBy(port => port.Ip ?? string.Empty, StringComparer.Ordinal)
+                .ThenBy(port => port.Ip ?? String.Empty, StringComparer.Ordinal)
         ];
     }
 
@@ -1464,9 +1498,20 @@ public sealed partial class ContainerService
     /// </remarks>
     private static int IpRank(string? ip)
     {
-        if (string.IsNullOrWhiteSpace(ip)) return 4;
-        if (ip == "0.0.0.0") return 1;
-        if (ip == "::") return 3;
+        if (String.IsNullOrWhiteSpace(ip))
+        {
+            return 4;
+        }
+
+        if (ip == "0.0.0.0")
+        {
+            return 1;
+        }
+
+        if (ip == "::")
+        {
+            return 3;
+        }
 
         return ip.Contains(':', StringComparison.Ordinal) ? 2 : 0;
     }
@@ -1483,7 +1528,7 @@ public sealed partial class ContainerService
     private static string MapName(IList<string>? names, string id)
     {
         var name = names?.FirstOrDefault()?.TrimStart('/');
-        return string.IsNullOrEmpty(name) ? ShortId(id) : name;
+        return String.IsNullOrEmpty(name) ? ShortId(id) : name;
     }
 
     /// <summary>
@@ -1493,7 +1538,7 @@ public sealed partial class ContainerService
     /// <param name="id">容器 ID（无名字时用来兜底）。</param>
     /// <returns>不带前导斜杠的名字。</returns>
     /// <remarks>
-    /// <b>为什么不复用 <see cref="MapName(IList{string}?, string)"/></b>：list 接口给的是
+    /// <b>为什么不复用 <see cref="MapName(IList{String}?, String)"/></b>：list 接口给的是
     /// 名字数组，inspect 给的是单个字符串——两者类型不同，重载即可，
     /// 但刻意分开命名，避免调用方以为「两个接口的命名规则一样」。
     /// </remarks>
@@ -1501,7 +1546,7 @@ public sealed partial class ContainerService
     {
         var trimmed = name?.TrimStart('/');
 
-        return !string.IsNullOrEmpty(trimmed)
+        return !String.IsNullOrEmpty(trimmed)
             ? trimmed
             : ShortId(id ?? String.Empty);
     }
@@ -1531,7 +1576,7 @@ public sealed partial class ContainerService
     /// <returns>详情投影。</returns>
     private static ContainerDetail MapDetail(ContainerInspectResponse source) => new(
         Id: source.ID,
-        Name: source.Name?.TrimStart('/') ?? string.Empty,
+        Name: source.Name?.TrimStart('/') ?? String.Empty,
         Created: ToUtc(source.Created),
         // inspect 顶层的 Image 是**镜像 ID**（sha256:…），镜像名在 Config.Image 里。
         // 对外契约里的 Image 指镜像名，故取 Config.Image。
@@ -1583,7 +1628,7 @@ public sealed partial class ContainerService
             {
                 // SDK 的 PortBinding.HostPort 是**字符串**（Docker 的 JSON 里端口号是字符串），
                 // 而对外的 ContainerPort.PublicPort 是数值——转换在这里做。
-                int? hostPort = int.TryParse(binding.HostPort, out var parsed) ? parsed : null;
+                int? hostPort = Int32.TryParse(binding.HostPort, out var parsed) ? parsed : null;
 
                 ports.Add(new ContainerPort(privatePort.Value, hostPort, protocol, binding.HostIP));
             }
@@ -1594,9 +1639,9 @@ public sealed partial class ContainerService
             .. ports
                 .OrderBy(port => port.PrivatePort)
                 .ThenBy(port => port.Type, StringComparer.Ordinal)
-                .ThenBy(port => port.PublicPort ?? int.MaxValue)
+                .ThenBy(port => port.PublicPort ?? Int32.MaxValue)
                 .ThenBy(port => IpRank(port.Ip))
-                .ThenBy(port => port.Ip ?? string.Empty, StringComparer.Ordinal)
+                .ThenBy(port => port.Ip ?? String.Empty, StringComparer.Ordinal)
         ];
     }
 
@@ -1612,7 +1657,7 @@ public sealed partial class ContainerService
         var portText = separator < 0 ? key : key[..separator];
         var protocol = separator < 0 ? "tcp" : key[(separator + 1)..];
 
-        return int.TryParse(portText, out var port) ? (port, protocol) : (null, "tcp");
+        return Int32.TryParse(portText, out var port) ? (port, protocol) : (null, "tcp");
     }
 
     /// <summary>
@@ -1625,7 +1670,7 @@ public sealed partial class ContainerService
     /// </param>
     /// <returns>状态投影。</returns>
     private static ContainerState MapState(SdkState? source, long restartCount) => new(
-        Status: source?.Status ?? string.Empty,
+        Status: source?.Status ?? String.Empty,
         Running: source?.Running ?? false,
         Paused: source?.Paused ?? false,
         Restarting: source?.Restarting ?? false,
@@ -1645,16 +1690,16 @@ public sealed partial class ContainerService
     /// <param name="source">SDK 配置。</param>
     /// <returns>启动配置投影。</returns>
     private static ContainerConfigDetail MapConfig(ContainerConfig? source) => new(
-        Image: source?.Image ?? string.Empty,
+        Image: source?.Image ?? String.Empty,
         Cmd: source?.Cmd is null ? [] : [.. source.Cmd],
         Entrypoint: source?.Entrypoint is null ? [] : [.. source.Entrypoint],
         Env: source?.Env is null ? [] : [.. source.Env],
         Labels: source?.Labels is null
             ? new Dictionary<string, string>(StringComparer.Ordinal)
             : new Dictionary<string, string>(source.Labels, StringComparer.Ordinal),
-        WorkingDir: source?.WorkingDir ?? string.Empty,
-        Hostname: source?.Hostname ?? string.Empty,
-        User: source?.User ?? string.Empty,
+        WorkingDir: source?.WorkingDir ?? String.Empty,
+        Hostname: source?.Hostname ?? String.Empty,
+        User: source?.User ?? String.Empty,
         Tty: source?.Tty ?? false);
 
     /// <summary>
@@ -1669,7 +1714,7 @@ public sealed partial class ContainerService
     private static ContainerHostConfigDetail MapHostConfig(HostConfig? source) => new(
         RestartPolicy: MapRestartPolicy(source?.RestartPolicy?.Name),
         AutoRemove: source?.AutoRemove ?? false,
-        NetworkMode: source?.NetworkMode ?? string.Empty,
+        NetworkMode: source?.NetworkMode ?? String.Empty,
         Privileged: source?.Privileged ?? false,
         MemoryLimitBytes: source is null || source.Memory == 0 ? null : source.Memory,
         NanoCpus: source is null || source.NanoCPUs == 0 ? null : source.NanoCPUs);
@@ -1697,9 +1742,9 @@ public sealed partial class ContainerService
     /// <param name="source">SDK 挂载项。</param>
     /// <returns>挂载投影。</returns>
     private static ContainerMountDetail MapMount(MountPoint source) => new(
-        Type: source.Type ?? string.Empty,
-        Source: source.Source ?? string.Empty,
-        Destination: source.Destination ?? string.Empty,
+        Type: source.Type ?? String.Empty,
+        Source: source.Source ?? String.Empty,
+        Destination: source.Destination ?? String.Empty,
         ReadWrite: source.RW);
 
     /// <summary>
@@ -1712,9 +1757,9 @@ public sealed partial class ContainerService
             ? []
             : [.. source.Select(pair => new ContainerNetworkDetail(
                 Name: pair.Key,
-                IpAddress: pair.Value?.IPAddress ?? string.Empty,
-                Gateway: pair.Value?.Gateway ?? string.Empty,
-                MacAddress: pair.Value?.MacAddress ?? string.Empty))];
+                IpAddress: pair.Value?.IPAddress ?? global::System.String.Empty,
+                Gateway: pair.Value?.Gateway ?? global::System.String.Empty,
+                MacAddress: pair.Value?.MacAddress ?? global::System.String.Empty))];
 
     /// <summary>
     /// 把 Docker 时间戳解析成 <see cref="DateTimeOffset"/>。
@@ -1768,7 +1813,9 @@ public sealed partial class ContainerService
     {
         private readonly List<string> _chunks = [];
 
-        /// <summary>已收集的字符数（用长度代替把内容整体取出来做统计，避免多一次大字符串分配）。</summary>
+        /// <summary>
+        /// 已收集的字符数（用长度代替把内容整体取出来做统计，避免多一次大字符串分配）。
+        /// </summary>
         public int Length
         {
             get
@@ -1784,7 +1831,9 @@ public sealed partial class ContainerService
             }
         }
 
-        /// <summary>已收集的块（顺序与回调顺序一致）。</summary>
+        /// <summary>
+        /// 已收集的块（顺序与回调顺序一致）。
+        /// </summary>
         public IReadOnlyList<string> Chunks => _chunks;
 
         /// <inheritdoc />

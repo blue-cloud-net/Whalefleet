@@ -15,10 +15,14 @@ namespace Whalefleet.Application.Auditing;
 /// </remarks>
 public sealed class AuditLogService
 {
-    /// <summary>默认每页条数。</summary>
+    /// <summary>
+    /// 默认每页条数。
+    /// </summary>
     public const int DefaultPageSize = 20;
 
-    /// <summary>每页条数上限（与其它列表端点一致）。</summary>
+    /// <summary>
+    /// 每页条数上限（与其它列表端点一致）。
+    /// </summary>
     public const int MaxPageSize = 100;
 
     /// <summary>

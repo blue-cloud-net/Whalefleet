@@ -1,7 +1,8 @@
+using Microsoft.Extensions.Logging;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Repositories;
-using Microsoft.Extensions.Logging;
 
 namespace Whalefleet.Application.Repositories;
 
@@ -65,9 +66,9 @@ public sealed class RepositoryService : IRepositoryCredentialResolver
         var all = await _repositories.QueryAllListAsync(cancellationToken).ConfigureAwait(false);
         var search = request?.Search?.Trim();
 
-        var filtered = string.IsNullOrEmpty(search)
+        var filtered = String.IsNullOrEmpty(search)
             ? all
-            : all.Where(item => Matches(item, search)).ToList();
+            : [.. all.Where(item => Matches(item, search))];
 
         return [.. filtered.Select(Map)];
     }
@@ -88,9 +89,9 @@ public sealed class RepositoryService : IRepositoryCredentialResolver
         ArgumentNullException.ThrowIfNull(request);
 
         var name = RequireText(request.Name, "name");
-        var address = RepositoryServerAddress.Parse(request.ServerAddress ?? string.Empty);
-        var username = (request.Username ?? string.Empty).Trim();
-        var password = request.Password ?? string.Empty;
+        var address = RepositoryServerAddress.Parse(request.ServerAddress ?? String.Empty);
+        var username = (request.Username ?? String.Empty).Trim();
+        var password = request.Password ?? String.Empty;
 
         // 账号与口令必须成对：半截凭据推镜像时只会得到「认证失败」，
         // 而用户看不出是自己的配置缺了一半。
@@ -113,7 +114,7 @@ public sealed class RepositoryService : IRepositoryCredentialResolver
                 $"仓库地址「{address.Value}」已被占用");
         }
 
-        var encrypted = username.Length > 0 ? _protector.Protect(password) : string.Empty;
+        var encrypted = username.Length > 0 ? _protector.Protect(password) : String.Empty;
 
         var entity = RepositoryCredential.Register(
             Guid.NewGuid(),
@@ -189,12 +190,7 @@ public sealed class RepositoryService : IRepositoryCredentialResolver
 
         if (request.Id is { } id && id != Guid.Empty)
         {
-            var saved = await _repositories.QueryByIdAsync(id, cancellationToken).ConfigureAwait(false);
-
-            if (saved is null)
-            {
-                throw new BusinessException(ErrorCodes.RepositoryNotFound, "仓库配置不存在");
-            }
+            var saved = await _repositories.QueryByIdAsync(id, cancellationToken).ConfigureAwait(false) ?? throw new BusinessException(ErrorCodes.RepositoryNotFound, "仓库配置不存在");
 
             address = saved.ServerAddress;
             username = saved.Username;
@@ -202,13 +198,13 @@ public sealed class RepositoryService : IRepositoryCredentialResolver
             // 已保存配置的口令是密文，用前先解。
             password = saved.HasCredentials
                 ? _protector.Unprotect(saved.EncryptedPassword)
-                : string.Empty;
+                : String.Empty;
         }
         else
         {
-            address = RepositoryServerAddress.Parse(request.ServerAddress ?? string.Empty).Value;
-            username = (request.Username ?? string.Empty).Trim();
-            password = request.Password ?? string.Empty;
+            address = RepositoryServerAddress.Parse(request.ServerAddress ?? String.Empty).Value;
+            username = (request.Username ?? String.Empty).Trim();
+            password = request.Password ?? String.Empty;
 
             if (username.Length > 0 ^ password.Length > 0)
             {
@@ -271,7 +267,7 @@ public sealed class RepositoryService : IRepositoryCredentialResolver
         return new RepositoryCredentialValue(
             saved.ServerAddress,
             saved.Username,
-            saved.HasCredentials ? _protector.Unprotect(saved.EncryptedPassword) : string.Empty);
+            saved.HasCredentials ? _protector.Unprotect(saved.EncryptedPassword) : String.Empty);
     }
 
     /// <summary>
@@ -298,7 +294,7 @@ public sealed class RepositoryService : IRepositoryCredentialResolver
     /// 必填文本校验。
     /// </summary>
     private static string RequireText(string? value, string field) =>
-        string.IsNullOrWhiteSpace(value)
+        String.IsNullOrWhiteSpace(value)
             ? throw BusinessException.Validation($"{field} 不能为空")
             : value.Trim();
 }

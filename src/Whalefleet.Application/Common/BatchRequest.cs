@@ -13,8 +13,10 @@ namespace Whalefleet.Application.Common;
 /// </remarks>
 internal static class BatchRequest
 {
-    /// <summary>单次批量请求的条目数上限。</summary>
-    internal const int MaxBatchSize = 100;
+    /// <summary>
+    /// 单次批量请求的条目数上限。
+    /// </summary>
+    internal const int _maxBatchSize = 100;
 
     /// <summary>
     /// 校验并归一化一批资源标识。
@@ -37,9 +39,9 @@ internal static class BatchRequest
             throw BusinessException.Validation($"{field} 不能为空");
         }
 
-        if (ids.Count > MaxBatchSize)
+        if (ids.Count > _maxBatchSize)
         {
-            throw BusinessException.Validation($"{field} 最多 {MaxBatchSize} 个，当前 {ids.Count} 个");
+            throw BusinessException.Validation($"{field} 最多 {_maxBatchSize} 个，当前 {ids.Count} 个");
         }
 
         var normalized = new List<string>(ids.Count);

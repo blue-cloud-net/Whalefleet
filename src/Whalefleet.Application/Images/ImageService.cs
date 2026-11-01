@@ -1,10 +1,12 @@
 using Docker.DotNet;
 using Docker.DotNet.Models;
+
+using Microsoft.Extensions.Logging;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Docker;
-using Microsoft.Extensions.Logging;
 
 namespace Whalefleet.Application.Images;
 
@@ -31,18 +33,26 @@ namespace Whalefleet.Application.Images;
 /// </remarks>
 public sealed class ImageService
 {
-    /// <summary>列表默认每页条数。</summary>
-    private const int DefaultPageSize = 20;
+    /// <summary>
+    /// 列表默认每页条数。
+    /// </summary>
+    private const int _defaultPageSize = 20;
 
-    /// <summary>列表每页条数上限。</summary>
+    /// <summary>
+    /// 列表每页条数上限。
+    /// </summary>
     /// <remarks>上限用于挡住「pageSize=100000」这种把整台宿主机镜像一次吐出去的要求，避免响应体失控。</remarks>
-    private const int MaxPageSize = 100;
+    private const int _maxPageSize = 100;
 
-    /// <summary>删除响应里表示「镜像本体被删除」的键。</summary>
-    private const string DeletedKey = "Deleted";
+    /// <summary>
+    /// 删除响应里表示「镜像本体被删除」的键。
+    /// </summary>
+    private const string _deletedKey = "Deleted";
 
-    /// <summary>删除响应里表示「标签被解绑」的键。</summary>
-    private const string UntaggedKey = "Untagged";
+    /// <summary>
+    /// 删除响应里表示「标签被解绑」的键。
+    /// </summary>
+    private const string _untaggedKey = "Untagged";
 
     private readonly IDockerHostAccessor _accessor;
     private readonly ILogger<ImageService> _logger;
@@ -100,14 +110,14 @@ public sealed class ImageService
         var filtered = Sort(Filter(images, request.Search), request.SortBy, request.SortDir);
 
         var pageIndex = Math.Max(request.PageIndex ?? 0, 0);
-        var pageSize = Math.Clamp(request.PageSize ?? DefaultPageSize, 1, MaxPageSize);
+        var pageSize = Math.Clamp(request.PageSize ?? _defaultPageSize, 1, _maxPageSize);
 
         _logger.LogDebug(
             "主机 {HostId} 镜像列表：共 {Total} 个（含中间层={All}，搜索={Search}，排序={SortBy}/{SortDir}），返回第 {PageIndex} 页（每页 {PageSize}）",
             hostId,
             filtered.Count,
             all,
-            string.IsNullOrWhiteSpace(request.Search) ? "无" : request.Search.Trim(),
+            String.IsNullOrWhiteSpace(request.Search) ? "无" : request.Search.Trim(),
             request.SortBy ?? "默认",
             request.SortDir ?? "desc",
             pageIndex,
@@ -182,7 +192,7 @@ public sealed class ImageService
         {
             FromImage = image,
             Tag = tag,
-            Platform = string.IsNullOrWhiteSpace(request.Platform) ? null : request.Platform.Trim(),
+            Platform = String.IsNullOrWhiteSpace(request.Platform) ? null : request.Platform.Trim(),
         };
 
         var collector = new PullCollector(_logger, hostId, reference, _progressPublisher, request.ProgressToken);
@@ -261,7 +271,7 @@ public sealed class ImageService
         string status,
         string? error)
     {
-        if (_progressPublisher is null || string.IsNullOrWhiteSpace(progressToken))
+        if (_progressPublisher is null || String.IsNullOrWhiteSpace(progressToken))
         {
             return;
         }
@@ -462,7 +472,7 @@ public sealed class ImageService
         {
             var untagged = response?.Untagged;
 
-            if (!string.IsNullOrWhiteSpace(untagged) && !string.Equals(untagged, "<none>", StringComparison.Ordinal))
+            if (!String.IsNullOrWhiteSpace(untagged) && !String.Equals(untagged, "<none>", StringComparison.Ordinal))
             {
                 deleted.Add(untagged);
                 continue;
@@ -470,7 +480,7 @@ public sealed class ImageService
 
             var imageId = response?.Deleted;
 
-            if (!string.IsNullOrWhiteSpace(imageId))
+            if (!String.IsNullOrWhiteSpace(imageId))
             {
                 deleted.Add(imageId);
             }
@@ -504,8 +514,8 @@ public sealed class ImageService
             cancellationToken).ConfigureAwait(false);
 
         // 守护进程对每条处理结果各回一个字典：键是 "deleted" 或 "untagged"，值是对应的 ID / 标签。
-        var deleted = Extract(responses, DeletedKey);
-        var untagged = Extract(responses, UntaggedKey);
+        var deleted = Extract(responses, _deletedKey);
+        var untagged = Extract(responses, _untaggedKey);
 
         _logger.LogInformation(
             "主机 {HostId} 删除镜像 {ImageId}（强制={Force}）：解绑 {UntaggedCount} 个标签，删除 {DeletedCount} 个镜像",
@@ -532,7 +542,7 @@ public sealed class ImageService
         [.. responses
             .Where(response => response.ContainsKey(key))
             .Select(response => response[key])
-            .Where(value => !string.IsNullOrWhiteSpace(value))];
+            .Where(value => !String.IsNullOrWhiteSpace(value))];
 
     /// <summary>
     /// 按搜索关键字过滤镜像。
@@ -544,7 +554,7 @@ public sealed class ImageService
         IList<ImagesListResponse> images,
         string? search)
     {
-        if (string.IsNullOrWhiteSpace(search))
+        if (String.IsNullOrWhiteSpace(search))
         {
             return [.. images];
         }
@@ -583,13 +593,13 @@ public sealed class ImageService
         string? sortBy,
         string? sortDir)
     {
-        if (string.IsNullOrWhiteSpace(sortBy))
+        if (String.IsNullOrWhiteSpace(sortBy))
         {
             return images;
         }
 
         var field = sortBy.Trim();
-        var descending = !string.Equals(sortDir?.Trim(), "asc", StringComparison.OrdinalIgnoreCase);
+        var descending = !String.Equals(sortDir?.Trim(), "asc", StringComparison.OrdinalIgnoreCase);
 
         // 排序键 + 次级键（ID）一起比，比"先 OrderBy 再 ThenBy"少一趟枚举
         Comparison<ImagesListResponse> comparison = field switch
@@ -613,7 +623,7 @@ public sealed class ImageService
             // 同值时用 ID 兜底，保证顺序稳定；ID 也相同（理论上不会）时回退到原下标
             if (result != 0)
             {
-                var byId = string.CompareOrdinal(x.Image.ID ?? string.Empty, y.Image.ID ?? string.Empty);
+                var byId = String.CompareOrdinal(x.Image.ID ?? String.Empty, y.Image.ID ?? String.Empty);
 
                 return byId != 0 ? byId : x.Index.CompareTo(y.Index);
             }
@@ -624,19 +634,27 @@ public sealed class ImageService
         return [.. sorted.Select(item => item.Image)];
     }
 
-    /// <summary>仓库名排序键：取首个标签，悬挂镜像（无标签）用空串。</summary>
+    /// <summary>
+    /// 仓库名排序键：取首个标签，悬挂镜像（无标签）用空串。
+    /// </summary>
     private static string RepositoryKey(ImagesListResponse image) =>
-        image.RepoTags?.FirstOrDefault() ?? string.Empty;
+        image.RepoTags?.FirstOrDefault() ?? String.Empty;
 
-    /// <summary>创建时间排序键。SDK 的 <c>Created</c> 是非空值类型，直接取用。</summary>
+    /// <summary>
+    /// 创建时间排序键。SDK 的 <c>Created</c> 是非空值类型，直接取用。
+    /// </summary>
     private static DateTime CreatedKey(ImagesListResponse image) => image.Created;
 
-    /// <summary>被引用容器数：取容器计数，未提供时按 0。</summary>
+    /// <summary>
+    /// 被引用容器数：取容器计数，未提供时按 0。
+    /// </summary>
     private static long CountUsedBy(ImagesListResponse image) => image.Containers;
 
-    /// <summary>字符串比较：按序数比较，避免受当前区域设置影响（大小写排序会随系统语言变化）。</summary>
+    /// <summary>
+    /// 字符串比较：按序数比较，避免受当前区域设置影响（大小写排序会随系统语言变化）。
+    /// </summary>
     private static int Compare(string? x, string? y) =>
-        string.CompareOrdinal(x ?? string.Empty, y ?? string.Empty);
+        String.CompareOrdinal(x ?? String.Empty, y ?? String.Empty);
 
     /// <summary>
     /// 给镜像打标签（对应 <c>docker tag</c>）。
@@ -728,7 +746,7 @@ public sealed class ImageService
     /// 走的是同一套规则，两处各写一份必然漂移。
     /// </remarks>
     internal static string RequireImageId(string? imageId) =>
-        string.IsNullOrWhiteSpace(imageId)
+        String.IsNullOrWhiteSpace(imageId)
             ? throw new BusinessException(ErrorCodes.ValidationFailed, "imageId 不能为空")
             : imageId.Trim();
 
@@ -753,28 +771,32 @@ public sealed class ImageService
     /// </remarks>
     private static string RequireTag(string? tag)
     {
-        if (string.IsNullOrWhiteSpace(tag))
+        if (String.IsNullOrWhiteSpace(tag))
         {
-            return DefaultTag;
+            return _defaultTag;
         }
 
         var trimmed = tag.Trim();
 
-        var isValid = (char.IsAsciiLetter(trimmed[0]) || trimmed[0] == '_')
-            && trimmed.Length <= MaxTagLength
-            && trimmed.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '.' or '-');
+        var isValid = (Char.IsAsciiLetter(trimmed[0]) || trimmed[0] == '_')
+            && trimmed.Length <= _maxTagLength
+            && trimmed.All(c => Char.IsAsciiLetterOrDigit(c) || c is '_' or '.' or '-');
 
         return isValid
             ? trimmed
             : throw BusinessException.Validation(
-                $"tag「{trimmed}」非法：必须以字母或下划线开头，其后只能是字母、数字与 _ . -，且不超过 {MaxTagLength} 个字符（斜杠属于仓库名，不能写在 tag 里）");
+                $"tag「{trimmed}」非法：必须以字母或下划线开头，其后只能是字母、数字与 _ . -，且不超过 {_maxTagLength} 个字符（斜杠属于仓库名，不能写在 tag 里）");
     }
 
-    /// <summary>标签默认值：省略时等同 <c>docker tag … :latest</c>。</summary>
-    private const string DefaultTag = "latest";
+    /// <summary>
+    /// 标签默认值：省略时等同 <c>docker tag … :latest</c>。
+    /// </summary>
+    private const string _defaultTag = "latest";
 
-    /// <summary>标签长度上限（Docker 的文法上限）。</summary>
-    private const int MaxTagLength = 128;
+    /// <summary>
+    /// 标签长度上限（Docker 的文法上限）。
+    /// </summary>
+    private const int _maxTagLength = 128;
 
     /// <summary>
     /// 把「仓库名 + 标签」解析成完整的镜像引用。
@@ -793,7 +815,7 @@ public sealed class ImageService
     private static (string Image, string Tag) ResolveImageReference(string? image, string? tag)
     {
         var name = RequireImageId(image).TrimEnd(':');
-        var requestedTag = string.IsNullOrWhiteSpace(tag) ? null : tag.Trim();
+        var requestedTag = String.IsNullOrWhiteSpace(tag) ? null : tag.Trim();
 
         if (!HasTag(name))
         {
@@ -853,7 +875,7 @@ public sealed class ImageService
         references is null
             ? []
             : [.. references
-                .Where(reference => !string.IsNullOrWhiteSpace(reference)
+                .Where(reference => !global::System.String.IsNullOrWhiteSpace(reference)
                     && !reference.Contains("<none>", StringComparison.Ordinal))
                 .Distinct(StringComparer.Ordinal)];
 
@@ -886,18 +908,18 @@ public sealed class ImageService
             RepoDigests: MapReferences(source.RepoDigests),
             Created: ToUtc(source.Created),
             Size: source.Size,
-            Architecture: source.Architecture ?? string.Empty,
-            Os: source.Os ?? string.Empty,
-            OsVersion: source.OsVersion ?? string.Empty,
-            Author: source.Author ?? string.Empty,
-            Comment: source.Comment ?? string.Empty,
+            Architecture: source.Architecture ?? String.Empty,
+            Os: source.Os ?? String.Empty,
+            OsVersion: source.OsVersion ?? String.Empty,
+            Author: source.Author ?? String.Empty,
+            Comment: source.Comment ?? String.Empty,
             Env: config?.Env is null ? [] : [.. config.Env],
             Cmd: config?.Cmd is null ? [] : [.. config.Cmd],
             Entrypoint: config?.Entrypoint is null ? [] : [.. config.Entrypoint],
             ExposedPorts: MapKeys(config?.ExposedPorts),
             Volumes: MapKeys(config?.Volumes),
             Labels: MapLabels(config?.Labels),
-            WorkingDir: config?.WorkingDir ?? string.Empty,
+            WorkingDir: config?.WorkingDir ?? String.Empty,
             LayerCount: source.RootFS?.Layers?.Count ?? 0);
     }
 
@@ -979,7 +1001,9 @@ public sealed class ImageService
             _progressToken = progressToken;
         }
 
-        /// <summary>已见到的层数（按带层 ID 的进度消息计）。</summary>
+        /// <summary>
+        /// 已见到的层数（按带层 ID 的进度消息计）。
+        /// </summary>
         public int LayerCount { get; private set; }
 
         /// <inheritdoc />
@@ -995,7 +1019,7 @@ public sealed class ImageService
                 return;
             }
 
-            var status = message.Status ?? string.Empty;
+            var status = message.Status ?? String.Empty;
 
             if (status.StartsWith("Error:", StringComparison.OrdinalIgnoreCase))
             {
@@ -1005,7 +1029,7 @@ public sealed class ImageService
 
             if (message.ID is { Length: > 0 })
             {
-                LayerCount++;
+                this.LayerCount++;
             }
 
             // 聚合总体进度并转发（0.5.0）。失败与完成消息也要转发：
@@ -1039,7 +1063,7 @@ public sealed class ImageService
         /// <param name="message">原始进度消息。</param>
         private void Publish(JSONMessage message)
         {
-            if (_publisher is null || string.IsNullOrWhiteSpace(_progressToken))
+            if (_publisher is null || String.IsNullOrWhiteSpace(_progressToken))
             {
                 return;
             }
@@ -1055,7 +1079,7 @@ public sealed class ImageService
                 _progressToken,
                 "pull",
                 this._aggregator.Percent,
-                this._aggregator.LastStatus ?? string.Empty,
+                this._aggregator.LastStatus ?? String.Empty,
                 Done: false,
                 Error: failure);
 

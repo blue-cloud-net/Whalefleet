@@ -25,11 +25,6 @@ public sealed class ImageProgressAggregator
     private readonly Dictionary<string, (long Current, long Total)> _layers = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// 最近一条状态原文。
-    /// </summary>
-    private string? _lastStatus;
-
-    /// <summary>
     /// 总体百分比（0–100）；无法确定时为 <see langword="null"/>。
     /// </summary>
     public double? Percent
@@ -39,10 +34,10 @@ public sealed class ImageProgressAggregator
             long current = 0;
             long total = 0;
 
-            foreach (var layer in _layers.Values)
+            foreach (var (Current, Total) in _layers.Values)
             {
-                current += layer.Current;
-                total += layer.Total;
+                current += Current;
+                total += Total;
             }
 
             if (total <= 0)
@@ -59,7 +54,10 @@ public sealed class ImageProgressAggregator
     /// <summary>
     /// 最近一条状态原文（守护进程给的，可直接展示）。
     /// </summary>
-    public string? LastStatus => _lastStatus;
+    public string? LastStatus
+    {
+        get; private set;
+    }
 
     /// <summary>
     /// 吃进一条进度消息。
@@ -73,12 +71,12 @@ public sealed class ImageProgressAggregator
     {
         ArgumentNullException.ThrowIfNull(message);
 
-        if (!string.IsNullOrWhiteSpace(message.Status))
+        if (!String.IsNullOrWhiteSpace(message.Status))
         {
-            _lastStatus = message.Status;
+            this.LastStatus = message.Status;
         }
 
-        if (string.IsNullOrWhiteSpace(message.ID) || message.Progress is null)
+        if (String.IsNullOrWhiteSpace(message.ID) || message.Progress is null)
         {
             return;
         }

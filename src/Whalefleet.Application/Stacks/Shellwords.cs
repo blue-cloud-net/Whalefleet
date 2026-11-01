@@ -37,7 +37,7 @@ internal static class Shellwords
         {
             var character = text[index];
 
-            if (char.IsWhiteSpace(character))
+            if (Char.IsWhiteSpace(character))
             {
                 if (hasWord)
                 {

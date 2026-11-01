@@ -13,37 +13,57 @@ namespace Whalefleet.Application.Common;
 /// </remarks>
 public enum ErrorCategory
 {
-    /// <summary>成功（错误码 <see cref="ErrorCodes.Success"/>）。</summary>
+    /// <summary>
+    /// 成功（错误码 <see cref="ErrorCodes.Success"/>）。
+    /// </summary>
     Success,
 
-    /// <summary>请求参数或领域不变量校验失败。</summary>
+    /// <summary>
+    /// 请求参数或领域不变量校验失败。
+    /// </summary>
     Validation,
 
-    /// <summary>请求的资源不存在。</summary>
+    /// <summary>
+    /// 请求的资源不存在。
+    /// </summary>
     NotFound,
 
-    /// <summary>未认证，或凭证无效 / 已过期。</summary>
+    /// <summary>
+    /// 未认证，或凭证无效 / 已过期。
+    /// </summary>
     Unauthorized,
 
-    /// <summary>触发速率限制。</summary>
+    /// <summary>
+    /// 触发速率限制。
+    /// </summary>
     RateLimited,
 
-    /// <summary>操作超时。</summary>
+    /// <summary>
+    /// 操作超时。
+    /// </summary>
     Timeout,
 
-    /// <summary>已认证但无权限执行该操作。</summary>
+    /// <summary>
+    /// 已认证但无权限执行该操作。
+    /// </summary>
     Forbidden,
 
-    /// <summary>资源当前状态不允许该操作（如删除运行中的容器）。</summary>
+    /// <summary>
+    /// 资源当前状态不允许该操作（如删除运行中的容器）。
+    /// </summary>
     /// <remarks>
     /// 与 <see cref="Validation"/> 分开：请求参数本身完全合法，是<b>目标资源的状态</b>不允许——
     /// 映射成 400 会让调用方去查自己的请求体，而真正该做的是先停掉容器再重试。
     /// </remarks>
     Conflict,
 
-    /// <summary>上游依赖（Docker 守护进程等）失败。</summary>
+    /// <summary>
+    /// 上游依赖（Docker 守护进程等）失败。
+    /// </summary>
     UpstreamFailure,
 
-    /// <summary>服务器内部错误。</summary>
+    /// <summary>
+    /// 服务器内部错误。
+    /// </summary>
     Internal,
 }

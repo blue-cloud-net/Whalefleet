@@ -25,7 +25,7 @@ public sealed class VolumeUsageCache
     /// 30 秒是「用户连续翻页 / 点一次刷新」与「删除卷后数字立刻变」之间的折中：
     /// 比这更短会让分页重新变得值不回票价，更长则会让删除后的数字明显滞后。
     /// </remarks>
-    private static readonly TimeSpan TimeToLive = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan _timeToLive = TimeSpan.FromSeconds(30);
 
     private readonly TimeProvider _timeProvider;
     private readonly Lock _gate = new();
@@ -56,7 +56,7 @@ public sealed class VolumeUsageCache
         lock (_gate)
         {
             if (_entries.TryGetValue(hostId, out var entry)
-                && now - entry.FetchedAt < TimeToLive)
+                && now - entry.FetchedAt < _timeToLive)
             {
                 usage = entry.Usage;
 
@@ -67,7 +67,7 @@ public sealed class VolumeUsageCache
             _entries.Remove(hostId);
         }
 
-        usage = Empty;
+        usage = _empty;
 
         return false;
     }
@@ -87,11 +87,15 @@ public sealed class VolumeUsageCache
         }
     }
 
-    /// <summary>空用量：<b>不是</b>「用量为 0」，而是「不知道」。</summary>
-    private static readonly IReadOnlyDictionary<string, UsageData> Empty =
+    /// <summary>
+    /// 空用量：<b>不是</b>「用量为 0」，而是「不知道」。
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, UsageData> _empty =
         new Dictionary<string, UsageData>(0, StringComparer.Ordinal);
 
-    /// <summary>一条缓存项。</summary>
+    /// <summary>
+    /// 一条缓存项。
+    /// </summary>
     /// <param name="Usage">用量。</param>
     /// <param name="FetchedAt">写入时刻（UTC）。</param>
     private readonly record struct Entry(IReadOnlyDictionary<string, UsageData> Usage, DateTimeOffset FetchedAt);

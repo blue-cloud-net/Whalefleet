@@ -1,14 +1,17 @@
 using System.Globalization;
 using System.Net.Sockets;
+
 using Docker.DotNet;
 using Docker.DotNet.Models;
+
+using Microsoft.Extensions.Logging;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Containers;
 using Whalefleet.Application.Docker;
 using Whalefleet.Application.HostTags;
 using Whalefleet.Core.Hosts;
-using Microsoft.Extensions.Logging;
 
 namespace Whalefleet.Application.Hosts;
 
@@ -102,7 +105,7 @@ public sealed class HostQueryService
 
         // 标签一查到底：它既是过滤条件，也要回带给界面（行上要看得出「凭什么被筛出来」）
         var tags = visible.Length == 0
-            ? EmptyTags
+            ? _emptyTags
             : await _tags
                 .QueryByHostIdsAsync([.. visible.Select(static host => host.Id)], cancellationToken)
                 .ConfigureAwait(false);
@@ -201,7 +204,7 @@ public sealed class HostQueryService
                 cancellationToken).ConfigureAwait(false);
 
             var (healthy, unhealthy) = CountHealth(containers);
-            var imagesSize = await TryGetImagesSizeAsync(client, host.Name, cancellationToken)
+            var imagesSize = await this.TryGetImagesSizeAsync(client, host.Name, cancellationToken)
                 .ConfigureAwait(false);
 
             var counts = new HostResourceCounts(
@@ -248,8 +251,10 @@ public sealed class HostQueryService
         }
     }
 
-    /// <summary><c>GET /system/df</c> 的 <c>type</c> 过滤值：只要镜像，跳过容器 / 卷 / 构建缓存。</summary>
-    private const string ImageUsageType = "image";
+    /// <summary>
+    /// <c>GET /system/df</c> 的 <c>type</c> 过滤值：只要镜像，跳过容器 / 卷 / 构建缓存。
+    /// </summary>
+    private const string _imageUsageType = "image";
 
     /// <summary>
     /// 从容器列表的 <c>Status</c> 文本里统计健康检查结果。
@@ -313,7 +318,7 @@ public sealed class HostQueryService
         try
         {
             var usage = await client.System.GetDataUsageInfoAsync(
-                new SytemDataUsageInfoParameters { Type = [ImageUsageType] },
+                new SytemDataUsageInfoParameters { Type = [_imageUsageType] },
                 cancellationToken).ConfigureAwait(false);
 
             return usage.ImageUsage?.TotalSize;
@@ -462,6 +467,11 @@ public sealed class HostQueryService
         NoProxy: source.NoProxy,
         Warnings: source.Warnings is { } warnings ? [.. warnings] : []);
 
+    /// <summary>
+    /// 把守护进程返回的驱动状态整理成二维列表。
+    /// </summary>
+    /// <param name="status">守护进程返回的驱动状态。</param>
+    /// <returns>按驱动分组的驱动名列表。</returns>
     private static IReadOnlyList<IReadOnlyList<string>> MapDriverStatus(
         IEnumerable<IEnumerable<string>>? status)
     {
@@ -473,6 +483,11 @@ public sealed class HostQueryService
         return [.. status.Select(static entry => (IReadOnlyList<string>)[.. entry])];
     }
 
+    /// <summary>
+    /// 把守护进程插件信息映射为对外结构。
+    /// </summary>
+    /// <param name="plugins">守护进程插件信息。</param>
+    /// <returns>插件列表。</returns>
     private static HostDaemonPlugins MapPlugins(PluginsInfo? plugins) => new(
         Volume: plugins?.Volume is { } volume ? [.. volume] : [],
         Network: plugins?.Network is { } network ? [.. network] : [],
@@ -496,6 +511,12 @@ public sealed class HostQueryService
         return TagsOf(tags, hostId);
     }
 
+    /// <summary>
+    /// 取出指定主机挂着的标签。
+    /// </summary>
+    /// <param name="tags">按主机分组的标签。</param>
+    /// <param name="hostId">主机主键。</param>
+    /// <returns>该主机的标签引用列表。</returns>
     private static IReadOnlyList<HostTagRef> TagsOf(
         IReadOnlyDictionary<Guid, IReadOnlyList<HostTag>> tags,
         Guid hostId) =>
@@ -503,7 +524,7 @@ public sealed class HostQueryService
             ? [.. forHost.Select(HostTagService.ToRef)]
             : [];
 
-    private static readonly IReadOnlyDictionary<Guid, IReadOnlyList<HostTag>> EmptyTags =
+    private static readonly IReadOnlyDictionary<Guid, IReadOnlyList<HostTag>> _emptyTags =
         new Dictionary<Guid, IReadOnlyList<HostTag>>();
 
     /// <summary>
@@ -549,7 +570,7 @@ public sealed class HostQueryService
 
             foreach (var rawTagId in rawTagIds)
             {
-                if (string.IsNullOrWhiteSpace(rawTagId) || !Guid.TryParse(rawTagId.Trim(), out var tagId))
+                if (String.IsNullOrWhiteSpace(rawTagId) || !Guid.TryParse(rawTagId.Trim(), out var tagId))
                 {
                     throw BusinessException.Validation($"tagIds 中的「{rawTagId}」不是合法的标签标识");
                 }
@@ -560,7 +581,7 @@ public sealed class HostQueryService
 
         HostConnectivityStatus? status = null;
 
-        if (!string.IsNullOrWhiteSpace(request.Status))
+        if (!String.IsNullOrWhiteSpace(request.Status))
         {
             status = request.Status.Trim().ToLowerInvariant() switch
             {
@@ -572,7 +593,7 @@ public sealed class HostQueryService
             };
         }
 
-        var search = string.IsNullOrWhiteSpace(request.Search) ? null : request.Search.Trim();
+        var search = String.IsNullOrWhiteSpace(request.Search) ? null : request.Search.Trim();
 
         return new HostFilter(groupId, ungrouped, tagIds, status, search);
     }
@@ -634,7 +655,9 @@ public sealed class HostQueryService
         HostConnectivityStatus? Status,
         string? Search)
     {
-        /// <summary>空过滤（不过滤）。</summary>
+        /// <summary>
+        /// 空过滤（不过滤）。
+        /// </summary>
         public static HostFilter None { get; } = new(null, false, null, null, null);
     }
 }

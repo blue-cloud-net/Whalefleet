@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Auditing;
 using Whalefleet.Application.Common;
@@ -5,7 +7,6 @@ using Whalefleet.Core.Auditing;
 using Whalefleet.Core.Auth;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
-using Microsoft.Extensions.Logging;
 
 namespace Whalefleet.Application.Auth;
 
@@ -98,7 +99,7 @@ public sealed class AuthService
     /// 提为常量是为了让它只存在一处——只要"用户名不存在"与"密码错误"共用它，
     /// 就不可能出现两处文案漂移从而被用来枚举用户名。
     /// </remarks>
-    private const string InvalidCredentialsMessage = "用户名或密码错误";
+    private const string _invalidCredentialsMessage = "用户名或密码错误";
 
     /// <summary>
     /// 执行登录。
@@ -433,7 +434,7 @@ public sealed class AuthService
             cancellationToken,
             detail: $"窗口内失败 {failures} 次").ConfigureAwait(false);
 
-        return BusinessException.Unauthenticated(InvalidCredentialsMessage);
+        return BusinessException.Unauthenticated(_invalidCredentialsMessage);
     }
 
     /// <summary>

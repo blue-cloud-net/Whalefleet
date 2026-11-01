@@ -1,9 +1,11 @@
 using Docker.DotNet;
 using Docker.DotNet.Models;
+
+using Microsoft.Extensions.Logging;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Docker;
-using Microsoft.Extensions.Logging;
 
 namespace Whalefleet.Application.Hosts;
 
@@ -106,7 +108,7 @@ public sealed class HostDiskUsageService
     /// </remarks>
     private static string[] NormalizeTypes(string? type)
     {
-        if (string.IsNullOrWhiteSpace(type))
+        if (String.IsNullOrWhiteSpace(type))
         {
             return [];
         }
@@ -116,12 +118,17 @@ public sealed class HostDiskUsageService
         if (!_allowedTypes.Contains(trimmed, StringComparer.Ordinal))
         {
             throw BusinessException.Validation(
-                $"type「{type}」不是合法取值（{string.Join(" / ", _allowedTypes)}）");
+                $"type「{type}」不是合法取值（{String.Join(" / ", _allowedTypes)}）");
         }
 
         return [trimmed];
     }
 
+    /// <summary>
+    /// 把镜像磁盘用量映射为对外结构。
+    /// </summary>
+    /// <param name="usage">镜像磁盘用量。</param>
+    /// <returns>磁盘用量分桶；无数据时为 <see langword="null"/>。</returns>
     private static DiskUsageBucket? MapImages(ImageDiskUsage? usage) => usage is null
         ? null
         : new DiskUsageBucket(
@@ -138,6 +145,11 @@ public sealed class HostDiskUsageService
                     InUse: image.Containers > 0))]
                 : []);
 
+    /// <summary>
+    /// 把容器磁盘用量映射为对外结构。
+    /// </summary>
+    /// <param name="usage">容器磁盘用量。</param>
+    /// <returns>磁盘用量分桶；无数据时为 <see langword="null"/>。</returns>
     private static DiskUsageBucket? MapContainers(ContainerDiskUsage? usage) => usage is null
         ? null
         : new DiskUsageBucket(
@@ -155,6 +167,11 @@ public sealed class HostDiskUsageService
                     InUse: true))]
                 : []);
 
+    /// <summary>
+    /// 把卷磁盘用量映射为对外结构。
+    /// </summary>
+    /// <param name="usage">卷磁盘用量。</param>
+    /// <returns>磁盘用量分桶；无数据时为 <see langword="null"/>。</returns>
     private static DiskUsageBucket? MapVolumes(VolumeDiskUsage? usage) => usage is null
         ? null
         : new DiskUsageBucket(
@@ -171,6 +188,11 @@ public sealed class HostDiskUsageService
                     InUse: volume.UsageData is { } data ? data.RefCount > 0 : null))]
                 : []);
 
+    /// <summary>
+    /// 把构建缓存磁盘用量映射为对外结构。
+    /// </summary>
+    /// <param name="usage">构建缓存磁盘用量。</param>
+    /// <returns>磁盘用量分桶；无数据时为 <see langword="null"/>。</returns>
     private static DiskUsageBucket? MapBuildCache(BuildDiskUsage? usage) => usage is null
         ? null
         : new DiskUsageBucket(

@@ -1,4 +1,5 @@
 using System.Globalization;
+
 using Whalefleet.Application.Common;
 
 namespace Whalefleet.Application.Stacks;
@@ -21,9 +22,11 @@ namespace Whalefleet.Application.Stacks;
 /// </remarks>
 internal static class ComposeDuration
 {
-    /// <summary>Compose 时长解析失败时抛出的错误码。</summary>
+    /// <summary>
+    /// Compose 时长解析失败时抛出的错误码。
+    /// </summary>
     /// <remarks>与「Compose 文件非法」共用 1904：时长的非法本质上就是 YAML 里的值非法。</remarks>
-    private const int ErrorCode = ErrorCodes.ComposeInvalid;
+    private const int _errorCode = ErrorCodes.ComposeInvalid;
 
     /// <summary>
     /// 解析时长。
@@ -47,7 +50,7 @@ internal static class ComposeDuration
         }
 
         // 纯数字按秒处理（Compose 的历史写法：interval: 30）
-        if (trimmed.All(static c => char.IsAsciiDigit(c)))
+        if (trimmed.All(static c => Char.IsAsciiDigit(c)))
         {
             return ParseNumber(trimmed, path);
         }
@@ -59,7 +62,7 @@ internal static class ComposeDuration
         {
             var numberStart = index;
 
-            while (index < trimmed.Length && char.IsAsciiDigit(trimmed[index]))
+            while (index < trimmed.Length && Char.IsAsciiDigit(trimmed[index]))
             {
                 index++;
             }
@@ -72,14 +75,14 @@ internal static class ComposeDuration
             var numberText = trimmed[numberStart..index];
             var unitStart = index;
 
-            while (index < trimmed.Length && !char.IsAsciiDigit(trimmed[index]))
+            while (index < trimmed.Length && !Char.IsAsciiDigit(trimmed[index]))
             {
                 index++;
             }
 
             var unit = trimmed[unitStart..index];
 
-            if (!long.TryParse(numberText, NumberStyles.None, CultureInfo.InvariantCulture, out var number))
+            if (!Int64.TryParse(numberText, NumberStyles.None, CultureInfo.InvariantCulture, out var number))
             {
                 throw Invalid(path, value, "数值超出可表示范围");
             }
@@ -112,12 +115,12 @@ internal static class ComposeDuration
     /// <exception cref="BusinessException">数值非法（<c>1904</c>）。</exception>
     private static int ParseNumber(string text, string path)
     {
-        if (!long.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var seconds) || seconds <= 0)
+        if (!Int64.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var seconds) || seconds <= 0)
         {
             throw Invalid(path, text, "时长必须是一个正整数（秒）");
         }
 
-        if (seconds > int.MaxValue)
+        if (seconds > Int32.MaxValue)
         {
             throw Invalid(path, text, "时长超出可表示范围");
         }
@@ -134,6 +137,6 @@ internal static class ComposeDuration
     /// <returns>业务异常。</returns>
     private static BusinessException Invalid(string path, string? value, string reason) =>
         new(
-            ErrorCode,
+            _errorCode,
             $"Compose 文件的「{path}」取值「{value}」非法：{reason}");
 }

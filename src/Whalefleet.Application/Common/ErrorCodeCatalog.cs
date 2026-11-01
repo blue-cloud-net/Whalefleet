@@ -16,14 +16,16 @@ namespace Whalefleet.Application.Common;
 /// </remarks>
 public static class ErrorCodeCatalog
 {
-    /// <summary>未登记错误码的兜底消息。</summary>
-    private const string UnknownMessage = "请求处理失败";
+    /// <summary>
+    /// 未登记错误码的兜底消息。
+    /// </summary>
+    private const string _unknownMessage = "请求处理失败";
 
     /// <summary>
     /// 错误码 → （语义分类，默认文案）映射表。
     /// 使用 <see cref="FrozenDictionary{TKey,TValue}"/> 以获得最优读取性能。
     /// </summary>
-    private static readonly FrozenDictionary<int, (ErrorCategory Category, string Message)> Entries =
+    private static readonly FrozenDictionary<int, (ErrorCategory Category, string Message)> _entries =
         new Dictionary<int, (ErrorCategory Category, string Message)>
         {
             [ErrorCodes.Success] = (ErrorCategory.Success, "ok"),
@@ -93,14 +95,14 @@ public static class ErrorCodeCatalog
     /// <summary>
     /// 获取已登记的错误码集合（不含未登记时的兜底值），供测试与文档生成使用。
     /// </summary>
-    public static IEnumerable<int> KnownCodes => Entries.Keys;
+    public static IEnumerable<int> KnownCodes => _entries.Keys;
 
     /// <summary>
     /// 判断指定错误码是否已在目录中登记。
     /// </summary>
     /// <param name="code">业务错误码。</param>
     /// <returns>已登记返回 <c>true</c>；否则返回 <c>false</c>。</returns>
-    public static bool IsKnown(int code) => Entries.ContainsKey(code);
+    public static bool IsKnown(int code) => _entries.ContainsKey(code);
 
     /// <summary>
     /// 获取错误码的语义分类。
@@ -108,7 +110,7 @@ public static class ErrorCodeCatalog
     /// <param name="code">业务错误码。</param>
     /// <returns>已登记时返回其分类；未登记时返回 <see cref="ErrorCategory.Internal"/>。</returns>
     public static ErrorCategory Classify(int code) =>
-        Entries.TryGetValue(code, out var entry) ? entry.Category : ErrorCategory.Internal;
+        _entries.TryGetValue(code, out var entry) ? entry.Category : ErrorCategory.Internal;
 
     /// <summary>
     /// 获取错误码的默认文案。
@@ -116,5 +118,5 @@ public static class ErrorCodeCatalog
     /// <param name="code">业务错误码。</param>
     /// <returns>已登记时返回其默认文案；未登记时返回兜底文案。</returns>
     public static string GetDefaultMessage(int code) =>
-        Entries.TryGetValue(code, out var entry) ? entry.Message : UnknownMessage;
+        _entries.TryGetValue(code, out var entry) ? entry.Message : _unknownMessage;
 }

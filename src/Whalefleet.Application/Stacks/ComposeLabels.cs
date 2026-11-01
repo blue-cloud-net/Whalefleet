@@ -16,19 +16,29 @@ namespace Whalefleet.Application.Stacks;
 /// </remarks>
 internal static class ComposeLabels
 {
-    /// <summary>项目名标签（值 = Compose 项目名）。</summary>
+    /// <summary>
+    /// 项目名标签（值 = Compose 项目名）。
+    /// </summary>
     public const string Project = "com.docker.compose.project";
 
-    /// <summary>服务名标签（值 = 服务名）。</summary>
+    /// <summary>
+    /// 服务名标签（值 = 服务名）。
+    /// </summary>
     public const string Service = "com.docker.compose.service";
 
-    /// <summary>容器序号标签（值 = 项目内第几个实例，从 1 开始）。</summary>
+    /// <summary>
+    /// 容器序号标签（值 = 项目内第几个实例，从 1 开始）。
+    /// </summary>
     public const string ContainerNumber = "com.docker.compose.container-number";
 
-    /// <summary>服务配置哈希标签（值 = 该服务配置的哈希）。</summary>
+    /// <summary>
+    /// 服务配置哈希标签（值 = 该服务配置的哈希）。
+    /// </summary>
     public const string ConfigHash = "com.docker.compose.config-hash";
 
-    /// <summary>一次性任务标记（值 = <c>True</c> / <c>False</c>）。</summary>
+    /// <summary>
+    /// 一次性任务标记（值 = <c>True</c> / <c>False</c>）。
+    /// </summary>
     /// <remarks>
     /// Compose 用它标记「跑完就删」的一次性容器（<c>docker compose run</c>）。
     /// 本平台不产生这类容器，但外部 compose 项目可能有——
@@ -36,7 +46,9 @@ internal static class ComposeLabels
     /// </remarks>
     public const string OneOff = "com.docker.compose.oneoff";
 
-    /// <summary>配置文件路径标签（值 = YAML 文件路径，多个用逗号分隔）。</summary>
+    /// <summary>
+    /// 配置文件路径标签（值 = YAML 文件路径，多个用逗号分隔）。
+    /// </summary>
     /// <remarks>
     /// 仅作标识用：本平台不读这个路径（YAML 原文存在库里），
     /// 但写上它能让 <c>docker compose</c> 侧认出这个项目是「有配置文件的」，
@@ -44,12 +56,18 @@ internal static class ComposeLabels
     /// </remarks>
     public const string ConfigFiles = "com.docker.compose.project.config_files";
 
-    /// <summary>工作目录标签（值 = 项目的工作目录）。</summary>
+    /// <summary>
+    /// 工作目录标签（值 = 项目的工作目录）。
+    /// </summary>
     public const string WorkingDir = "com.docker.compose.project.working_dir";
 
-    /// <summary>镜像拉取策略的取值：只在本地缺失时拉取。</summary>
+    /// <summary>
+    /// 镜像拉取策略的取值：只在本地缺失时拉取。
+    /// </summary>
     public const string PullPolicyMissing = "missing";
 
-    /// <summary>镜像拉取策略的取值：总是拉取最新。</summary>
+    /// <summary>
+    /// 镜像拉取策略的取值：总是拉取最新。
+    /// </summary>
     public const string PullPolicyAlways = "always";
 }

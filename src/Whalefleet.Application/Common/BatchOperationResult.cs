@@ -45,5 +45,5 @@ public sealed record BatchOperationResult(
     /// <summary>
     /// 是否为「一条都没成」。
     /// </summary>
-    public bool IsTotalFailure => Succeeded == 0 && Failures.Count > 0;
+    public bool IsTotalFailure => this.Succeeded == 0 && this.Failures.Count > 0;
 }

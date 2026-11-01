@@ -1,11 +1,14 @@
 using System.Globalization;
 using System.Net.Sockets;
+
 using Docker.DotNet;
 using Docker.DotNet.Models;
+
+using Microsoft.Extensions.Logging;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Docker;
-using Microsoft.Extensions.Logging;
 
 namespace Whalefleet.Application.Volumes;
 
@@ -25,17 +28,25 @@ namespace Whalefleet.Application.Volumes;
 /// </remarks>
 public sealed class VolumeService
 {
-    /// <summary>列表默认每页条数。</summary>
-    private const int DefaultPageSize = 20;
+    /// <summary>
+    /// 列表默认每页条数。
+    /// </summary>
+    private const int _defaultPageSize = 20;
 
-    /// <summary>列表每页条数上限（与容器 / 镜像一致）。</summary>
-    private const int MaxPageSize = 100;
+    /// <summary>
+    /// 列表每页条数上限（与容器 / 镜像一致）。
+    /// </summary>
+    private const int _maxPageSize = 100;
 
-    /// <summary><c>GET /system/df</c> 的 <c>type</c> 过滤值：只要卷，跳过镜像层统计。</summary>
-    private const string VolumeUsageType = "volume";
+    /// <summary>
+    /// <c>GET /system/df</c> 的 <c>type</c> 过滤值：只要卷，跳过镜像层统计。
+    /// </summary>
+    private const string _volumeUsageType = "volume";
 
-    /// <summary>「用量未知」：查询失败时的返回值。<b>不是</b>「用量为 0」。</summary>
-    private static readonly IReadOnlyDictionary<string, UsageData> EmptyUsage =
+    /// <summary>
+    /// 「用量未知」：查询失败时的返回值。<b>不是</b>「用量为 0」。
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, UsageData> _emptyUsage =
         new Dictionary<string, UsageData>(0, StringComparer.Ordinal);
 
     private readonly IDockerHostAccessor _accessor;
@@ -101,19 +112,19 @@ public sealed class VolumeService
         var volumes = response.Volumes ?? [];
         var warnings = response.Warnings ?? [];
 
-        var usage = await GetUsageAsync(client, hostId, cancellationToken).ConfigureAwait(false);
+        var usage = await this.GetUsageAsync(client, hostId, cancellationToken).ConfigureAwait(false);
 
         // 过滤必须在分页之前：先分页再过滤会让 total 与实际命中数对不上。
         var filtered = Filter(volumes, request.Search);
 
         var pageIndex = Math.Max(request.PageIndex ?? 0, 0);
-        var pageSize = Math.Clamp(request.PageSize ?? DefaultPageSize, 1, MaxPageSize);
+        var pageSize = Math.Clamp(request.PageSize ?? _defaultPageSize, 1, _maxPageSize);
 
         _logger.LogDebug(
             "主机 {HostId} 数据卷列表：共 {Total} 个（搜索={Search}，用量 {UsageCount} 项，告警 {WarningCount} 条），返回第 {PageIndex} 页（每页 {PageSize}）",
             hostId,
             filtered.Count,
-            string.IsNullOrWhiteSpace(request.Search) ? "无" : request.Search.Trim(),
+            String.IsNullOrWhiteSpace(request.Search) ? "无" : request.Search.Trim(),
             usage.Count,
             warnings.Count,
             pageIndex,
@@ -123,7 +134,7 @@ public sealed class VolumeService
             [.. filtered
                 .Skip(pageIndex * pageSize)
                 .Take(pageSize)
-                .Select(volume => MapSummary(volume, usage.GetValueOrDefault(volume.Name ?? string.Empty)))],
+                .Select(volume => MapSummary(volume, usage.GetValueOrDefault(volume.Name ?? String.Empty)))],
             filtered.Count,
             pageIndex,
             pageSize,
@@ -144,7 +155,7 @@ public sealed class VolumeService
         IList<VolumeResponse> volumes,
         string? search)
     {
-        if (string.IsNullOrWhiteSpace(search))
+        if (String.IsNullOrWhiteSpace(search))
         {
             return [.. volumes];
         }
@@ -201,7 +212,7 @@ public sealed class VolumeService
         try
         {
             var response = await client.System.GetDataUsageInfoAsync(
-                new SytemDataUsageInfoParameters { Type = [VolumeUsageType] },
+                new SytemDataUsageInfoParameters { Type = [_volumeUsageType] },
                 cancellationToken).ConfigureAwait(false);
 
             var items = response.VolumeUsage?.Items;
@@ -210,7 +221,7 @@ public sealed class VolumeService
             {
                 // 老版守护进程的 /system/df 只有旧的 Volumes 数组（无分组用量），
                 // SDK 模型里没有那个属性 → 拿不到就是拿不到，不能当成「都是 0」。
-                return EmptyUsage;
+                return _emptyUsage;
             }
 
             var usage = items
@@ -240,7 +251,7 @@ public sealed class VolumeService
                 "主机 {HostId} 数据卷用量查询失败：占用与引用数将留空（列表本身仍返回）",
                 hostId);
 
-            return EmptyUsage;
+            return _emptyUsage;
         }
     }
 
@@ -317,7 +328,7 @@ public sealed class VolumeService
                     // 空串而不是 null：SDK 的 Driver 声明为非空可空类型，而 Docker 侧
                     // Go 的 encoding/json 把 `"Driver": null` 与「不写该字段」同样处理成零值，
                     // 因此两者对守护进程完全等价——用空串就不必抑制可空性检查。
-                    Driver = driver ?? string.Empty,
+                    Driver = driver ?? String.Empty,
                     DriverOpts = ToMutable(driverOptions),
                     Labels = ToMutable(labels),
                 },
@@ -329,7 +340,7 @@ public sealed class VolumeService
             "主机 {HostId} 创建数据卷 {Name}（驱动 {Driver}）",
             hostId,
             name,
-            string.IsNullOrEmpty(driver) ? "默认" : driver);
+            String.IsNullOrEmpty(driver) ? "默认" : driver);
 
         // 创建响应里没有用量字段：新建的卷要等下次列表（或 system df）才有大小与引用数。
         // 传 null 而不是 0，界面因此显示「—」而不是伪造的「0 B」。
@@ -593,10 +604,10 @@ public sealed class VolumeService
     /// <returns>列表项。</returns>
     private static VolumeSummary MapSummary(VolumeResponse volume, UsageData? usage) =>
         new(
-            volume.Name ?? string.Empty,
-            volume.Driver ?? string.Empty,
-            volume.Mountpoint ?? string.Empty,
-            volume.Scope ?? string.Empty,
+            volume.Name ?? String.Empty,
+            volume.Driver ?? String.Empty,
+            volume.Mountpoint ?? String.Empty,
+            volume.Scope ?? String.Empty,
             ParseCreatedAt(volume.CreatedAt),
             usage?.Size,
             usage?.RefCount,
@@ -609,10 +620,10 @@ public sealed class VolumeService
     /// <returns>详情。</returns>
     private static VolumeDetail MapDetail(VolumeResponse volume) =>
         new(
-            volume.Name ?? string.Empty,
-            volume.Driver ?? string.Empty,
-            volume.Mountpoint ?? string.Empty,
-            volume.Scope ?? string.Empty,
+            volume.Name ?? String.Empty,
+            volume.Driver ?? String.Empty,
+            volume.Mountpoint ?? String.Empty,
+            volume.Scope ?? String.Empty,
             ParseCreatedAt(volume.CreatedAt),
             Copy(volume.Options),
             Copy(volume.Labels));
@@ -629,7 +640,7 @@ public sealed class VolumeService
     /// </remarks>
     private static DateTimeOffset? ParseCreatedAt(string? createdAt)
     {
-        if (string.IsNullOrWhiteSpace(createdAt))
+        if (String.IsNullOrWhiteSpace(createdAt))
         {
             return null;
         }
@@ -655,7 +666,7 @@ public sealed class VolumeService
     private static Dictionary<string, string> Copy(IDictionary<string, string>? source) =>
         source is { Count: > 0 }
             ? new Dictionary<string, string>(source, StringComparer.Ordinal)
-            : EmptyMap;
+            : _emptyMap;
 
     /// <summary>
     /// 把只读字典转成 SDK 参数需要的可变字典（不可变字典没有实现该接口的具体类型）。
@@ -664,13 +675,15 @@ public sealed class VolumeService
     /// <returns>空字典或内容的副本。</returns>
     /// <remarks>
     /// <b>必须复制而不是直接转换</b>：SDK 的参数对象会被持有到请求发出，
-    /// 直接塞入共享的 <see cref="EmptyMap"/> 会让任何一次调用都可能改到别人的数据。
+    /// 直接塞入共享的 <see cref="_emptyMap"/> 会让任何一次调用都可能改到别人的数据。
     /// </remarks>
     private static Dictionary<string, string> ToMutable(IReadOnlyDictionary<string, string> source) =>
         source.Count > 0
             ? new Dictionary<string, string>(source, StringComparer.Ordinal)
-            : EmptyMap;
+            : _emptyMap;
 
-    /// <summary>空字典的共享实例。</summary>
-    private static readonly Dictionary<string, string> EmptyMap = new(StringComparer.Ordinal);
+    /// <summary>
+    /// 空字典的共享实例。
+    /// </summary>
+    private static readonly Dictionary<string, string> _emptyMap = new(StringComparer.Ordinal);
 }

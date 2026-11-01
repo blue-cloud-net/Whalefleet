@@ -14,16 +14,24 @@ namespace Whalefleet.Application.Containers;
 /// </remarks>
 public enum ContainerHealthStatus
 {
-    /// <summary>未配置健康检查（Docker 的 <c>none</c>）。</summary>
+    /// <summary>
+    /// 未配置健康检查（Docker 的 <c>none</c>）。
+    /// </summary>
     None,
 
-    /// <summary>健康检查已配置，尚在启动宽限期内。</summary>
+    /// <summary>
+    /// 健康检查已配置，尚在启动宽限期内。
+    /// </summary>
     Starting,
 
-    /// <summary>健康检查通过。</summary>
+    /// <summary>
+    /// 健康检查通过。
+    /// </summary>
     Healthy,
 
-    /// <summary>健康检查连续失败。</summary>
+    /// <summary>
+    /// 健康检查连续失败。
+    /// </summary>
     Unhealthy,
 }
 
@@ -40,14 +48,20 @@ public enum ContainerHealthStatus
 /// </remarks>
 public static class ContainerHealth
 {
-    /// <summary>列表 <c>Status</c> 文本里的失败标记。</summary>
-    private const string UnhealthyMarker = "(unhealthy)";
+    /// <summary>
+    /// 列表 <c>Status</c> 文本里的失败标记。
+    /// </summary>
+    private const string _unhealthyMarker = "(unhealthy)";
 
-    /// <summary>列表 <c>Status</c> 文本里的通过标记。</summary>
-    private const string HealthyMarker = "(healthy)";
+    /// <summary>
+    /// 列表 <c>Status</c> 文本里的通过标记。
+    /// </summary>
+    private const string _healthyMarker = "(healthy)";
 
-    /// <summary>列表 <c>Status</c> 文本里的启动中标记（形如 <c>(health: starting)</c>）。</summary>
-    private const string StartingMarker = "starting";
+    /// <summary>
+    /// 列表 <c>Status</c> 文本里的启动中标记（形如 <c>(health: starting)</c>）。
+    /// </summary>
+    private const string _startingMarker = "starting";
 
     /// <summary>
     /// 从容器列表的 <c>Status</c> 文本解析健康状态。
@@ -56,23 +70,23 @@ public static class ContainerHealth
     /// <returns>健康状态；文本里没有健康标记时返回 <see cref="ContainerHealthStatus.None"/>。</returns>
     public static ContainerHealthStatus FromStatusText(string? status)
     {
-        if (string.IsNullOrEmpty(status))
+        if (String.IsNullOrEmpty(status))
         {
             return ContainerHealthStatus.None;
         }
 
-        if (status.Contains(UnhealthyMarker, StringComparison.OrdinalIgnoreCase))
+        if (status.Contains(_unhealthyMarker, StringComparison.OrdinalIgnoreCase))
         {
             return ContainerHealthStatus.Unhealthy;
         }
 
-        if (status.Contains(HealthyMarker, StringComparison.OrdinalIgnoreCase))
+        if (status.Contains(_healthyMarker, StringComparison.OrdinalIgnoreCase))
         {
             return ContainerHealthStatus.Healthy;
         }
 
         // 启动中的写法是 `(health: starting)`，它不是 `(healthy)` 的子串
-        if (status.Contains(StartingMarker, StringComparison.OrdinalIgnoreCase))
+        if (status.Contains(_startingMarker, StringComparison.OrdinalIgnoreCase))
         {
             return ContainerHealthStatus.Starting;
         }

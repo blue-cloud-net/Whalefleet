@@ -68,14 +68,14 @@ public sealed class HostGroupService
 
         var name = Require(request.Name, "name");
 
-        await EnsureNameAvailableAsync(name, excludedId: null, cancellationToken).ConfigureAwait(false);
+        await this.EnsureNameAvailableAsync(name, excludedId: null, cancellationToken).ConfigureAwait(false);
 
         var group = Build(name, request.Description, request.SortOrder ?? 0);
 
         await _groups.AddAsync(group, cancellationToken).ConfigureAwait(false);
 
         // 新建的分组必定是空的，计数直接给 0：再查一次库只为了得到一个必然的值
-        return Map(group, EmptyCounts);
+        return Map(group, _emptyCounts);
     }
 
     /// <summary>
@@ -93,13 +93,13 @@ public sealed class HostGroupService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var group = await RequireGroupAsync(groupId, cancellationToken).ConfigureAwait(false);
+        var group = await this.RequireGroupAsync(groupId, cancellationToken).ConfigureAwait(false);
 
         if (request.Name is not null)
         {
             var name = Require(request.Name, "name");
 
-            await EnsureNameAvailableAsync(name, groupId, cancellationToken).ConfigureAwait(false);
+            await this.EnsureNameAvailableAsync(name, groupId, cancellationToken).ConfigureAwait(false);
             ApplyName(group, name);
         }
 
@@ -135,7 +135,7 @@ public sealed class HostGroupService
     /// </remarks>
     public async Task<int> DeleteAsync(Guid groupId, CancellationToken cancellationToken = default)
     {
-        var group = await RequireGroupAsync(groupId, cancellationToken).ConfigureAwait(false);
+        var group = await this.RequireGroupAsync(groupId, cancellationToken).ConfigureAwait(false);
 
         var members = await _hosts.QueryByGroupAsync(groupId, cancellationToken).ConfigureAwait(false);
 
@@ -177,7 +177,7 @@ public sealed class HostGroupService
         if (request.GroupId is { } groupId)
         {
             // 必须确认目标分组存在且未删除：外键拦不住"指向已软删除的分组"
-            _ = await RequireGroupAsync(groupId, cancellationToken).ConfigureAwait(false);
+            _ = await this.RequireGroupAsync(groupId, cancellationToken).ConfigureAwait(false);
         }
 
         host.AssignGroup(request.GroupId);
@@ -194,13 +194,25 @@ public sealed class HostGroupService
     /// </remarks>
     public static IReadOnlyList<string> BuiltInNames => ["production", "staging", "local"];
 
-    private static readonly IReadOnlyDictionary<Guid, int> EmptyCounts =
+    private static readonly IReadOnlyDictionary<Guid, int> _emptyCounts =
         new Dictionary<Guid, int>();
 
+    /// <summary>
+    /// 按主键读取主机分组，不存在时抛业务异常。
+    /// </summary>
+    /// <param name="groupId">分组主键。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>主机分组实体。</returns>
     private async Task<HostGroup> RequireGroupAsync(Guid groupId, CancellationToken cancellationToken) =>
         await _groups.QueryByIdAsync(groupId, cancellationToken).ConfigureAwait(false)
         ?? throw new BusinessException(ErrorCodes.GroupNotFound, "分组不存在");
 
+    /// <summary>
+    /// 校验分组名称未被占用。
+    /// </summary>
+    /// <param name="name">待校验的名称。</param>
+    /// <param name="excludedId">改名时要排除的分组主键。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     private async Task EnsureNameAvailableAsync(
         string name,
         Guid? excludedId,
@@ -215,6 +227,12 @@ public sealed class HostGroupService
         }
     }
 
+    /// <summary>
+    /// 把主机分组实体映射为对外摘要。
+    /// </summary>
+    /// <param name="group">主机分组实体。</param>
+    /// <param name="counts">各分组的主机计数。</param>
+    /// <returns>主机分组摘要。</returns>
     private static HostGroupSummary Map(HostGroup group, IReadOnlyDictionary<Guid, int> counts) => new(
         group.Id,
         group.Name,
@@ -222,6 +240,13 @@ public sealed class HostGroupService
         group.SortOrder,
         counts.TryGetValue(group.Id, out var count) ? count : 0);
 
+    /// <summary>
+    /// 创建主机分组实体。
+    /// </summary>
+    /// <param name="name">分组名称。</param>
+    /// <param name="description">分组描述。</param>
+    /// <param name="sortOrder">排序序号。</param>
+    /// <returns>新建的主机分组实体。</returns>
     private static HostGroup Build(string name, string? description, int sortOrder)
     {
         try
@@ -236,6 +261,11 @@ public sealed class HostGroupService
         }
     }
 
+    /// <summary>
+    /// 把新名称应用到主机分组。
+    /// </summary>
+    /// <param name="group">目标分组。</param>
+    /// <param name="name">新名称。</param>
     private static void ApplyName(HostGroup group, string name)
     {
         try
@@ -248,6 +278,11 @@ public sealed class HostGroupService
         }
     }
 
+    /// <summary>
+    /// 把新描述应用到主机分组。
+    /// </summary>
+    /// <param name="group">目标分组。</param>
+    /// <param name="description">新描述。</param>
     private static void ApplyDescription(HostGroup group, string description)
     {
         try
@@ -260,6 +295,12 @@ public sealed class HostGroupService
         }
     }
 
+    /// <summary>
+    /// 读取必填字段，缺失或空白时抛参数异常。
+    /// </summary>
+    /// <param name="value">字段值。</param>
+    /// <param name="field">字段名（用于异常信息）。</param>
+    /// <returns>去除首尾空白后的字段值。</returns>
     private static string Require(string? value, string field)
     {
         if (String.IsNullOrWhiteSpace(value))

@@ -1,4 +1,5 @@
 using System.Globalization;
+
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Auditing;
 

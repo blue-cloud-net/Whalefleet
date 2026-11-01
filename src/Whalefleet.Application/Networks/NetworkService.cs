@@ -1,11 +1,14 @@
 using System.Net;
 using System.Net.Sockets;
+
 using Docker.DotNet;
 using Docker.DotNet.Models;
+
+using Microsoft.Extensions.Logging;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Docker;
-using Microsoft.Extensions.Logging;
 
 namespace Whalefleet.Application.Networks;
 
@@ -21,11 +24,15 @@ namespace Whalefleet.Application.Networks;
 /// </remarks>
 public sealed class NetworkService
 {
-    /// <summary>列表默认每页条数。</summary>
-    private const int DefaultPageSize = 20;
+    /// <summary>
+    /// 列表默认每页条数。
+    /// </summary>
+    private const int _defaultPageSize = 20;
 
-    /// <summary>列表每页条数上限（与容器 / 镜像 / 数据卷一致）。</summary>
-    private const int MaxPageSize = 100;
+    /// <summary>
+    /// 列表每页条数上限（与容器 / 镜像 / 数据卷一致）。
+    /// </summary>
+    private const int _maxPageSize = 100;
 
     private readonly IDockerHostAccessor _accessor;
     private readonly ILogger<NetworkService> _logger;
@@ -79,13 +86,13 @@ public sealed class NetworkService
         var filtered = Filter(networks, request.Search);
 
         var pageIndex = Math.Max(request.PageIndex ?? 0, 0);
-        var pageSize = Math.Clamp(request.PageSize ?? DefaultPageSize, 1, MaxPageSize);
+        var pageSize = Math.Clamp(request.PageSize ?? _defaultPageSize, 1, _maxPageSize);
 
         _logger.LogDebug(
             "主机 {HostId} 网络列表：共 {Total} 个（搜索={Search}），返回第 {PageIndex} 页（每页 {PageSize}）",
             hostId,
             filtered.Count,
-            string.IsNullOrWhiteSpace(request.Search) ? "无" : request.Search.Trim(),
+            String.IsNullOrWhiteSpace(request.Search) ? "无" : request.Search.Trim(),
             pageIndex,
             pageSize);
 
@@ -110,7 +117,7 @@ public sealed class NetworkService
         IList<NetworkResponse> networks,
         string? search)
     {
-        if (string.IsNullOrWhiteSpace(search))
+        if (String.IsNullOrWhiteSpace(search))
         {
             return [.. networks];
         }
@@ -210,7 +217,7 @@ public sealed class NetworkService
             // 空串而不是 null：SDK 的 Driver 声明为非空可空类型，而 Docker 侧
             // Go 的 encoding/json 把 `"Driver": null` 与「不写该字段」同样处理成零值，
             // 因此两者对守护进程完全等价——用空串就不必抑制可空性检查。
-            Driver = driver ?? string.Empty,
+            Driver = driver ?? String.Empty,
             Attachable = request.Attachable ?? false,
             Labels = ToMutable(labels),
         };
@@ -225,9 +232,9 @@ public sealed class NetworkService
                     {
                         // 三项未填时给空串而非 null：守护进程把空串与「不写该字段」同等看待
                         // （空 Subnet + 空 IPRange 表示「这一池不定范围，由分配器决定」）。
-                        Subnet = subnet ?? string.Empty,
-                        Gateway = gateway ?? string.Empty,
-                        IPRange = ipRange ?? string.Empty,
+                        Subnet = subnet ?? String.Empty,
+                        Gateway = gateway ?? String.Empty,
+                        IPRange = ipRange ?? String.Empty,
                     },
                 ],
             };
@@ -246,7 +253,7 @@ public sealed class NetworkService
             "主机 {HostId} 创建网络 {Name}（驱动 {Driver}，子网 {Subnet}，可单独接入={Attachable}）",
             hostId,
             name,
-            string.IsNullOrEmpty(driver) ? "默认" : driver,
+            String.IsNullOrEmpty(driver) ? "默认" : driver,
             subnet ?? "自动分配",
             request.Attachable ?? false);
 
@@ -475,7 +482,7 @@ public sealed class NetworkService
         }
 
         return networks.Values.Any(
-            endpoint => string.Equals(endpoint?.NetworkID, network.ID, StringComparison.Ordinal));
+            endpoint => String.Equals(endpoint?.NetworkID, network.ID, StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -490,7 +497,7 @@ public sealed class NetworkService
     /// 只要非空就交给守护进程判断——它认得的标识形式比我们多。
     /// </remarks>
     private static string RequireContainerId(string? containerId) =>
-        string.IsNullOrWhiteSpace(containerId)
+        String.IsNullOrWhiteSpace(containerId)
             ? throw new BusinessException(ErrorCodes.ValidationFailed, "containerId 不能为空")
             : containerId.Trim();
 
@@ -540,7 +547,7 @@ public sealed class NetworkService
     /// <exception cref="BusinessException">内置网络受保护（<c>1404</c>）。</exception>
     private static void GuardRemovable(NetworkResponse network)
     {
-        if (!BuiltInNetworks.Contains(network.Name))
+        if (!_builtInNetworks.Contains(network.Name))
         {
             return;
         }
@@ -561,10 +568,10 @@ public sealed class NetworkService
     /// </remarks>
     private static NetworkSummary MapSummary(NetworkResponse network) =>
         new(
-            network.ID ?? string.Empty,
-            network.Name ?? string.Empty,
-            network.Driver ?? string.Empty,
-            network.Scope ?? string.Empty,
+            network.ID ?? String.Empty,
+            network.Name ?? String.Empty,
+            network.Driver ?? String.Empty,
+            network.Scope ?? String.Empty,
             network.Attachable,
             network.Internal,
             [.. ReadIpam(network, config => config.Subnet)],
@@ -581,10 +588,10 @@ public sealed class NetworkService
         var configs = network.IPAM?.Config ?? [];
 
         return new NetworkDetail(
-            network.ID ?? string.Empty,
-            network.Name ?? string.Empty,
-            network.Driver ?? string.Empty,
-            network.Scope ?? string.Empty,
+            network.ID ?? String.Empty,
+            network.Name ?? String.Empty,
+            network.Driver ?? String.Empty,
+            network.Scope ?? String.Empty,
             network.Attachable,
             network.Internal,
             network.EnableIPv4,
@@ -613,7 +620,7 @@ public sealed class NetworkService
 
         return configs
             .Select(selector)
-            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Where(value => !String.IsNullOrWhiteSpace(value))
             .Select(value => value!);
     }
 
@@ -641,7 +648,7 @@ public sealed class NetworkService
                 .OrderBy(pair => pair.Key, StringComparer.Ordinal)
                 .Select(pair => new NetworkContainerEndpoint(
                     pair.Key,
-                    pair.Value?.Name ?? string.Empty,
+                    pair.Value?.Name ?? String.Empty,
                     Blank(pair.Value?.MacAddress),
                     Blank(pair.Value?.IPv4Address),
                     Blank(pair.Value?.IPv6Address))),
@@ -655,7 +662,7 @@ public sealed class NetworkService
     /// <returns>是 IPv6 返回 <see langword="true"/>；无法判定返回 <see langword="false"/>。</returns>
     private static bool IsIpv6(string? value)
     {
-        if (string.IsNullOrWhiteSpace(value))
+        if (String.IsNullOrWhiteSpace(value))
         {
             return false;
         }
@@ -682,7 +689,7 @@ public sealed class NetworkService
         var lineBreak = message.IndexOfAny(['\r', '\n']);
         var firstLine = lineBreak < 0 ? message : message[..lineBreak];
 
-        return string.IsNullOrWhiteSpace(firstLine)
+        return String.IsNullOrWhiteSpace(firstLine)
             ? "守护进程拒绝了该请求（同名网络已存在，或子网与现有网络重叠）"
             : firstLine.Trim();
     }
@@ -693,7 +700,7 @@ public sealed class NetworkService
     /// <param name="value">原始值。</param>
     /// <returns>去首尾空白后的值；缺失或全是空白时为 <see langword="null"/>。</returns>
     private static string? Blank(string? value) =>
-        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        String.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     /// <summary>
     /// 把守护进程返回的可空字典复制成不可空的只读字典。
@@ -703,7 +710,7 @@ public sealed class NetworkService
     private static Dictionary<string, string> Copy(IDictionary<string, string>? source) =>
         source is { Count: > 0 }
             ? new Dictionary<string, string>(source, StringComparer.Ordinal)
-            : EmptyMap;
+            : _emptyMap;
 
     /// <summary>
     /// 把只读字典转成 SDK 参数需要的可变字典。
@@ -713,9 +720,11 @@ public sealed class NetworkService
     private static Dictionary<string, string> ToMutable(IReadOnlyDictionary<string, string> source) =>
         source.Count > 0
             ? new Dictionary<string, string>(source, StringComparer.Ordinal)
-            : EmptyMap;
+            : _emptyMap;
 
-    /// <summary>Docker 内置网络的名称，不可删除。</summary>
+    /// <summary>
+    /// Docker 内置网络的名称，不可删除。
+    /// </summary>
     /// <remarks>
     /// <para><c>bridge</c> / <c>host</c> / <c>none</c> 是 Docker 固定提供的内置网络，
     /// 删掉任何一个都会波及主机上的<b>所有</b>容器（尤其是 <c>none</c>——
@@ -726,9 +735,11 @@ public sealed class NetworkService
     /// <para>Swarm 模式下还会多出 <c>ingress</c>，但那台机器上本项目本就不提供 Swarm 管理，
     /// 删它同样会被守护进程拒绝——不必在这里重复一遍。</para>
     /// </remarks>
-    private static readonly HashSet<string> BuiltInNetworks =
+    private static readonly HashSet<string> _builtInNetworks =
         new(StringComparer.Ordinal) { "bridge", "host", "none", "null" };
 
-    /// <summary>空字典的共享实例。</summary>
-    private static readonly Dictionary<string, string> EmptyMap = new(StringComparer.Ordinal);
+    /// <summary>
+    /// 空字典的共享实例。
+    /// </summary>
+    private static readonly Dictionary<string, string> _emptyMap = new(StringComparer.Ordinal);
 }

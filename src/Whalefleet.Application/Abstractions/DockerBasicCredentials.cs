@@ -30,17 +30,17 @@ public sealed record DockerBasicCredentials
     /// <exception cref="Common.BusinessException">载荷非法或缺少必填字段（错误码 <c>1301</c>）。</exception>
     public static DockerBasicCredentials Parse(string? configJson)
     {
-        var payload = CredentialsJson.Deserialize<Payload>(configJson, Description);
+        var payload = CredentialsJson.Deserialize<Payload>(configJson, _description);
 
         // 字段名用线上名（小驼峰），与请求体里的键一致。
         return new DockerBasicCredentials
         {
-            Username = CredentialsJson.RequireText(payload.Username, "username", Description),
+            Username = CredentialsJson.RequireText(payload.Username, "username", _description),
             // 密码只判空、不去空白：口令首尾的空格是合法字符，Trim 会把它悄悄改掉。
             Password = String.IsNullOrEmpty(payload.Password)
                 ? throw new Common.BusinessException(
                     Common.ErrorCodes.HostUnreachable,
-                    $"{Description} 凭据缺少必填字段 password")
+                    $"{_description} 凭据缺少必填字段 password")
                 : payload.Password,
         };
     }
@@ -51,9 +51,11 @@ public sealed record DockerBasicCredentials
     /// <returns>不含敏感内容的描述。</returns>
     public override string ToString() => $"DockerBasicCredentials(username={this.Username}, password=***)";
 
-    private const string Description = "Basic";
+    private const string _description = "Basic";
 
-    /// <summary>载荷 DTO：字段可空，由 <see cref="Parse"/> 逐个校验并给出可读错误。</summary>
+    /// <summary>
+    /// 载荷 DTO：字段可空，由 <see cref="Parse"/> 逐个校验并给出可读错误。
+    /// </summary>
     private sealed record Payload
     {
         public string? Username { get; init; }

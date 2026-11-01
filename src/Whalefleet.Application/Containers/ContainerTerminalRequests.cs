@@ -15,19 +15,29 @@ namespace Whalefleet.Application.Containers;
 /// </remarks>
 public sealed record ContainerTerminalRequest
 {
-    /// <summary>容器标识（完整 ID / 短 ID / 名称）。</summary>
-    public string ContainerId { get; init; } = string.Empty;
+    /// <summary>
+    /// 容器标识（完整 ID / 短 ID / 名称）。
+    /// </summary>
+    public string ContainerId { get; init; } = String.Empty;
 
-    /// <summary>要启动的 shell 绝对路径；省略时取 <see cref="TerminalOptions.DefaultShell"/>。</summary>
+    /// <summary>
+    /// 要启动的 shell 绝对路径；省略时取 <see cref="TerminalOptions.DefaultShell"/>。
+    /// </summary>
     public string? Shell { get; init; }
 
-    /// <summary>非交互模式下要执行的一条命令；省略表示开交互式 shell。</summary>
+    /// <summary>
+    /// 非交互模式下要执行的一条命令；省略表示开交互式 shell。
+    /// </summary>
     public string? Command { get; init; }
 
-    /// <summary>初始列数；省略时用 <see cref="TerminalConsoleSize.Default"/>。</summary>
+    /// <summary>
+    /// 初始列数；省略时用 <see cref="TerminalConsoleSize.Default"/>。
+    /// </summary>
     public int? Columns { get; init; }
 
-    /// <summary>初始行数；省略时用 <see cref="TerminalConsoleSize.Default"/>。</summary>
+    /// <summary>
+    /// 初始行数；省略时用 <see cref="TerminalConsoleSize.Default"/>。
+    /// </summary>
     public int? Rows { get; init; }
 
     /// <summary>

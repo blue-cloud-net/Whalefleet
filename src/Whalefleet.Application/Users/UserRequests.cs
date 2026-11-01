@@ -9,10 +9,14 @@ namespace Whalefleet.Application.Users;
 /// </remarks>
 public sealed record ListUsersRequest
 {
-    /// <summary>页码（从 0 开始）；省略时按 0 处理。</summary>
+    /// <summary>
+    /// 页码（从 0 开始）；省略时按 0 处理。
+    /// </summary>
     public int? PageIndex { get; init; }
 
-    /// <summary>每页条数；省略时用默认值，超出上限会被夹紧。</summary>
+    /// <summary>
+    /// 每页条数；省略时用默认值，超出上限会被夹紧。
+    /// </summary>
     public int? PageSize { get; init; }
 }
 
@@ -21,10 +25,14 @@ public sealed record ListUsersRequest
 /// </summary>
 public sealed record CreateUserRequest
 {
-    /// <summary>用户名。</summary>
+    /// <summary>
+    /// 用户名。
+    /// </summary>
     public string? Username { get; init; }
 
-    /// <summary>明文密码（仅在本次请求内存中存在，绝不落库或写日志）。</summary>
+    /// <summary>
+    /// 明文密码（仅在本次请求内存中存在，绝不落库或写日志）。
+    /// </summary>
     public string? Password { get; init; }
 
     /// <summary>
@@ -46,7 +54,9 @@ public sealed record CreateUserRequest
 /// </remarks>
 public sealed record DeleteUserRequest
 {
-    /// <summary>目标用户主键。</summary>
+    /// <summary>
+    /// 目标用户主键。
+    /// </summary>
     public Guid? UserId { get; init; }
 }
 
@@ -61,12 +71,18 @@ public sealed record DeleteUserRequest
 /// </remarks>
 public sealed record UpdatePasswordRequest
 {
-    /// <summary>目标用户主键；省略表示改自己的密码。</summary>
+    /// <summary>
+    /// 目标用户主键；省略表示改自己的密码。
+    /// </summary>
     public Guid? UserId { get; init; }
 
-    /// <summary>原密码；自助改密时必填。</summary>
+    /// <summary>
+    /// 原密码；自助改密时必填。
+    /// </summary>
     public string? OldPassword { get; init; }
 
-    /// <summary>新密码。</summary>
+    /// <summary>
+    /// 新密码。
+    /// </summary>
     public string? NewPassword { get; init; }
 }

@@ -1,6 +1,7 @@
+using Microsoft.Extensions.Logging;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
-using Microsoft.Extensions.Logging;
 
 namespace Whalefleet.Application.Containers;
 
@@ -30,7 +31,7 @@ public sealed class ContainerHealthService
     /// 8 的依据：本机 socket 上几十个容器几乎瞬间完成，而一条走 TCP 的远程主机每秒能稳定吃下十余个请求；
     /// 再高就会在小内存机器上看到守护进程排队、整体反而更慢。
     /// </remarks>
-    private const int MaxConcurrency = 8;
+    private const int _maxConcurrency = 8;
 
     private readonly IDockerHostAccessor _accessor;
     private readonly ILogger<ContainerHealthService> _logger;
@@ -74,7 +75,7 @@ public sealed class ContainerHealthService
 
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
 
-        using var gate = new SemaphoreSlim(MaxConcurrency);
+        using var gate = new SemaphoreSlim(_maxConcurrency);
 
         var tasks = ids.Select(async id =>
         {
@@ -91,7 +92,7 @@ public sealed class ContainerHealthService
 
                 return new ContainerHealthSummary(
                     ContainerId: inspect.ID ?? id,
-                    Name: inspect.Name?.TrimStart('/') ?? string.Empty,
+                    Name: inspect.Name?.TrimStart('/') ?? String.Empty,
                     HealthStatus: ContainerHealth.FromInspect(state?.Health?.Status),
                     // 重启次数在 inspect 的**根对象**上，不在 State 里
                     RestartCount: inspect.RestartCount,
@@ -148,7 +149,7 @@ public sealed class ContainerHealthService
 
         foreach (var id in ids)
         {
-            if (string.IsNullOrWhiteSpace(id))
+            if (String.IsNullOrWhiteSpace(id))
             {
                 throw BusinessException.Validation("containerIds 不得包含空白项");
             }

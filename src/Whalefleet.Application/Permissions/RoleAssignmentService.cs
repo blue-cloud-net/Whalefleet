@@ -1,10 +1,11 @@
+using Microsoft.Extensions.Logging;
+
 using Whalefleet.Application.Abstractions.Auditing;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Auditing;
 using Whalefleet.Core.Hosts;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
-using Microsoft.Extensions.Logging;
 
 namespace Whalefleet.Application.Permissions;
 
@@ -131,7 +132,7 @@ public sealed class RoleAssignmentService
 
         var userId = RequireUserId(request.UserId);
         var user = await this.RequireUserAsync(userId, cancellationToken).ConfigureAwait(false);
-        var role = await ResolveRoleAsync(request, cancellationToken).ConfigureAwait(false);
+        var role = await this.ResolveRoleAsync(request, cancellationToken).ConfigureAwait(false);
 
         DockerHost? host = null;
         if (!String.IsNullOrWhiteSpace(request.Host))
@@ -208,7 +209,7 @@ public sealed class RoleAssignmentService
         ArgumentNullException.ThrowIfNull(request);
 
         var userId = RequireUserId(request.UserId);
-        var role = await ResolveRoleAsync(request, cancellationToken).ConfigureAwait(false);
+        var role = await this.ResolveRoleAsync(request, cancellationToken).ConfigureAwait(false);
 
         Guid? hostId = null;
         if (!String.IsNullOrWhiteSpace(request.Host))
@@ -259,6 +260,12 @@ public sealed class RoleAssignmentService
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>角色。</returns>
     /// <exception cref="BusinessException">未给出定位条件（<c>1000</c>）或角色不存在（<c>1510</c>）。</exception>
+    /// <summary>
+    /// 按请求解析出目标角色。
+    /// </summary>
+    /// <param name="request">分配请求。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>目标角色。</returns>
     private async Task<Role> ResolveRoleAsync(
         RoleSelectorRequest request,
         CancellationToken cancellationToken)
@@ -281,11 +288,23 @@ public sealed class RoleAssignmentService
         throw BusinessException.Validation("roleId 与 role 至少提供一个");
     }
 
+    /// <summary>
+    /// 按请求解析出目标角色。
+    /// </summary>
+    /// <param name="request">分配请求。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>目标角色。</returns>
     private Task<Role> ResolveRoleAsync(AssignRoleRequest request, CancellationToken cancellationToken) =>
         this.ResolveRoleAsync(
             new RoleSelectorRequest { RoleId = request.RoleId, Role = request.Role },
             cancellationToken);
 
+    /// <summary>
+    /// 按请求解析出目标角色。
+    /// </summary>
+    /// <param name="request">分配请求。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>目标角色。</returns>
     private Task<Role> ResolveRoleAsync(RevokeRoleAssignmentRequest request, CancellationToken cancellationToken) =>
         this.ResolveRoleAsync(
             new RoleSelectorRequest { RoleId = request.RoleId, Role = request.Role },
@@ -348,10 +367,22 @@ public sealed class RoleAssignmentService
         return summaries;
     }
 
+    /// <summary>
+    /// 按主键读取用户，不存在时抛业务异常。
+    /// </summary>
+    /// <param name="userId">用户主键。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>用户实体。</returns>
     private async Task<User> RequireUserAsync(Guid userId, CancellationToken cancellationToken) =>
         await _users.QueryByIdAsync(userId, cancellationToken).ConfigureAwait(false)
         ?? throw new BusinessException(ErrorCodes.UserNotFound, "用户不存在");
 
+    /// <summary>
+    /// 按主机名读取主机，不存在时抛业务异常。
+    /// </summary>
+    /// <param name="hostName">主机名。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>主机实体。</returns>
     private async Task<DockerHost> RequireHostAsync(string hostName, CancellationToken cancellationToken)
     {
         if (String.IsNullOrWhiteSpace(hostName))
@@ -364,6 +395,11 @@ public sealed class RoleAssignmentService
             ?? throw new BusinessException(ErrorCodes.HostNotFound, $"主机 '{name}' 不存在");
     }
 
+    /// <summary>
+    /// 读取必填的用户主键。
+    /// </summary>
+    /// <param name="userId">用户主键。</param>
+    /// <returns>用户主键。</returns>
     private static Guid RequireUserId(Guid? userId) =>
         userId is { } id && id != Guid.Empty
             ? id

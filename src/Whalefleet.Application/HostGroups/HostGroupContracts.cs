@@ -20,13 +20,19 @@ public sealed record HostGroupSummary(
 /// </summary>
 public sealed record CreateHostGroupRequest
 {
-    /// <summary>分组名。</summary>
+    /// <summary>
+    /// 分组名。
+    /// </summary>
     public string? Name { get; init; }
 
-    /// <summary>描述；省略或留空表示不填。</summary>
+    /// <summary>
+    /// 描述；省略或留空表示不填。
+    /// </summary>
     public string? Description { get; init; }
 
-    /// <summary>排序权重；省略时按 0 处理（与内置分组 10/20/30 相比会排在最前）。</summary>
+    /// <summary>
+    /// 排序权重；省略时按 0 处理（与内置分组 10/20/30 相比会排在最前）。
+    /// </summary>
     public int? SortOrder { get; init; }
 }
 
@@ -42,13 +48,19 @@ public sealed record CreateHostGroupRequest
 /// </remarks>
 public sealed record UpdateHostGroupRequest
 {
-    /// <summary>新的分组名；未提供表示不改。</summary>
+    /// <summary>
+    /// 新的分组名；未提供表示不改。
+    /// </summary>
     public string? Name { get; init; }
 
-    /// <summary>新的描述；未提供表示不改，空串表示清空。</summary>
+    /// <summary>
+    /// 新的描述；未提供表示不改，空串表示清空。
+    /// </summary>
     public string? Description { get; init; }
 
-    /// <summary>新的排序权重；未提供表示不改。</summary>
+    /// <summary>
+    /// 新的排序权重；未提供表示不改。
+    /// </summary>
     public int? SortOrder { get; init; }
 }
 
@@ -62,6 +74,8 @@ public sealed record UpdateHostGroupRequest
 /// </remarks>
 public sealed record AssignHostGroupRequest
 {
-    /// <summary>目标分组主键；<see langword="null"/> 表示移出分组。</summary>
+    /// <summary>
+    /// 目标分组主键；<see langword="null"/> 表示移出分组。
+    /// </summary>
     public Guid? GroupId { get; init; }
 }

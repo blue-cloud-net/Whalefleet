@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+
 using Whalefleet.Application.Common;
 
 namespace Whalefleet.Application.Stacks;
@@ -23,14 +24,18 @@ namespace Whalefleet.Application.Stacks;
 /// </remarks>
 public sealed class StackTaskRegistry
 {
-    /// <summary>登记表里最多保留的任务数。</summary>
+    /// <summary>
+    /// 登记表里最多保留的任务数。
+    /// </summary>
     /// <remarks>
     /// 超出时淘汰最旧的<b>已结束</b>任务。正在跑的任务不淘汰——
     /// 淘汰掉等于让客户端永远等不到结果。
     /// </remarks>
     public const int MaxTasks = 100;
 
-    /// <summary>任务的存活时长（超过则被清理）。</summary>
+    /// <summary>
+    /// 任务的存活时长（超过则被清理）。
+    /// </summary>
     public static readonly TimeSpan TaskTtl = TimeSpan.FromHours(1);
 
     private readonly ConcurrentDictionary<string, StackTask> _tasks = new(StringComparer.Ordinal);
@@ -72,10 +77,8 @@ public sealed class StackTaskRegistry
             }
 
             var busy = _tasks.Values.Any(task =>
-                task.IsTerminal
-                    ? false
-                    : string.Equals(task.HostName, hostName, StringComparison.OrdinalIgnoreCase)
-                        && string.Equals(task.StackName, stackName, StringComparison.Ordinal));
+                !task.IsTerminal && String.Equals(task.HostName, hostName, StringComparison.OrdinalIgnoreCase)
+                        && String.Equals(task.StackName, stackName, StringComparison.Ordinal));
 
             if (busy)
             {
@@ -97,7 +100,7 @@ public sealed class StackTaskRegistry
     /// <returns>快照；不存在返回 <see langword="null"/>。</returns>
     public StackTaskSnapshot? Get(string taskId)
     {
-        if (string.IsNullOrWhiteSpace(taskId))
+        if (String.IsNullOrWhiteSpace(taskId))
         {
             return null;
         }
@@ -111,7 +114,7 @@ public sealed class StackTaskRegistry
     /// <param name="taskId">任务标识。</param>
     /// <returns>存在返回 <see langword="true"/>。</returns>
     public bool Contains(string taskId) =>
-        !string.IsNullOrWhiteSpace(taskId) && _tasks.ContainsKey(taskId);
+        !String.IsNullOrWhiteSpace(taskId) && _tasks.ContainsKey(taskId);
 
     /// <summary>
     /// 撤销一个<b>尚未开始执行</b>的任务登记。
@@ -129,7 +132,7 @@ public sealed class StackTaskRegistry
     /// </remarks>
     public bool Abort(string taskId)
     {
-        if (string.IsNullOrWhiteSpace(taskId))
+        if (String.IsNullOrWhiteSpace(taskId))
         {
             return false;
         }
@@ -293,56 +296,84 @@ internal sealed class StackTask
     /// <param name="now">当前时刻（UTC）。</param>
     internal StackTask(string taskId, string hostName, string stackName, string operation, DateTime now)
     {
-        TaskId = taskId;
-        HostName = hostName;
-        StackName = stackName;
-        Operation = operation;
-        Status = StackTaskStatus.Queued;
-        CreatedAt = now;
-        UpdatedAt = now;
+        this.TaskId = taskId;
+        this.HostName = hostName;
+        this.StackName = stackName;
+        this.Operation = operation;
+        this.Status = StackTaskStatus.Queued;
+        this.CreatedAt = now;
+        this.UpdatedAt = now;
     }
 
-    /// <summary>任务标识。</summary>
+    /// <summary>
+    /// 任务标识。
+    /// </summary>
     internal string TaskId { get; }
 
-    /// <summary>所属主机名。</summary>
+    /// <summary>
+    /// 所属主机名。
+    /// </summary>
     internal string HostName { get; }
 
-    /// <summary>Stack 名称。</summary>
+    /// <summary>
+    /// Stack 名称。
+    /// </summary>
     internal string StackName { get; }
 
-    /// <summary>操作类型。</summary>
+    /// <summary>
+    /// 操作类型。
+    /// </summary>
     internal string Operation { get; }
 
-    /// <summary>状态。</summary>
+    /// <summary>
+    /// 状态。
+    /// </summary>
     internal StackTaskStatus Status { get; private set; }
 
-    /// <summary>总体进度百分比；无法确定时为 <see langword="null"/>。</summary>
+    /// <summary>
+    /// 总体进度百分比；无法确定时为 <see langword="null"/>。
+    /// </summary>
     internal double? Percent { get; private set; }
 
-    /// <summary>当前步骤描述。</summary>
+    /// <summary>
+    /// 当前步骤描述。
+    /// </summary>
     internal string? Step { get; private set; }
 
-    /// <summary>失败时的业务错误码。</summary>
+    /// <summary>
+    /// 失败时的业务错误码。
+    /// </summary>
     internal int? ErrorCode { get; private set; }
 
-    /// <summary>失败原因。</summary>
+    /// <summary>
+    /// 失败原因。
+    /// </summary>
     internal string? ErrorMessage { get; private set; }
 
-    /// <summary>警告。</summary>
+    /// <summary>
+    /// 警告。
+    /// </summary>
     internal IReadOnlyList<string> Warnings { get; private set; } = [];
 
-    /// <summary>成功时的结果摘要。</summary>
+    /// <summary>
+    /// 成功时的结果摘要。
+    /// </summary>
     internal StackOperationResult? Result { get; private set; }
 
-    /// <summary>创建时刻（UTC）。</summary>
+    /// <summary>
+    /// 创建时刻（UTC）。
+    /// </summary>
     internal DateTime CreatedAt { get; }
 
-    /// <summary>最后更新时刻（UTC）。</summary>
+    /// <summary>
+    /// 最后更新时刻（UTC）。
+    /// </summary>
     internal DateTime UpdatedAt { get; private set; }
 
-    /// <summary>任务是否已结束。</summary>
-    internal bool IsTerminal => Status is StackTaskStatus.Succeeded or StackTaskStatus.Failed;
+    /// <summary>
+    /// 任务是否已结束。
+    /// </summary>
+    internal bool IsTerminal => this.Status is StackTaskStatus.Succeeded or StackTaskStatus.Failed;
 
     /// <summary>
     /// 标记开始执行。
@@ -353,9 +384,9 @@ internal sealed class StackTask
     {
         lock (_gate)
         {
-            Status = StackTaskStatus.Running;
-            Step = step;
-            UpdatedAt = now;
+            this.Status = StackTaskStatus.Running;
+            this.Step = step;
+            this.UpdatedAt = now;
         }
     }
 
@@ -369,9 +400,9 @@ internal sealed class StackTask
     {
         lock (_gate)
         {
-            Percent = percent;
-            Step = step;
-            UpdatedAt = now;
+            this.Percent = percent;
+            this.Step = step;
+            this.UpdatedAt = now;
         }
     }
 
@@ -388,14 +419,14 @@ internal sealed class StackTask
     {
         lock (_gate)
         {
-            Status = StackTaskStatus.Succeeded;
-            Result = result;
-            Warnings = warnings;
-            Percent = 100;
-            Step = null;
-            ErrorCode = null;
-            ErrorMessage = null;
-            UpdatedAt = now;
+            this.Status = StackTaskStatus.Succeeded;
+            this.Result = result;
+            this.Warnings = warnings;
+            this.Percent = 100;
+            this.Step = null;
+            this.ErrorCode = null;
+            this.ErrorMessage = null;
+            this.UpdatedAt = now;
         }
     }
 
@@ -409,10 +440,10 @@ internal sealed class StackTask
     {
         lock (_gate)
         {
-            Status = StackTaskStatus.Failed;
-            ErrorCode = errorCode;
-            ErrorMessage = errorMessage;
-            UpdatedAt = now;
+            this.Status = StackTaskStatus.Failed;
+            this.ErrorCode = errorCode;
+            this.ErrorMessage = errorMessage;
+            this.UpdatedAt = now;
         }
     }
 
@@ -425,19 +456,19 @@ internal sealed class StackTask
         lock (_gate)
         {
             return new StackTaskSnapshot(
-                TaskId,
-                HostName,
-                StackName,
-                Operation,
-                StackTaskStatusText.From(Status),
-                Percent,
-                Step,
-                ErrorCode,
-                ErrorMessage,
-                Warnings,
-                Result,
-                CreatedAt,
-                UpdatedAt);
+                this.TaskId,
+                this.HostName,
+                this.StackName,
+                this.Operation,
+                StackTaskStatusText.From(this.Status),
+                this.Percent,
+                this.Step,
+                this.ErrorCode,
+                this.ErrorMessage,
+                this.Warnings,
+                this.Result,
+                this.CreatedAt,
+                this.UpdatedAt);
         }
     }
 }

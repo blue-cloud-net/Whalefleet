@@ -1,5 +1,7 @@
 using System.Net;
+
 using Docker.DotNet;
+
 using Whalefleet.Application.Common;
 
 namespace Whalefleet.Application.Docker;

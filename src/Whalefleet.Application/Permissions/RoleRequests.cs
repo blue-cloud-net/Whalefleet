@@ -24,13 +24,19 @@ public sealed record ListRolesRequest
 /// </summary>
 public sealed record CreateRoleRequest
 {
-    /// <summary>角色标识；必填（自动转小写）。</summary>
+    /// <summary>
+    /// 角色标识；必填（自动转小写）。
+    /// </summary>
     public string? Name { get; init; }
 
-    /// <summary>可读名称；可空，为空时界面回退显示 <see cref="Name"/>。</summary>
+    /// <summary>
+    /// 可读名称；可空，为空时界面回退显示 <see cref="Name"/>。
+    /// </summary>
     public string? DisplayName { get; init; }
 
-    /// <summary>职责描述；可空。</summary>
+    /// <summary>
+    /// 职责描述；可空。
+    /// </summary>
     public string? Description { get; init; }
 
     /// <summary>
@@ -54,10 +60,14 @@ public sealed record CreateRoleRequest
 /// </remarks>
 public sealed record UpdateRoleRequest : RoleSelectorRequest
 {
-    /// <summary>可读名称；可空。</summary>
+    /// <summary>
+    /// 可读名称；可空。
+    /// </summary>
     public string? DisplayName { get; init; }
 
-    /// <summary>职责描述；可空。</summary>
+    /// <summary>
+    /// 职责描述；可空。
+    /// </summary>
     public string? Description { get; init; }
 }
 
@@ -87,9 +97,13 @@ public sealed record SetRolePermissionsRequest : RoleSelectorRequest
 /// </remarks>
 public record RoleSelectorRequest
 {
-    /// <summary>角色主键；<see cref="Role"/> 与 <see cref="RoleId"/> 至少给一个。</summary>
+    /// <summary>
+    /// 角色主键；<see cref="Role"/> 与 <see cref="RoleId"/> 至少给一个。
+    /// </summary>
     public Guid? RoleId { get; init; }
 
-    /// <summary>角色标识（不区分大小写）；<see cref="RoleId"/> 与 <see cref="Role"/> 至少给一个。</summary>
+    /// <summary>
+    /// 角色标识（不区分大小写）；<see cref="RoleId"/> 与 <see cref="Role"/> 至少给一个。
+    /// </summary>
     public string? Role { get; init; }
 }

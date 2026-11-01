@@ -1,11 +1,13 @@
 using Docker.DotNet;
 using Docker.DotNet.Models;
+
+using Microsoft.Extensions.Logging;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Docker;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Stacks;
-using Microsoft.Extensions.Logging;
 
 namespace Whalefleet.Application.Stacks;
 
@@ -27,13 +29,19 @@ namespace Whalefleet.Application.Stacks;
 /// </remarks>
 public sealed class StackService
 {
-    /// <summary>列表默认每页条数。</summary>
-    private const int DefaultPageSize = 20;
+    /// <summary>
+    /// 列表默认每页条数。
+    /// </summary>
+    private const int _defaultPageSize = 20;
 
-    /// <summary>列表每页条数上限（与容器 / 镜像一致）。</summary>
-    private const int MaxPageSize = 100;
+    /// <summary>
+    /// 列表每页条数上限（与容器 / 镜像一致）。
+    /// </summary>
+    private const int _maxPageSize = 100;
 
-    /// <summary>标签过滤：只认 label 名，不带值。</summary>
+    /// <summary>
+    /// 标签过滤：只认 label 名，不带值。
+    /// </summary>
     private static readonly IDictionary<string, IDictionary<string, bool>> _labelFilter =
         new Dictionary<string, IDictionary<string, bool>>(StringComparer.Ordinal)
         {
@@ -130,14 +138,14 @@ public sealed class StackService
             .ToList();
 
         var pageIndex = Math.Max(request.PageIndex ?? 0, 0);
-        var pageSize = Math.Clamp(request.PageSize ?? DefaultPageSize, 1, MaxPageSize);
+        var pageSize = Math.Clamp(request.PageSize ?? _defaultPageSize, 1, _maxPageSize);
 
         _logger.LogDebug(
             "主机 {HostId} 编排列表：发现 {Discovered} 个、已记录 {Recorded} 个（搜索={Search}），返回第 {PageIndex} 页（每页 {PageSize}）",
             hostId,
             discovered.Count,
             recorded.Count,
-            string.IsNullOrWhiteSpace(request.Search) ? "无" : request.Search.Trim(),
+            String.IsNullOrWhiteSpace(request.Search) ? "无" : request.Search.Trim(),
             pageIndex,
             pageSize);
 
@@ -183,12 +191,7 @@ public sealed class StackService
         }
 
         var summaries = Merge(discovered, recordedList);
-        var summary = summaries.FirstOrDefault(item => string.Equals(item.Name, name, StringComparison.Ordinal));
-
-        if (summary is null)
-        {
-            throw new BusinessException(ErrorCodes.StackNotFound, $"编排 Stack「{name}」不存在");
-        }
+        var summary = summaries.FirstOrDefault(item => String.Equals(item.Name, name, StringComparison.Ordinal)) ?? throw new BusinessException(ErrorCodes.StackNotFound, $"编排 Stack「{name}」不存在");
 
         var services = await ListServicesAsync(client, name, recorded, cancellationToken)
             .ConfigureAwait(false);
@@ -252,7 +255,7 @@ public sealed class StackService
                 $"编排 Stack「{name}」已存在——请改用「更新」而不是「部署」");
         }
 
-        await this.EnsureNotBusyAsync(host.Name, name, cancellationToken).ConfigureAwait(false);
+        await this.EnsureNotBusyAsync(host.Name, name).ConfigureAwait(false);
 
         _tasks.TryRegister(taskId, host.Name, name, StackOperations.Deploy, _timeProvider.GetUtcNow().UtcDateTime);
 
@@ -323,16 +326,11 @@ public sealed class StackService
 
         var existing = await _repository
             .FindByHostAndNameAsync(host.Id, name, cancellationToken)
-            .ConfigureAwait(false);
-
-        if (existing is null)
-        {
-            throw new BusinessException(
+            .ConfigureAwait(false) ?? throw new BusinessException(
                 ErrorCodes.StackNotFound,
                 $"编排 Stack「{name}」不存在——本平台没有它的 YAML，无法更新");
-        }
 
-        await this.EnsureNotBusyAsync(host.Name, name, cancellationToken).ConfigureAwait(false);
+        await this.EnsureNotBusyAsync(host.Name, name).ConfigureAwait(false);
 
         _tasks.TryRegister(taskId, host.Name, name, StackOperations.Update, _timeProvider.GetUtcNow().UtcDateTime);
 
@@ -391,7 +389,7 @@ public sealed class StackService
 
         await this.EnsureWritePermissionAsync(host.Id, cancellationToken).ConfigureAwait(false);
 
-        await this.EnsureNotBusyAsync(host.Name, name, cancellationToken).ConfigureAwait(false);
+        await this.EnsureNotBusyAsync(host.Name, name).ConfigureAwait(false);
 
         _tasks.TryRegister(taskId, host.Name, name, StackOperations.Stop, _timeProvider.GetUtcNow().UtcDateTime);
 
@@ -422,7 +420,7 @@ public sealed class StackService
 
         await this.EnsureWritePermissionAsync(host.Id, cancellationToken).ConfigureAwait(false);
 
-        await this.EnsureNotBusyAsync(host.Name, name, cancellationToken).ConfigureAwait(false);
+        await this.EnsureNotBusyAsync(host.Name, name).ConfigureAwait(false);
 
         _tasks.TryRegister(taskId, host.Name, name, StackOperations.Remove, _timeProvider.GetUtcNow().UtcDateTime);
 
@@ -456,7 +454,7 @@ public sealed class StackService
 
         var taskId = request.TaskId?.Trim();
 
-        if (string.IsNullOrWhiteSpace(taskId))
+        if (String.IsNullOrWhiteSpace(taskId))
         {
             throw BusinessException.Validation("taskId 不能为空");
         }
@@ -469,7 +467,7 @@ public sealed class StackService
         }
 
         // 任务属于哪台主机要核对：别的机器上的任务不该被这里读到
-        if (!string.Equals(snapshot.HostName, hostId, StringComparison.OrdinalIgnoreCase))
+        if (!String.Equals(snapshot.HostName, hostId, StringComparison.OrdinalIgnoreCase))
         {
             return null;
         }
@@ -505,13 +503,13 @@ public sealed class StackService
                     ? value
                     : null;
 
-            if (string.IsNullOrWhiteSpace(project))
+            if (String.IsNullOrWhiteSpace(project))
             {
                 continue;
             }
 
             // 一次性容器（docker compose run 产生的）不算服务的常态表现
-            if (string.Equals(
+            if (String.Equals(
                     LabelOf(container.Labels, ComposeLabels.OneOff),
                     "True",
                     StringComparison.OrdinalIgnoreCase))
@@ -539,7 +537,7 @@ public sealed class StackService
         {
             if (network.Labels is not null
                 && network.Labels.TryGetValue(ComposeLabels.Project, out var project)
-                && !string.IsNullOrWhiteSpace(project))
+                && !String.IsNullOrWhiteSpace(project))
             {
                 if (!projects.TryGetValue(project, out var existing))
                 {
@@ -562,7 +560,7 @@ public sealed class StackService
         {
             if (volume.Labels is not null
                 && volume.Labels.TryGetValue(ComposeLabels.Project, out var project)
-                && !string.IsNullOrWhiteSpace(project))
+                && !String.IsNullOrWhiteSpace(project))
             {
                 if (!projects.TryGetValue(project, out var existing))
                 {
@@ -625,11 +623,11 @@ public sealed class StackService
     {
         var containers = project?.Containers ?? [];
         var running = containers.Count(container =>
-            string.Equals(container.State, "running", StringComparison.OrdinalIgnoreCase));
+            String.Equals(container.State, "running", StringComparison.OrdinalIgnoreCase));
 
         var services = containers
             .Select(container => LabelOf(container.Labels, ComposeLabels.Service))
-            .Where(service => !string.IsNullOrWhiteSpace(service))
+            .Where(service => !String.IsNullOrWhiteSpace(service))
             .Distinct(StringComparer.Ordinal)
             .Count();
 
@@ -697,7 +695,7 @@ public sealed class StackService
 
         foreach (var container in containers ?? [])
         {
-            if (!string.Equals(
+            if (!String.Equals(
                     LabelOf(container.Labels, ComposeLabels.Project),
                     stackName,
                     StringComparison.Ordinal))
@@ -707,7 +705,7 @@ public sealed class StackService
 
             var service = LabelOf(container.Labels, ComposeLabels.Service);
 
-            if (string.IsNullOrWhiteSpace(service))
+            if (String.IsNullOrWhiteSpace(service))
             {
                 continue;
             }
@@ -739,7 +737,7 @@ public sealed class StackService
 
         foreach (var (serviceName, container) in byService)
         {
-            if (services.Any(service => string.Equals(service.Name, serviceName, StringComparison.Ordinal)))
+            if (services.Any(service => String.Equals(service.Name, serviceName, StringComparison.Ordinal)))
             {
                 continue;
             }
@@ -808,10 +806,9 @@ public sealed class StackService
     /// </summary>
     /// <param name="hostName">主机名。</param>
     /// <param name="stackName">Stack 名称。</param>
-    /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>表示异步操作的任务。</returns>
     /// <exception cref="BusinessException">已有进行中的操作（<c>1905</c>）。</exception>
-    private Task EnsureNotBusyAsync(string hostName, string stackName, CancellationToken cancellationToken)
+    private Task EnsureNotBusyAsync(string hostName, string stackName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostName);
         ArgumentException.ThrowIfNullOrWhiteSpace(stackName);
@@ -821,8 +818,8 @@ public sealed class StackService
             .GetSnapshot()
             .Any(snapshot =>
                 !IsTerminal(snapshot.Status)
-                && string.Equals(snapshot.HostName, hostName, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(snapshot.StackName, stackName, StringComparison.Ordinal));
+                && String.Equals(snapshot.HostName, hostName, StringComparison.OrdinalIgnoreCase)
+                && String.Equals(snapshot.StackName, stackName, StringComparison.Ordinal));
 
         if (busy)
         {
@@ -876,7 +873,7 @@ public sealed class StackService
     /// <exception cref="BusinessException">名称为空或非法（<c>1000</c>）。</exception>
     private static string RequireName(string? name)
     {
-        if (string.IsNullOrWhiteSpace(name))
+        if (String.IsNullOrWhiteSpace(name))
         {
             throw BusinessException.Validation("Stack 名称不能为空");
         }
@@ -902,7 +899,7 @@ public sealed class StackService
     /// <exception cref="BusinessException">内容为空（<c>1000</c>）。</exception>
     private static string RequireComposeContent(string? content)
     {
-        if (string.IsNullOrWhiteSpace(content))
+        if (String.IsNullOrWhiteSpace(content))
         {
             throw BusinessException.Validation("Compose 文件内容不能为空");
         }
@@ -918,21 +915,21 @@ public sealed class StackService
     /// <exception cref="BusinessException">标识非法（<c>1000</c>）。</exception>
     private static string RequireTaskId(string? taskId)
     {
-        if (string.IsNullOrWhiteSpace(taskId))
+        if (String.IsNullOrWhiteSpace(taskId))
         {
             throw BusinessException.Validation("taskId 不能为空");
         }
 
         var trimmed = taskId.Trim();
 
-        if (trimmed.Length < 32 || trimmed.Length > 128)
+        if (trimmed.Length is < 32 or > 128)
         {
             throw BusinessException.Validation("taskId 至少 32 个字符");
         }
 
         foreach (var character in trimmed)
         {
-            var allowed = char.IsAsciiLetterOrDigit(character) || character == '-';
+            var allowed = Char.IsAsciiLetterOrDigit(character) || character == '-';
 
             if (!allowed)
             {
@@ -974,7 +971,7 @@ public sealed class StackService
     /// 而症状是「接口返回成功、列表却是空的」——极难联想到是筛选条件写反了。
     /// </remarks>
     private static bool MatchesSearch(string? haystack, string? needle) =>
-        string.IsNullOrWhiteSpace(needle)
+        String.IsNullOrWhiteSpace(needle)
         || haystack?.Contains(needle.Trim(), StringComparison.OrdinalIgnoreCase) == true;
 
     /// <summary>
@@ -990,12 +987,12 @@ public sealed class StackService
     /// </remarks>
     private static bool MatchesStatus(string status, string? filter)
     {
-        if (string.IsNullOrWhiteSpace(filter))
+        if (String.IsNullOrWhiteSpace(filter))
         {
             return true;
         }
 
-        return string.Equals(status, filter.Trim(), StringComparison.OrdinalIgnoreCase);
+        return String.Equals(status, filter.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -1011,13 +1008,19 @@ public sealed class StackService
     /// </summary>
     internal sealed class DiscoveredProject
     {
-        /// <summary>项目下的容器。</summary>
+        /// <summary>
+        /// 项目下的容器。
+        /// </summary>
         internal List<ContainerListResponse> Containers { get; } = [];
 
-        /// <summary>项目下的网络数。</summary>
+        /// <summary>
+        /// 项目下的网络数。
+        /// </summary>
         internal int Networks { get; set; }
 
-        /// <summary>项目下的具名卷数。</summary>
+        /// <summary>
+        /// 项目下的具名卷数。
+        /// </summary>
         internal int Volumes { get; set; }
     }
 }

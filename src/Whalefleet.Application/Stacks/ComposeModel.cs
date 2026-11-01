@@ -10,38 +10,58 @@ namespace Whalefleet.Application.Stacks;
 /// </remarks>
 public sealed record ComposeService
 {
-    /// <summary>服务名（YAML 里 <c>services</c> 下的键）。</summary>
+    /// <summary>
+    /// 服务名（YAML 里 <c>services</c> 下的键）。
+    /// </summary>
     public required string Name { get; init; }
 
-    /// <summary>镜像名。</summary>
+    /// <summary>
+    /// 镜像名。
+    /// </summary>
     /// <remarks>
     /// <b>必填</b>：本版本不支持 <c>build</c>，因此镜像只能显式给出。
     /// 服务没写镜像时不能「猜」——猜错的后果是部署出一个用户没要求的容器。
     /// </remarks>
     public required string Image { get; init; }
 
-    /// <summary>环境变量（<c>KEY=VALUE</c> 列表）。</summary>
+    /// <summary>
+    /// 环境变量（<c>KEY=VALUE</c> 列表）。
+    /// </summary>
     public IReadOnlyList<string> Environment { get; init; } = [];
 
-    /// <summary>启动命令（argv 形式；空列表表示不覆盖镜像的 CMD）。</summary>
+    /// <summary>
+    /// 启动命令（argv 形式；空列表表示不覆盖镜像的 CMD）。
+    /// </summary>
     public IReadOnlyList<string> Command { get; init; } = [];
 
-    /// <summary>端口映射。</summary>
+    /// <summary>
+    /// 端口映射。
+    /// </summary>
     public IReadOnlyList<ComposePortMapping> Ports { get; init; } = [];
 
-    /// <summary>挂载点。</summary>
+    /// <summary>
+    /// 挂载点。
+    /// </summary>
     public IReadOnlyList<ComposeVolumeMount> Volumes { get; init; } = [];
 
-    /// <summary>接入的网络（顶层 <c>networks</c> 里的名字）。</summary>
+    /// <summary>
+    /// 接入的网络（顶层 <c>networks</c> 里的名字）。
+    /// </summary>
     public IReadOnlyList<string> Networks { get; init; } = [];
 
-    /// <summary>依赖的服务（启动顺序的依据）。</summary>
+    /// <summary>
+    /// 依赖的服务（启动顺序的依据）。
+    /// </summary>
     public IReadOnlyList<string> DependsOn { get; init; } = [];
 
-    /// <summary>重启策略（<c>no</c> / <c>always</c> / <c>on-failure</c> / <c>unless-stopped</c>）；<see langword="null"/> 表示未指定。</summary>
+    /// <summary>
+    /// 重启策略（<c>no</c> / <c>always</c> / <c>on-failure</c> / <c>unless-stopped</c>）；<see langword="null"/> 表示未指定。
+    /// </summary>
     public string? Restart { get; init; }
 
-    /// <summary>健康检查定义；未配置时为 <see langword="null"/>。</summary>
+    /// <summary>
+    /// 健康检查定义；未配置时为 <see langword="null"/>。
+    /// </summary>
     public ComposeHealthCheck? HealthCheck { get; init; }
 }
 

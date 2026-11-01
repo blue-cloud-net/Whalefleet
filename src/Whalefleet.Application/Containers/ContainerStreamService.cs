@@ -1,14 +1,17 @@
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+
 using Docker.DotNet;
 using Docker.DotNet.Models;
+
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Docker;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace Whalefleet.Application.Containers;
 
@@ -95,7 +98,7 @@ public sealed class ContainerStreamService : IContainerLogProvider, IContainerSt
                 SingleWriter = true,
             });
 
-        var pump = new LogPump(options.StartSeq, channel.Writer, _options.LogBatchLines);
+        var pump = new LogPump(options.StartSeq, channel.Writer);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -379,8 +382,7 @@ public sealed class ContainerStreamService : IContainerLogProvider, IContainerSt
         /// </summary>
         /// <param name="startSeq">起始行序号。</param>
         /// <param name="writer">频道写入端。</param>
-        /// <param name="batchLines">批大小（仅用于日志；本收集器逐行写）。</param>
-        public LogPump(int startSeq, ChannelWriter<ContainerLogLine> writer, int batchLines)
+        public LogPump(int startSeq, ChannelWriter<ContainerLogLine> writer)
         {
             ArgumentNullException.ThrowIfNull(writer);
 
@@ -494,7 +496,7 @@ public sealed class ContainerStreamService : IContainerLogProvider, IContainerSt
             var (rxRate, txRate) = this.CalculateRates(rx, tx, timestamp);
 
             var sample = new ContainerStatsSample(
-                value.ID ?? string.Empty,
+                value.ID ?? String.Empty,
                 CalculateCpuPercent(current, previous),
                 (long)(value.MemoryStats?.Usage ?? 0),
                 (long)(value.MemoryStats?.Limit ?? 0),

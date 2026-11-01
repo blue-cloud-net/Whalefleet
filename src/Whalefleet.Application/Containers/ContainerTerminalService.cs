@@ -1,12 +1,14 @@
 using Docker.DotNet;
 using Docker.DotNet.Models;
+
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Terminal;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Docker;
 using Whalefleet.Core.Permissions;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace Whalefleet.Application.Containers;
 
@@ -33,7 +35,7 @@ public sealed class ContainerTerminalService
     /// 不设它时容器里的 <c>TERM</c> 往往是 <c>dumb</c>，<c>ls</c> 不出颜色、<c>top</c> 直接报错，
     /// 而界面上看不出是「环境变量没给」——只像是「这个容器里的程序坏了」。
     /// </remarks>
-    private const string TerminalType = "xterm-256color";
+    private const string _terminalType = "xterm-256color";
 
     private readonly IDockerHostAccessor _accessor;
     private readonly IPermissionChecker _permissions;
@@ -179,7 +181,7 @@ public sealed class ContainerTerminalService
                     AttachStdout = true,
                     AttachStderr = true,
                     TTY = true,
-                    Env = [$"TERM={TerminalType}"],
+                    Env = [$"TERM={_terminalType}"],
                 },
                 cancellationToken),
             $"容器 {target.ContainerName} 的终端",
@@ -243,7 +245,7 @@ public sealed class ContainerTerminalService
     /// <returns>可展示的容器名。</returns>
     private static string MapName(string? name, string? fallback) =>
         String.IsNullOrWhiteSpace(name)
-            ? fallback ?? string.Empty
+            ? fallback ?? String.Empty
             : name.TrimStart('/');
 
     /// <summary>
@@ -347,19 +349,19 @@ public sealed class ContainerTerminalService
                     .InspectContainerExecAsync(_execId, CancellationToken.None)
                     .ConfigureAwait(false);
 
-                ExitCode = inspected.ExitCode;
+                this.ExitCode = inspected.ExitCode;
             }
             catch (DockerApiException)
             {
-                ExitCode = null;
+                this.ExitCode = null;
             }
             catch (HttpRequestException)
             {
-                ExitCode = null;
+                this.ExitCode = null;
             }
             catch (ObjectDisposedException)
             {
-                ExitCode = null;
+                this.ExitCode = null;
             }
         }
     }

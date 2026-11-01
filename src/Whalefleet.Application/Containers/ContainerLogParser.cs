@@ -60,7 +60,7 @@ public sealed class ContainerLogParser
     /// <returns>本次产出的行。</returns>
     public IReadOnlyList<ParsedLogLine> Append(string chunk)
     {
-        if (string.IsNullOrEmpty(chunk))
+        if (String.IsNullOrEmpty(chunk))
         {
             return [];
         }

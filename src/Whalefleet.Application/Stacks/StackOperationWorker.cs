@@ -1,12 +1,13 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+
 using Whalefleet.Application.Abstractions.Auditing;
 using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Auditing;
 using Whalefleet.Core.Hosts;
 using Whalefleet.Core.Stacks;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 
 namespace Whalefleet.Application.Stacks;
 
@@ -256,7 +257,7 @@ public sealed class StackOperationWorker : BackgroundService
                     Outcome = succeeded ? AuditOutcome.Success : AuditOutcome.Failure,
                     OccurredAt = occurredAt,
                     ActorId = request.ActorId,
-                    ActorName = request.ActorName ?? string.Empty,
+                    ActorName = request.ActorName ?? String.Empty,
                     TargetType = AuditTargetTypes.Stack,
                     TargetId = request.StackName,
                     TargetName = request.StackName,
@@ -330,7 +331,7 @@ public sealed class StackOperationWorker : BackgroundService
             parts.Add($"清理={result.Removed}");
         }
 
-        return string.Join("，", parts);
+        return String.Join("，", parts);
     }
 
     /// <summary>

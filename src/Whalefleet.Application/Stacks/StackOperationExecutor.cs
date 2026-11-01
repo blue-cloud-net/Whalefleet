@@ -1,12 +1,15 @@
 using System.Globalization;
+
 using Docker.DotNet;
 using Docker.DotNet.Models;
+
+using Microsoft.Extensions.Logging;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Docker;
 using Whalefleet.Application.Images;
-using Microsoft.Extensions.Logging;
 
 namespace Whalefleet.Application.Stacks;
 
@@ -30,7 +33,9 @@ namespace Whalefleet.Application.Stacks;
 /// </remarks>
 public sealed class StackOperationExecutor
 {
-    /// <summary>标签过滤：只认 label 名，不带值。</summary>
+    /// <summary>
+    /// 标签过滤：只认 label 名，不带值。
+    /// </summary>
     /// <remarks>
     /// Docker 的 label 过滤语义是「键存在即为真」——
     /// 写成 <c>com.docker.compose.project=demo</c> 才会按值过滤，
@@ -106,7 +111,7 @@ public sealed class StackOperationExecutor
         StackOperationRequest request,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.ComposeContent))
+        if (String.IsNullOrWhiteSpace(request.ComposeContent))
         {
             throw new BusinessException(ErrorCodes.ComposeInvalid, "缺少 Compose 文件内容");
         }
@@ -180,7 +185,7 @@ public sealed class StackOperationExecutor
                     $"服务 {serviceName}",
                     cancellationToken).ConfigureAwait(false);
 
-                var serviceResult = await this.ApplyServiceAsync(
+                var (Created, Recreated, Started) = await this.ApplyServiceAsync(
                     client,
                     request,
                     plan,
@@ -189,22 +194,22 @@ public sealed class StackOperationExecutor
                     createdContainerIds,
                     cancellationToken).ConfigureAwait(false);
 
-                created += serviceResult.Created;
-                recreated += serviceResult.Recreated;
-                started += serviceResult.Started;
+                created += Created;
+                recreated += Recreated;
+                started += Started;
             }
 
             await this.PublishAsync(request, null, "清理多余资源", cancellationToken).ConfigureAwait(false);
 
-            var orphanResult = await this.PruneOrphansAsync(
+            var (Removed, Skipped) = await this.PruneOrphansAsync(
                 client,
                 request,
                 plan,
                 existing,
                 cancellationToken).ConfigureAwait(false);
 
-            removed += orphanResult.Removed;
-            skippedOrphans += orphanResult.Skipped;
+            removed += Removed;
+            skippedOrphans += Skipped;
 
             _logger.LogInformation(
                 "主机 {HostId} 应用编排 {Stack}：新建 {Created} 个服务、重建 {Recreated} 个、清理 {Removed} 个孤儿",
@@ -263,14 +268,14 @@ public sealed class StackOperationExecutor
             .ConfigureAwait(false);
 
         var current = existing.FirstOrDefault(container =>
-            string.Equals(
+            String.Equals(
                 LabelOf(container, ComposeLabels.Service),
                 servicePlan.Service.Name,
                 StringComparison.Ordinal));
 
         var hash = servicePlan.ConfigHash;
         var unchanged = current is not null
-            && string.Equals(
+            && String.Equals(
                 LabelOf(current, ComposeLabels.ConfigHash),
                 hash,
                 StringComparison.Ordinal);
@@ -300,7 +305,7 @@ public sealed class StackOperationExecutor
             await this.RemoveContainerAsync(client, current.ID, cancellationToken).ConfigureAwait(false);
         }
 
-        var parameters = BuildCreateParameters(request, plan, servicePlan);
+        var parameters = BuildCreateParameters(request, servicePlan);
         var created = await DockerErrorTranslator.ExecuteAsync(
             () => client.Containers.CreateContainerAsync(parameters, cancellationToken),
             $"服务 {servicePlan.Service.Name}",
@@ -311,7 +316,7 @@ public sealed class StackOperationExecutor
         foreach (var network in servicePlan.Networks)
         {
             var actualName = plan.Networks
-                .FirstOrDefault(candidate => string.Equals(candidate.Name, network, StringComparison.Ordinal))
+                .FirstOrDefault(candidate => String.Equals(candidate.Name, network, StringComparison.Ordinal))
                 ?.ActualName;
 
             if (actualName is null)
@@ -355,7 +360,7 @@ public sealed class StackOperationExecutor
         var declared = plan.Services.Select(static plan => plan.Service.Name).ToHashSet(StringComparer.Ordinal);
         var orphans = existing
             .Where(container => !declared.Contains(
-                LabelOf(container, ComposeLabels.Service) ?? string.Empty))
+                LabelOf(container, ComposeLabels.Service) ?? String.Empty))
             .ToList();
 
         if (orphans.Count == 0)
@@ -463,7 +468,7 @@ public sealed class StackOperationExecutor
 
         foreach (var network in networks ?? [])
         {
-            if (!string.Equals(
+            if (!String.Equals(
                     LabelOf(network, ComposeLabels.Project),
                     request.StackName,
                     StringComparison.Ordinal))
@@ -505,7 +510,7 @@ public sealed class StackOperationExecutor
 
             foreach (var volume in volumes.Volumes ?? [])
             {
-                if (!string.Equals(
+                if (!String.Equals(
                         LabelOf(volume, ComposeLabels.Project),
                         request.StackName,
                         StringComparison.Ordinal))
@@ -647,7 +652,7 @@ public sealed class StackOperationExecutor
             cancellationToken).ConfigureAwait(false);
 
         var exists = (networks ?? []).Any(network =>
-            string.Equals(network.Name, name, StringComparison.Ordinal));
+            String.Equals(network.Name, name, StringComparison.Ordinal));
 
         if (exists)
         {
@@ -659,7 +664,7 @@ public sealed class StackOperationExecutor
                 new NetworksCreateParameters
                 {
                     Name = name,
-                    Driver = string.Empty,
+                    Driver = String.Empty,
                     Labels = new Dictionary<string, string>(StringComparer.Ordinal)
                     {
                         [ComposeLabels.Project] = projectName,
@@ -694,7 +699,7 @@ public sealed class StackOperationExecutor
             cancellationToken).ConfigureAwait(false);
 
         var exists = (volumes.Volumes ?? []).Any(volume =>
-            string.Equals(volume.Name, name, StringComparison.Ordinal));
+            String.Equals(volume.Name, name, StringComparison.Ordinal));
 
         if (exists)
         {
@@ -706,7 +711,7 @@ public sealed class StackOperationExecutor
                 new VolumesCreateParameters
                 {
                     Name = name,
-                    Driver = string.Empty,
+                    Driver = String.Empty,
                     Labels = new Dictionary<string, string>(StringComparer.Ordinal)
                     {
                         [ComposeLabels.Project] = projectName,
@@ -738,24 +743,21 @@ public sealed class StackOperationExecutor
             "容器列表",
             cancellationToken).ConfigureAwait(false);
 
-        return (containers ?? [])
-            .Where(container => string.Equals(
+        return [.. (containers ?? [])
+            .Where(container => String.Equals(
                 LabelOf(container, ComposeLabels.Project),
                 stackName,
-                StringComparison.Ordinal))
-            .ToList();
+                StringComparison.Ordinal))];
     }
 
     /// <summary>
     /// 构建容器的创建参数。
     /// </summary>
     /// <param name="request">操作请求。</param>
-    /// <param name="plan">编排计划。</param>
     /// <param name="servicePlan">服务计划。</param>
     /// <returns>创建参数。</returns>
     private static CreateContainerParameters BuildCreateParameters(
         StackOperationRequest request,
-        ComposePlan plan,
         ComposeServicePlan servicePlan)
     {
         var service = servicePlan.Service;
@@ -788,19 +790,19 @@ public sealed class StackOperationExecutor
                 new PortBinding
                 {
                     HostPort = hostPort.ToString(CultureInfo.InvariantCulture),
-                    HostIP = port.HostIp ?? string.Empty,
+                    HostIP = port.HostIp ?? String.Empty,
                 },
             ];
         }
 
         foreach (var volume in servicePlan.Volumes)
         {
-            binds.Add($"{volume.ActualName}:{volume.Destination}{(volume.ReadOnly ? ":ro" : string.Empty)}");
+            binds.Add($"{volume.ActualName}:{volume.Destination}{(volume.ReadOnly ? ":ro" : String.Empty)}");
         }
 
         foreach (var bind in servicePlan.Binds)
         {
-            binds.Add($"{bind.Source}:{bind.Destination}{(bind.ReadOnly ? ":ro" : string.Empty)}");
+            binds.Add($"{bind.Source}:{bind.Destination}{(bind.ReadOnly ? ":ro" : String.Empty)}");
         }
 
         // 空集合与 null 对守护进程不等价：传 [] 会被当成「显式清空」（如「不带任何启动命令」），
@@ -892,7 +894,7 @@ public sealed class StackOperationExecutor
     /// <param name="container">容器。</param>
     /// <returns>在运行返回 <see langword="true"/>。</returns>
     private static bool IsRunning(ContainerListResponse container) =>
-        string.Equals(container.State, "running", StringComparison.OrdinalIgnoreCase);
+        String.Equals(container.State, "running", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// 删除容器（先停后删）。

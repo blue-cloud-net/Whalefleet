@@ -18,10 +18,14 @@ public sealed record ListNetworksRequest
     /// </remarks>
     public string? Search { get; init; }
 
-    /// <summary>页码（从 0 开始）；省略时按 0 处理，负数同样按 0 处理。</summary>
+    /// <summary>
+    /// 页码（从 0 开始）；省略时按 0 处理，负数同样按 0 处理。
+    /// </summary>
     public int? PageIndex { get; init; }
 
-    /// <summary>每页条数；省略时用默认值（20），超出上限（100）会被夹紧。</summary>
+    /// <summary>
+    /// 每页条数；省略时用默认值（20），超出上限（100）会被夹紧。
+    /// </summary>
     public int? PageSize { get; init; }
 }
 
@@ -30,7 +34,9 @@ public sealed record ListNetworksRequest
 /// </summary>
 public sealed record InspectNetworkRequest
 {
-    /// <summary>网络标识（网络 ID 或网络名）；必填。</summary>
+    /// <summary>
+    /// 网络标识（网络 ID 或网络名）；必填。
+    /// </summary>
     /// <remarks>
     /// 守护进程的 <c>GET /networks/{id}</c> 两者都接受。
     /// 仍要求满足 <c>^[a-zA-Z0-9][a-zA-Z0-9_.-]*$</c>——
@@ -44,33 +50,47 @@ public sealed record InspectNetworkRequest
 /// </summary>
 public sealed record CreateNetworkRequest
 {
-    /// <summary>网络名；必填。须匹配 <c>^[a-zA-Z0-9][a-zA-Z0-9_.-]*$</c>。</summary>
+    /// <summary>
+    /// 网络名；必填。须匹配 <c>^[a-zA-Z0-9][a-zA-Z0-9_.-]*$</c>。
+    /// </summary>
     public string? Name { get; init; }
 
-    /// <summary>网络驱动；省略时由守护进程按主机默认选择（通常是 <c>bridge</c>）。</summary>
+    /// <summary>
+    /// 网络驱动；省略时由守护进程按主机默认选择（通常是 <c>bridge</c>）。
+    /// </summary>
     public string? Driver { get; init; }
 
-    /// <summary>子网（CIDR，如 <c>172.18.0.0/16</c>）；省略时由守护进程从默认地址池分配。</summary>
+    /// <summary>
+    /// 子网（CIDR，如 <c>172.18.0.0/16</c>）；省略时由守护进程从默认地址池分配。
+    /// </summary>
     /// <remarks>
     /// 显式指定时必须同时指定 <see cref="Gateway"/> 或让它留空由守护进程取网段首地址——
     /// 留空是可以的，守护进程会自己算。只在需要避开与现有网络重叠时才手填。
     /// </remarks>
     public string? Subnet { get; init; }
 
-    /// <summary>网关地址；省略时由守护进程取子网的第一个可用地址。</summary>
+    /// <summary>
+    /// 网关地址；省略时由守护进程取子网的第一个可用地址。
+    /// </summary>
     public string? Gateway { get; init; }
 
-    /// <summary>动态分配范围（CIDR，如 <c>172.18.5.0/24</c>）；省略表示整个子网都可分配。</summary>
+    /// <summary>
+    /// 动态分配范围（CIDR，如 <c>172.18.5.0/24</c>）；省略表示整个子网都可分配。
+    /// </summary>
     public string? IpRange { get; init; }
 
-    /// <summary>是否可被 <c>docker run --network</c> 单独接入；省略为 <see langword="false"/>。</summary>
+    /// <summary>
+    /// 是否可被 <c>docker run --network</c> 单独接入；省略为 <see langword="false"/>。
+    /// </summary>
     /// <remarks>
     /// 对 <c>overlay</c> 驱动是必需的（覆盖网络默认不可单独接入）；
     /// 对 <c>bridge</c> 通常无所谓，但显式打开没有副作用。
     /// </remarks>
     public bool? Attachable { get; init; }
 
-    /// <summary>标签。</summary>
+    /// <summary>
+    /// 标签。
+    /// </summary>
     public IReadOnlyDictionary<string, string>? Labels { get; init; }
 }
 
@@ -79,7 +99,9 @@ public sealed record CreateNetworkRequest
 /// </summary>
 public sealed record RemoveNetworkRequest
 {
-    /// <summary>网络标识（网络 ID 或网络名）；必填。</summary>
+    /// <summary>
+    /// 网络标识（网络 ID 或网络名）；必填。
+    /// </summary>
     /// <remarks>
     /// 刻意<b>没有 <c>force</c></b>：Docker 的删除网络接口不提供该参数，
     /// 网络只要还有容器接入就必然失败。做一个「看似能强制、实际仍会失败」的开关，
@@ -101,10 +123,14 @@ public sealed record RemoveNetworkRequest
 /// </remarks>
 public sealed record ConnectNetworkRequest
 {
-    /// <summary>容器标识（容器 ID 或容器名）；必填。</summary>
+    /// <summary>
+    /// 容器标识（容器 ID 或容器名）；必填。
+    /// </summary>
     public string? ContainerId { get; init; }
 
-    /// <summary>网络标识（网络 ID 或网络名）；必填。</summary>
+    /// <summary>
+    /// 网络标识（网络 ID 或网络名）；必填。
+    /// </summary>
     public string? NetworkId { get; init; }
 }
 
@@ -117,13 +143,19 @@ public sealed record ConnectNetworkRequest
 /// </remarks>
 public sealed record DisconnectNetworkRequest
 {
-    /// <summary>容器标识（容器 ID 或容器名）；必填。</summary>
+    /// <summary>
+    /// 容器标识（容器 ID 或容器名）；必填。
+    /// </summary>
     public string? ContainerId { get; init; }
 
-    /// <summary>网络标识（网络 ID 或网络名）；必填。</summary>
+    /// <summary>
+    /// 网络标识（网络 ID 或网络名）；必填。
+    /// </summary>
     public string? NetworkId { get; init; }
 
-    /// <summary>是否强制断开；省略为 <see langword="false"/>。</summary>
+    /// <summary>
+    /// 是否强制断开；省略为 <see langword="false"/>。
+    /// </summary>
     /// <remarks>
     /// <b>强制会连累别人</b>：Docker 的 <c>network disconnect --force</c> 会把
     /// <b>共用同一个网络命名空间</b>的容器一起踢掉——那可能是另一个业务容器。

@@ -1,5 +1,7 @@
 using System.Globalization;
+
 using Whalefleet.Application.Common;
+
 using YamlDotNet.RepresentationModel;
 
 namespace Whalefleet.Application.Stacks;
@@ -31,7 +33,9 @@ namespace Whalefleet.Application.Stacks;
 /// </remarks>
 internal static class ComposeParser
 {
-    /// <summary>顶层允许的键。</summary>
+    /// <summary>
+    /// 顶层允许的键。
+    /// </summary>
     private static readonly HashSet<string> _topLevelKeys = new(StringComparer.Ordinal)
     {
         "version",
@@ -41,7 +45,9 @@ internal static class ComposeParser
         "volumes",
     };
 
-    /// <summary>服务级允许的键。</summary>
+    /// <summary>
+    /// 服务级允许的键。
+    /// </summary>
     private static readonly HashSet<string> _serviceKeys = new(StringComparer.Ordinal)
     {
         "image",
@@ -55,21 +61,27 @@ internal static class ComposeParser
         "healthcheck",
     };
 
-    /// <summary>顶层网络允许的键。</summary>
+    /// <summary>
+    /// 顶层网络允许的键。
+    /// </summary>
     private static readonly HashSet<string> _networkKeys = new(StringComparer.Ordinal)
     {
         "name",
         "external",
     };
 
-    /// <summary>顶层卷允许的键。</summary>
+    /// <summary>
+    /// 顶层卷允许的键。
+    /// </summary>
     private static readonly HashSet<string> _volumeKeys = new(StringComparer.Ordinal)
     {
         "name",
         "external",
     };
 
-    /// <summary>健康检查允许的键。</summary>
+    /// <summary>
+    /// 健康检查允许的键。
+    /// </summary>
     private static readonly HashSet<string> _healthCheckKeys = new(StringComparer.Ordinal)
     {
         "test",
@@ -80,7 +92,9 @@ internal static class ComposeParser
         "disable",
     };
 
-    /// <summary>Compose 支持的重启策略取值。</summary>
+    /// <summary>
+    /// Compose 支持的重启策略取值。
+    /// </summary>
     private static readonly HashSet<string> _restartPolicies = new(StringComparer.Ordinal)
     {
         "no",
@@ -129,7 +143,7 @@ internal static class ComposeParser
         }
 
         var warnings = new List<string>();
-        RejectUnknownKeys(rootMapping, string.Empty, _topLevelKeys);
+        RejectUnknownKeys(rootMapping, String.Empty, _topLevelKeys);
 
         // version 已被 Compose 规范废弃；name 会被本平台的 Stack 名称取代。
         // 两者都忽略，但**给提示**——静默忽略会让人以为顶层 name 生效了。
@@ -143,7 +157,7 @@ internal static class ComposeParser
             warnings.Add($"顶层「name」字段不生效——项目名以 Stack 名称为准（当前值：{nameNode}）");
         }
 
-        var services = ParseServices(rootMapping, warnings);
+        var services = ParseServices(rootMapping);
         var networks = ParseNetworks(rootMapping);
         var volumes = ParseVolumes(rootMapping);
 
@@ -154,11 +168,8 @@ internal static class ComposeParser
     /// 解析 <c>services</c>。
     /// </summary>
     /// <param name="root">顶层映射。</param>
-    /// <param name="warnings">提示收集器。</param>
     /// <returns>服务定义列表。</returns>
-    private static List<ComposeService> ParseServices(
-        YamlMappingNode root,
-        List<string> warnings)
+    private static List<ComposeService> ParseServices(YamlMappingNode root)
     {
         if (!TryGetChild(root, "services", out var servicesNode))
         {
@@ -198,7 +209,7 @@ internal static class ComposeParser
         {
             foreach (var dependency in service.DependsOn)
             {
-                if (services.All(candidate => !string.Equals(candidate.Name, dependency, StringComparison.Ordinal)))
+                if (services.All(candidate => !String.Equals(candidate.Name, dependency, StringComparison.Ordinal)))
                 {
                     throw new BusinessException(
                         ErrorCodes.ComposeInvalid,
@@ -277,7 +288,7 @@ internal static class ComposeParser
             {
                 var key = pair.Key.ToString();
 
-                if (string.IsNullOrWhiteSpace(key))
+                if (String.IsNullOrWhiteSpace(key))
                 {
                     throw new BusinessException(
                         ErrorCodes.ComposeInvalid,
@@ -286,6 +297,10 @@ internal static class ComposeParser
 
                 // 值为 null 的写法（`KEY:`）在 Compose 里表示「从宿主环境取值」，
                 // 而本版本没有环境变量来源，因此显式拒绝而不是让它变成空串。
+                // TODO: 该条件恒为假——同一个表达式不可能既是 YamlScalarNode 又不是，
+                // 因此 1904 这条拒绝分支实际永远不会执行，`KEY:` 会被静默写成 `KEY=`。
+                // 同文件 890/940 行用的是正确写法（`is not YamlScalarNode` 的另一半），
+                // 可见此处是笔误；修它必须同时改单元测试（断言的正是当前的错误行为）。
                 if (pair.Value is YamlScalarNode { Value: null or "" } && pair.Value is not YamlScalarNode)
                 {
                     throw new BusinessException(
@@ -293,7 +308,7 @@ internal static class ComposeParser
                         $"「{path}.environment.{key}」没有值——本版本暂不支持从宿主环境继承变量");
                 }
 
-                var value = pair.Value is YamlScalarNode scalar ? scalar.Value ?? string.Empty : pair.Value.ToString();
+                var value = pair.Value is YamlScalarNode scalar ? scalar.Value ?? String.Empty : pair.Value.ToString();
 
                 RejectInterpolation(value, $"{path}.environment.{key}");
 
@@ -469,7 +484,7 @@ internal static class ComposeParser
     /// <returns>端口号。</returns>
     private static int ParsePortNumber(string text, string path, string role)
     {
-        if (!int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var port)
+        if (!Int32.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var port)
             || port is < 1 or > 65535)
         {
             throw new BusinessException(
@@ -549,7 +564,7 @@ internal static class ComposeParser
 
         if (parts.Length == 3)
         {
-            if (!string.Equals(parts[2], "ro", StringComparison.OrdinalIgnoreCase))
+            if (!String.Equals(parts[2], "ro", StringComparison.OrdinalIgnoreCase))
             {
                 throw new BusinessException(
                     ErrorCodes.ComposeInvalid,
@@ -735,7 +750,7 @@ internal static class ComposeParser
         {
             var disabled = RequireScalar(disableNode, $"{healthCheckPath}.disable").Trim();
 
-            if (string.Equals(disabled, "true", StringComparison.OrdinalIgnoreCase))
+            if (String.Equals(disabled, "true", StringComparison.OrdinalIgnoreCase))
             {
                 if (TryGetChild(healthCheck, "test", out _))
                 {
@@ -747,7 +762,7 @@ internal static class ComposeParser
                 return new ComposeHealthCheck(["NONE"], null, null, null, null);
             }
 
-            if (!string.Equals(disabled, "false", StringComparison.OrdinalIgnoreCase))
+            if (!String.Equals(disabled, "false", StringComparison.OrdinalIgnoreCase))
             {
                 throw new BusinessException(
                     ErrorCodes.ComposeInvalid,
@@ -837,7 +852,7 @@ internal static class ComposeParser
             return null;
         }
 
-        if (!int.TryParse(text.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var retries)
+        if (!Int32.TryParse(text.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var retries)
             || retries < 1)
         {
             throw new BusinessException(
@@ -965,12 +980,12 @@ internal static class ComposeParser
 
         var trimmed = text.Trim();
 
-        if (string.Equals(trimmed, "true", StringComparison.OrdinalIgnoreCase))
+        if (String.Equals(trimmed, "true", StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
 
-        if (string.Equals(trimmed, "false", StringComparison.OrdinalIgnoreCase))
+        if (String.Equals(trimmed, "false", StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
@@ -1008,7 +1023,7 @@ internal static class ComposeParser
         foreach (var pair in mapping.Children)
         {
             if (pair.Key is YamlScalarNode scalar &&
-                string.Equals(scalar.Value, key, StringComparison.Ordinal))
+                String.Equals(scalar.Value, key, StringComparison.Ordinal))
             {
                 value = pair.Value;
                 return true;
@@ -1037,7 +1052,7 @@ internal static class ComposeParser
                 $"「{path}」必须是一个值");
         }
 
-        return scalar.Value ?? string.Empty;
+        return scalar.Value ?? String.Empty;
     }
 
     /// <summary>

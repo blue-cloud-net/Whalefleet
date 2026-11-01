@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+
 using Whalefleet.Application.Common;
 
 namespace Whalefleet.Application.Stacks;
@@ -22,7 +23,9 @@ namespace Whalefleet.Application.Stacks;
 /// </remarks>
 internal static class ComposePlanner
 {
-    /// <summary>项目默认网络的逻辑名（Compose 的约定名）。</summary>
+    /// <summary>
+    /// 项目默认网络的逻辑名（Compose 的约定名）。
+    /// </summary>
     public const string DefaultNetworkName = "default";
 
     /// <summary>
@@ -162,7 +165,7 @@ internal static class ComposePlanner
 
             foreach (var network in serviceNetworks)
             {
-                if (networks.All(plan => !string.Equals(plan.Name, network, StringComparison.Ordinal)))
+                if (networks.All(plan => !String.Equals(plan.Name, network, StringComparison.Ordinal)))
                 {
                     throw new BusinessException(
                         ErrorCodes.ComposeInvalid,
@@ -213,7 +216,7 @@ internal static class ComposePlanner
     /// </remarks>
     private static string ResolveResourceName(string projectName, string logicalName, string? actualName)
     {
-        if (!string.IsNullOrWhiteSpace(actualName))
+        if (!String.IsNullOrWhiteSpace(actualName))
         {
             return actualName.Trim();
         }
@@ -236,7 +239,7 @@ internal static class ComposePlanner
     {
         foreach (var plan in volumes)
         {
-            if (string.Equals(plan.Name, source, StringComparison.Ordinal))
+            if (String.Equals(plan.Name, source, StringComparison.Ordinal))
             {
                 return plan.ActualName;
             }
@@ -265,29 +268,29 @@ internal static class ComposePlanner
         var builder = new StringBuilder();
 
         builder.Append("image=").Append(service.Image).Append('\n');
-        builder.Append("command=").Append(string.Join(' ', service.Command)).Append('\n');
-        builder.Append("env=").Append(string.Join('\u001F', service.Environment)).Append('\n');
-        builder.Append("ports=").Append(string.Join('\u001F', service.Ports.Select(static port =>
-            $"{port.HostIp ?? string.Empty}:{port.HostPort?.ToString(CultureInfo.InvariantCulture) ?? string.Empty}:"
+        builder.Append("command=").Append(String.Join(' ', service.Command)).Append('\n');
+        builder.Append("env=").Append(String.Join('\u001F', service.Environment)).Append('\n');
+        builder.Append("ports=").Append(String.Join('\u001F', service.Ports.Select(static port =>
+            $"{port.HostIp ?? String.Empty}:{port.HostPort?.ToString(CultureInfo.InvariantCulture) ?? String.Empty}:"
             + $"{port.ContainerPort.ToString(CultureInfo.InvariantCulture)}/{port.Protocol}"))).Append('\n');
-        builder.Append("volumes=").Append(string.Join('\u001F', service.Volumes.Select(static mount =>
+        builder.Append("volumes=").Append(String.Join('\u001F', service.Volumes.Select(static mount =>
             $"{mount.Source}:{mount.Destination}:{mount.ReadOnly}"))).Append('\n');
-        builder.Append("networks=").Append(string.Join('\u001F', service.Networks)).Append('\n');
-        builder.Append("depends_on=").Append(string.Join('\u001F', service.DependsOn)).Append('\n');
-        builder.Append("restart=").Append(service.Restart ?? string.Empty).Append('\n');
+        builder.Append("networks=").Append(String.Join('\u001F', service.Networks)).Append('\n');
+        builder.Append("depends_on=").Append(String.Join('\u001F', service.DependsOn)).Append('\n');
+        builder.Append("restart=").Append(service.Restart ?? String.Empty).Append('\n');
 
         if (service.HealthCheck is { } healthCheck)
         {
             builder.Append("healthcheck=")
-                .Append(string.Join('\u001F', healthCheck.Test))
+                .Append(String.Join('\u001F', healthCheck.Test))
                 .Append('|')
-                .Append(healthCheck.IntervalSeconds?.ToString(CultureInfo.InvariantCulture) ?? string.Empty)
+                .Append(healthCheck.IntervalSeconds?.ToString(CultureInfo.InvariantCulture) ?? String.Empty)
                 .Append('|')
-                .Append(healthCheck.TimeoutSeconds?.ToString(CultureInfo.InvariantCulture) ?? string.Empty)
+                .Append(healthCheck.TimeoutSeconds?.ToString(CultureInfo.InvariantCulture) ?? String.Empty)
                 .Append('|')
-                .Append(healthCheck.StartPeriodSeconds?.ToString(CultureInfo.InvariantCulture) ?? string.Empty)
+                .Append(healthCheck.StartPeriodSeconds?.ToString(CultureInfo.InvariantCulture) ?? String.Empty)
                 .Append('|')
-                .Append(healthCheck.Retries?.ToString(CultureInfo.InvariantCulture) ?? string.Empty)
+                .Append(healthCheck.Retries?.ToString(CultureInfo.InvariantCulture) ?? String.Empty)
                 .Append('\n');
         }
 
@@ -349,7 +352,7 @@ internal static class ComposePlanner
             }
 
             var cycleStart = stack.IndexOf(name);
-            var cycle = string.Join(" → ", stack.Skip(cycleStart < 0 ? 0 : cycleStart).Append(name));
+            var cycle = String.Join(" → ", stack.Skip(cycleStart < 0 ? 0 : cycleStart).Append(name));
 
             throw new BusinessException(
                 ErrorCodes.ComposeInvalid,

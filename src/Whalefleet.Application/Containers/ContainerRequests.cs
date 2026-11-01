@@ -8,7 +8,9 @@ namespace Whalefleet.Application.Containers;
 /// </remarks>
 public sealed record ListContainersRequest
 {
-    /// <summary>是否包含已停止的容器；省略时只列运行中的（与 <c>docker ps</c> 一致）。</summary>
+    /// <summary>
+    /// 是否包含已停止的容器；省略时只列运行中的（与 <c>docker ps</c> 一致）。
+    /// </summary>
     /// <remarks>
     /// <b>被 <see cref="State"/> 取代</b>：状态筛选要能表达「仅未运行」，
     /// 布尔开关表达不了（true/false 只有「含/不含已停止」两态）。
@@ -39,10 +41,14 @@ public sealed record ListContainersRequest
     /// </remarks>
     public string? Search { get; init; }
 
-    /// <summary>页码（从 0 开始）；省略时按 0 处理。</summary>
+    /// <summary>
+    /// 页码（从 0 开始）；省略时按 0 处理。
+    /// </summary>
     public int? PageIndex { get; init; }
 
-    /// <summary>每页条数；省略时用默认值，超出上限会被夹紧。</summary>
+    /// <summary>
+    /// 每页条数；省略时用默认值，超出上限会被夹紧。
+    /// </summary>
     public int? PageSize { get; init; }
 
     /// <summary>
@@ -54,7 +60,9 @@ public sealed record ListContainersRequest
     /// </remarks>
     public string? SortBy { get; init; }
 
-    /// <summary>排序方向；<c>asc</c> 为升序，其余（含省略）按降序。</summary>
+    /// <summary>
+    /// 排序方向；<c>asc</c> 为升序，其余（含省略）按降序。
+    /// </summary>
     /// <remarks>不校验：无法识别的值按降序处理，与「省略」行为一致。</remarks>
     public string? SortDir { get; init; }
 }
@@ -68,19 +76,29 @@ public sealed record ListContainersRequest
 /// </remarks>
 public static class ContainerSortField
 {
-    /// <summary>容器名。</summary>
+    /// <summary>
+    /// 容器名。
+    /// </summary>
     public const string Name = "name";
 
-    /// <summary>镜像名。</summary>
+    /// <summary>
+    /// 镜像名。
+    /// </summary>
     public const string Image = "image";
 
-    /// <summary>状态（运行中 / 已停止 / …）。</summary>
+    /// <summary>
+    /// 状态（运行中 / 已停止 / …）。
+    /// </summary>
     public const string State = "state";
 
-    /// <summary>创建时间。</summary>
+    /// <summary>
+    /// 创建时间。
+    /// </summary>
     public const string Created = "created";
 
-    /// <summary>默认字段：等价于守护进程自己给的创建时间降序。</summary>
+    /// <summary>
+    /// 默认字段：等价于守护进程自己给的创建时间降序。
+    /// </summary>
     public const string Default = Created;
 }
 
@@ -93,16 +111,24 @@ public static class ContainerSortField
 /// </remarks>
 public static class ContainerStateFilter
 {
-    /// <summary>全部容器（运行中 + 未运行）。</summary>
+    /// <summary>
+    /// 全部容器（运行中 + 未运行）。
+    /// </summary>
     public const string All = "all";
 
-    /// <summary>仅运行中（含已暂停与重启中——它们都算「还活着」）。</summary>
+    /// <summary>
+    /// 仅运行中（含已暂停与重启中——它们都算「还活着」）。
+    /// </summary>
     public const string Running = "running";
 
-    /// <summary>仅未运行（已退出 / 已死亡 / 从未启动）。</summary>
+    /// <summary>
+    /// 仅未运行（已退出 / 已死亡 / 从未启动）。
+    /// </summary>
     public const string Stopped = "stopped";
 
-    /// <summary>默认筛选：全部。</summary>
+    /// <summary>
+    /// 默认筛选：全部。
+    /// </summary>
     public const string Default = All;
 }
 
@@ -111,7 +137,9 @@ public static class ContainerStateFilter
 /// </summary>
 public sealed record InspectContainerRequest
 {
-    /// <summary>容器标识（完整 ID 或名称）。</summary>
+    /// <summary>
+    /// 容器标识（完整 ID 或名称）。
+    /// </summary>
     public string? ContainerId { get; init; }
 }
 
@@ -129,13 +157,19 @@ public sealed record InspectContainerRequest
 /// </remarks>
 public sealed record ContainerLogsRequest
 {
-    /// <summary>容器标识。</summary>
+    /// <summary>
+    /// 容器标识。
+    /// </summary>
     public string? ContainerId { get; init; }
 
-    /// <summary>只取最后 N 行；省略时取全部（与 <c>docker logs</c> 一致）。</summary>
+    /// <summary>
+    /// 只取最后 N 行；省略时取全部（与 <c>docker logs</c> 一致）。
+    /// </summary>
     public int? Tail { get; init; }
 
-    /// <summary>只取该时刻（含）之后的日志，Unix 秒。</summary>
+    /// <summary>
+    /// 只取该时刻（含）之后的日志，Unix 秒。
+    /// </summary>
     public long? Since { get; init; }
 
     /// <summary>
@@ -149,7 +183,9 @@ public sealed record ContainerLogsRequest
     /// </remarks>
     public long? Until { get; init; }
 
-    /// <summary>是否包含 stderr；省略时包含（用户要看的就是全部输出）。</summary>
+    /// <summary>
+    /// 是否包含 stderr；省略时包含（用户要看的就是全部输出）。
+    /// </summary>
     public bool? IncludeStderr { get; init; }
 }
 
@@ -163,13 +199,19 @@ public sealed record ContainerLogsRequest
 /// </remarks>
 public sealed record DownloadContainerLogsRequest
 {
-    /// <summary>容器标识。</summary>
+    /// <summary>
+    /// 容器标识。
+    /// </summary>
     public string? ContainerId { get; init; }
 
-    /// <summary>只取该时刻（含）之后的日志，Unix 秒；省略时取全部。</summary>
+    /// <summary>
+    /// 只取该时刻（含）之后的日志，Unix 秒；省略时取全部。
+    /// </summary>
     public long? Since { get; init; }
 
-    /// <summary>是否包含 stderr；省略时包含。</summary>
+    /// <summary>
+    /// 是否包含 stderr；省略时包含。
+    /// </summary>
     public bool? IncludeStderr { get; init; }
 }
 
@@ -186,88 +228,139 @@ public sealed record DownloadContainerLogsRequest
 /// </remarks>
 public sealed record CreateContainerRequest
 {
-    /// <summary>镜像名（如 <c>nginx:latest</c>）；必填。</summary>
+    /// <summary>
+    /// 镜像名（如 <c>nginx:latest</c>）；必填。
+    /// </summary>
     public string? Image { get; init; }
 
-    /// <summary>容器名；省略时由 Docker 随机生成。</summary>
+    /// <summary>
+    /// 容器名；省略时由 Docker 随机生成。
+    /// </summary>
     public string? Name { get; init; }
 
-    /// <summary>启动命令（覆盖镜像的 <c>CMD</c>）。</summary>
+    /// <summary>
+    /// 启动命令（覆盖镜像的 <c>CMD</c>）。
+    /// </summary>
     public IReadOnlyList<string>? Cmd { get; init; }
 
-    /// <summary>入口点（覆盖镜像的 <c>ENTRYPOINT</c>）。</summary>
+    /// <summary>
+    /// 入口点（覆盖镜像的 <c>ENTRYPOINT</c>）。
+    /// </summary>
     public IReadOnlyList<string>? Entrypoint { get; init; }
 
-    /// <summary>环境变量（<c>KEY=VALUE</c>）。</summary>
+    /// <summary>
+    /// 环境变量（<c>KEY=VALUE</c>）。
+    /// </summary>
     public IReadOnlyList<string>? Env { get; init; }
 
-    /// <summary>标签。</summary>
+    /// <summary>
+    /// 标签。
+    /// </summary>
     public IReadOnlyDictionary<string, string>? Labels { get; init; }
 
-    /// <summary>端口映射。</summary>
+    /// <summary>
+    /// 端口映射。
+    /// </summary>
     public IReadOnlyList<ContainerPortMapping>? Ports { get; init; }
 
-    /// <summary>挂载（bind / 具名卷）。</summary>
+    /// <summary>
+    /// 挂载（bind / 具名卷）。
+    /// </summary>
     public IReadOnlyList<ContainerVolumeMapping>? Volumes { get; init; }
 
-    /// <summary>重启策略（<c>no</c> / <c>always</c> / <c>on-failure</c> / <c>unless-stopped</c>）；省略等同 <c>no</c>。</summary>
+    /// <summary>
+    /// 重启策略（<c>no</c> / <c>always</c> / <c>on-failure</c> / <c>unless-stopped</c>）；省略等同 <c>no</c>。
+    /// </summary>
     public string? RestartPolicy { get; init; }
 
-    /// <summary>退出后是否自动删除容器。</summary>
+    /// <summary>
+    /// 退出后是否自动删除容器。
+    /// </summary>
     public bool? AutoRemove { get; init; }
 
-    /// <summary>网络名或网络模式（如 <c>bridge</c> / <c>host</c> / <c>none</c> / 自定义网络名）。</summary>
+    /// <summary>
+    /// 网络名或网络模式（如 <c>bridge</c> / <c>host</c> / <c>none</c> / 自定义网络名）。
+    /// </summary>
     public string? Network { get; init; }
 
-    /// <summary>容器主机名。</summary>
+    /// <summary>
+    /// 容器主机名。
+    /// </summary>
     public string? Hostname { get; init; }
 
-    /// <summary>工作目录。</summary>
+    /// <summary>
+    /// 工作目录。
+    /// </summary>
     public string? WorkingDir { get; init; }
 
-    /// <summary>是否分配 TTY。</summary>
+    /// <summary>
+    /// 是否分配 TTY。
+    /// </summary>
     public bool? Tty { get; init; }
 
-    /// <summary>是否保持标准输入打开（<c>docker run -i</c>）。</summary>
+    /// <summary>
+    /// 是否保持标准输入打开（<c>docker run -i</c>）。
+    /// </summary>
     public bool? StdinOpen { get; init; }
 
-    // ==================== 0.3.0 高级创建参数 ====================
+    #region 0.3.0 高级创建参数
     // 界面按「常用 / 高级」两级折叠：上面这一组是高频，下方这一组平时不碰。
     // 拆成两组而不是两套端点，是因为 Docker 的创建接口只有一个，
     // 而「高级参数」在服务端与普通参数没有任何处理差异——差别只在界面上。
 
-    /// <summary>运行用户（对应 <c>docker run --user</c>）；省略时用镜像里 <c>USER</c> 声明的用户。</summary>
+    /// <summary>
+    /// 运行用户（对应 <c>docker run --user</c>）；省略时用镜像里 <c>USER</c> 声明的用户。
+    /// </summary>
     public string? User { get; init; }
 
-    /// <summary>新增的 Linux capabilities（对应 <c>--cap-add</c>）。</summary>
+    /// <summary>
+    /// 新增的 Linux capabilities（对应 <c>--cap-add</c>）。
+    /// </summary>
     public IReadOnlyList<string>? CapAdd { get; init; }
 
-    /// <summary>移除的 Linux capabilities（对应 <c>--cap-drop</c>）。</summary>
+    /// <summary>
+    /// 移除的 Linux capabilities（对应 <c>--cap-drop</c>）。
+    /// </summary>
     public IReadOnlyList<string>? CapDrop { get; init; }
 
-    /// <summary>健康检查定义；省略时用镜像里的 <c>HEALTHCHECK</c>。</summary>
+    /// <summary>
+    /// 健康检查定义；省略时用镜像里的 <c>HEALTHCHECK</c>。
+    /// </summary>
     /// <remarks>传 <c>["NONE"]</c> 表示<b>覆盖</b>镜像的健康检查并关闭它——这是 Docker 的既定语义，
     /// 与「不传」截然不同，因此单独用一条注释标出来。</remarks>
     public ContainerHealthCheck? HealthCheck { get; init; }
 
-    /// <summary>设备映射（对应 <c>--device</c>）。</summary>
+    /// <summary>
+    /// 设备映射（对应 <c>--device</c>）。
+    /// </summary>
     public IReadOnlyList<ContainerDeviceMapping>? Devices { get; init; }
 
-    /// <summary>可写内核参数（对应 <c>--sysctl</c>）；键值成对。</summary>
+    /// <summary>
+    /// 可写内核参数（对应 <c>--sysctl</c>）；键值成对。
+    /// </summary>
     public IReadOnlyDictionary<string, string>? Sysctls { get; init; }
 
-    /// <summary>资源限制（对应 <c>--ulimit</c>）。</summary>
+    /// <summary>
+    /// 资源限制（对应 <c>--ulimit</c>）。
+    /// </summary>
     public IReadOnlyList<ContainerUlimit>? Ulimits { get; init; }
 
-    /// <summary>日志驱动配置。</summary>
+    /// <summary>
+    /// 日志驱动配置。
+    /// </summary>
     public ContainerLogDriver? LogDriver { get; init; }
 
-    /// <summary>内存上限（字节）；省略为不限制。</summary>
+    /// <summary>
+    /// 内存上限（字节）；省略为不限制。
+    /// </summary>
     public long? MemoryLimitBytes { get; init; }
 
-    /// <summary>CPU 配额（十亿分之一核）；省略为不限制。</summary>
+    /// <summary>
+    /// CPU 配额（十亿分之一核）；省略为不限制。
+    /// </summary>
     public long? NanoCpus { get; init; }
 }
+    #endregion
 
 /// <summary>
 /// 端口映射项。
@@ -278,16 +371,24 @@ public sealed record CreateContainerRequest
 /// </remarks>
 public sealed record ContainerPortMapping
 {
-    /// <summary>容器内端口（1–65535）；必填。</summary>
+    /// <summary>
+    /// 容器内端口（1–65535）；必填。
+    /// </summary>
     public int ContainerPort { get; init; }
 
-    /// <summary>宿主端口（1–65535）；省略表示<b>只暴露不绑定</b>（随机映射）。</summary>
+    /// <summary>
+    /// 宿主端口（1–65535）；省略表示<b>只暴露不绑定</b>（随机映射）。
+    /// </summary>
     public int? HostPort { get; init; }
 
-    /// <summary>协议（<c>tcp</c> / <c>udp</c>）；省略为 <c>tcp</c>。</summary>
+    /// <summary>
+    /// 协议（<c>tcp</c> / <c>udp</c>）；省略为 <c>tcp</c>。
+    /// </summary>
     public string? Type { get; init; }
 
-    /// <summary>绑定的宿主地址；省略表示所有网卡。</summary>
+    /// <summary>
+    /// 绑定的宿主地址；省略表示所有网卡。
+    /// </summary>
     public string? HostIp { get; init; }
 }
 
@@ -300,13 +401,19 @@ public sealed record ContainerPortMapping
 /// </remarks>
 public sealed record ContainerVolumeMapping
 {
-    /// <summary>宿主路径或卷名；必填。</summary>
+    /// <summary>
+    /// 宿主路径或卷名；必填。
+    /// </summary>
     public string? Source { get; init; }
 
-    /// <summary>容器内路径；必填。</summary>
+    /// <summary>
+    /// 容器内路径；必填。
+    /// </summary>
     public string? Destination { get; init; }
 
-    /// <summary>是否只读挂载；省略为可写。</summary>
+    /// <summary>
+    /// 是否只读挂载；省略为可写。
+    /// </summary>
     public bool? ReadOnly { get; init; }
 }
 
@@ -315,7 +422,9 @@ public sealed record ContainerVolumeMapping
 /// </summary>
 public sealed record StartContainerRequest
 {
-    /// <summary>容器标识（完整 ID / 短 ID / 名称）。</summary>
+    /// <summary>
+    /// 容器标识（完整 ID / 短 ID / 名称）。
+    /// </summary>
     public string? ContainerId { get; init; }
 }
 
@@ -324,10 +433,14 @@ public sealed record StartContainerRequest
 /// </summary>
 public sealed record StopContainerRequest
 {
-    /// <summary>容器标识。</summary>
+    /// <summary>
+    /// 容器标识。
+    /// </summary>
     public string? ContainerId { get; init; }
 
-    /// <summary>收到 SIGTERM 后等待多久才 SIGKILL（秒）；省略为 10（与 Docker 默认一致）。</summary>
+    /// <summary>
+    /// 收到 SIGTERM 后等待多久才 SIGKILL（秒）；省略为 10（与 Docker 默认一致）。
+    /// </summary>
     public int? WaitSeconds { get; init; }
 }
 
@@ -336,7 +449,9 @@ public sealed record StopContainerRequest
 /// </summary>
 public sealed record RestartContainerRequest
 {
-    /// <summary>容器标识。</summary>
+    /// <summary>
+    /// 容器标识。
+    /// </summary>
     public string? ContainerId { get; init; }
 }
 
@@ -345,10 +460,14 @@ public sealed record RestartContainerRequest
 /// </summary>
 public sealed record RemoveContainerRequest
 {
-    /// <summary>容器标识。</summary>
+    /// <summary>
+    /// 容器标识。
+    /// </summary>
     public string? ContainerId { get; init; }
 
-    /// <summary>是否强制删除运行中的容器；省略为 <see langword="false"/>（此时守护进程会以 409 拒绝）。</summary>
+    /// <summary>
+    /// 是否强制删除运行中的容器；省略为 <see langword="false"/>（此时守护进程会以 409 拒绝）。
+    /// </summary>
     public bool? Force { get; init; }
 }
 
@@ -365,7 +484,9 @@ public sealed record RemoveContainerRequest
 /// </remarks>
 public sealed record KillContainerRequest
 {
-    /// <summary>容器标识。</summary>
+    /// <summary>
+    /// 容器标识。
+    /// </summary>
     public string? ContainerId { get; init; }
 
     /// <summary>
@@ -383,7 +504,9 @@ public sealed record KillContainerRequest
 /// </summary>
 public sealed record PauseContainerRequest
 {
-    /// <summary>容器标识。</summary>
+    /// <summary>
+    /// 容器标识。
+    /// </summary>
     public string? ContainerId { get; init; }
 }
 
@@ -396,11 +519,13 @@ public sealed record PauseContainerRequest
 /// </remarks>
 public sealed record ResumeContainerRequest
 {
-    /// <summary>容器标识。</summary>
+    /// <summary>
+    /// 容器标识。
+    /// </summary>
     public string? ContainerId { get; init; }
 }
 
-// ==================== 0.3.0 高级创建参数与基础操作 ====================
+#region 0.3.0 高级创建参数与基础操作
 
 /// <summary>
 /// 容器健康检查定义。
@@ -416,21 +541,32 @@ public sealed record ResumeContainerRequest
 /// <para><b>时间单位对外一律用秒</b>：Docker 的 API 用纳秒，
 /// 那是 SDK 与守护进程之间的实现细节；对外用秒可读，换算在服务端做。</para>
 /// </remarks>
+#endregion
 public sealed record ContainerHealthCheck
 {
-    /// <summary>检查命令；<c>["NONE"]</c> 表示关闭检查。必填。</summary>
+    /// <summary>
+    /// 检查命令；<c>["NONE"]</c> 表示关闭检查。必填。
+    /// </summary>
     public IReadOnlyList<string>? Test { get; init; }
 
-    /// <summary>两次检查之间的间隔（秒）；省略时由镜像的 <c>HEALTHCHECK</c> 或守护进程默认值决定。</summary>
+    /// <summary>
+    /// 两次检查之间的间隔（秒）；省略时由镜像的 <c>HEALTHCHECK</c> 或守护进程默认值决定。
+    /// </summary>
     public int? IntervalSeconds { get; init; }
 
-    /// <summary>单次检查的超时（秒）。</summary>
+    /// <summary>
+    /// 单次检查的超时（秒）。
+    /// </summary>
     public int? TimeoutSeconds { get; init; }
 
-    /// <summary>容器启动后的「宽限期」（秒）：期间检查失败不计入 <see cref="Retries"/>。</summary>
+    /// <summary>
+    /// 容器启动后的「宽限期」（秒）：期间检查失败不计入 <see cref="Retries"/>。
+    /// </summary>
     public int? StartPeriodSeconds { get; init; }
 
-    /// <summary>连续失败多少次判定为 <c>unhealthy</c>；省略为 3。</summary>
+    /// <summary>
+    /// 连续失败多少次判定为 <c>unhealthy</c>；省略为 3。
+    /// </summary>
     public int? Retries { get; init; }
 }
 
@@ -444,13 +580,19 @@ public sealed record ContainerHealthCheck
 /// </remarks>
 public sealed record ContainerDeviceMapping
 {
-    /// <summary>宿主设备路径（如 <c>/dev/snd</c>）；必填。</summary>
+    /// <summary>
+    /// 宿主设备路径（如 <c>/dev/snd</c>）；必填。
+    /// </summary>
     public string? HostPath { get; init; }
 
-    /// <summary>容器内路径；省略时与 <see cref="HostPath"/> 相同（与 <c>docker run</c> 一致）。</summary>
+    /// <summary>
+    /// 容器内路径；省略时与 <see cref="HostPath"/> 相同（与 <c>docker run</c> 一致）。
+    /// </summary>
     public string? ContainerPath { get; init; }
 
-    /// <summary>cgroup 设备权限：<c>r</c> 读 / <c>w</c> 写 / <c>m</c> mknod；省略为 <c>rwm</c>。</summary>
+    /// <summary>
+    /// cgroup 设备权限：<c>r</c> 读 / <c>w</c> 写 / <c>m</c> mknod；省略为 <c>rwm</c>。
+    /// </summary>
     public string? Permissions { get; init; }
 }
 
@@ -459,13 +601,19 @@ public sealed record ContainerDeviceMapping
 /// </summary>
 public sealed record ContainerUlimit
 {
-    /// <summary>限制名（如 <c>nofile</c> / <c>nproc</c> / <c>fsize</c>）；必填。</summary>
+    /// <summary>
+    /// 限制名（如 <c>nofile</c> / <c>nproc</c> / <c>fsize</c>）；必填。
+    /// </summary>
     public string? Name { get; init; }
 
-    /// <summary>软限制；省略时与 <see cref="Hard"/> 相同。</summary>
+    /// <summary>
+    /// 软限制；省略时与 <see cref="Hard"/> 相同。
+    /// </summary>
     public long? Soft { get; init; }
 
-    /// <summary>硬限制；省略时与 <see cref="Soft"/> 相同。</summary>
+    /// <summary>
+    /// 硬限制；省略时与 <see cref="Soft"/> 相同。
+    /// </summary>
     public long? Hard { get; init; }
 }
 
@@ -481,10 +629,14 @@ public sealed record ContainerUlimit
 /// </remarks>
 public sealed record ContainerLogDriver
 {
-    /// <summary>驱动名（<c>json-file</c> / <c>local</c> / <c>journald</c> / <c>syslog</c> / <c>none</c>）；必填。</summary>
+    /// <summary>
+    /// 驱动名（<c>json-file</c> / <c>local</c> / <c>journald</c> / <c>syslog</c> / <c>none</c>）；必填。
+    /// </summary>
     public string? Type { get; init; }
 
-    /// <summary>驱动选项（如 <c>max-size</c> / <c>max-file</c>）；键值成对。</summary>
+    /// <summary>
+    /// 驱动选项（如 <c>max-size</c> / <c>max-file</c>）；键值成对。
+    /// </summary>
     public IReadOnlyDictionary<string, string>? Options { get; init; }
 }
 
@@ -493,10 +645,14 @@ public sealed record ContainerLogDriver
 /// </summary>
 public sealed record RenameContainerRequest
 {
-    /// <summary>容器标识（完整 ID / 短 ID / 名称）。</summary>
+    /// <summary>
+    /// 容器标识（完整 ID / 短 ID / 名称）。
+    /// </summary>
     public string? ContainerId { get; init; }
 
-    /// <summary>新名称；必填。</summary>
+    /// <summary>
+    /// 新名称；必填。
+    /// </summary>
     public string? Name { get; init; }
 }
 
@@ -515,16 +671,24 @@ public sealed record RenameContainerRequest
 /// </remarks>
 public sealed record UpdateContainerRequest
 {
-    /// <summary>容器标识。</summary>
+    /// <summary>
+    /// 容器标识。
+    /// </summary>
     public string? ContainerId { get; init; }
 
-    /// <summary>新的重启策略；省略表示不改。</summary>
+    /// <summary>
+    /// 新的重启策略；省略表示不改。
+    /// </summary>
     public string? RestartPolicy { get; init; }
 
-    /// <summary>内存上限（字节）；省略表示不改，<b>0 非法</b>（见类型注释）。</summary>
+    /// <summary>
+    /// 内存上限（字节）；省略表示不改，<b>0 非法</b>（见类型注释）。
+    /// </summary>
     public long? MemoryLimitBytes { get; init; }
 
-    /// <summary>CPU 配额（十亿分之一核）；省略表示不改，<b>0 非法</b>（见类型注释）。</summary>
+    /// <summary>
+    /// CPU 配额（十亿分之一核）；省略表示不改，<b>0 非法</b>（见类型注释）。
+    /// </summary>
     public long? NanoCpus { get; init; }
 }
 
@@ -538,13 +702,19 @@ public sealed record UpdateContainerRequest
 /// </remarks>
 public sealed record DuplicateContainerRequest
 {
-    /// <summary>源容器标识。</summary>
+    /// <summary>
+    /// 源容器标识。
+    /// </summary>
     public string? ContainerId { get; init; }
 
-    /// <summary>新容器名；省略时在原名后加 <c>-copy</c>，仍冲突则继续追加序号。</summary>
+    /// <summary>
+    /// 新容器名；省略时在原名后加 <c>-copy</c>，仍冲突则继续追加序号。
+    /// </summary>
     public string? Name { get; init; }
 
-    /// <summary>创建后是否立即启动；省略为 <see langword="false"/>（与 <c>create</c> 端点一致）。</summary>
+    /// <summary>
+    /// 创建后是否立即启动；省略为 <see langword="false"/>（与 <c>create</c> 端点一致）。
+    /// </summary>
     public bool? Start { get; init; }
 }
 
@@ -560,10 +730,14 @@ public sealed record DuplicateContainerRequest
 /// </remarks>
 public sealed record AddContainerVolumesRequest
 {
-    /// <summary>容器标识。</summary>
+    /// <summary>
+    /// 容器标识。
+    /// </summary>
     public string? ContainerId { get; init; }
 
-    /// <summary>要追加的挂载；必填且不能为空。</summary>
+    /// <summary>
+    /// 要追加的挂载；必填且不能为空。
+    /// </summary>
     public IReadOnlyList<ContainerVolumeMapping>? Volumes { get; init; }
 
     /// <summary>
@@ -595,10 +769,14 @@ public sealed record AddContainerVolumesRequest
 /// </remarks>
 public sealed record RecreateContainerRequest
 {
-    /// <summary>容器标识。</summary>
+    /// <summary>
+    /// 容器标识。
+    /// </summary>
     public string? ContainerId { get; init; }
 
-    /// <summary>新的配置；省略时按原容器的现有配置重建。</summary>
+    /// <summary>
+    /// 新的配置；省略时按原容器的现有配置重建。
+    /// </summary>
     public CreateContainerRequest? Config { get; init; }
 
     /// <summary>

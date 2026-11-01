@@ -1,3 +1,6 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Auditing;
 using Whalefleet.Application.Abstractions.Realtime;
@@ -7,8 +10,8 @@ using Whalefleet.Application.Auth;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Containers;
 using Whalefleet.Application.HostGroups;
-using Whalefleet.Application.HostTags;
 using Whalefleet.Application.Hosts;
+using Whalefleet.Application.HostTags;
 using Whalefleet.Application.Images;
 using Whalefleet.Application.Networks;
 using Whalefleet.Application.Permissions;
@@ -16,8 +19,6 @@ using Whalefleet.Application.Repositories;
 using Whalefleet.Application.Stacks;
 using Whalefleet.Application.Users;
 using Whalefleet.Application.Volumes;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Whalefleet.Application.DependencyInjection;
 

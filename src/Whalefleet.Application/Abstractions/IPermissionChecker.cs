@@ -11,7 +11,7 @@ namespace Whalefleet.Application.Abstractions;
 /// 因此没有任何一种单值 claim 能表达完整的授权事实。
 /// 快照式 claim 还有一个更难察觉的代价：改了权限要等 token 过期才生效。</para>
 /// <para><b>作用域由参数表达，而不是由「方法名」表达</b>：
-/// <see cref="EnsurePermissionAsync(Guid, string?, string, CancellationToken)"/> 里
+/// <see cref="EnsurePermissionAsync(Guid, String?, String, CancellationToken)"/> 里
 /// <c>hostId</c> 为 <see langword="null"/> 表示问的是<b>全局</b>权限。
 /// 另开一个 <c>EnsureHostPermissionAsync</c> / <c>EnsureGlobalPermissionAsync</c> 看着更清楚，
 /// 但那会让「作用域拼接 + 权限并集」这条规则被复制成两份实现，

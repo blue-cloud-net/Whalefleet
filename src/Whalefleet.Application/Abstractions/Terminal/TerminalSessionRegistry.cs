@@ -81,6 +81,10 @@ public sealed class TerminalSessionRegistry
     public int CountFor(Guid userId) =>
         _counts.TryGetValue(userId, out var count) ? count : 0;
 
+    /// <summary>
+    /// 释放该用户占用的终端会话。
+    /// </summary>
+    /// <param name="userId">会话所属用户主键。</param>
     private void Release(Guid userId)
     {
         // 减到 0 就删键：否则字典会随「历史上的每个用户」单调增长（软删除的用户也算）。

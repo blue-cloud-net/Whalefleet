@@ -9,7 +9,9 @@ namespace Whalefleet.Application.Stacks;
 /// </remarks>
 public sealed record ListStacksRequest
 {
-    /// <summary>关键字搜索：按 Stack 名称模糊匹配（不区分大小写）。</summary>
+    /// <summary>
+    /// 关键字搜索：按 Stack 名称模糊匹配（不区分大小写）。
+    /// </summary>
     public string? Search { get; init; }
 
     /// <summary>
@@ -22,10 +24,14 @@ public sealed record ListStacksRequest
     /// </remarks>
     public string? Status { get; init; }
 
-    /// <summary>页码（从 0 开始）；省略时按 0 处理，负数同样按 0 处理。</summary>
+    /// <summary>
+    /// 页码（从 0 开始）；省略时按 0 处理，负数同样按 0 处理。
+    /// </summary>
     public int? PageIndex { get; init; }
 
-    /// <summary>每页条数；省略时用默认值（20），超出上限（100）会被夹紧。</summary>
+    /// <summary>
+    /// 每页条数；省略时用默认值（20），超出上限（100）会被夹紧。
+    /// </summary>
     public int? PageSize { get; init; }
 }
 
@@ -34,7 +40,9 @@ public sealed record ListStacksRequest
 /// </summary>
 public sealed record InspectStackRequest
 {
-    /// <summary>Stack 名称；必填。</summary>
+    /// <summary>
+    /// Stack 名称；必填。
+    /// </summary>
     public string? Name { get; init; }
 }
 
@@ -46,10 +54,14 @@ public sealed record InspectStackRequest
 /// 在 HTTP 响应里直接报出来，用户改一下 YAML 就能重来，不用等一个后台任务跑完。</remarks>
 public sealed record ApplyStackRequest
 {
-    /// <summary>Stack 名称；必填。须符合 Compose 项目名规则。</summary>
+    /// <summary>
+    /// Stack 名称；必填。须符合 Compose 项目名规则。
+    /// </summary>
     public string? Name { get; init; }
 
-    /// <summary>Compose 文件原文（YAML）；必填。</summary>
+    /// <summary>
+    /// Compose 文件原文（YAML）；必填。
+    /// </summary>
     public string? ComposeContent { get; init; }
 
     /// <summary>
@@ -86,10 +98,14 @@ public sealed record ApplyStackRequest
 /// </summary>
 public sealed record StopStackRequest
 {
-    /// <summary>Stack 名称；必填。</summary>
+    /// <summary>
+    /// Stack 名称；必填。
+    /// </summary>
     public string? Name { get; init; }
 
-    /// <summary>任务标识（客户端生成的进度令牌）；必填。</summary>
+    /// <summary>
+    /// 任务标识（客户端生成的进度令牌）；必填。
+    /// </summary>
     public string? TaskId { get; init; }
 }
 
@@ -98,13 +114,19 @@ public sealed record StopStackRequest
 /// </summary>
 public sealed record RemoveStackRequest
 {
-    /// <summary>Stack 名称；必填。</summary>
+    /// <summary>
+    /// Stack 名称；必填。
+    /// </summary>
     public string? Name { get; init; }
 
-    /// <summary>任务标识（客户端生成的进度令牌）；必填。</summary>
+    /// <summary>
+    /// 任务标识（客户端生成的进度令牌）；必填。
+    /// </summary>
     public string? TaskId { get; init; }
 
-    /// <summary>是否连数据卷一起删；省略为 <see langword="false"/>。</summary>
+    /// <summary>
+    /// 是否连数据卷一起删；省略为 <see langword="false"/>。
+    /// </summary>
     /// <remarks>
     /// <b>默认保留</b>：删除 Stack 是个常规动作，而误删数据卷不可恢复。
     /// 界面上的删除对话框必须让用户显式勾选这一项。
@@ -117,7 +139,9 @@ public sealed record RemoveStackRequest
 /// </summary>
 public sealed record GetStackTaskRequest
 {
-    /// <summary>任务标识；必填。</summary>
+    /// <summary>
+    /// 任务标识；必填。
+    /// </summary>
     public string? TaskId { get; init; }
 }
 
@@ -126,7 +150,9 @@ public sealed record GetStackTaskRequest
 /// </summary>
 public sealed record StackWebhookRequest
 {
-    /// <summary>Stack 名称；必填。</summary>
+    /// <summary>
+    /// Stack 名称；必填。
+    /// </summary>
     public string? Name { get; init; }
 }
 
@@ -135,13 +161,19 @@ public sealed record StackWebhookRequest
 /// </summary>
 public sealed record StackWebhookReloadRequest
 {
-    /// <summary>是否总是拉取最新镜像；省略为 <see langword="false"/>。</summary>
+    /// <summary>
+    /// 是否总是拉取最新镜像；省略为 <see langword="false"/>。
+    /// </summary>
     public bool? PullAlways { get; init; }
 
-    /// <summary>是否清掉孤儿服务；省略为 <see langword="true"/>。</summary>
+    /// <summary>
+    /// 是否清掉孤儿服务；省略为 <see langword="true"/>。
+    /// </summary>
     public bool? PruneOrphans { get; init; }
 
-    /// <summary>是否等待任务结束再返回；省略为 <see langword="false"/>。</summary>
+    /// <summary>
+    /// 是否等待任务结束再返回；省略为 <see langword="false"/>。
+    /// </summary>
     /// <remarks>
     /// <b>同步等待有上限</b>：CI 通常需要「部署完再退出」，
     /// 但无限等待会被反代掐断（nginx 默认读超时 60s）。
@@ -155,6 +187,8 @@ public sealed record StackWebhookReloadRequest
 /// </summary>
 public sealed record StackWebhookTaskRequest
 {
-    /// <summary>任务标识；必填。</summary>
+    /// <summary>
+    /// 任务标识；必填。
+    /// </summary>
     public string? TaskId { get; init; }
 }

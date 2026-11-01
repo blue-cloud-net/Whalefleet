@@ -1,4 +1,5 @@
 using Docker.DotNet;
+
 using Whalefleet.Core.Hosts;
 
 namespace Whalefleet.Application.Abstractions;

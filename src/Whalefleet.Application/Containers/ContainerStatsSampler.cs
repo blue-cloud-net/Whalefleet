@@ -1,10 +1,12 @@
 using System.Diagnostics;
 using System.Threading.Channels;
-using Whalefleet.Application.Abstractions;
-using Whalefleet.Application.Abstractions.Realtime;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+
+using Whalefleet.Application.Abstractions;
+using Whalefleet.Application.Abstractions.Realtime;
 
 namespace Whalefleet.Application.Containers;
 
@@ -30,7 +32,7 @@ public sealed class ContainerStatsSampler : IContainerStatsSampler
     /// 客户端跟不上时（页面卡顿、网络抖动）宁可丢帧也不要阻塞发布：
     /// 发布端是 Docker 的读取回调，阻塞它等于停掉整条流的读取。
     /// </remarks>
-    private const int SubscriberChannelCapacity = 8;
+    private const int _subscriberChannelCapacity = 8;
 
     private readonly object _gate = new();
     private readonly Dictionary<string, Entry> _entries = new(StringComparer.Ordinal);
@@ -80,7 +82,7 @@ public sealed class ContainerStatsSampler : IContainerStatsSampler
             entry.Generation++;
 
             var channel = Channel.CreateBounded<ContainerStatsSample>(
-                new BoundedChannelOptions(SubscriberChannelCapacity)
+                new BoundedChannelOptions(_subscriberChannelCapacity)
                 {
                     FullMode = BoundedChannelFullMode.DropOldest,
                     SingleReader = true,
@@ -335,32 +337,46 @@ public sealed class ContainerStatsSampler : IContainerStatsSampler
     /// 用 <c>\u001f</c> 作分隔符：它不可能出现在主机名或容器 ID 里。
     /// </remarks>
     private static string KeyOf(string hostId, string containerId) =>
-        string.Concat(hostId.ToLowerInvariant(), "\u001f", containerId);
+        String.Concat(hostId.ToLowerInvariant(), "\u001f", containerId);
 
     /// <summary>
     /// 单个「主机 + 容器」的采样状态。
     /// </summary>
     private sealed class Entry(string hostId, string containerId)
     {
-        /// <summary>主机名。</summary>
+        /// <summary>
+        /// 主机名。
+        /// </summary>
         public string HostId { get; } = hostId;
 
-        /// <summary>容器标识。</summary>
+        /// <summary>
+        /// 容器标识。
+        /// </summary>
         public string ContainerId { get; } = containerId;
 
-        /// <summary>停泵用的取消源。</summary>
+        /// <summary>
+        /// 停泵用的取消源。
+        /// </summary>
         public CancellationTokenSource Cancellation { get; } = new();
 
-        /// <summary>环形缓冲（旧 → 新）。</summary>
+        /// <summary>
+        /// 环形缓冲（旧 → 新）。
+        /// </summary>
         public List<ContainerStatsSample> Buffer { get; } = [];
 
-        /// <summary>当前订阅者。</summary>
+        /// <summary>
+        /// 当前订阅者。
+        /// </summary>
         public HashSet<Channel<ContainerStatsSample>> Subscribers { get; } = [];
 
-        /// <summary>泵任务；未起泵或已结束时为 <see langword="null"/>。</summary>
+        /// <summary>
+        /// 泵任务；未起泵或已结束时为 <see langword="null"/>。
+        /// </summary>
         public Task? PumpTask { get; set; }
 
-        /// <summary>代际号（宽限期停泵任务据此判断「期间是否被复用」）。</summary>
+        /// <summary>
+        /// 代际号（宽限期停泵任务据此判断「期间是否被复用」）。
+        /// </summary>
         public int Generation { get; set; }
     }
 }

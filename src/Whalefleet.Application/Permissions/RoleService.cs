@@ -1,7 +1,8 @@
+using Microsoft.Extensions.Logging;
+
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
-using Microsoft.Extensions.Logging;
 
 namespace Whalefleet.Application.Permissions;
 
@@ -284,6 +285,12 @@ public sealed class RoleService
         throw BusinessException.Validation("roleId 与 role 至少提供一个");
     }
 
+    /// <summary>
+    /// 汇总角色的权限集与分配数。
+    /// </summary>
+    /// <param name="role">角色实体。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>角色摘要。</returns>
     private async Task<RoleSummary> SummarizeAsync(Role role, CancellationToken cancellationToken)
     {
         var permissions = await _roles.GetPermissionsAsync(role.Id, cancellationToken).ConfigureAwait(false);
@@ -292,6 +299,13 @@ public sealed class RoleService
         return Summarize(role, permissions, count);
     }
 
+    /// <summary>
+    /// 把角色映射为对外摘要。
+    /// </summary>
+    /// <param name="role">角色实体。</param>
+    /// <param name="permissions">角色权限集。</param>
+    /// <param name="assignmentCount">分配条数。</param>
+    /// <returns>角色摘要。</returns>
     private static RoleSummary Summarize(Role role, IReadOnlyList<string> permissions, int assignmentCount) =>
         new(
             role.Id,
@@ -303,6 +317,11 @@ public sealed class RoleService
             permissions,
             assignmentCount);
 
+    /// <summary>
+    /// 把权限标识解析为权限定义。
+    /// </summary>
+    /// <param name="permission">权限标识。</param>
+    /// <returns>权限定义。</returns>
     private static PermissionDefinition Describe(string permission)
     {
         var separator = permission.IndexOf('.', StringComparison.Ordinal);

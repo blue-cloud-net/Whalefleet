@@ -10,16 +10,24 @@ namespace Whalefleet.Application.Stacks;
 /// </remarks>
 public enum StackTaskStatus
 {
-    /// <summary>已入队，尚未开始执行。</summary>
+    /// <summary>
+    /// 已入队，尚未开始执行。
+    /// </summary>
     Queued,
 
-    /// <summary>正在执行。</summary>
+    /// <summary>
+    /// 正在执行。
+    /// </summary>
     Running,
 
-    /// <summary>已成功完成。</summary>
+    /// <summary>
+    /// 已成功完成。
+    /// </summary>
     Succeeded,
 
-    /// <summary>已失败（<see cref="StackTaskSnapshot.ErrorCode"/> 给出原因码）。</summary>
+    /// <summary>
+    /// 已失败（<see cref="StackTaskSnapshot.ErrorCode"/> 给出原因码）。
+    /// </summary>
     Failed,
 }
 
@@ -32,16 +40,24 @@ public enum StackTaskStatus
 /// </remarks>
 public static class StackTaskStatusText
 {
-    /// <summary>已入队。</summary>
+    /// <summary>
+    /// 已入队。
+    /// </summary>
     public const string Queued = "queued";
 
-    /// <summary>正在执行。</summary>
+    /// <summary>
+    /// 正在执行。
+    /// </summary>
     public const string Running = "running";
 
-    /// <summary>已成功完成。</summary>
+    /// <summary>
+    /// 已成功完成。
+    /// </summary>
     public const string Succeeded = "succeeded";
 
-    /// <summary>已失败。</summary>
+    /// <summary>
+    /// 已失败。
+    /// </summary>
     public const string Failed = "failed";
 
     /// <summary>

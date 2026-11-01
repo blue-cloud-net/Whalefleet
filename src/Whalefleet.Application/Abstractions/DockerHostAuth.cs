@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Hosts;
 
@@ -99,6 +100,11 @@ public sealed record DockerHostAuth
         };
     }
 
+    /// <summary>
+    /// 计算凭据指纹，用于区分同端点的不同凭据。
+    /// </summary>
+    /// <param name="credentials">主机凭据。</param>
+    /// <returns>凭据指纹文本。</returns>
     private static string Fingerprint(HostCredentials credentials)
     {
         var payload = $"{credentials.Kind}:{credentials.ConfigJson}";

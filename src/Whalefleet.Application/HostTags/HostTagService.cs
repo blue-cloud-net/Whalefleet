@@ -77,7 +77,7 @@ public sealed class HostTagService
         await _tags.AddAsync(tag, cancellationToken).ConfigureAwait(false);
 
         // 新建的标签必定没有主机，计数直接给 0：再查一次库只为了得到一个必然的值
-        return Map(tag, EmptyCounts);
+        return Map(tag, _emptyCounts);
     }
 
     /// <summary>
@@ -102,18 +102,18 @@ public sealed class HostTagService
             var name = Require(request.Name, "name");
 
             await this.EnsureNameAvailableAsync(name, tagId, cancellationToken).ConfigureAwait(false);
-            Apply(tag, () => tag.Rename(name));
+            Apply(() => tag.Rename(name));
         }
 
         // 未提供表示不改，空串表示清空（见 UpdateHostTagRequest 的说明）
         if (request.Description is not null)
         {
-            Apply(tag, () => tag.Describe(request.Description));
+            Apply(() => tag.Describe(request.Description));
         }
 
         if (request.Color is not null)
         {
-            Apply(tag, () => tag.SetColor(request.Color));
+            Apply(() => tag.SetColor(request.Color));
         }
 
         await _tags.UpdateAsync(tag, cancellationToken).ConfigureAwait(false);
@@ -194,7 +194,7 @@ public sealed class HostTagService
     /// <returns>标签引用。</returns>
     public static HostTagRef ToRef(HostTag tag) => new(tag.Id, tag.Name, tag.Color);
 
-    private static readonly IReadOnlyDictionary<Guid, int> EmptyCounts = new Dictionary<Guid, int>();
+    private static readonly IReadOnlyDictionary<Guid, int> _emptyCounts = new Dictionary<Guid, int>();
 
     private async Task<(IReadOnlyList<Guid> HostIds, IReadOnlyList<Guid> TagIds)> ResolveAsync(
         HostTagAssignmentRequest request,
@@ -229,10 +229,22 @@ public sealed class HostTagService
         return (hostIds, tagIds);
     }
 
+    /// <summary>
+    /// 按主键读取主机标签，不存在时抛业务异常。
+    /// </summary>
+    /// <param name="tagId">标签主键。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>主机标签实体。</returns>
     private async Task<HostTag> RequireTagAsync(Guid tagId, CancellationToken cancellationToken) =>
         await _tags.QueryByIdAsync(tagId, cancellationToken).ConfigureAwait(false)
         ?? throw new BusinessException(ErrorCodes.HostTagNotFound, "主机标签不存在");
 
+    /// <summary>
+    /// 校验标签名称未被占用。
+    /// </summary>
+    /// <param name="name">待校验的名称。</param>
+    /// <param name="excludedId">改名时要排除的标签主键。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     private async Task EnsureNameAvailableAsync(
         string name,
         Guid? excludedId,
@@ -247,6 +259,12 @@ public sealed class HostTagService
         }
     }
 
+    /// <summary>
+    /// 把主机标签实体映射为对外摘要。
+    /// </summary>
+    /// <param name="tag">主机标签实体。</param>
+    /// <param name="counts">各标签的主机计数。</param>
+    /// <returns>主机标签摘要。</returns>
     private static HostTagSummary Map(HostTag tag, IReadOnlyDictionary<Guid, int> counts) => new(
         tag.Id,
         tag.Name,
@@ -254,6 +272,13 @@ public sealed class HostTagService
         tag.Color,
         counts.TryGetValue(tag.Id, out var count) ? count : 0);
 
+    /// <summary>
+    /// 创建主机标签实体。
+    /// </summary>
+    /// <param name="name">标签名称。</param>
+    /// <param name="description">标签描述。</param>
+    /// <param name="color">标签颜色。</param>
+    /// <returns>新建的主机标签实体。</returns>
     private static HostTag Build(string name, string? description, string? color)
     {
         try
@@ -268,7 +293,11 @@ public sealed class HostTagService
         }
     }
 
-    private static void Apply(HostTag tag, Action action)
+    /// <summary>
+    /// 执行标签变更动作，并把实体的参数异常翻译成业务异常。
+    /// </summary>
+    /// <param name="action">要执行的变更动作。</param>
+    private static void Apply(Action action)
     {
         try
         {
@@ -280,9 +309,15 @@ public sealed class HostTagService
         }
     }
 
+    /// <summary>
+    /// 读取必填字段，缺失或空白时抛参数异常。
+    /// </summary>
+    /// <param name="value">字段值。</param>
+    /// <param name="field">字段名（用于异常信息）。</param>
+    /// <returns>去除首尾空白后的字段值。</returns>
     private static string Require(string? value, string field)
     {
-        if (string.IsNullOrWhiteSpace(value))
+        if (String.IsNullOrWhiteSpace(value))
         {
             throw BusinessException.Validation($"{field} 不能为空");
         }
@@ -317,7 +352,7 @@ public sealed class HostTagService
 
         foreach (var value in values)
         {
-            if (string.IsNullOrWhiteSpace(value))
+            if (String.IsNullOrWhiteSpace(value))
             {
                 throw BusinessException.Validation($"{field} 不得包含空白项");
             }

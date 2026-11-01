@@ -1,7 +1,8 @@
+using Microsoft.Extensions.Logging;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Hosts;
-using Microsoft.Extensions.Logging;
 
 namespace Whalefleet.Application.Hosts;
 
@@ -21,7 +22,7 @@ public sealed class HostService
     /// 测试未保存配置时使用的占位主机标识。
     /// </summary>
     /// <remarks>只出现在日志与错误消息里；此时主机还没有名字，用占位符比编造一个名字更诚实。</remarks>
-    internal const string UnsavedHostId = "（未保存）";
+    internal const string _unsavedHostId = "（未保存）";
 
     private readonly IHostRepository _hosts;
     private readonly IDockerHostAccessor _accessor;
@@ -230,7 +231,7 @@ public sealed class HostService
 
         var connection = new DockerHostConnection
         {
-            HostId = UnsavedHostId,
+            HostId = _unsavedHostId,
             Type = ParseType(request.Type),
             Endpoint = Require(request.Endpoint, "endpoint"),
             Auth = DockerHostAuth.From(HostCredentialsFactory.From(request.TlsConfig, request.BasicAuth)),
@@ -239,6 +240,12 @@ public sealed class HostService
         return await _accessor.TestConnectionAsync(connection, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// 把主机实体映射为对外摘要。
+    /// </summary>
+    /// <param name="host">主机实体。</param>
+    /// <param name="reachable">连通性探测结果；未探测时为 <see langword="null"/>。</param>
+    /// <returns>主机摘要。</returns>
     private static HostSummary Map(DockerHost host, bool? reachable) => new(
         host.Id,
         host.Name,
@@ -249,6 +256,12 @@ public sealed class HostService
         host.Credentials.Kind,
         host.GroupId);
 
+    /// <summary>
+    /// 根据更新请求解析出主机凭据。
+    /// </summary>
+    /// <param name="host">当前主机。</param>
+    /// <param name="request">更新请求。</param>
+    /// <returns>解析后的主机凭据。</returns>
     private static HostCredentials ResolveCredentials(DockerHost host, UpdateHostRequest request)
     {
         if (request.ClearCredentials == true)
@@ -266,6 +279,11 @@ public sealed class HostService
             : HostCredentialsFactory.From(request.TlsConfig, request.BasicAuth);
     }
 
+    /// <summary>
+    /// 把请求里的连接方式文本解析为枚举。
+    /// </summary>
+    /// <param name="value">连接方式文本。</param>
+    /// <returns>连接方式枚举。</returns>
     private static DockerHostType ParseType(string? value) => value?.Trim().ToLowerInvariant() switch
     {
         "socket" => DockerHostType.Socket,
@@ -273,6 +291,12 @@ public sealed class HostService
         _ => throw BusinessException.Validation("type 必须是 socket 或 tcp"),
     };
 
+    /// <summary>
+    /// 读取必填字段，缺失或空白时抛参数异常。
+    /// </summary>
+    /// <param name="value">字段值。</param>
+    /// <param name="field">字段名（用于异常信息）。</param>
+    /// <returns>去除首尾空白后的字段值。</returns>
     private static string Require(string? value, string field)
     {
         if (String.IsNullOrWhiteSpace(value))
@@ -283,6 +307,11 @@ public sealed class HostService
         return value.Trim();
     }
 
+    /// <summary>
+    /// 尝试构造主机连接对象；凭据不完整时返回 <see langword="null"/>。
+    /// </summary>
+    /// <param name="host">主机实体。</param>
+    /// <returns>主机连接；无法构造时为 <see langword="null"/>。</returns>
     private DockerHostConnection? TryBuildConnection(DockerHost host)
     {
         try
@@ -299,6 +328,12 @@ public sealed class HostService
         }
     }
 
+    /// <summary>
+    /// 探测主机连通性。
+    /// </summary>
+    /// <param name="host">主机实体。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>连通时为 <see langword="true"/>。</returns>
     private async Task<bool> ProbeAsync(DockerHost host, CancellationToken cancellationToken)
     {
         // 停用的主机不去连：连不上不代表它坏了，只是管理员主动停用了。

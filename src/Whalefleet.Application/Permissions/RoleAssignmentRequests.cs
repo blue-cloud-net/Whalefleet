@@ -27,16 +27,24 @@ public sealed record ListHostRoleAssignmentsRequest
 /// </remarks>
 public sealed record AssignRoleRequest
 {
-    /// <summary>目标用户主键；必填。</summary>
+    /// <summary>
+    /// 目标用户主键；必填。
+    /// </summary>
     public Guid? UserId { get; init; }
 
-    /// <summary>角色主键；<see cref="RoleId"/> 与 <see cref="Role"/> 至少提供一个。</summary>
+    /// <summary>
+    /// 角色主键；<see cref="RoleId"/> 与 <see cref="Role"/> 至少提供一个。
+    /// </summary>
     public Guid? RoleId { get; init; }
 
-    /// <summary>角色标识（不区分大小写）；<see cref="RoleId"/> 与 <see cref="Role"/> 至少提供一个。</summary>
+    /// <summary>
+    /// 角色标识（不区分大小写）；<see cref="RoleId"/> 与 <see cref="Role"/> 至少提供一个。
+    /// </summary>
     public string? Role { get; init; }
 
-    /// <summary>作用域主机名；<b>省略或为空表示全局分配</b>。</summary>
+    /// <summary>
+    /// 作用域主机名；<b>省略或为空表示全局分配</b>。
+    /// </summary>
     public string? Host { get; init; }
 }
 
@@ -50,15 +58,23 @@ public sealed record AssignRoleRequest
 /// </remarks>
 public sealed record RevokeRoleAssignmentRequest
 {
-    /// <summary>目标用户主键；必填。</summary>
+    /// <summary>
+    /// 目标用户主键；必填。
+    /// </summary>
     public Guid? UserId { get; init; }
 
-    /// <summary>角色主键；<see cref="RoleId"/> 与 <see cref="Role"/> 至少提供一个。</summary>
+    /// <summary>
+    /// 角色主键；<see cref="RoleId"/> 与 <see cref="Role"/> 至少提供一个。
+    /// </summary>
     public Guid? RoleId { get; init; }
 
-    /// <summary>角色标识（不区分大小写）；<see cref="RoleId"/> 与 <see cref="Role"/> 至少提供一个。</summary>
+    /// <summary>
+    /// 角色标识（不区分大小写）；<see cref="RoleId"/> 与 <see cref="Role"/> 至少提供一个。
+    /// </summary>
     public string? Role { get; init; }
 
-    /// <summary>作用域主机名；<b>省略或为空表示撤销全局分配</b>。</summary>
+    /// <summary>
+    /// 作用域主机名；<b>省略或为空表示撤销全局分配</b>。
+    /// </summary>
     public string? Host { get; init; }
 }

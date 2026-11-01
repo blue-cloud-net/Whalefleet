@@ -19,7 +19,9 @@ namespace Whalefleet.Application.Common;
 /// </remarks>
 public static class PruneFilter
 {
-    /// <summary>标签过滤表达式的最大长度。</summary>
+    /// <summary>
+    /// 标签过滤表达式的最大长度。
+    /// </summary>
     public const int MaxLabelLength = 256;
 
     /// <summary>
@@ -38,7 +40,7 @@ public static class PruneFilter
     /// </remarks>
     public static string? NormalizeLabel(string? label)
     {
-        if (string.IsNullOrWhiteSpace(label))
+        if (String.IsNullOrWhiteSpace(label))
         {
             return null;
         }
@@ -53,7 +55,7 @@ public static class PruneFilter
 
         foreach (var character in trimmed)
         {
-            if (char.IsControl(character))
+            if (Char.IsControl(character))
             {
                 throw BusinessException.Validation("label 不能包含控制字符");
             }

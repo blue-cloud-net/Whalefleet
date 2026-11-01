@@ -1,7 +1,8 @@
+using Microsoft.Extensions.Logging;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Auditing;
 using Whalefleet.Core.Auditing;
-using Microsoft.Extensions.Logging;
 
 namespace Whalefleet.Application.Auditing;
 

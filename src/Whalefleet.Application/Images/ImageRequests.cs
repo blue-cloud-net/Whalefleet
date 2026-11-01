@@ -8,16 +8,24 @@ namespace Whalefleet.Application.Images;
 /// </remarks>
 public sealed record ListImagesRequest
 {
-    /// <summary>是否包含中间层镜像；省略时只列顶层镜像（与 <c>docker images</c> 一致）。</summary>
+    /// <summary>
+    /// 是否包含中间层镜像；省略时只列顶层镜像（与 <c>docker images</c> 一致）。
+    /// </summary>
     public bool? All { get; init; }
 
-    /// <summary>按仓库名 / 标签模糊过滤（不区分大小写）；省略不过滤。</summary>
+    /// <summary>
+    /// 按仓库名 / 标签模糊过滤（不区分大小写）；省略不过滤。
+    /// </summary>
     public string? Search { get; init; }
 
-    /// <summary>页码（从 0 开始）；省略时按 0 处理。</summary>
+    /// <summary>
+    /// 页码（从 0 开始）；省略时按 0 处理。
+    /// </summary>
     public int? PageIndex { get; init; }
 
-    /// <summary>每页条数；省略时用默认值，超出上限会被夹紧。</summary>
+    /// <summary>
+    /// 每页条数；省略时用默认值，超出上限会被夹紧。
+    /// </summary>
     public int? PageSize { get; init; }
 
     /// <summary>
@@ -29,7 +37,9 @@ public sealed record ListImagesRequest
     /// </remarks>
     public string? SortBy { get; init; }
 
-    /// <summary>排序方向；<c>desc</c>（或省略）为降序，<c>asc</c> 为升序。</summary>
+    /// <summary>
+    /// 排序方向；<c>desc</c>（或省略）为降序，<c>asc</c> 为升序。
+    /// </summary>
     /// <remarks>同样不校验：无法识别的值按降序处理，与「省略」行为一致。</remarks>
     public string? SortDir { get; init; }
 }
@@ -38,25 +48,35 @@ public sealed record ListImagesRequest
 /// 镜像列表的排序字段取值。
 /// </summary>
 /// <remarks>
-/// 做成常量而不是枚举：请求字段是 <see cref="string"/>（客户端可传任意值），
+/// 做成常量而不是枚举：请求字段是 <see cref="String"/>（客户端可传任意值），
 /// 用 <c>switch</c> 映射成委托表比 <c>Enum.TryParse</c> 更直白，也让「未知值回落」
 /// 这条策略在代码里看得见。
 /// </remarks>
 public static class ImageSortField
 {
-    /// <summary>仓库名（按 <c>docker images</c> 的默认展示列）。</summary>
+    /// <summary>
+    /// 仓库名（按 <c>docker images</c> 的默认展示列）。
+    /// </summary>
     public const string Repository = "repository";
 
-    /// <summary>镜像大小（字节）。</summary>
+    /// <summary>
+    /// 镜像大小（字节）。
+    /// </summary>
     public const string Size = "size";
 
-    /// <summary>创建时间。</summary>
+    /// <summary>
+    /// 创建时间。
+    /// </summary>
     public const string Created = "created";
 
-    /// <summary>被容器引用的数量。</summary>
+    /// <summary>
+    /// 被容器引用的数量。
+    /// </summary>
     public const string UsedBy = "usedBy";
 
-    /// <summary>默认字段：等价于守护进程自己给的创建时间降序。</summary>
+    /// <summary>
+    /// 默认字段：等价于守护进程自己给的创建时间降序。
+    /// </summary>
     public const string Default = Created;
 }
 
@@ -65,7 +85,9 @@ public static class ImageSortField
 /// </summary>
 public sealed record InspectImageRequest
 {
-    /// <summary>镜像标识（镜像 ID / 短 ID / 仓库名 / 仓库名:标签）。</summary>
+    /// <summary>
+    /// 镜像标识（镜像 ID / 短 ID / 仓库名 / 仓库名:标签）。
+    /// </summary>
     public string? ImageId { get; init; }
 }
 
@@ -74,13 +96,19 @@ public sealed record InspectImageRequest
 /// </summary>
 public sealed record PullImageRequest
 {
-    /// <summary>镜像仓库名（如 <c>nginx</c>、<c>ghcr.io/org/app</c>）；必填。</summary>
+    /// <summary>
+    /// 镜像仓库名（如 <c>nginx</c>、<c>ghcr.io/org/app</c>）；必填。
+    /// </summary>
     public string? Image { get; init; }
 
-    /// <summary>标签；省略或为空时取 <c>latest</c>。</summary>
+    /// <summary>
+    /// 标签；省略或为空时取 <c>latest</c>。
+    /// </summary>
     public string? Tag { get; init; }
 
-    /// <summary>目标平台（如 <c>linux/amd64</c>）；省略时由守护进程按主机架构选择。</summary>
+    /// <summary>
+    /// 目标平台（如 <c>linux/amd64</c>）；省略时由守护进程按主机架构选择。
+    /// </summary>
     public string? Platform { get; init; }
 
     /// <summary>
@@ -101,10 +129,14 @@ public sealed record PullImageRequest
 /// </summary>
 public sealed record RemoveImageRequest
 {
-    /// <summary>镜像标识（镜像 ID / 短 ID / 仓库名 / 仓库名:标签）。</summary>
+    /// <summary>
+    /// 镜像标识（镜像 ID / 短 ID / 仓库名 / 仓库名:标签）。
+    /// </summary>
     public string? ImageId { get; init; }
 
-    /// <summary>是否强制删除（即便被容器引用或存在子镜像）；省略为 <see langword="false"/>。</summary>
+    /// <summary>
+    /// 是否强制删除（即便被容器引用或存在子镜像）；省略为 <see langword="false"/>。
+    /// </summary>
     public bool? Force { get; init; }
 }
 
@@ -113,10 +145,14 @@ public sealed record RemoveImageRequest
 /// </summary>
 public sealed record BatchRemoveImagesRequest
 {
-    /// <summary>要删除的镜像标识列表（ID / 短 ID / 仓库名 / 仓库名:标签）；必填且不能为空。</summary>
+    /// <summary>
+    /// 要删除的镜像标识列表（ID / 短 ID / 仓库名 / 仓库名:标签）；必填且不能为空。
+    /// </summary>
     public IReadOnlyList<string>? ImageIds { get; init; }
 
-    /// <summary>是否强制删除（即便被容器引用或存在子镜像）；省略为 <see langword="false"/>。</summary>
+    /// <summary>
+    /// 是否强制删除（即便被容器引用或存在子镜像）；省略为 <see langword="false"/>。
+    /// </summary>
     public bool? Force { get; init; }
 }
 
@@ -165,14 +201,20 @@ public sealed record PruneImagesRequest
 /// </remarks>
 public sealed record TagImageRequest
 {
-    /// <summary>源镜像标识（镜像 ID / 短 ID / 仓库名 / 仓库名:标签）；必填。</summary>
+    /// <summary>
+    /// 源镜像标识（镜像 ID / 短 ID / 仓库名 / 仓库名:标签）；必填。
+    /// </summary>
     public string? ImageId { get; init; }
 
-    /// <summary>目标仓库名（如 <c>registry.example.com/team/app</c>）；必填。</summary>
+    /// <summary>
+    /// 目标仓库名（如 <c>registry.example.com/team/app</c>）；必填。
+    /// </summary>
     /// <remarks>不带标签——标签由 <see cref="Tag"/> 单独给，避免 <c>nginx:1.27:alpine</c> 那类拼接歧义。</remarks>
     public string? Repository { get; init; }
 
-    /// <summary>目标标签（如 <c>v1.2.3</c> / <c>latest</c>）；省略时取 <c>latest</c>。</summary>
+    /// <summary>
+    /// 目标标签（如 <c>v1.2.3</c> / <c>latest</c>）；省略时取 <c>latest</c>。
+    /// </summary>
     public string? Tag { get; init; }
 }
 
@@ -189,31 +231,49 @@ public sealed record TagImageRequest
 /// </remarks>
 public sealed record BuildImageRequest
 {
-    /// <summary>构建上下文 tar 的字节流（由 Api 层从 multipart 上传中打开）。</summary>
+    /// <summary>
+    /// 构建上下文 tar 的字节流（由 Api 层从 multipart 上传中打开）。
+    /// </summary>
     public Stream? Context { get; init; }
 
-    /// <summary>构建上下文 tar 的长度（字节）；用于拼 Content-Length。</summary>
+    /// <summary>
+    /// 构建上下文 tar 的长度（字节）；用于拼 Content-Length。
+    /// </summary>
     public long ContextLength { get; init; }
 
-    /// <summary>构建产物的镜像引用（仓库名 + 可选标签，如 <c>myapp:v1</c>）；必填。</summary>
+    /// <summary>
+    /// 构建产物的镜像引用（仓库名 + 可选标签，如 <c>myapp:v1</c>）；必填。
+    /// </summary>
     public string? Tag { get; init; }
 
-    /// <summary>tar 包内的 Dockerfile 路径；省略时为 <c>Dockerfile</c>（与 Docker 一致）。</summary>
+    /// <summary>
+    /// tar 包内的 Dockerfile 路径；省略时为 <c>Dockerfile</c>（与 Docker 一致）。
+    /// </summary>
     public string? Dockerfile { get; init; }
 
-    /// <summary>构建参数（<c>ARG</c>）；键值都不得为空。</summary>
+    /// <summary>
+    /// 构建参数（<c>ARG</c>）；键值都不得为空。
+    /// </summary>
     public IReadOnlyDictionary<string, string>? BuildArgs { get; init; }
 
-    /// <summary>镜像标签（<c>LABEL</c>）。</summary>
+    /// <summary>
+    /// 镜像标签（<c>LABEL</c>）。
+    /// </summary>
     public IReadOnlyDictionary<string, string>? Labels { get; init; }
 
-    /// <summary>多阶段构建的目标阶段（<c>--target</c>）；省略则构建最终阶段。</summary>
+    /// <summary>
+    /// 多阶段构建的目标阶段（<c>--target</c>）；省略则构建最终阶段。
+    /// </summary>
     public string? Target { get; init; }
 
-    /// <summary>目标平台（如 <c>linux/amd64</c>）；省略时按主机架构。</summary>
+    /// <summary>
+    /// 目标平台（如 <c>linux/amd64</c>）；省略时按主机架构。
+    /// </summary>
     public string? Platform { get; init; }
 
-    /// <summary>是否不使用构建缓存（<c>--no-cache</c>）；省略为 <see langword="false"/>。</summary>
+    /// <summary>
+    /// 是否不使用构建缓存（<c>--no-cache</c>）；省略为 <see langword="false"/>。
+    /// </summary>
     public bool? NoCache { get; init; }
 
     /// <summary>
@@ -230,7 +290,9 @@ public sealed record BuildImageRequest
 /// </summary>
 public sealed record PushImageRequest
 {
-    /// <summary>要推送的镜像（ID / 仓库名 / 仓库名:标签）；必填。</summary>
+    /// <summary>
+    /// 要推送的镜像（ID / 仓库名 / 仓库名:标签）；必填。
+    /// </summary>
     public string? Image { get; init; }
 
     /// <summary>
@@ -242,6 +304,8 @@ public sealed record PushImageRequest
     /// </remarks>
     public Guid? RepositoryId { get; init; }
 
-    /// <summary>目标平台；省略时不带该参数。</summary>
+    /// <summary>
+    /// 目标平台；省略时不带该参数。
+    /// </summary>
     public string? Platform { get; init; }
 }

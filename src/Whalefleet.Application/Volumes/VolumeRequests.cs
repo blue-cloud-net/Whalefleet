@@ -18,10 +18,14 @@ public sealed record ListVolumesRequest
     /// </remarks>
     public string? Search { get; init; }
 
-    /// <summary>页码（从 0 开始）；省略时按 0 处理，负数同样按 0 处理。</summary>
+    /// <summary>
+    /// 页码（从 0 开始）；省略时按 0 处理，负数同样按 0 处理。
+    /// </summary>
     public int? PageIndex { get; init; }
 
-    /// <summary>每页条数；省略时用默认值（20），超出上限（100）会被夹紧。</summary>
+    /// <summary>
+    /// 每页条数；省略时用默认值（20），超出上限（100）会被夹紧。
+    /// </summary>
     public int? PageSize { get; init; }
 }
 
@@ -30,7 +34,9 @@ public sealed record ListVolumesRequest
 /// </summary>
 public sealed record InspectVolumeRequest
 {
-    /// <summary>数据卷名（大小写敏感）；必填。</summary>
+    /// <summary>
+    /// 数据卷名（大小写敏感）；必填。
+    /// </summary>
     public string? Name { get; init; }
 }
 
@@ -39,7 +45,9 @@ public sealed record InspectVolumeRequest
 /// </summary>
 public sealed record CreateVolumeRequest
 {
-    /// <summary>数据卷名；必填。须匹配 <c>^[a-zA-Z0-9][a-zA-Z0-9_.-]*$</c>。</summary>
+    /// <summary>
+    /// 数据卷名；必填。须匹配 <c>^[a-zA-Z0-9][a-zA-Z0-9_.-]*$</c>。
+    /// </summary>
     /// <remarks>
     /// 省略时<b>不</b>自动生成随机名——那会造出一个用户没预期的卷。
     /// Docker 自己支持省略名字生成匿名卷，但那条路径只应由「按需挂载」触发，
@@ -47,13 +55,19 @@ public sealed record CreateVolumeRequest
     /// </remarks>
     public string? Name { get; init; }
 
-    /// <summary>存储驱动；省略时由守护进程按主机默认选择（通常是 <c>local</c>）。</summary>
+    /// <summary>
+    /// 存储驱动；省略时由守护进程按主机默认选择（通常是 <c>local</c>）。
+    /// </summary>
     public string? Driver { get; init; }
 
-    /// <summary>驱动选项（如 <c>local</c> 的 <c>device</c> = <c>/data/xx</c>、<c>o</c> = <c>bind</c>）。</summary>
+    /// <summary>
+    /// 驱动选项（如 <c>local</c> 的 <c>device</c> = <c>/data/xx</c>、<c>o</c> = <c>bind</c>）。
+    /// </summary>
     public IReadOnlyDictionary<string, string>? DriverOptions { get; init; }
 
-    /// <summary>标签。</summary>
+    /// <summary>
+    /// 标签。
+    /// </summary>
     public IReadOnlyDictionary<string, string>? Labels { get; init; }
 }
 
@@ -62,10 +76,14 @@ public sealed record CreateVolumeRequest
 /// </summary>
 public sealed record RemoveVolumeRequest
 {
-    /// <summary>数据卷名；必填。</summary>
+    /// <summary>
+    /// 数据卷名；必填。
+    /// </summary>
     public string? Name { get; init; }
 
-    /// <summary>是否忽略「卷不存在」；省略为 <see langword="false"/>。</summary>
+    /// <summary>
+    /// 是否忽略「卷不存在」；省略为 <see langword="false"/>。
+    /// </summary>
     /// <remarks>
     /// <para>⚠️ <b>它不能绕过「卷被引用」，实测如此</b>：只要还有容器挂着这个卷，
     /// 守护进程就会拒绝删除，<b>带不带 <c>force</c> 都一样</b>
@@ -86,10 +104,14 @@ public sealed record RemoveVolumeRequest
 /// </summary>
 public sealed record BatchRemoveVolumesRequest
 {
-    /// <summary>要删除的数据卷名列表；必填且不能为空，最多 100 个。</summary>
+    /// <summary>
+    /// 要删除的数据卷名列表；必填且不能为空，最多 100 个。
+    /// </summary>
     public IReadOnlyList<string>? Names { get; init; }
 
-    /// <summary>是否忽略「卷不存在」；省略为 <see langword="false"/>。</summary>
+    /// <summary>
+    /// 是否忽略「卷不存在」；省略为 <see langword="false"/>。
+    /// </summary>
     /// <remarks>语义与 <see cref="RemoveVolumeRequest.Force"/> 完全相同，同样<b>不能</b>删掉仍被引用的卷。</remarks>
     public bool? Force { get; init; }
 }

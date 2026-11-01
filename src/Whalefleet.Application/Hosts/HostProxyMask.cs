@@ -27,17 +27,17 @@ public static class HostProxyMask
     /// </remarks>
     public static string? Mask(string? value)
     {
-        if (string.IsNullOrWhiteSpace(value))
+        if (String.IsNullOrWhiteSpace(value))
         {
             return null;
         }
 
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || string.IsNullOrEmpty(uri.UserInfo))
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || String.IsNullOrEmpty(uri.UserInfo))
         {
             return value;
         }
 
-        return new UriBuilder(uri) { UserName = string.Empty, Password = string.Empty }
+        return new UriBuilder(uri) { UserName = String.Empty, Password = String.Empty }
             .Uri
             .GetComponents(UriComponents.SchemeAndServer, UriFormat.UriEscaped);
     }

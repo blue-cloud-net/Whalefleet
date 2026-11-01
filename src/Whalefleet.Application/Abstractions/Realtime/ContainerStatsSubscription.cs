@@ -36,7 +36,7 @@ public sealed class ContainerStatsSubscription : IAsyncDisposable
 
         _release = release;
         _reader = channel.Reader;
-        History = history;
+        this.History = history;
     }
 
     /// <summary>

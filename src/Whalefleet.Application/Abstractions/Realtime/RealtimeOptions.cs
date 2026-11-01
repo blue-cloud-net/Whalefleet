@@ -134,14 +134,14 @@ public sealed class RealtimeOptions
     /// （批量行数至少 1，采样间隔至少 1000，因为 Docker 本身就 1 秒一帧）。
     /// </remarks>
     public bool IsValid() =>
-        MaxSubscriptionsPerKind > 0
-        && MaxStatsSubscriptionsPerConnection > 0
-        && StatsHistoryPoints > 0
-        && StatsSamplerIdleGraceSeconds >= 0
-        && LogBatchLines > 0
-        && LogFlushIntervalMs > 0
-        && LogChannelCapacity >= LogBatchLines
-        && StatsSampleIntervalMs >= 1000
-        && HostEnumerationIntervalSeconds > 0
-        && EventReconnectBackoffSeconds > 0;
+        this.MaxSubscriptionsPerKind > 0
+        && this.MaxStatsSubscriptionsPerConnection > 0
+        && this.StatsHistoryPoints > 0
+        && this.StatsSamplerIdleGraceSeconds >= 0
+        && this.LogBatchLines > 0
+        && this.LogFlushIntervalMs > 0
+        && this.LogChannelCapacity >= this.LogBatchLines
+        && this.StatsSampleIntervalMs >= 1000
+        && this.HostEnumerationIntervalSeconds > 0
+        && this.EventReconnectBackoffSeconds > 0;
 }

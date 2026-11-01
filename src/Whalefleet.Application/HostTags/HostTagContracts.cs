@@ -37,13 +37,19 @@ public sealed record HostTagRef(Guid Id, string Name, string? Color);
 /// </summary>
 public sealed record CreateHostTagRequest
 {
-    /// <summary>标签名。</summary>
+    /// <summary>
+    /// 标签名。
+    /// </summary>
     public string? Name { get; init; }
 
-    /// <summary>描述；省略或留空表示不填。</summary>
+    /// <summary>
+    /// 描述；省略或留空表示不填。
+    /// </summary>
     public string? Description { get; init; }
 
-    /// <summary>颜色（<c>#RRGGBB</c>）；省略或留空表示用默认色。</summary>
+    /// <summary>
+    /// 颜色（<c>#RRGGBB</c>）；省略或留空表示用默认色。
+    /// </summary>
     public string? Color { get; init; }
 }
 
@@ -58,13 +64,19 @@ public sealed record CreateHostTagRequest
 /// </remarks>
 public sealed record UpdateHostTagRequest
 {
-    /// <summary>新的标签名；未提供表示不改。</summary>
+    /// <summary>
+    /// 新的标签名；未提供表示不改。
+    /// </summary>
     public string? Name { get; init; }
 
-    /// <summary>新的描述；未提供表示不改，空串表示清空。</summary>
+    /// <summary>
+    /// 新的描述；未提供表示不改，空串表示清空。
+    /// </summary>
     public string? Description { get; init; }
 
-    /// <summary>新的颜色；未提供表示不改，空串表示清空。</summary>
+    /// <summary>
+    /// 新的颜色；未提供表示不改，空串表示清空。
+    /// </summary>
     public string? Color { get; init; }
 }
 
@@ -81,9 +93,13 @@ public sealed record UpdateHostTagRequest
 /// </remarks>
 public sealed record HostTagAssignmentRequest
 {
-    /// <summary>主机名列表。</summary>
+    /// <summary>
+    /// 主机名列表。
+    /// </summary>
     public IReadOnlyList<string>? HostIds { get; init; }
 
-    /// <summary>标签主键列表。</summary>
+    /// <summary>
+    /// 标签主键列表。
+    /// </summary>
     public IReadOnlyList<string>? TagIds { get; init; }
 }

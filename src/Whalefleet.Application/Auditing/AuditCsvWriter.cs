@@ -1,4 +1,5 @@
 using System.Globalization;
+
 using Whalefleet.Core.Auditing;
 
 namespace Whalefleet.Application.Auditing;
@@ -129,9 +130,8 @@ public static class AuditCsvWriter
         var outcome = log.Outcome.ToString().ToLowerInvariant();
         var errorCode = log.ErrorCode?.ToString(CultureInfo.InvariantCulture) ?? String.Empty;
 
-        var cells = category == AuditCategory.Authentication
-            ? new[]
-            {
+        string[] cells = category == AuditCategory.Authentication ?
+            [
                 time,
                 log.ActorName,
                 log.Action,
@@ -139,9 +139,8 @@ public static class AuditCsvWriter
                 errorCode,
                 log.ClientIp ?? String.Empty,
                 log.Detail ?? String.Empty,
-            }
-            : new[]
-            {
+            ] :
+            [
                 time,
                 log.ActorName,
                 log.Action,
@@ -152,7 +151,7 @@ public static class AuditCsvWriter
                 errorCode,
                 log.ClientIp ?? String.Empty,
                 log.Detail ?? String.Empty,
-            };
+            ];
 
         return String.Join(',', cells.Select(Escape));
     }

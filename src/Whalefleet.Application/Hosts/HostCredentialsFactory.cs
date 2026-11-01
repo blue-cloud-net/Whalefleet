@@ -1,4 +1,5 @@
 using System.Text.Json;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Hosts;

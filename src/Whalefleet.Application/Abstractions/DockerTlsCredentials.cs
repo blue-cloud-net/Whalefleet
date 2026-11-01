@@ -46,7 +46,7 @@ public sealed record DockerTlsCredentials
     /// <exception cref="Common.BusinessException">载荷非法或缺少必填字段（错误码 <c>1301</c>）。</exception>
     public static DockerTlsCredentials Parse(string? configJson)
     {
-        var payload = CredentialsJson.Deserialize<Payload>(configJson, Description);
+        var payload = CredentialsJson.Deserialize<Payload>(configJson, _description);
 
         // 字段名用**线上名（小驼峰）**而不是 C# 属性名：报错要冲着用户写的那个键，
         // 否则用户拿 "CaCertificatePath" 去搜请求体是搜不到的。
@@ -55,15 +55,15 @@ public sealed record DockerTlsCredentials
             CaCertificatePath = CredentialsJson.RequireText(
                 payload.CaCertificatePath,
                 "caCertificatePath",
-                Description),
+                _description),
             ClientCertificatePath = CredentialsJson.RequireText(
                 payload.ClientCertificatePath,
                 "clientCertificatePath",
-                Description),
+                _description),
             ClientKeyPath = CredentialsJson.RequireText(
                 payload.ClientKeyPath,
                 "clientKeyPath",
-                Description),
+                _description),
             ClientKeyPassword = payload.ClientKeyPassword,
         };
     }
@@ -76,9 +76,11 @@ public sealed record DockerTlsCredentials
         $"DockerTlsCredentials(ca={this.CaCertificatePath}, cert={this.ClientCertificatePath}, "
         + $"key={this.ClientKeyPath}, password={(this.ClientKeyPassword is null ? "无" : "有")})";
 
-    private const string Description = "TLS";
+    private const string _description = "TLS";
 
-    /// <summary>载荷 DTO：字段可空，由 <see cref="Parse"/> 逐个校验并给出可读错误。</summary>
+    /// <summary>
+    /// 载荷 DTO：字段可空，由 <see cref="Parse"/> 逐个校验并给出可读错误。
+    /// </summary>
     private sealed record Payload
     {
         public string? CaCertificatePath { get; init; }

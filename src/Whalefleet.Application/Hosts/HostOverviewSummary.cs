@@ -56,13 +56,19 @@ public sealed record HostOverviewSummary(
 /// </remarks>
 public enum HostConnectivityStatus
 {
-    /// <summary>尚未探测，或探测失败但原因不属于「连不上」。</summary>
+    /// <summary>
+    /// 尚未探测，或探测失败但原因不属于「连不上」。
+    /// </summary>
     Unknown,
 
-    /// <summary>可连通。</summary>
+    /// <summary>
+    /// 可连通。
+    /// </summary>
     Online,
 
-    /// <summary>连不上（端点不可达，或主机已停用）。</summary>
+    /// <summary>
+    /// 连不上（端点不可达，或主机已停用）。
+    /// </summary>
     Offline,
 }
 

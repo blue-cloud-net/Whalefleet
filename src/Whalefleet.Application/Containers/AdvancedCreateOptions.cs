@@ -1,5 +1,7 @@
 using System.Globalization;
+
 using Docker.DotNet.Models;
+
 using Whalefleet.Application.Common;
 
 namespace Whalefleet.Application.Containers;
@@ -19,19 +21,27 @@ namespace Whalefleet.Application.Containers;
 /// </remarks>
 internal static class AdvancedCreateOptions
 {
-    /// <summary>纳秒换算系数（1 秒 = 10^9 纳秒）。</summary>
-    private const long NanosPerSecond = 1_000_000_000L;
+    /// <summary>
+    /// 纳秒换算系数（1 秒 = 10^9 纳秒）。
+    /// </summary>
+    private const long _nanosPerSecond = 1_000_000_000L;
 
-    /// <summary>设备权限里允许出现的字符。</summary>
-    private const string AllowedDevicePermissions = "rwm";
+    /// <summary>
+    /// 设备权限里允许出现的字符。
+    /// </summary>
+    private const string _allowedDevicePermissions = "rwm";
 
-    /// <summary>日志驱动默认类型。</summary>
+    /// <summary>
+    /// 日志驱动默认类型。
+    /// </summary>
     /// <remarks>与守护进程默认一致；显式写出来是为了让 <c>inspect</c> 回读时能对上，
     /// 而不是出现「请求里没这个字段但守护进程填了默认值」的差异。</remarks>
-    private const string DefaultLogDriver = "json-file";
+    private const string _defaultLogDriver = "json-file";
 
-    /// <summary>关闭健康检查时 <see cref="HealthcheckConfig.Test"/> 的固定内容。</summary>
-    private const string HealthCheckNone = "NONE";
+    /// <summary>
+    /// 关闭健康检查时 <see cref="HealthcheckConfig.Test"/> 的固定内容。
+    /// </summary>
+    private const string _healthCheckNone = "NONE";
 
     /// <summary>
     /// 构建 capability 增删列表。
@@ -110,7 +120,7 @@ internal static class AdvancedCreateOptions
         };
 
         var disabled = test.Count == 1
-            && string.Equals(test[0], HealthCheckNone, StringComparison.OrdinalIgnoreCase);
+            && String.Equals(test[0], _healthCheckNone, StringComparison.OrdinalIgnoreCase);
 
         if (disabled && (interval is not null || timeout is not null || startPeriod is not null || retries is not null))
         {
@@ -150,13 +160,13 @@ internal static class AdvancedCreateOptions
 
         foreach (var device in devices)
         {
-            if (string.IsNullOrWhiteSpace(device.HostPath))
+            if (String.IsNullOrWhiteSpace(device.HostPath))
             {
                 throw BusinessException.Validation("devices[].hostPath 不能为空");
             }
 
             var hostPath = device.HostPath.Trim();
-            var containerPath = string.IsNullOrWhiteSpace(device.ContainerPath)
+            var containerPath = String.IsNullOrWhiteSpace(device.ContainerPath)
                 ? hostPath
                 : device.ContainerPath.Trim();
 
@@ -180,9 +190,9 @@ internal static class AdvancedCreateOptions
     /// <exception cref="BusinessException">含非法字符（<c>1000</c>）。</exception>
     internal static string NormalizeDevicePermissions(string? permissions)
     {
-        if (string.IsNullOrWhiteSpace(permissions))
+        if (String.IsNullOrWhiteSpace(permissions))
         {
-            return AllowedDevicePermissions;
+            return _allowedDevicePermissions;
         }
 
         var trimmed = permissions.Trim();
@@ -190,7 +200,7 @@ internal static class AdvancedCreateOptions
 
         foreach (var character in trimmed)
         {
-            if (!AllowedDevicePermissions.Contains(character, StringComparison.Ordinal))
+            if (!_allowedDevicePermissions.Contains(character, StringComparison.Ordinal))
             {
                 throw BusinessException.Validation(
                     $"devices[].permissions「{trimmed}」含非法字符「{character}」，只能是 r（读）/ w（写）/ m（mknod）的组合");
@@ -206,7 +216,7 @@ internal static class AdvancedCreateOptions
 
         // 按固定顺序输出：rwm 顺序固定后，同一份配置重建两次得到的是同一个字符串，
         // 界面上不会出现「看起来不一样但其实等价」的差异。
-        return string.Concat(AllowedDevicePermissions.Where(seen.Contains));
+        return String.Concat(_allowedDevicePermissions.Where(seen.Contains));
     }
 
     /// <summary>
@@ -228,7 +238,7 @@ internal static class AdvancedCreateOptions
         {
             var key = pair.Key?.Trim();
 
-            if (string.IsNullOrEmpty(key))
+            if (String.IsNullOrEmpty(key))
             {
                 throw BusinessException.Validation("sysctls 的键不能为空");
             }
@@ -264,7 +274,7 @@ internal static class AdvancedCreateOptions
 
         foreach (var ulimit in ulimits)
         {
-            if (string.IsNullOrWhiteSpace(ulimit.Name))
+            if (String.IsNullOrWhiteSpace(ulimit.Name))
             {
                 throw BusinessException.Validation("ulimits[].name 不能为空");
             }
@@ -299,11 +309,11 @@ internal static class AdvancedCreateOptions
             // SDK 把 Config 声明成非空但它确实是可选的：传 null 会被序列化成「无选项」，
             // 而传空字典会被当成「显式配置了零个选项」——两者在 JSON 上不等价。
 #pragma warning disable CS8625
-            return new LogConfig { Type = DefaultLogDriver, Config = null };
+            return new LogConfig { Type = _defaultLogDriver, Config = null };
 #pragma warning restore CS8625
         }
 
-        if (string.IsNullOrWhiteSpace(logDriver.Type))
+        if (String.IsNullOrWhiteSpace(logDriver.Type))
         {
             throw BusinessException.Validation("logDriver.type 不能为空");
         }
@@ -318,7 +328,7 @@ internal static class AdvancedCreateOptions
             {
                 var key = pair.Key?.Trim();
 
-                if (string.IsNullOrEmpty(key))
+                if (String.IsNullOrEmpty(key))
                 {
                     throw BusinessException.Validation("logDriver.options 的键不能为空");
                 }
@@ -369,7 +379,7 @@ internal static class AdvancedCreateOptions
         {
             var trimmed = value?.Trim();
 
-            if (string.IsNullOrEmpty(trimmed))
+            if (String.IsNullOrEmpty(trimmed))
             {
                 throw BusinessException.Validation($"{field} 不能含有空项");
             }
@@ -433,7 +443,7 @@ internal static class AdvancedCreateOptions
     /// <param name="memoryLimitBytes">字节数。</param>
     /// <returns>原值；<see langword="null"/> 表示不限制。</returns>
     /// <exception cref="BusinessException">为负或低于守护进程下限时抛 <c>1000</c>。</exception>
-    /// <remarks>下界见 <see cref="MinMemoryLimitBytes"/>：低于它守护进程在<b>创建时</b>就回 400，
+    /// <remarks>下界见 <see cref="_minMemoryLimitBytes"/>：低于它守护进程在<b>创建时</b>就回 400，
     /// 而 400 经翻译器落到 1402/500——「改一个数字就能成功」的事不该看起来像服务端故障。</remarks>
     internal static long? RequireMemoryLimit(long? memoryLimitBytes) => memoryLimitBytes switch
     {
@@ -445,12 +455,14 @@ internal static class AdvancedCreateOptions
         // 「低于下限的非法值」而报错——而 0 在 Docker 那边恰恰是合法的「不限」。
         0 => 0,
 
-        < MinMemoryLimitBytes => throw BusinessException.Validation(
-            $"memoryLimitBytes 至少为 {MinMemoryLimitBytes} 字节（6 MiB，Docker 守护进程的硬性下限），当前 {memoryLimitBytes.Value.ToString(CultureInfo.InvariantCulture)}"),
+        < _minMemoryLimitBytes => throw BusinessException.Validation(
+            $"memoryLimitBytes 至少为 {_minMemoryLimitBytes} 字节（6 MiB，Docker 守护进程的硬性下限），当前 {memoryLimitBytes.Value.ToString(CultureInfo.InvariantCulture)}"),
         _ => memoryLimitBytes.Value,
     };
 
-    /// <summary>内存下限：6 MiB。</summary>
+    /// <summary>
+    /// 内存下限：6 MiB。
+    /// </summary>
     /// <remarks>
     /// ⚠️ <b>Docker 把这个值从 4 MiB 提到过 6 MiB</b>（实测 Docker 29.x：
     /// <c>6291455</c> 报「Minimum memory limit allowed is 6MB」，<c>6291456</c> 才过）。
@@ -458,7 +470,7 @@ internal static class AdvancedCreateOptions
     /// 而取 6 MiB 在老守护进程上仍然合法（它只要求「不低于 4 MiB」）。
     /// 换句话说，取严的那个值对两种守护进程都成立。
     /// </remarks>
-    private const long MinMemoryLimitBytes = 6L * 1024 * 1024;
+    private const long _minMemoryLimitBytes = 6L * 1024 * 1024;
 
     /// <summary>
     /// CPU 配额校验。
@@ -473,13 +485,15 @@ internal static class AdvancedCreateOptions
         null => null,
         < 0 => throw BusinessException.Validation(
             $"nanoCpus 不能为负数（当前 {nanoCpus.Value.ToString(CultureInfo.InvariantCulture)}）；取消限制请传 0 或省略"),
-        > MaxNanoCpus => throw BusinessException.Validation(
-            $"nanoCpus 最多 {MaxNanoCpus}（1024 核 × 10^9），当前 {nanoCpus.Value.ToString(CultureInfo.InvariantCulture)}"),
+        > _maxNanoCpus => throw BusinessException.Validation(
+            $"nanoCpus 最多 {_maxNanoCpus}（1024 核 × 10^9），当前 {nanoCpus.Value.ToString(CultureInfo.InvariantCulture)}"),
         _ => nanoCpus.Value,
     };
 
-    /// <summary>CPU 配额上限：1024 核（十亿分之一核为单位）。</summary>
-    private const long MaxNanoCpus = 1024L * NanosPerSecond;
+    /// <summary>
+    /// CPU 配额上限：1024 核（十亿分之一核为单位）。
+    /// </summary>
+    private const long _maxNanoCpus = 1024L * _nanosPerSecond;
 
     /// <summary>
     /// 热更新时的内存上限校验（<b>与创建时不同：0 是非法的</b>）。

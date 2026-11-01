@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Auditing;
 using Whalefleet.Application.Common;
@@ -6,7 +8,6 @@ using Whalefleet.Core.Auditing;
 using Whalefleet.Core.Auth;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
-using Microsoft.Extensions.Logging;
 
 namespace Whalefleet.Application.Users;
 
@@ -23,7 +24,9 @@ namespace Whalefleet.Application.Users;
 /// </remarks>
 public sealed class UserService
 {
-    /// <summary>列表默认每页条数。</summary>
+    /// <summary>
+    /// 列表默认每页条数。
+    /// </summary>
     public const int DefaultPageSize = 20;
 
     /// <summary>
@@ -161,7 +164,7 @@ public sealed class UserService
         // 与初始管理员引导共用同一套强度规则：两处用不同规则迟早出现"能建出来的账号登不进"。
         PasswordPolicy.EnsureSatisfied(password);
 
-        var role = await ResolveRoleAsync(request.Role, cancellationToken).ConfigureAwait(false);
+        var role = await this.ResolveRoleAsync(request.Role, cancellationToken).ConfigureAwait(false);
 
         var user = User.Create(Guid.NewGuid(), username, _passwordHasher.Hash(password));
 
@@ -221,12 +224,12 @@ public sealed class UserService
             throw BusinessException.Validation("不能删除当前登录的账号");
         }
 
-        await EnsureNotLastAdminAsync(target, cancellationToken).ConfigureAwait(false);
+        await this.EnsureNotLastAdminAsync(target, cancellationToken).ConfigureAwait(false);
 
         await _users.RemoveByIdAsync(target.Id, cancellationToken).ConfigureAwait(false);
 
         // 删号后旧凭据不该继续有效：否则被删的人还能拿手里的 refresh token 换新 access token。
-        await RevokeAllSessionsAsync(target.Id, cancellationToken).ConfigureAwait(false);
+        await this.RevokeAllSessionsAsync(target.Id, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("已删除用户 {Username}", target.Username);
 
@@ -274,7 +277,7 @@ public sealed class UserService
 
         if (isSelf)
         {
-            VerifyOldPassword(target, Require(request.OldPassword, "oldPassword"));
+            this.VerifyOldPassword(target, Require(request.OldPassword, "oldPassword"));
         }
 
         var newPassword = Require(request.NewPassword, "newPassword");
@@ -286,7 +289,7 @@ public sealed class UserService
         await _users.UpdateAsync(target, cancellationToken).ConfigureAwait(false);
 
         // 密码变更的常见动因就是"疑似泄漏"：不动会话等于把旧凭据留在原地。
-        await RevokeAllSessionsAsync(target.Id, cancellationToken).ConfigureAwait(false);
+        await this.RevokeAllSessionsAsync(target.Id, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation(
             "已修改用户 {Username} 的密码（操作者={ActorId}，自助={IsSelf}）",
@@ -331,6 +334,12 @@ public sealed class UserService
                 .OrderBy(name => name, StringComparer.Ordinal),
         ];
 
+    /// <summary>
+    /// 读取必填字段，缺失或空白时抛参数异常。
+    /// </summary>
+    /// <param name="value">字段值。</param>
+    /// <param name="field">字段名（用于异常信息）。</param>
+    /// <returns>去除首尾空白后的字段值。</returns>
     private static string Require(string? value, string field)
     {
         if (String.IsNullOrWhiteSpace(value))
@@ -344,6 +353,13 @@ public sealed class UserService
     private bool IsAdministrator =>
         _currentUser.Roles.Contains(Role.AdminName, StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// 解析改密请求的目标用户。
+    /// </summary>
+    /// <param name="request">改密请求。</param>
+    /// <param name="isSelf">是否为改自己的密码。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>目标用户。</returns>
     private async Task<User> ResolvePasswordTargetAsync(
         UpdatePasswordRequest request,
         bool isSelf,
@@ -361,6 +377,11 @@ public sealed class UserService
             ?? throw new BusinessException(ErrorCodes.UserNotFound, "用户不存在");
     }
 
+    /// <summary>
+    /// 校验旧密码是否匹配。
+    /// </summary>
+    /// <param name="target">目标用户。</param>
+    /// <param name="oldPassword">请求携带的旧密码明文。</param>
     private void VerifyOldPassword(User target, string oldPassword)
     {
         // Verify 不抛异常（见 IPasswordHasher），因此这里只需判返回值。
@@ -411,6 +432,12 @@ public sealed class UserService
         }
     }
 
+    /// <summary>
+    /// 按角色名解析角色；未指定时返回 <see langword="null"/>。
+    /// </summary>
+    /// <param name="roleName">角色名。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>角色；未指定时为 <see langword="null"/>。</returns>
     private async Task<Role> ResolveRoleAsync(string? roleName, CancellationToken cancellationToken)
     {
         if (String.IsNullOrWhiteSpace(roleName))
@@ -426,6 +453,11 @@ public sealed class UserService
             ?? throw BusinessException.Validation($"角色「{name}」不存在");
     }
 
+    /// <summary>
+    /// 撤销该用户的全部会话。
+    /// </summary>
+    /// <param name="userId">用户主键。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     private async Task RevokeAllSessionsAsync(Guid userId, CancellationToken cancellationToken)
     {
         var revoked = await _refreshTokens

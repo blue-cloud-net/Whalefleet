@@ -1,11 +1,15 @@
 using System.Globalization;
 using System.Net;
+
 using Docker.DotNet;
 using Docker.DotNet.Models;
+
+using Microsoft.Extensions.Logging;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Docker;
-using Microsoft.Extensions.Logging;
+
 using SdkState = Docker.DotNet.Models.State;
 
 namespace Whalefleet.Application.Containers;
@@ -25,16 +29,22 @@ namespace Whalefleet.Application.Containers;
 /// </remarks>
 public sealed partial class ContainerService
 {
-    /// <summary>复制时追加到原名后的后缀。</summary>
-    private const string CopySuffix = "-copy";
+    /// <summary>
+    /// 复制时追加到原名后的后缀。
+    /// </summary>
+    private const string _copySuffix = "-copy";
 
-    /// <summary>追加挂载时给旧容器用的让位名前缀。</summary>
+    /// <summary>
+    /// 追加挂载时给旧容器用的让位名前缀。
+    /// </summary>
     /// <remarks>前缀本身带语义：列表上看到一个 <c>whalefleet-replaced-…</c> 的容器，
     /// 用户能猜到它是某次重建的产物，而不是自己起的名字。</remarks>
-    private const string ReplacedPrefix = "whalefleet-replaced-";
+    private const string _replacedPrefix = "whalefleet-replaced-";
 
-    /// <summary>让位名重试次数上限。</summary>
-    private const int MaxNameRetries = 10;
+    /// <summary>
+    /// 让位名重试次数上限。
+    /// </summary>
+    private const int _maxNameRetries = 10;
 
     /// <summary>
     /// 交换空间相对内存的倍数（2）。
@@ -45,9 +55,9 @@ public sealed partial class ContainerService
     /// <b>不能只发 Memory 不发 MemorySwap</b>：守护进程会拿容器原有的 swap 校验并拒绝
     /// （详见 <c>UpdateAsync</c> 里的注释）。
     /// </remarks>
-    private const long DefaultSwapRatio = 2;
+    private const long _defaultSwapRatio = 2;
 
-    // ==================== 重命名 ====================
+    #region 重命名
 
     /// <summary>
     /// 重命名容器。
@@ -90,8 +100,9 @@ public sealed partial class ContainerService
 
         return new ContainerRenamedResult(containerId, newName);
     }
+    #endregion
 
-    // ==================== 热更新 ====================
+    #region 热更新
 
     /// <summary>
     /// 热更新容器的重启策略与资源限制。
@@ -155,7 +166,7 @@ public sealed partial class ContainerService
         var effectiveSwap = memory is null
             ? current.HostConfig?.MemorySwap ?? 0
             : memory > 0
-                ? memory.Value * DefaultSwapRatio
+                ? memory.Value * _defaultSwapRatio
                 : 0;
 
         var parameters = new ContainerUpdateParameters
@@ -196,8 +207,9 @@ public sealed partial class ContainerService
             updated.HostConfig is null || updated.HostConfig.Memory == 0 ? null : updated.HostConfig.Memory,
             updated.HostConfig is null || updated.HostConfig.NanoCPUs == 0 ? null : updated.HostConfig.NanoCPUs);
     }
+    #endregion
 
-    // ==================== 复制 ====================
+    #region 复制
 
     /// <summary>
     /// 复制容器：按原容器的配置新建一个兄弟容器（原容器不受影响）。
@@ -229,7 +241,7 @@ public sealed partial class ContainerService
 
         // 先校验本地字段再取客户端：名称非法属于「改一下就能成功」的错误，
         // 不该被「容器不存在」抢在前面报出来——那会让用户以为搞错了容器 ID。
-        var requestedName = string.IsNullOrWhiteSpace(request.Name) ? null : RequireContainerName(request.Name);
+        var requestedName = String.IsNullOrWhiteSpace(request.Name) ? null : RequireContainerName(request.Name);
 
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
 
@@ -238,8 +250,8 @@ public sealed partial class ContainerService
             $"容器 {sourceId}",
             cancellationToken).ConfigureAwait(false);
 
-        var sourceName = source.Name?.TrimStart('/') ?? string.Empty;
-        var baseName = requestedName ?? sourceName + CopySuffix;
+        var sourceName = source.Name?.TrimStart('/') ?? String.Empty;
+        var baseName = requestedName ?? (sourceName + _copySuffix);
 
         RequireContainerName(baseName);
 
@@ -274,8 +286,9 @@ public sealed partial class ContainerService
         // 调用方据此区分「我原来的容器还在」与「我原来的容器被换掉了」。
         return new ContainerRecreatedResult(created.ID, name, null, start, warnings, Recreated: false);
     }
+    #endregion
 
-    // ==================== 重建（编辑并重建） ====================
+    #region 重建（编辑并重建）
 
     /// <summary>
     /// 重建容器（<b>等价于「编辑并重建」</b>，容器 ID 会变）。
@@ -364,6 +377,11 @@ public sealed partial class ContainerService
     // 这里确实要写 null（表示「清空」或「保持原值」），因此与 BuildRecreateParameters 一样
     // 只用 pragma 关掉与 SDK 标注的不一致。
 #pragma warning disable CS8601
+    /// <summary>
+    /// 把重建请求里的配置补丁写进创建参数。
+    /// </summary>
+    /// <param name="parameters">待填充的创建参数。</param>
+    /// <param name="patch">重建请求携带的配置补丁。</param>
     private static void ApplyConfigPatch(CreateContainerParameters parameters, CreateContainerRequest patch)
     {
         if (patch.Image is not null)
@@ -504,8 +522,9 @@ public sealed partial class ContainerService
         }
     }
 #pragma warning restore CS8601
+    #endregion
 
-    // ==================== 追加挂载（重建） ====================
+    #region 追加挂载（重建）
 
     /// <summary>
     /// 为已存在容器追加挂载（<b>重建容器</b>，ID 会变）。
@@ -584,8 +603,9 @@ public sealed partial class ContainerService
             $"为容器 {name} 追加 {addedBinds.Count} 个挂载后重建",
             cancellationToken).ConfigureAwait(false);
     }
+    #endregion
 
-    // ==================== 复制 / 重建共用的内部实现 ====================
+    #region 复制 / 重建共用的内部实现
 
     /// <summary>
     /// 重建的核心流程：让位旧容器 → 停下旧容器 → 用新参数创建 → 失败回滚 → 按需启动。
@@ -682,26 +702,17 @@ public sealed partial class ContainerService
         return new ContainerRecreatedResult(created.ID, name, containerId, start, warnings, Recreated: true);
     }
 
-    /// <summary>
-    /// 把 inspect 结果还原成「能重新创建出等价容器」的参数。
-    /// </summary>
-    /// <param name="source">原容器的 inspect 结果。</param>
-    /// <param name="name">新容器名。</param>
-    /// <returns>创建参数。</returns>
-    /// <remarks>
-    /// <para><b>能还原多少取决于 inspect 给了什么</b>：Docker 只回填配置，不回填「镜像名」——
-    /// 它给的是镜像 ID。因此这里用 <c>Config.Image</c>（镜像名）而不是顶层 <c>Image</c>：
-    /// 顶层那个是 <c>sha256:…</c>，把它当镜像名传给 create 恰好也能工作，
-    /// 但一旦原镜像被删，副本就再也创建不出来（而名字还能拉回同一个镜像）。</para>
-    /// <para><b>刻意不还原的字段</b>：<c>AutoRemove</c>、<c>RestartCount</c>、<c>State</c>、
-    /// <c>NetworkID</c> 等运行时状态——它们描述的是「这次运行」，不是「这个容器的配置」。
-    /// 原样带过去会让副本带着上一世的运行痕迹。</para>
-    /// </remarks>
     // SDK 把 Cmd / Env / Labels / NetworkMode / Devices 等字段声明为**非空**，
     // 但它们实际都是可选的：序列化时省略 null（与 Docker 的「未指定」语义一致），
     // 而传空数组 / 空串会被当成「显式清空」——例如把 Cmd 传成 [] 会让容器不带任何启动命令。
     // 因此这里必须传 null，只用 pragma 关掉与 SDK 标注的不一致。
 #pragma warning disable CS8601
+    /// <summary>
+    /// 以现有容器为模板构造重建用的创建参数。
+    /// </summary>
+    /// <param name="source">被重建的容器详情。</param>
+    /// <param name="name">新容器名称。</param>
+    /// <returns>重建用的创建参数。</returns>
     private static CreateContainerParameters BuildRecreateParameters(ContainerInspectResponse source, string name)
     {
         var config = source.Config;
@@ -720,12 +731,12 @@ public sealed partial class ContainerService
             Labels = config?.Labels is null or { Count: 0 }
                 ? null
                 : new Dictionary<string, string>(config.Labels, StringComparer.Ordinal),
-            WorkingDir = string.IsNullOrEmpty(config?.WorkingDir) ? null : config.WorkingDir,
-            Hostname = string.IsNullOrEmpty(config?.Hostname) ? null : config.Hostname,
-            User = string.IsNullOrEmpty(config?.User) ? null : config.User,
+            WorkingDir = String.IsNullOrEmpty(config?.WorkingDir) ? null : config.WorkingDir,
+            Hostname = String.IsNullOrEmpty(config?.Hostname) ? null : config.Hostname,
+            User = String.IsNullOrEmpty(config?.User) ? null : config.User,
             Tty = config?.Tty ?? false,
             OpenStdin = config?.OpenStdin ?? false,
-            StopSignal = string.IsNullOrEmpty(config?.StopSignal) ? null : config.StopSignal,
+            StopSignal = String.IsNullOrEmpty(config?.StopSignal) ? null : config.StopSignal,
             StopTimeout = config?.StopTimeout,
             ExposedPorts = exposedPorts,
             Healthcheck = MapHealthCheck(config?.Healthcheck),
@@ -785,14 +796,14 @@ public sealed partial class ContainerService
 
         foreach (var mount in mounts)
         {
-            if (string.IsNullOrWhiteSpace(mount.Source) || string.IsNullOrWhiteSpace(mount.Destination))
+            if (String.IsNullOrWhiteSpace(mount.Source) || String.IsNullOrWhiteSpace(mount.Destination))
             {
                 continue;
             }
 
             // tmpfs 与 npipe 没有宿主来源，硬拼等于凭空造出一个宿主路径
-            if (string.Equals(mount.Type, "tmpfs", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(mount.Type, "npipe", StringComparison.OrdinalIgnoreCase))
+            if (String.Equals(mount.Type, "tmpfs", StringComparison.OrdinalIgnoreCase)
+                || String.Equals(mount.Type, "npipe", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
@@ -913,10 +924,10 @@ public sealed partial class ContainerService
     /// 只收其中一个会在另一种守护进程上让重建失败。
     /// </remarks>
     private static bool IsBuiltInNetwork(string? name) =>
-        string.IsNullOrEmpty(name)
-        || string.Equals(name, "bridge", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(name, "host", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(name, "none", StringComparison.OrdinalIgnoreCase);
+        String.IsNullOrEmpty(name)
+        || String.Equals(name, "bridge", StringComparison.OrdinalIgnoreCase)
+        || String.Equals(name, "host", StringComparison.OrdinalIgnoreCase)
+        || String.Equals(name, "none", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// 把 inspect 的健康检查配置还原成创建用的配置。
@@ -935,7 +946,7 @@ public sealed partial class ContainerService
             return null;
         }
 
-        if (test.Count == 1 && string.Equals(test[0], "NONE", StringComparison.OrdinalIgnoreCase))
+        if (test.Count == 1 && String.Equals(test[0], "NONE", StringComparison.OrdinalIgnoreCase))
         {
             return null;
         }
@@ -957,7 +968,7 @@ public sealed partial class ContainerService
     /// <param name="baseName">期望的名字。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>可用的名字；<paramref name="baseName"/> 空闲时原样返回。</returns>
-    /// <exception cref="BusinessException">连试 <see cref="MaxNameRetries"/> 次都冲突（<c>1404</c>）。</exception>
+    /// <exception cref="BusinessException">连试 <see cref="_maxNameRetries"/> 次都冲突（<c>1404</c>）。</exception>
     /// <remarks>
     /// <b>为什么不直接用请求里的名字</b>：复制时最容易撞的就是「<c>-copy</c> 已经存在」
     /// （用户连点两次）。这里按 <c>-2</c>、<c>-3</c> 递增避让，而不是让第二次点击失败。
@@ -972,7 +983,7 @@ public sealed partial class ContainerService
             return baseName;
         }
 
-        for (var attempt = 2; attempt <= MaxNameRetries; attempt++)
+        for (var attempt = 2; attempt <= _maxNameRetries; attempt++)
         {
             var candidate = $"{baseName}-{attempt.ToString(CultureInfo.InvariantCulture)}";
 
@@ -1034,9 +1045,9 @@ public sealed partial class ContainerService
         CancellationToken cancellationToken)
     {
         var shortId = containerId.Length <= 12 ? containerId : containerId[..12];
-        var baseName = $"{ReplacedPrefix}{shortId}";
+        var baseName = $"{_replacedPrefix}{shortId}";
 
-        for (var attempt = 0; attempt < MaxNameRetries; attempt++)
+        for (var attempt = 0; attempt < _maxNameRetries; attempt++)
         {
             var candidate = attempt == 0 ? baseName : $"{baseName}-{attempt.ToString(CultureInfo.InvariantCulture)}";
 
@@ -1170,3 +1181,4 @@ public sealed partial class ContainerService
         return destination;
     }
 }
+    #endregion

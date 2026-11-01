@@ -10,7 +10,9 @@ namespace Whalefleet.Application.Containers;
 /// </remarks>
 public sealed record ContainerHealthRequest
 {
-    /// <summary>容器标识列表（完整 ID / 短 ID / 名称均可）。</summary>
+    /// <summary>
+    /// 容器标识列表（完整 ID / 短 ID / 名称均可）。
+    /// </summary>
     public IReadOnlyList<string>? ContainerIds { get; init; }
 }
 

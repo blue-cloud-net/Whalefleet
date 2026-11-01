@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+
 using Whalefleet.Application.Abstractions.Realtime;
 
 namespace Whalefleet.Application.Common;
@@ -26,7 +27,7 @@ public sealed class InProcessContainerEventBus : IContainerEventBus
     /// 512 条足够覆盖「短时间内几十个容器接连退出」的场景，
     /// 又不会让一个卡住的订阅方占住太多内存。
     /// </remarks>
-    private const int SubscriberCapacity = 512;
+    private const int _subscriberCapacity = 512;
 
     /// <summary>
     /// 初始化事件总线。
@@ -77,7 +78,7 @@ public sealed class InProcessContainerEventBus : IContainerEventBus
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var channel = Channel.CreateBounded<ContainerEventNotification>(
-            new BoundedChannelOptions(SubscriberCapacity)
+            new BoundedChannelOptions(_subscriberCapacity)
             {
                 // 满了丢最旧的：与 Publish 的策略一致，且不让慢订阅方拖住发布方。
                 FullMode = BoundedChannelFullMode.DropOldest,

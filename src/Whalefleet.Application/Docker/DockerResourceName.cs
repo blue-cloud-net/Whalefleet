@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Text.RegularExpressions;
+
 using Whalefleet.Application.Common;
 
 namespace Whalefleet.Application.Docker;
@@ -25,16 +26,24 @@ namespace Whalefleet.Application.Docker;
 /// </remarks>
 internal static partial class DockerResourceName
 {
-    /// <summary>空标签的共享实例，避免每次调用都分配一个新字典。</summary>
-    private static readonly Dictionary<string, string> EmptyLabels = new(StringComparer.Ordinal);
+    /// <summary>
+    /// 空标签的共享实例，避免每次调用都分配一个新字典。
+    /// </summary>
+    private static readonly Dictionary<string, string> _emptyLabels = new(StringComparer.Ordinal);
 
-    /// <summary>数据卷与网络的合法名字：字母或数字开头，其后是字母、数字、<c>_</c>、<c>.</c>、<c>-</c>。</summary>
+    /// <summary>
+    /// 数据卷与网络的合法名字：字母或数字开头，其后是字母、数字、<c>_</c>、<c>.</c>、<c>-</c>。
+    /// </summary>
     /// <remarks>
     /// 与守护进程的非 Swarm 分支保持一致。注意末尾是 <c>*</c> 而非 <c>+</c>：
     /// Docker 校验表达式里用的是 <c>+</c>（要求至少 2 个字符），但单字符名字在守护进程上确实能建出来，
     /// 按 <c>*</c> 校验不会把合法输入挡在门外，而按 <c>+</c> 有可能把合法的挡掉。
     /// </remarks>
     [GeneratedRegex(@"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$", RegexOptions.CultureInvariant)]
+    /// <summary>
+    /// 取得校验资源名称的正则（惰性构造，避免每次调用都编译）。
+    /// </summary>
+    /// <returns>名称校验用的正则表达式。</returns>
     private static partial Regex ValidNamePattern();
 
     /// <summary>
@@ -49,7 +58,7 @@ internal static partial class DockerResourceName
     {
         var trimmed = name?.Trim();
 
-        if (string.IsNullOrEmpty(trimmed))
+        if (String.IsNullOrEmpty(trimmed))
         {
             throw BusinessException.Validation($"{field} 不能为空");
         }
@@ -79,7 +88,7 @@ internal static partial class DockerResourceName
     {
         if (labels is not { Count: > 0 })
         {
-            return EmptyLabels;
+            return _emptyLabels;
         }
 
         var normalized = new Dictionary<string, string>(labels.Count, StringComparer.Ordinal);
@@ -88,15 +97,15 @@ internal static partial class DockerResourceName
         {
             var trimmedKey = key?.Trim();
 
-            if (string.IsNullOrEmpty(trimmedKey))
+            if (String.IsNullOrEmpty(trimmedKey))
             {
                 continue;
             }
 
-            normalized[trimmedKey] = value ?? string.Empty;
+            normalized[trimmedKey] = value ?? String.Empty;
         }
 
-        return normalized.Count > 0 ? normalized : EmptyLabels;
+        return normalized.Count > 0 ? normalized : _emptyLabels;
     }
 
     /// <summary>
@@ -119,7 +128,7 @@ internal static partial class DockerResourceName
     {
         var trimmed = value?.Trim();
 
-        if (string.IsNullOrEmpty(trimmed))
+        if (String.IsNullOrEmpty(trimmed))
         {
             return null;
         }
@@ -158,7 +167,9 @@ internal static partial class DockerResourceName
         return trimmed;
     }
 
-    /// <summary>统一的「IP 参数非法」异常。</summary>
+    /// <summary>
+    /// 统一的「IP 参数非法」异常。
+    /// </summary>
     private static BusinessException Invalid(string field, string value) =>
         BusinessException.Validation($"{field}「{value}」不是合法的 IP 地址或 CIDR 网段");
 }

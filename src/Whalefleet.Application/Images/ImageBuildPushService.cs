@@ -1,11 +1,13 @@
 using Docker.DotNet;
 using Docker.DotNet.Models;
+
+using Microsoft.Extensions.Logging;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Docker;
 using Whalefleet.Application.Repositories;
-using Microsoft.Extensions.Logging;
 
 namespace Whalefleet.Application.Images;
 
@@ -31,10 +33,12 @@ public sealed class ImageBuildPushService
     /// <remarks>
     /// 一次 <c>apt-get update</c> 能刷出几千行，全塞进响应体会让浏览器卡住。
     /// 上限取一个「够看清失败原因」的值：构建失败的原因总在最后几十行。</remarks>
-    private const int MaxLogLines = 500;
+    private const int _maxLogLines = 500;
 
-    /// <summary>默认仓库（Docker Hub）。</summary>
-    private const string DockerHubServerAddress = "registry-1.docker.io";
+    /// <summary>
+    /// 默认仓库（Docker Hub）。
+    /// </summary>
+    private const string _dockerHubServerAddress = "registry-1.docker.io";
 
     private readonly IDockerHostAccessor _accessor;
     private readonly IRepositoryCredentialResolver _repositories;
@@ -95,7 +99,7 @@ public sealed class ImageBuildPushService
         }
 
         var (reference, tag) = SplitReference(ImageService.RequireImageId(request.Tag));
-        var dockerfile = string.IsNullOrWhiteSpace(request.Dockerfile)
+        var dockerfile = String.IsNullOrWhiteSpace(request.Dockerfile)
             ? "Dockerfile"
             : request.Dockerfile.Trim();
 
@@ -119,12 +123,12 @@ public sealed class ImageBuildPushService
             Labels = request.Labels is { Count: > 0 } labels
                 ? new Dictionary<string, string>(labels)
                 : null,
-            Target = string.IsNullOrWhiteSpace(request.Target) ? null : request.Target.Trim(),
-            Platform = string.IsNullOrWhiteSpace(request.Platform) ? null : request.Platform.Trim(),
+            Target = String.IsNullOrWhiteSpace(request.Target) ? null : request.Target.Trim(),
+            Platform = String.IsNullOrWhiteSpace(request.Platform) ? null : request.Platform.Trim(),
         };
 
         var collector = new StreamCollector(
-            MaxLogLines,
+            _maxLogLines,
             _progressPublisher,
             request.ProgressToken,
             "build");
@@ -206,7 +210,7 @@ public sealed class ImageBuildPushService
             error: null).ConfigureAwait(false);
 
         return new ImageBuildResult(
-            inspected.ID ?? string.Empty,
+            inspected.ID ?? String.Empty,
             fullReference,
             inspected.Size,
             ImageService.MapReferences(inspected.RepoTags),
@@ -229,7 +233,7 @@ public sealed class ImageBuildPushService
         string status,
         string? error)
     {
-        if (_progressPublisher is null || string.IsNullOrWhiteSpace(progressToken))
+        if (_progressPublisher is null || String.IsNullOrWhiteSpace(progressToken))
         {
             return;
         }
@@ -309,7 +313,7 @@ public sealed class ImageBuildPushService
                 ServerAddress = credential.ServerAddress,
             };
 
-        var collector = new StreamCollector(MaxLogLines);
+        var collector = new StreamCollector(_maxLogLines);
 
         _logger.LogInformation(
             "主机 {HostId} 推送镜像 {Reference} 到 {ServerAddress}（带凭据={Authenticated}）",
@@ -321,7 +325,7 @@ public sealed class ImageBuildPushService
         var parameters = new ImagePushParameters
         {
             Tag = tag,
-            Platform = string.IsNullOrWhiteSpace(request.Platform) ? null : request.Platform.Trim(),
+            Platform = String.IsNullOrWhiteSpace(request.Platform) ? null : request.Platform.Trim(),
         };
 
         try
@@ -352,7 +356,7 @@ public sealed class ImageBuildPushService
             collector.Count);
 
         return new ImagePushResult(
-            inspected.ID ?? string.Empty,
+            inspected.ID ?? String.Empty,
             reference,
             serverAddress,
             authConfig is not null,
@@ -488,10 +492,14 @@ public sealed class ImageBuildPushService
             _operation = operation;
         }
 
-        /// <summary>已收集的日志行（最多 <c>maxLines</c> 行，失败时含原因行）。</summary>
+        /// <summary>
+        /// 已收集的日志行（最多 <c>maxLines</c> 行，失败时含原因行）。
+        /// </summary>
         public IReadOnlyList<string> Lines => _lines;
 
-        /// <summary>已收集的日志行数。</summary>
+        /// <summary>
+        /// 已收集的日志行数。
+        /// </summary>
         public int Count => _lines.Count;
 
         /// <inheritdoc />
@@ -505,7 +513,7 @@ public sealed class ImageBuildPushService
                 return;
             }
 
-            var status = message.Status ?? string.Empty;
+            var status = message.Status ?? String.Empty;
 
             if (status.StartsWith("error", StringComparison.OrdinalIgnoreCase))
             {
@@ -526,7 +534,7 @@ public sealed class ImageBuildPushService
         /// <param name="message">原始进度消息。</param>
         private void Publish(JSONMessage message)
         {
-            if (_publisher is null || string.IsNullOrWhiteSpace(_progressToken))
+            if (_publisher is null || String.IsNullOrWhiteSpace(_progressToken))
             {
                 return;
             }
@@ -540,7 +548,7 @@ public sealed class ImageBuildPushService
                 _progressToken,
                 _operation,
                 this._aggregator.Percent,
-                this._aggregator.LastStatus ?? string.Empty,
+                this._aggregator.LastStatus ?? String.Empty,
                 Done: false,
                 Error: message.Error?.Message);
 

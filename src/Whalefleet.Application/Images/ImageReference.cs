@@ -73,7 +73,7 @@ public static class ImageReference
         var looksLikeRegistry =
             prefix.Contains('.', StringComparison.Ordinal)
             || prefix.Contains(':', StringComparison.Ordinal)
-            || string.Equals(prefix, "localhost", StringComparison.OrdinalIgnoreCase);
+            || String.Equals(prefix, "localhost", StringComparison.OrdinalIgnoreCase);
 
         return looksLikeRegistry ? prefix.ToLowerInvariant() : DockerHubServerAddress;
     }

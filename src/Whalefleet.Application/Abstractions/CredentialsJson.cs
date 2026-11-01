@@ -1,4 +1,5 @@
 using System.Text.Json;
+
 using Whalefleet.Application.Common;
 
 namespace Whalefleet.Application.Abstractions;

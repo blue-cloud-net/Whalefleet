@@ -215,7 +215,7 @@ public sealed record ContainerLogsResult(
 /// </remarks>
 public sealed record ContainerCreatedResult(string ContainerId, IReadOnlyList<string> Warnings);
 
-// ==================== 0.3.0 基础操作的结果 ====================
+#region 0.3.0 基础操作的结果
 
 /// <summary>
 /// 重命名结果。
@@ -225,6 +225,7 @@ public sealed record ContainerCreatedResult(string ContainerId, IReadOnlyList<st
 /// <remarks>
 /// 回带名字而不是只返回 200：重命名后列表要能立刻刷新到新名字，
 /// 而拿到新名字最省事的做法是让服务端回显，不必再 inspect 一次。</remarks>
+#endregion
 public sealed record ContainerRenamedResult(string ContainerId, string Name);
 
 /// <summary>
