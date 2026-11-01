@@ -17,122 +17,198 @@ namespace Whalefleet.Core.Auditing;
 /// </remarks>
 public static class AuditActions
 {
-    // ==================== 认证（category = Authentication） ====================
+    #region 认证（category = Authentication）
 
-    /// <summary>登录（成功 / 凭据错误 / 限流三态，由 outcome 区分）。</summary>
+    /// <summary>
+    /// 登录（成功 / 凭据错误 / 限流三态，由 outcome 区分）。
+    /// </summary>
     public const string Login = "auth.login";
 
-    /// <summary>登出（撤销当前刷新令牌）。</summary>
+    /// <summary>
+    /// 登出（撤销当前刷新令牌）。
+    /// </summary>
     public const string Logout = "auth.logout";
 
-    /// <summary>刷新令牌被重放（旧令牌再次使用 → 该用户全部会话被撤销）。</summary>
+    /// <summary>
+    /// 刷新令牌被重放（旧令牌再次使用 → 该用户全部会话被撤销）。
+    /// </summary>
     public const string RefreshTokenReplayed = "auth.refresh.replayed";
+    #endregion
 
-    // ==================== 容器 ====================
+    #region 容器
 
-    /// <summary>容器详情（<b>敏感读</b>：响应里含 env，而 env 常含密码与 token）。</summary>
+    /// <summary>
+    /// 容器详情（<b>敏感读</b>：响应里含 env，而 env 常含密码与 token）。
+    /// </summary>
     public const string ContainerInspect = "container.inspect";
 
-    /// <summary>下载容器日志（<b>敏感读</b>：日志可能含内部地址与凭据）。</summary>
+    /// <summary>
+    /// 下载容器日志（<b>敏感读</b>：日志可能含内部地址与凭据）。
+    /// </summary>
     public const string ContainerLogsDownload = "container.logs.download";
 
-    /// <summary>交互式终端会话（<b>敏感读</b>：会话内可直接改动容器）。</summary>
+    /// <summary>
+    /// 交互式终端会话（<b>敏感读</b>：会话内可直接改动容器）。
+    /// </summary>
     public const string ContainerExec = "container.exec";
 
-    /// <summary>创建容器。</summary>
+    /// <summary>
+    /// 创建容器。
+    /// </summary>
     public const string ContainerCreate = "container.create";
 
-    /// <summary>启动容器。</summary>
+    /// <summary>
+    /// 启动容器。
+    /// </summary>
     public const string ContainerStart = "container.start";
 
-    /// <summary>停止容器。</summary>
+    /// <summary>
+    /// 停止容器。
+    /// </summary>
     public const string ContainerStop = "container.stop";
 
-    /// <summary>重启容器。</summary>
+    /// <summary>
+    /// 重启容器。
+    /// </summary>
     public const string ContainerRestart = "container.restart";
 
-    /// <summary>终止容器（发信号）。</summary>
+    /// <summary>
+    /// 终止容器（发信号）。
+    /// </summary>
     public const string ContainerKill = "container.kill";
 
-    /// <summary>暂停容器。</summary>
+    /// <summary>
+    /// 暂停容器。
+    /// </summary>
     public const string ContainerPause = "container.pause";
 
-    /// <summary>恢复容器。</summary>
+    /// <summary>
+    /// 恢复容器。
+    /// </summary>
     public const string ContainerResume = "container.resume";
 
-    /// <summary>删除容器。</summary>
+    /// <summary>
+    /// 删除容器。
+    /// </summary>
     public const string ContainerRemove = "container.remove";
 
-    /// <summary>重建容器（编辑并重建 / 追加挂载）。</summary>
+    /// <summary>
+    /// 重建容器（编辑并重建 / 追加挂载）。
+    /// </summary>
     public const string ContainerRecreate = "container.recreate";
 
-    /// <summary>重命名容器。</summary>
+    /// <summary>
+    /// 重命名容器。
+    /// </summary>
     public const string ContainerRename = "container.rename";
 
-    /// <summary>热更新容器（重启策略 / 资源限制）。</summary>
+    /// <summary>
+    /// 热更新容器（重启策略 / 资源限制）。
+    /// </summary>
     public const string ContainerUpdate = "container.update";
 
-    /// <summary>复制容器。</summary>
+    /// <summary>
+    /// 复制容器。
+    /// </summary>
     public const string ContainerDuplicate = "container.duplicate";
+    #endregion
 
-    // ==================== 镜像 ====================
+    #region 镜像
 
-    /// <summary>拉取镜像。</summary>
+    /// <summary>
+    /// 拉取镜像。
+    /// </summary>
     public const string ImagePull = "image.pull";
 
-    /// <summary>构建镜像。</summary>
+    /// <summary>
+    /// 构建镜像。
+    /// </summary>
     public const string ImageBuild = "image.build";
 
-    /// <summary>推送镜像。</summary>
+    /// <summary>
+    /// 推送镜像。
+    /// </summary>
     public const string ImagePush = "image.push";
 
-    /// <summary>给镜像打标签。</summary>
+    /// <summary>
+    /// 给镜像打标签。
+    /// </summary>
     public const string ImageTag = "image.tag";
 
-    /// <summary>删除镜像。</summary>
+    /// <summary>
+    /// 删除镜像。
+    /// </summary>
     public const string ImageRemove = "image.remove";
 
-    /// <summary>清理镜像。</summary>
+    /// <summary>
+    /// 清理镜像。
+    /// </summary>
     public const string ImagePrune = "image.prune";
+    #endregion
 
-    // ==================== 数据卷 / 网络 ====================
+    #region 数据卷 / 网络
 
-    /// <summary>创建数据卷。</summary>
+    /// <summary>
+    /// 创建数据卷。
+    /// </summary>
     public const string VolumeCreate = "volume.create";
 
-    /// <summary>删除数据卷。</summary>
+    /// <summary>
+    /// 删除数据卷。
+    /// </summary>
     public const string VolumeRemove = "volume.remove";
 
-    /// <summary>清理数据卷。</summary>
+    /// <summary>
+    /// 清理数据卷。
+    /// </summary>
     public const string VolumePrune = "volume.prune";
 
-    /// <summary>创建网络。</summary>
+    /// <summary>
+    /// 创建网络。
+    /// </summary>
     public const string NetworkCreate = "network.create";
 
-    /// <summary>删除网络。</summary>
+    /// <summary>
+    /// 删除网络。
+    /// </summary>
     public const string NetworkRemove = "network.remove";
 
-    /// <summary>容器接入网络。</summary>
+    /// <summary>
+    /// 容器接入网络。
+    /// </summary>
     public const string NetworkConnect = "network.connect";
 
-    /// <summary>容器断开网络。</summary>
+    /// <summary>
+    /// 容器断开网络。
+    /// </summary>
     public const string NetworkDisconnect = "network.disconnect";
+    #endregion
 
-    // ==================== 编排 Stack ====================
+    #region 编排 Stack
 
-    /// <summary>部署 Stack。</summary>
+    /// <summary>
+    /// 部署 Stack。
+    /// </summary>
     public const string StackDeploy = "stack.deploy";
 
-    /// <summary>更新 Stack（重新应用 YAML）。</summary>
+    /// <summary>
+    /// 更新 Stack（重新应用 YAML）。
+    /// </summary>
     public const string StackUpdate = "stack.update";
 
-    /// <summary>停止 Stack（停掉全部服务，容器保留）。</summary>
+    /// <summary>
+    /// 停止 Stack（停掉全部服务，容器保留）。
+    /// </summary>
     public const string StackStop = "stack.stop";
 
-    /// <summary>删除 Stack。</summary>
+    /// <summary>
+    /// 删除 Stack。
+    /// </summary>
     public const string StackRemove = "stack.remove";
 
-    /// <summary>由 Webhook 触发重放已保存的 YAML。</summary>
+    /// <summary>
+    /// 由 Webhook 触发重放已保存的 YAML。
+    /// </summary>
     /// <remarks>
     /// <b>与 <see cref="StackDeploy"/> / <see cref="StackUpdate"/> 分开</b>：
     /// 触发来源（人点按钮 vs CI 回调）在事后追责时是完全不同的两件事，
@@ -140,60 +216,96 @@ public static class AuditActions
     /// </remarks>
     public const string StackWebhookReload = "stack.webhook.reload";
 
-    /// <summary>生成或轮换 Webhook 令牌。</summary>
+    /// <summary>
+    /// 生成或轮换 Webhook 令牌。
+    /// </summary>
     public const string StackWebhookRotate = "stack.webhook.rotate";
 
-    /// <summary>吊销 Webhook 令牌。</summary>
+    /// <summary>
+    /// 吊销 Webhook 令牌。
+    /// </summary>
     public const string StackWebhookRevoke = "stack.webhook.revoke";
+    #endregion
 
-    // ==================== 主机 ====================
+    #region 主机
 
-    /// <summary>新增主机。</summary>
+    /// <summary>
+    /// 新增主机。
+    /// </summary>
     public const string HostCreate = "host.create";
 
-    /// <summary>修改主机。</summary>
+    /// <summary>
+    /// 修改主机。
+    /// </summary>
     public const string HostUpdate = "host.update";
 
-    /// <summary>删除主机。</summary>
+    /// <summary>
+    /// 删除主机。
+    /// </summary>
     public const string HostRemove = "host.remove";
+    #endregion
 
-    // ==================== 用户与角色 ====================
+    #region 用户与角色
 
-    /// <summary>创建用户。</summary>
+    /// <summary>
+    /// 创建用户。
+    /// </summary>
     public const string UserCreate = "user.create";
 
-    /// <summary>删除用户。</summary>
+    /// <summary>
+    /// 删除用户。
+    /// </summary>
     public const string UserRemove = "user.remove";
 
-    /// <summary>修改密码。</summary>
+    /// <summary>
+    /// 修改密码。
+    /// </summary>
     public const string UserUpdatePassword = "user.update-password";
 
-    /// <summary>创建角色。</summary>
+    /// <summary>
+    /// 创建角色。
+    /// </summary>
     public const string RoleCreate = "role.create";
 
-    /// <summary>修改角色。</summary>
+    /// <summary>
+    /// 修改角色。
+    /// </summary>
     public const string RoleUpdate = "role.update";
 
-    /// <summary>删除角色。</summary>
+    /// <summary>
+    /// 删除角色。
+    /// </summary>
     public const string RoleRemove = "role.remove";
 
-    /// <summary>覆盖角色的权限集。</summary>
+    /// <summary>
+    /// 覆盖角色的权限集。
+    /// </summary>
     public const string RoleSetPermissions = "role.set-permissions";
 
-    /// <summary>授予角色（带作用域）。</summary>
+    /// <summary>
+    /// 授予角色（带作用域）。
+    /// </summary>
     public const string RoleAssign = "role.assign";
 
-    /// <summary>撤销角色分配。</summary>
+    /// <summary>
+    /// 撤销角色分配。
+    /// </summary>
     public const string RoleRevoke = "role.revoke";
+    #endregion
 
-    // ==================== 审计自身 ====================
+    #region 审计自身
 
-    /// <summary>导出审计日志（<b>敏感读</b>：导出本身会把整份记录带走，必须留痕）。</summary>
+    /// <summary>
+    /// 导出审计日志（<b>敏感读</b>：导出本身会把整份记录带走，必须留痕）。
+    /// </summary>
     public const string AuditExport = "audit.export";
 
-    /// <summary>服务端错误兜底（中间件记录，无业务动作可归）。</summary>
+    /// <summary>
+    /// 服务端错误兜底（中间件记录，无业务动作可归）。
+    /// </summary>
     public const string HttpError = "http.error";
 }
+    #endregion
 
 /// <summary>
 /// 审计目标的类型标识（<c>target_type</c> 列）。
@@ -204,36 +316,58 @@ public static class AuditActions
 /// </remarks>
 public static class AuditTargetTypes
 {
-    /// <summary>容器。</summary>
+    /// <summary>
+    /// 容器。
+    /// </summary>
     public const string Container = "container";
 
-    /// <summary>镜像。</summary>
+    /// <summary>
+    /// 镜像。
+    /// </summary>
     public const string Image = "image";
 
-    /// <summary>数据卷。</summary>
+    /// <summary>
+    /// 数据卷。
+    /// </summary>
     public const string Volume = "volume";
 
-    /// <summary>网络。</summary>
+    /// <summary>
+    /// 网络。
+    /// </summary>
     public const string Network = "network";
 
-    /// <summary>编排 Stack。</summary>
+    /// <summary>
+    /// 编排 Stack。
+    /// </summary>
     public const string Stack = "stack";
 
-    /// <summary>主机。</summary>
+    /// <summary>
+    /// 主机。
+    /// </summary>
     public const string Host = "host";
 
-    /// <summary>用户。</summary>
+    /// <summary>
+    /// 用户。
+    /// </summary>
     public const string User = "user";
 
-    /// <summary>角色。</summary>
+    /// <summary>
+    /// 角色。
+    /// </summary>
     public const string Role = "role";
 
-    /// <summary>角色分配（主体是「用户 × 主机」这一对关系）。</summary>
+    /// <summary>
+    /// 角色分配（主体是「用户 × 主机」这一对关系）。
+    /// </summary>
     public const string RoleAssignment = "role-assignment";
 
-    /// <summary>会话 / 令牌。</summary>
+    /// <summary>
+    /// 会话 / 令牌。
+    /// </summary>
     public const string Session = "session";
 
-    /// <summary>审计日志本身。</summary>
+    /// <summary>
+    /// 审计日志本身。
+    /// </summary>
     public const string Audit = "audit";
 }

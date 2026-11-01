@@ -139,13 +139,18 @@ public sealed class RepositoryCredential : FullAuditedEntity<Guid, Guid>
     /// <summary>
     /// 规范化别名：去首尾空白、校验长度、拒绝控制字符。
     /// </summary>
+    /// <summary>
+    /// 规范化仓库别名。
+    /// </summary>
+    /// <param name="name">仓库别名。</param>
+    /// <returns>规范化后的别名。</returns>
     private static string NormalizeName(string name)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
         var value = name.Trim();
 
-        if (value.Length < MinNameLength || value.Length > MaxNameLength)
+        if (value.Length is < MinNameLength or > MaxNameLength)
         {
             throw new ArgumentException(
                 $"仓库别名长度必须在 {MinNameLength}-{MaxNameLength} 个字符之间",

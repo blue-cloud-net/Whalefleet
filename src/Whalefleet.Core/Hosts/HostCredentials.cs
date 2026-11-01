@@ -78,6 +78,10 @@ public sealed class HostCredentials : ValueObject
         yield return this.ConfigJson;
     }
 
+    /// <summary>
+    /// 校验凭据载荷是合法 JSON。
+    /// </summary>
+    /// <param name="json">凭据 JSON 文本。</param>
     private static void EnsureWellFormedJson(string json)
     {
         try

@@ -52,9 +52,9 @@ public sealed class HostEndpoint : ValueObject
     /// </remarks>
     public static string Redact(string? endpoint)
     {
-        if (string.IsNullOrEmpty(endpoint))
+        if (String.IsNullOrEmpty(endpoint))
         {
-            return endpoint ?? string.Empty;
+            return endpoint ?? String.Empty;
         }
 
         var schemeIndex = endpoint.IndexOf("://", StringComparison.Ordinal);
@@ -66,7 +66,7 @@ public sealed class HostEndpoint : ValueObject
         var authorityStart = schemeIndex + _schemeSeparatorLength;
 
         // 只在 authority 段内找 @：路径 / 查询串里的 @ 不算
-        var searchEnd = endpoint.IndexOfAny(PathOrQuerySeparators, authorityStart);
+        var searchEnd = endpoint.IndexOfAny(_pathOrQuerySeparators, authorityStart);
         if (searchEnd < 0)
         {
             searchEnd = endpoint.Length;
@@ -78,12 +78,12 @@ public sealed class HostEndpoint : ValueObject
             return endpoint;
         }
 
-        return string.Concat(endpoint.AsSpan(0, authorityStart), "***@", endpoint.AsSpan(at + 1));
+        return String.Concat(endpoint.AsSpan(0, authorityStart), "***@", endpoint.AsSpan(at + 1));
     }
 
     private const int _schemeSeparatorLength = 3;
 
-    private static readonly char[] PathOrQuerySeparators = ['/', '?', '#'];
+    private static readonly char[] _pathOrQuerySeparators = ['/', '?', '#'];
 
     /// <summary>
     /// 初始化端点。

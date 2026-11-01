@@ -50,39 +50,61 @@ public enum PermissionScope
     Justification = "Permission 是本项目的领域名词（权限目录），非 CA1711 所针对的系统命名空间后缀。")]
 public static class Permission
 {
-    // ==================== Host 作用域 ====================
+    #region Host 作用域
 
-    /// <summary>查看主机本身（可见性判定的依据）。</summary>
+    /// <summary>
+    /// 查看主机本身（可见性判定的依据）。
+    /// </summary>
     public const string HostRead = "host.read";
 
-    /// <summary>改动主机自身配置（连接方式、端点、凭据、启停）。</summary>
+    /// <summary>
+    /// 改动主机自身配置（连接方式、端点、凭据、启停）。
+    /// </summary>
     public const string HostAdmin = "host.admin";
 
-    /// <summary>查看主机上的容器。</summary>
+    /// <summary>
+    /// 查看主机上的容器。
+    /// </summary>
     public const string ContainerRead = "container.read";
 
-    /// <summary>启停 / 重建 / 删除容器。</summary>
+    /// <summary>
+    /// 启停 / 重建 / 删除容器。
+    /// </summary>
     public const string ContainerWrite = "container.write";
 
-    /// <summary>查看主机上的镜像。</summary>
+    /// <summary>
+    /// 查看主机上的镜像。
+    /// </summary>
     public const string ImageRead = "image.read";
 
-    /// <summary>拉取 / 删除镜像。</summary>
+    /// <summary>
+    /// 拉取 / 删除镜像。
+    /// </summary>
     public const string ImageWrite = "image.write";
 
-    /// <summary>查看主机上的网络。</summary>
+    /// <summary>
+    /// 查看主机上的网络。
+    /// </summary>
     public const string NetworkRead = "network.read";
 
-    /// <summary>创建 / 删除网络。</summary>
+    /// <summary>
+    /// 创建 / 删除网络。
+    /// </summary>
     public const string NetworkWrite = "network.write";
 
-    /// <summary>查看主机上的卷。</summary>
+    /// <summary>
+    /// 查看主机上的卷。
+    /// </summary>
     public const string VolumeRead = "volume.read";
 
-    /// <summary>创建 / 删除卷。</summary>
+    /// <summary>
+    /// 创建 / 删除卷。
+    /// </summary>
     public const string VolumeWrite = "volume.write";
 
-    /// <summary>查看编排 Stack 及其服务状态。</summary>
+    /// <summary>
+    /// 查看编排 Stack 及其服务状态。
+    /// </summary>
     /// <remarks>
     /// 与 <see cref="ContainerRead"/> 分开：「看到这台机器上的容器」不等于
     /// 「看到这个 Stack 由哪些服务组成、每个服务跑在哪个容器里」——
@@ -90,7 +112,9 @@ public static class Permission
     /// </remarks>
     public const string StackRead = "stack.read";
 
-    /// <summary>部署 / 更新 / 停止 / 删除编排 Stack。</summary>
+    /// <summary>
+    /// 部署 / 更新 / 停止 / 删除编排 Stack。
+    /// </summary>
     /// <remarks>
     /// <b>为什么不给 <c>container.write</c> 代劳</b>：部署一个 Stack 会创建网络、卷与一组容器，
     /// 还会拉取镜像——它的影响面远大于「启停一个容器」。
@@ -98,38 +122,57 @@ public static class Permission
     /// 权限就名不副实了。
     /// </remarks>
     public const string StackWrite = "stack.write";
+    #endregion
 
-    // ==================== Global 作用域 ====================
+    #region Global 作用域
 
-    /// <summary>查看用户列表与详情。</summary>
+    /// <summary>
+    /// 查看用户列表与详情。
+    /// </summary>
     public const string UserRead = "user.read";
 
-    /// <summary>创建 / 删除用户、变更其角色分配与密码。</summary>
+    /// <summary>
+    /// 创建 / 删除用户、变更其角色分配与密码。
+    /// </summary>
     public const string UserWrite = "user.write";
 
-    /// <summary>查看角色列表与权限矩阵。</summary>
+    /// <summary>
+    /// 查看角色列表与权限矩阵。
+    /// </summary>
     public const string RoleRead = "role.read";
 
-    /// <summary>增删改自定义角色、调整其权限。</summary>
+    /// <summary>
+    /// 增删改自定义角色、调整其权限。
+    /// </summary>
     public const string RoleWrite = "role.write";
 
-    /// <summary>新增 / 删除 / 分组主机。</summary>
+    /// <summary>
+    /// 新增 / 删除 / 分组主机。
+    /// </summary>
     /// <remarks>
     /// 与 <see cref="HostAdmin"/> 分开：前者是「这台机器归我管」（可在主机范围内授予），
     /// 后者是「这台机器归全局管」（不能通过任何主机分配授予）。
     /// </remarks>
     public const string HostManage = "host.manage";
 
-    /// <summary>查看私有仓库配置（地址、别名、账号；<b>不含口令</b>）。</summary>
+    /// <summary>
+    /// 查看私有仓库配置（地址、别名、账号；<b>不含口令</b>）。
+    /// </summary>
     public const string RepositoryRead = "repository.read";
 
-    /// <summary>增删改私有仓库配置与凭据。</summary>
+    /// <summary>
+    /// 增删改私有仓库配置与凭据。
+    /// </summary>
     public const string RepositoryWrite = "repository.write";
 
-    /// <summary>查看操作审计（审计能力本身排在 1.0.0 之后，此处只占位）。</summary>
+    /// <summary>
+    /// 查看操作审计（审计能力本身排在 1.0.0 之后，此处只占位）。
+    /// </summary>
     public const string AuditRead = "audit.read";
 
-    /// <summary>全局作用域的全部权限标识。</summary>
+    /// <summary>
+    /// 全局作用域的全部权限标识。
+    /// </summary>
     public static readonly IReadOnlyList<string> Globals =
     [
         UserRead,
@@ -142,7 +185,9 @@ public static class Permission
         AuditRead,
     ];
 
-    /// <summary>主机作用域的全部权限标识。</summary>
+    /// <summary>
+    /// 主机作用域的全部权限标识。
+    /// </summary>
     public static readonly IReadOnlyList<string> Hosts =
     [
         HostRead,
@@ -159,7 +204,9 @@ public static class Permission
         StackWrite,
     ];
 
-    /// <summary>目录中的全部权限标识（Host 在前、Global 在后，与界面分组顺序一致）。</summary>
+    /// <summary>
+    /// 目录中的全部权限标识（Host 在前、Global 在后，与界面分组顺序一致）。
+    /// </summary>
     public static readonly IReadOnlyList<string> All = [.. Hosts, .. Globals];
 
     /// <summary>
@@ -170,7 +217,7 @@ public static class Permission
     /// 前缀解析会让 <c>host.read</c> 与 <c>host.manage</c> 落到不同的判定分支上，
     /// 而两者在授权语义上毫无关系——一个是主机域权限，一个是全局权限。
     /// </remarks>
-    private static readonly Dictionary<string, PermissionScope> Scopes = BuildScopes();
+    private static readonly Dictionary<string, PermissionScope> _scopes = BuildScopes();
 
     /// <summary>
     /// 权限标识是否存在于目录中。
@@ -179,7 +226,7 @@ public static class Permission
     /// <returns>存在返回 <see langword="true"/>。</returns>
     public static bool Exists(string? permission) =>
         !String.IsNullOrWhiteSpace(permission) &&
-        Scopes.ContainsKey(Normalize(permission));
+        _scopes.ContainsKey(Normalize(permission));
 
     /// <summary>
     /// 取权限的作用域。
@@ -191,7 +238,7 @@ public static class Permission
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(permission);
 
-        if (Scopes.TryGetValue(Normalize(permission), out var scope))
+        if (_scopes.TryGetValue(Normalize(permission), out var scope))
         {
             return scope;
         }
@@ -242,5 +289,11 @@ public static class Permission
         return map;
     }
 
+    /// <summary>
+    /// 规范化权限标识。
+    /// </summary>
+    /// <param name="permission">权限标识。</param>
+    /// <returns>规范化后的权限标识。</returns>
     private static string Normalize(string permission) => permission.Trim().ToLowerInvariant();
 }
+    #endregion

@@ -12,30 +12,48 @@ namespace Whalefleet.Core.Auditing;
 /// </remarks>
 public sealed record AuditLogFilter
 {
-    /// <summary>类别（必填：两个页面各查自己的）。</summary>
+    /// <summary>
+    /// 类别（必填：两个页面各查自己的）。
+    /// </summary>
     public required AuditCategory Category { get; init; }
 
-    /// <summary>起始时刻（含，UTC）。</summary>
+    /// <summary>
+    /// 起始时刻（含，UTC）。
+    /// </summary>
     public DateTime? From { get; init; }
 
-    /// <summary>结束时刻（含，UTC）。</summary>
+    /// <summary>
+    /// 结束时刻（含，UTC）。
+    /// </summary>
     public DateTime? To { get; init; }
 
-    /// <summary>操作者名关键字（模糊、不区分大小写）。</summary>
+    /// <summary>
+    /// 操作者名关键字（模糊、不区分大小写）。
+    /// </summary>
     public string? ActorName { get; init; }
 
-    /// <summary>动作标识（精确匹配）。</summary>
+    /// <summary>
+    /// 动作标识（精确匹配）。
+    /// </summary>
     public string? Action { get; init; }
 
-    /// <summary>目标类型（精确匹配）。</summary>
+    /// <summary>
+    /// 目标类型（精确匹配）。
+    /// </summary>
     public string? TargetType { get; init; }
 
-    /// <summary>结果（精确匹配）。</summary>
+    /// <summary>
+    /// 结果（精确匹配）。
+    /// </summary>
     public AuditOutcome? Outcome { get; init; }
 
-    /// <summary>作用域主机主键（主机侧「事件」页固定带上）。</summary>
+    /// <summary>
+    /// 作用域主机主键（主机侧「事件」页固定带上）。
+    /// </summary>
     public Guid? HostId { get; init; }
 
-    /// <summary>自由文本关键字：同时匹配目标名 / 主机名 / 附加说明（模糊、不区分大小写）。</summary>
+    /// <summary>
+    /// 自由文本关键字：同时匹配目标名 / 主机名 / 附加说明（模糊、不区分大小写）。
+    /// </summary>
     public string? Search { get; init; }
 }

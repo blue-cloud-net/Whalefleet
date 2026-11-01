@@ -14,9 +14,13 @@ namespace Whalefleet.Core.Auditing;
 /// </remarks>
 public enum AuditCategory
 {
-    /// <summary>认证日志：登录、登出、令牌撤销。</summary>
+    /// <summary>
+    /// 认证日志：登录、登出、令牌撤销。
+    /// </summary>
     Authentication = 0,
 
-    /// <summary>活动日志：对资源与配置的操作。</summary>
+    /// <summary>
+    /// 活动日志：对资源与配置的操作。
+    /// </summary>
     Activity = 1,
 }

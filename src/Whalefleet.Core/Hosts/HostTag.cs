@@ -118,7 +118,7 @@ public sealed class HostTag : FullAuditedEntity<Guid, Guid>
 
         var trimmed = name.Trim();
 
-        if (trimmed.Length < MinNameLength || trimmed.Length > MaxNameLength)
+        if (trimmed.Length is < MinNameLength or > MaxNameLength)
         {
             throw new ArgumentException(
                 $"标签名长度须在 {MinNameLength}-{MaxNameLength} 之间",
@@ -126,7 +126,7 @@ public sealed class HostTag : FullAuditedEntity<Guid, Guid>
         }
 
         // 控制字符会破坏界面排版（换行、制表符）与日志格式，直接在入口拒掉
-        if (trimmed.Any(char.IsControl))
+        if (trimmed.Any(Char.IsControl))
         {
             throw new ArgumentException("标签名不得包含控制字符", nameof(name));
         }
@@ -141,7 +141,7 @@ public sealed class HostTag : FullAuditedEntity<Guid, Guid>
     /// <returns>去首尾空白后的描述；空白输入返回 <see langword="null"/>。</returns>
     private static string? NormalizeDescription(string? description)
     {
-        if (string.IsNullOrWhiteSpace(description))
+        if (String.IsNullOrWhiteSpace(description))
         {
             return null;
         }
@@ -167,7 +167,7 @@ public sealed class HostTag : FullAuditedEntity<Guid, Guid>
     /// </remarks>
     private static string? NormalizeColor(string? color)
     {
-        if (string.IsNullOrWhiteSpace(color))
+        if (String.IsNullOrWhiteSpace(color))
         {
             return null;
         }
@@ -176,7 +176,7 @@ public sealed class HostTag : FullAuditedEntity<Guid, Guid>
 
         if (trimmed.Length != ColorLength
             || trimmed[0] != '#'
-            || !trimmed[1..].All(static c => char.IsAsciiHexDigit(c)))
+            || !trimmed[1..].All(static c => Char.IsAsciiHexDigit(c)))
         {
             throw new ArgumentException("颜色须为 #RRGGBB 形式的 6 位十六进制", nameof(color));
         }

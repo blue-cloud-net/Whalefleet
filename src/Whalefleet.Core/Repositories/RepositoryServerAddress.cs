@@ -115,7 +115,7 @@ public sealed class RepositoryServerAddress : ValueObject
                     throw new ArgumentException("仓库地址的 IPv6 字面量后只允许接「:端口」", nameof(address));
                 }
 
-                port = ParsePort(remainder[1..], address);
+                port = ParsePort(remainder[1..]);
             }
         }
         else
@@ -135,7 +135,7 @@ public sealed class RepositoryServerAddress : ValueObject
             if (colonIndex >= 0)
             {
                 host = value[..colonIndex];
-                port = ParsePort(value[(colonIndex + 1)..], address);
+                port = ParsePort(value[(colonIndex + 1)..]);
             }
             else
             {
@@ -143,7 +143,7 @@ public sealed class RepositoryServerAddress : ValueObject
             }
         }
 
-        EnsureValidHost(host, address);
+        EnsureValidHost(host);
 
         return new RepositoryServerAddress(value, host, port);
     }
@@ -204,35 +204,44 @@ public sealed class RepositoryServerAddress : ValueObject
         return count;
     }
 
-    private static int ParsePort(string text, string address)
+    /// <summary>
+    /// 解析仓库地址里的端口号。
+    /// </summary>
+    /// <param name="text">端口号文本。</param>
+    /// <returns>端口号。</returns>
+    private static int ParsePort(string text)
     {
         if (text.Length == 0)
         {
-            throw new ArgumentException("仓库地址的端口号不得为空", nameof(address));
+            throw new ArgumentException("仓库地址的端口号不得为空", "address");
         }
 
         if (!Int32.TryParse(text, out var port) || port is < 1 or > 65535)
         {
             throw new ArgumentException(
                 $"仓库地址的端口号非法：「{text}」（应为 1-65535）",
-                nameof(address));
+                "address");
         }
 
         return port;
     }
 
-    private static void EnsureValidHost(string host, string address)
+    /// <summary>
+    /// 校验仓库地址的主机名（或 IPv6 字面量）。
+    /// </summary>
+    /// <param name="host">主机名或 IPv6 字面量。</param>
+    private static void EnsureValidHost(string host)
     {
         if (host.Length == 0)
         {
-            throw new ArgumentException("仓库地址缺少主机名", nameof(address));
+            throw new ArgumentException("仓库地址缺少主机名", "address");
         }
 
         // IPv6 字面量不走主机名规则：它含冒号与十六进制数字，
         // 而 DNS 主机名的字符集根本不包含冒号。
         if (host.Contains(':', StringComparison.Ordinal))
         {
-            EnsureValidIpv6(host, address);
+            EnsureValidIpv6(host);
             return;
         }
 
@@ -240,23 +249,23 @@ public sealed class RepositoryServerAddress : ValueObject
         {
             if (label.Length == 0)
             {
-                throw new ArgumentException("仓库地址的主机名含有空的标签", nameof(address));
+                throw new ArgumentException("仓库地址的主机名含有空的标签", "address");
             }
 
             if (label[0] == '-' || label[^1] == '-')
             {
-                throw new ArgumentException("仓库地址的主机名标签不得以「-」开头或结尾", nameof(address));
+                throw new ArgumentException("仓库地址的主机名标签不得以「-」开头或结尾", "address");
             }
 
             foreach (var ch in label)
             {
-                var isLetterOrDigit = ch is >= 'a' and <= 'z' or >= '0' and <= '9';
+                var isLetterOrDigit = ch is (>= 'a' and <= 'z') or (>= '0' and <= '9');
 
                 if (!isLetterOrDigit && ch != '-')
                 {
                     throw new ArgumentException(
                         $"仓库地址的主机名含有非法字符：「{ch}」",
-                        nameof(address));
+                        "address");
                 }
             }
         }
@@ -272,18 +281,18 @@ public sealed class RepositoryServerAddress : ValueObject
     /// 这里只挡下「明显不是地址」的东西（如 <c>gg::1</c>），
     /// 真正的连通性由探测用例回答。
     /// </remarks>
-    private static void EnsureValidIpv6(string host, string address)
+    private static void EnsureValidIpv6(string host)
     {
         foreach (var ch in host)
         {
-            var isHexDigit = ch is >= '0' and <= '9' or >= 'a' and <= 'f';
+            var isHexDigit = ch is (>= '0' and <= '9') or (>= 'a' and <= 'f');
             var isAllowed = isHexDigit || ch is ':' or '.';
 
             if (!isAllowed)
             {
                 throw new ArgumentException(
                     $"仓库地址的 IPv6 字面量含有非法字符：「{ch}」",
-                    nameof(address));
+                    "address");
             }
         }
     }

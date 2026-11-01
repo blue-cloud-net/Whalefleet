@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+
 using Whalefleet.Core.Common.Auditing;
 
 namespace Whalefleet.Core.Stacks;
@@ -31,49 +32,73 @@ namespace Whalefleet.Core.Stacks;
     Justification = "Stack 是本项目的领域名词（Docker Compose 编排项目），非 CA1711 所针对的系统命名空间后缀。")]
 public sealed class Stack : FullAuditedEntity<Guid, Guid>
 {
-    /// <summary>Stack 名称最小长度。</summary>
+    /// <summary>
+    /// Stack 名称最小长度。
+    /// </summary>
     public const int MinNameLength = 1;
 
-    /// <summary>Stack 名称最大长度。</summary>
+    /// <summary>
+    /// Stack 名称最大长度。
+    /// </summary>
     /// <remarks>与 Docker Compose 项目名的实际上限一致（63 字符，留给前缀拼接）。</remarks>
     public const int MaxNameLength = 63;
 
-    /// <summary>Compose 文件内容的长度上限（字符数）。</summary>
+    /// <summary>
+    /// Compose 文件内容的长度上限（字符数）。
+    /// </summary>
     /// <remarks>
     /// 上限 256 KB：Compose 文件里嵌证书 / 密钥时可能偏大，但再大就不是编排文件而是数据文件，
     /// 而数据文件应当由 0.15.0 的「.env 变量与密钥」能力承载（不入库、单独管理）。
     /// </remarks>
     public const int MaxComposeContentLength = 256 * 1024;
 
-    /// <summary>Webhook 令牌明文的最大长度（字符数）。</summary>
+    /// <summary>
+    /// Webhook 令牌明文的最大长度（字符数）。
+    /// </summary>
     public const int MaxWebhookTokenLength = 128;
 
-    /// <summary>Webhook 令牌提示（界面展示用）最大长度。</summary>
+    /// <summary>
+    /// Webhook 令牌提示（界面展示用）最大长度。
+    /// </summary>
     public const int MaxWebhookTokenHintLength = 12;
 
-    /// <summary>所属主机主键（<c>hosts.id</c>）。</summary>
+    /// <summary>
+    /// 所属主机主键（<c>hosts.id</c>）。
+    /// </summary>
     /// <remarks>
     /// 存 <c>hosts.id</c>（Guid）而<b>不是</b>主机名：主机名可改，编排项目与主机的从属关系不该
     /// 因改名断掉。与 <c>host_tag_assignments.host_id</c> 同口径。
     /// </remarks>
     public Guid HostId { get; private set; }
 
-    /// <summary>Stack 名称（= Compose 项目名）。</summary>
+    /// <summary>
+    /// Stack 名称（= Compose 项目名）。
+    /// </summary>
     public string Name { get; private set; } = default!;
 
-    /// <summary>Compose 文件原文（YAML）。</summary>
+    /// <summary>
+    /// Compose 文件原文（YAML）。
+    /// </summary>
     public string ComposeContent { get; private set; } = default!;
 
-    /// <summary>Webhook 令牌的 SHA-256 哈希（小写十六进制）；未启用时为 <see langword="null"/>。</summary>
+    /// <summary>
+    /// Webhook 令牌的 SHA-256 哈希（小写十六进制）；未启用时为 <see langword="null"/>。
+    /// </summary>
     public string? WebhookTokenHash { get; private set; }
 
-    /// <summary>Webhook 令牌提示（明文前若干位）；未启用时为 <see langword="null"/>。</summary>
+    /// <summary>
+    /// Webhook 令牌提示（明文前若干位）；未启用时为 <see langword="null"/>。
+    /// </summary>
     public string? WebhookTokenHint { get; private set; }
 
-    /// <summary>Webhook 是否启用。</summary>
+    /// <summary>
+    /// Webhook 是否启用。
+    /// </summary>
     public bool WebhookEnabled { get; private set; }
 
-    /// <summary>Webhook 最近一次被触发的时间（UTC）；从未触发为 <see langword="null"/>。</summary>
+    /// <summary>
+    /// Webhook 最近一次被触发的时间（UTC）；从未触发为 <see langword="null"/>。
+    /// </summary>
     public DateTime? WebhookLastUsedAt { get; private set; }
 
     /// <summary>
@@ -163,7 +188,7 @@ public sealed class Stack : FullAuditedEntity<Guid, Guid>
 
         var trimmed = name.Trim();
 
-        if (trimmed.Length < MinNameLength || trimmed.Length > MaxNameLength)
+        if (trimmed.Length is < MinNameLength or > MaxNameLength)
         {
             throw new ArgumentException(
                 $"Stack 名称长度须在 {MinNameLength}-{MaxNameLength} 之间",
@@ -198,7 +223,7 @@ public sealed class Stack : FullAuditedEntity<Guid, Guid>
     /// <param name="character">待判断字符。</param>
     /// <returns>是则返回 <see langword="true"/>。</returns>
     private static bool IsAsciiLetterOrDigit(char character) =>
-        character is >= 'a' and <= 'z' or >= '0' and <= '9';
+        character is (>= 'a' and <= 'z') or (>= '0' and <= '9');
 
     /// <summary>
     /// 规范化并校验 Compose 文件内容。
@@ -234,7 +259,7 @@ public sealed class Stack : FullAuditedEntity<Guid, Guid>
 
         var trimmed = hash.Trim();
 
-        if (trimmed.Length != 64 || !trimmed.All(static c => char.IsAsciiHexDigit(c)))
+        if (trimmed.Length != 64 || !trimmed.All(static c => Char.IsAsciiHexDigit(c)))
         {
             throw new ArgumentException("Webhook 令牌哈希必须是 64 位十六进制", nameof(hash));
         }

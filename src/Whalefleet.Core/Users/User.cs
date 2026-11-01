@@ -84,6 +84,11 @@ public sealed class User : FullAuditedEntity<Guid, Guid>
         this.PasswordHash = EnsurePasswordHash(passwordHash);
     }
 
+    /// <summary>
+    /// 规范化用户名。
+    /// </summary>
+    /// <param name="username">用户名。</param>
+    /// <returns>规范化后的用户名。</returns>
     private static string NormalizeUsername(string username)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(username);
@@ -109,9 +114,18 @@ public sealed class User : FullAuditedEntity<Guid, Guid>
         return trimmed;
     }
 
+    /// <summary>
+    /// 判断字符是否允许出现在用户名中。
+    /// </summary>
+    /// <param name="character">待判断的字符。</param>
+    /// <returns>允许时为 <see langword="true"/>。</returns>
     private static bool IsAllowedUsernameCharacter(char character) =>
         Char.IsAsciiLetterOrDigit(character) || character is '.' or '_' or '-';
 
+    /// <summary>
+    /// 校验口令哈希非空。
+    /// </summary>
+    /// <param name="passwordHash">口令哈希。</param>
     private static string EnsurePasswordHash(string passwordHash)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(passwordHash);

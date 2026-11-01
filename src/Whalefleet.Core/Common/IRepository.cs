@@ -13,7 +13,7 @@ namespace Whalefleet.Core.Common;
 /// <list type="bullet">
 ///   <item><description>写入类（<see cref="AddAsync"/>）不返回行数——插入成功即成功，
 ///   唯一键冲突会直接抛底层异常，不存在"插了 0 行"的中间态；</description></item>
-///   <item><description>更新与删除返回 <see cref="bool"/>（是否命中一行），<b>不抛</b>"未找到"异常——
+///   <item><description>更新与删除返回 <see cref="Boolean"/>（是否命中一行），<b>不抛</b>"未找到"异常——
 ///   是否把 <c>false</c> 转成 <c>1201</c> / <c>1300</c> 等错误码由应用服务决定，
 ///   仓储不承担错误码语义；</description></item>
 ///   <item><description>软删除过滤与审计填充由实现负责（<c>Infrastructure/Persistence/RepositoryBase</c>

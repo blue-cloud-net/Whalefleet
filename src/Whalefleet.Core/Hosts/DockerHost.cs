@@ -166,12 +166,21 @@ public sealed class DockerHost : FullAuditedEntity<Guid, Guid>
     /// </summary>
     public void Disable() => this.Enabled = false;
 
+    /// <summary>
+    /// 写入主机凭据。
+    /// </summary>
+    /// <param name="credentials">主机凭据。</param>
     private void SetCredentials(HostCredentials credentials)
     {
         this.AuthKind = credentials.Kind;
         this.AuthConfigJson = credentials.ConfigJson;
     }
 
+    /// <summary>
+    /// 规范化主机名称。
+    /// </summary>
+    /// <param name="name">主机名称。</param>
+    /// <returns>规范化后的名称。</returns>
     private static string NormalizeName(string name)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -190,6 +199,10 @@ public sealed class DockerHost : FullAuditedEntity<Guid, Guid>
         return trimmed;
     }
 
+    /// <summary>
+    /// 校验连接方式是已定义的取值。
+    /// </summary>
+    /// <param name="type">连接方式。</param>
     private static void EnsureKnownType(DockerHostType type)
     {
         if (!Enum.IsDefined(type))
@@ -198,6 +211,11 @@ public sealed class DockerHost : FullAuditedEntity<Guid, Guid>
         }
     }
 
+    /// <summary>
+    /// 校验端点形态与连接方式相容。
+    /// </summary>
+    /// <param name="type">连接方式。</param>
+    /// <param name="endpoint">主机端点。</param>
     private static void EnsureEndpointMatchesType(DockerHostType type, HostEndpoint endpoint)
     {
         var value = endpoint.Value;

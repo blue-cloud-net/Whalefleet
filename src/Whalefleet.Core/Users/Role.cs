@@ -243,6 +243,11 @@ public sealed class Role : FullAuditedEntity<Guid, Guid>
         this.Delete(utcNow, deleterId);
     }
 
+    /// <summary>
+    /// 规范化角色名称。
+    /// </summary>
+    /// <param name="name">角色名称。</param>
+    /// <returns>规范化后的名称。</returns>
     private static string NormalizeName(string name)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -307,6 +312,13 @@ public sealed class Role : FullAuditedEntity<Guid, Guid>
         return [.. Permission.All.Where(set.Contains)];
     }
 
+    /// <summary>
+    /// 规范化可选文本字段。
+    /// </summary>
+    /// <param name="text">参数 text。</param>
+    /// <param name="maxLength">最大长度。</param>
+    /// <param name="parameterName">参数 parameterName。</param>
+    /// <returns>规范化后的文本；为空时为 <see langword="null"/>。</returns>
     private static string? NormalizeOptionalText(string? text, int maxLength, string parameterName)
     {
         if (String.IsNullOrWhiteSpace(text))

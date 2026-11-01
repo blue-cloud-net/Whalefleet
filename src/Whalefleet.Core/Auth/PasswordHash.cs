@@ -18,7 +18,7 @@ namespace Whalefleet.Core.Auth;
 /// 而不是按 <see cref="Salt"/> / <see cref="Digest"/> 数组引用——字节数组的默认相等性是引用比较，
 /// 直接参与值对象相等性会得到"内容相同却不相等"的错误结果。</para>
 /// <para><b>常量时间比较</b>：<see cref="IsMatch"/> 使用
-/// <see cref="CryptographicOperations.FixedTimeEquals(ReadOnlySpan{byte}, ReadOnlySpan{byte})"/>，
+/// <see cref="CryptographicOperations.FixedTimeEquals(ReadOnlySpan{Byte}, ReadOnlySpan{Byte})"/>，
 /// 避免按字节短路比较泄漏摘要信息。</para>
 /// <para><b>格式依据</b>：PHC 字符串格式（<c>phc-sf-spec</c>）；Base64 采用<b>标准字母表、无填充</b>。
 /// Argon2 参数与版本号取值参考 RFC 9106。</para>
@@ -38,34 +38,54 @@ public sealed class PasswordHash : ValueObject
     /// </remarks>
     public const int SupportedVersion = 19;
 
-    /// <summary>盐的最小长度（字节）。RFC 9106 要求 ≥ 8。</summary>
+    /// <summary>
+    /// 盐的最小长度（字节）。RFC 9106 要求 ≥ 8。
+    /// </summary>
     public const int MinSaltLength = 8;
 
-    /// <summary>盐的最大长度（字节）。</summary>
+    /// <summary>
+    /// 盐的最大长度（字节）。
+    /// </summary>
     public const int MaxSaltLength = 64;
 
-    /// <summary>摘要的最小长度（字节）。</summary>
+    /// <summary>
+    /// 摘要的最小长度（字节）。
+    /// </summary>
     public const int MinDigestLength = 4;
 
-    /// <summary>摘要的最大长度（字节）。</summary>
+    /// <summary>
+    /// 摘要的最大长度（字节）。
+    /// </summary>
     public const int MaxDigestLength = 256;
 
-    /// <summary>内存开销的最小值（KiB）。</summary>
+    /// <summary>
+    /// 内存开销的最小值（KiB）。
+    /// </summary>
     public const int MinMemorySizeKiB = 8;
 
-    /// <summary>内存开销的最大值（KiB，2 GiB）。</summary>
+    /// <summary>
+    /// 内存开销的最大值（KiB，2 GiB）。
+    /// </summary>
     public const int MaxMemorySizeKiB = 2 * 1024 * 1024;
 
-    /// <summary>迭代次数的最小值。</summary>
+    /// <summary>
+    /// 迭代次数的最小值。
+    /// </summary>
     public const int MinIterations = 1;
 
-    /// <summary>迭代次数的最大值。</summary>
+    /// <summary>
+    /// 迭代次数的最大值。
+    /// </summary>
     public const int MaxIterations = 100;
 
-    /// <summary>并行度的最小值。</summary>
+    /// <summary>
+    /// 并行度的最小值。
+    /// </summary>
     public const int MinParallelism = 1;
 
-    /// <summary>并行度的最大值（不超过典型 CPU 核心数上界）。</summary>
+    /// <summary>
+    /// 并行度的最大值（不超过典型 CPU 核心数上界）。
+    /// </summary>
     public const int MaxParallelism = 64;
 
     private PasswordHash(
@@ -254,6 +274,12 @@ public sealed class PasswordHash : ValueObject
         yield return this.Encoded;
     }
 
+    /// <summary>
+    /// 从哈希串的首段解析版本号。
+    /// </summary>
+    /// <param name="segment">哈希串分段。</param>
+    /// <param name="version">解析出的版本号。</param>
+    /// <returns>能解析时为 <see langword="true"/>。</returns>
     private static bool TryReadVersion(string segment, out int version)
     {
         version = 0;
@@ -270,6 +296,14 @@ public sealed class PasswordHash : ValueObject
             out version);
     }
 
+    /// <summary>
+    /// 从哈希串的参数段解析内存、迭代与并行度。
+    /// </summary>
+    /// <param name="segment">哈希串分段。</param>
+    /// <param name="memorySizeKiB">内存用量（KiB）。</param>
+    /// <param name="iterations">迭代次数。</param>
+    /// <param name="parallelism">并行度。</param>
+    /// <returns>能解析时为 <see langword="true"/>。</returns>
     private static bool TryReadParameters(
         string segment,
         out int memorySizeKiB,
@@ -328,6 +362,12 @@ public sealed class PasswordHash : ValueObject
         return seenMemory && seenIterations && seenParallelism;
     }
 
+    /// <summary>
+    /// 解码 Base64 段，格式非法时返回 <see langword="false"/>。
+    /// </summary>
+    /// <param name="segment">Base64 文本。</param>
+    /// <param name="bytes">解码后的字节。</param>
+    /// <returns>能解码时为 <see langword="true"/>。</returns>
     private static bool TryDecodeBase64(string segment, out byte[] bytes)
     {
         bytes = [];
@@ -339,7 +379,7 @@ public sealed class PasswordHash : ValueObject
 
         // PHC 使用标准字母表但省略 '=' 填充，解析前补回。
         var padding = (4 - (segment.Length % 4)) % 4;
-        var padded = padding == 0 ? segment : segment + new String('=', padding);
+        var padded = padding == 0 ? segment : segment + new string('=', padding);
 
         try
         {
@@ -352,9 +392,19 @@ public sealed class PasswordHash : ValueObject
         }
     }
 
+    /// <summary>
+    /// 编码为无填充的 Base64 文本。
+    /// </summary>
+    /// <param name="bytes">待编码的字节。</param>
+    /// <returns>Base64 文本。</returns>
     private static string EncodeBase64(byte[] bytes) =>
         Convert.ToBase64String(bytes).TrimEnd('=');
 
+    /// <summary>
+    /// 校验内存用量在允许区间内。
+    /// </summary>
+    /// <param name="memorySizeKiB">内存用量（KiB）。</param>
+    /// <param name="parallelism">并行度。</param>
     private static void ValidateMemorySize(int memorySizeKiB, int parallelism)
     {
         if (memorySizeKiB is < MinMemorySizeKiB or > MaxMemorySizeKiB)
@@ -373,6 +423,10 @@ public sealed class PasswordHash : ValueObject
         }
     }
 
+    /// <summary>
+    /// 校验迭代次数在允许区间内。
+    /// </summary>
+    /// <param name="iterations">迭代次数。</param>
     private static void ValidateIterations(int iterations)
     {
         if (iterations is < MinIterations or > MaxIterations)
@@ -383,6 +437,10 @@ public sealed class PasswordHash : ValueObject
         }
     }
 
+    /// <summary>
+    /// 校验并行度在允许区间内。
+    /// </summary>
+    /// <param name="parallelism">并行度。</param>
     private static void ValidateParallelism(int parallelism)
     {
         if (parallelism is < MinParallelism or > MaxParallelism)
@@ -393,6 +451,10 @@ public sealed class PasswordHash : ValueObject
         }
     }
 
+    /// <summary>
+    /// 校验盐的长度。
+    /// </summary>
+    /// <param name="salt">盐字节。</param>
     private static void ValidateSalt(byte[] salt)
     {
         if (salt.Length is < MinSaltLength or > MaxSaltLength)
@@ -403,6 +465,10 @@ public sealed class PasswordHash : ValueObject
         }
     }
 
+    /// <summary>
+    /// 校验摘要的长度。
+    /// </summary>
+    /// <param name="digest">摘要字节。</param>
     private static void ValidateDigest(byte[] digest)
     {
         if (digest.Length is < MinDigestLength or > MaxDigestLength)

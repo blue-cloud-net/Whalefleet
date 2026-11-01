@@ -16,12 +16,18 @@ namespace Whalefleet.Core.Auditing;
 /// </remarks>
 public enum AuditOutcome
 {
-    /// <summary>成功。</summary>
+    /// <summary>
+    /// 成功。
+    /// </summary>
     Success = 0,
 
-    /// <summary>被规则拒绝（权限不足、限流等）。</summary>
+    /// <summary>
+    /// 被规则拒绝（权限不足、限流等）。
+    /// </summary>
     Denied = 1,
 
-    /// <summary>执行失败（外部资源不可用、状态冲突等）。</summary>
+    /// <summary>
+    /// 执行失败（外部资源不可用、状态冲突等）。
+    /// </summary>
     Failure = 2,
 }

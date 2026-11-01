@@ -34,13 +34,19 @@ public sealed class AuditLog : Entity<Guid>
     {
     }
 
-    /// <summary>所属类别（认证 / 活动）。</summary>
+    /// <summary>
+    /// 所属类别（认证 / 活动）。
+    /// </summary>
     public AuditCategory Category { get; private set; }
 
-    /// <summary>动作标识（见 <see cref="AuditActions"/>）。</summary>
+    /// <summary>
+    /// 动作标识（见 <see cref="AuditActions"/>）。
+    /// </summary>
     public string Action { get; private set; } = String.Empty;
 
-    /// <summary>操作者主键；未登录（如登录失败）时为 <see langword="null"/>。</summary>
+    /// <summary>
+    /// 操作者主键；未登录（如登录失败）时为 <see langword="null"/>。
+    /// </summary>
     public Guid? ActorId { get; private set; }
 
     /// <summary>
@@ -52,10 +58,14 @@ public sealed class AuditLog : Entity<Guid>
     /// </remarks>
     public string ActorName { get; private set; } = String.Empty;
 
-    /// <summary>目标类型（见 <see cref="AuditTargetTypes"/>）；无目标时为 <see langword="null"/>。</summary>
+    /// <summary>
+    /// 目标类型（见 <see cref="AuditTargetTypes"/>）；无目标时为 <see langword="null"/>。
+    /// </summary>
     public string? TargetType { get; private set; }
 
-    /// <summary>目标主键（容器 ID / 用户 ID 等）；无目标时为 <see langword="null"/>。</summary>
+    /// <summary>
+    /// 目标主键（容器 ID / 用户 ID 等）；无目标时为 <see langword="null"/>。
+    /// </summary>
     public string? TargetId { get; private set; }
 
     /// <summary>
@@ -68,19 +78,29 @@ public sealed class AuditLog : Entity<Guid>
     /// </remarks>
     public string? TargetName { get; private set; }
 
-    /// <summary>作用域主机主键（<c>hosts.id</c>，Guid）；全局操作为 <see langword="null"/>。</summary>
+    /// <summary>
+    /// 作用域主机主键（<c>hosts.id</c>，Guid）；全局操作为 <see langword="null"/>。
+    /// </summary>
     public Guid? HostId { get; private set; }
 
-    /// <summary>作用域主机名（<b>快照</b>；主机名可改，审计要保留当时的叫法）。</summary>
+    /// <summary>
+    /// 作用域主机名（<b>快照</b>；主机名可改，审计要保留当时的叫法）。
+    /// </summary>
     public string? HostName { get; private set; }
 
-    /// <summary>结果。</summary>
+    /// <summary>
+    /// 结果。
+    /// </summary>
     public AuditOutcome Outcome { get; private set; }
 
-    /// <summary>失败时的业务错误码；成功为 <see langword="null"/>。</summary>
+    /// <summary>
+    /// 失败时的业务错误码；成功为 <see langword="null"/>。
+    /// </summary>
     public int? ErrorCode { get; private set; }
 
-    /// <summary>来源 IP（经反向代理头修正后的客户端地址）；后端内部调用为 <see langword="null"/>。</summary>
+    /// <summary>
+    /// 来源 IP（经反向代理头修正后的客户端地址）；后端内部调用为 <see langword="null"/>。
+    /// </summary>
     public string? ClientIp { get; private set; }
 
     /// <summary>
@@ -92,7 +112,9 @@ public sealed class AuditLog : Entity<Guid>
     /// </remarks>
     public string? Detail { get; private set; }
 
-    /// <summary>发生时刻（UTC）。</summary>
+    /// <summary>
+    /// 发生时刻（UTC）。
+    /// </summary>
     public DateTime OccurredAt { get; private set; }
 
     /// <summary>
@@ -153,45 +175,73 @@ public sealed class AuditLog : Entity<Guid>
 /// </remarks>
 public sealed record AuditLogDraft
 {
-    /// <summary>所属类别。</summary>
+    /// <summary>
+    /// 所属类别。
+    /// </summary>
     public required AuditCategory Category { get; init; }
 
-    /// <summary>动作标识（见 <see cref="AuditActions"/>）。</summary>
+    /// <summary>
+    /// 动作标识（见 <see cref="AuditActions"/>）。
+    /// </summary>
     public required string Action { get; init; }
 
-    /// <summary>结果。</summary>
+    /// <summary>
+    /// 结果。
+    /// </summary>
     public required AuditOutcome Outcome { get; init; }
 
-    /// <summary>发生时刻（必须 UTC；省略时由写入侧填当前时间）。</summary>
+    /// <summary>
+    /// 发生时刻（必须 UTC；省略时由写入侧填当前时间）。
+    /// </summary>
     public DateTime OccurredAt { get; init; }
 
-    /// <summary>操作者主键。</summary>
+    /// <summary>
+    /// 操作者主键。
+    /// </summary>
     public Guid? ActorId { get; init; }
 
-    /// <summary>操作者名（快照）；省略时由写入侧取当前用户名，取不到则用 <see cref="AuditLog.AnonymousActor"/>。</summary>
+    /// <summary>
+    /// 操作者名（快照）；省略时由写入侧取当前用户名，取不到则用 <see cref="AuditLog.AnonymousActor"/>。
+    /// </summary>
     public string ActorName { get; init; } = String.Empty;
 
-    /// <summary>目标类型。</summary>
+    /// <summary>
+    /// 目标类型。
+    /// </summary>
     public string? TargetType { get; init; }
 
-    /// <summary>目标主键。</summary>
+    /// <summary>
+    /// 目标主键。
+    /// </summary>
     public string? TargetId { get; init; }
 
-    /// <summary>目标名（快照）。</summary>
+    /// <summary>
+    /// 目标名（快照）。
+    /// </summary>
     public string? TargetName { get; init; }
 
-    /// <summary>作用域主机主键。</summary>
+    /// <summary>
+    /// 作用域主机主键。
+    /// </summary>
     public Guid? HostId { get; init; }
 
-    /// <summary>作用域主机名（快照）。</summary>
+    /// <summary>
+    /// 作用域主机名（快照）。
+    /// </summary>
     public string? HostName { get; init; }
 
-    /// <summary>失败时的业务错误码。</summary>
+    /// <summary>
+    /// 失败时的业务错误码。
+    /// </summary>
     public int? ErrorCode { get; init; }
 
-    /// <summary>来源 IP。</summary>
+    /// <summary>
+    /// 来源 IP。
+    /// </summary>
     public string? ClientIp { get; init; }
 
-    /// <summary>附加说明（不得含密码 / 令牌 / 环境变量值）。</summary>
+    /// <summary>
+    /// 附加说明（不得含密码 / 令牌 / 环境变量值）。
+    /// </summary>
     public string? Detail { get; init; }
 }
