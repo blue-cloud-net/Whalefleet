@@ -1,13 +1,16 @@
 using System.Collections.Concurrent;
 using System.Globalization;
+
 using Docker.DotNet.Models;
-using Whalefleet.Application.Abstractions;
-using Whalefleet.Application.Abstractions.Realtime;
-using Whalefleet.Core.Hosts;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+
+using Whalefleet.Application.Abstractions;
+using Whalefleet.Application.Abstractions.Realtime;
+using Whalefleet.Core.Hosts;
 
 namespace Whalefleet.Infrastructure.Realtime;
 
@@ -303,12 +306,12 @@ internal sealed class ContainerEventWatcher : BackgroundService
         /// 超时后再 SIGKILL，默认 10 秒）。窗口取 10 秒正好覆盖默认超时，
         /// 又短到不会把「停完之后一分钟自己又崩了」误判成手动停止。
         /// </remarks>
-        private static readonly TimeSpan StopWindow = TimeSpan.FromSeconds(10);
+        private static readonly TimeSpan _stopWindow = TimeSpan.FromSeconds(10);
 
         /// <summary>
         /// <c>oom</c> 与 <c>die</c> 的去重窗口（同一次死亡的两次事件）。
         /// </summary>
-        private static readonly TimeSpan DedupeWindow = TimeSpan.FromSeconds(2);
+        private static readonly TimeSpan _dedupeWindow = TimeSpan.FromSeconds(2);
 
         /// <summary>
         /// 两个字典的修剪阈值：超过这个条目数时顺手清掉过期项。
@@ -317,7 +320,7 @@ internal sealed class ContainerEventWatcher : BackgroundService
         /// 不修剪的话，一台跑过几千个容器的机器会让这两个字典只增不减——
         /// 而它们只是「最近几秒」的辅助状态。
         /// </remarks>
-        private const int PruneThreshold = 64;
+        private const int _pruneThreshold = 64;
 
         /// <summary>
         /// 初始化收集器。
@@ -337,7 +340,7 @@ internal sealed class ContainerEventWatcher : BackgroundService
         {
             ArgumentNullException.ThrowIfNull(value);
 
-            if (!string.Equals(value.Type, "container", StringComparison.Ordinal))
+            if (!String.Equals(value.Type, "container", StringComparison.Ordinal))
             {
                 return;
             }
@@ -350,9 +353,9 @@ internal sealed class ContainerEventWatcher : BackgroundService
             }
 
             var actor = value.Actor;
-            var containerId = actor?.ID ?? string.Empty;
+            var containerId = actor?.ID ?? String.Empty;
 
-            if (string.IsNullOrWhiteSpace(containerId))
+            if (String.IsNullOrWhiteSpace(containerId))
             {
                 return;
             }
@@ -373,7 +376,7 @@ internal sealed class ContainerEventWatcher : BackgroundService
             if (action == "die")
             {
                 if (_recentlyStopped.TryGetValue(containerId, out var stoppedAt)
-                    && occurredAt - stoppedAt <= StopWindow)
+                    && occurredAt - stoppedAt <= _stopWindow)
                 {
                     _recentlyStopped.Remove(containerId);
 
@@ -387,7 +390,7 @@ internal sealed class ContainerEventWatcher : BackgroundService
 
                 // 同一次死亡的 oom 事件已经发过了
                 if (_recentlyPublished.TryGetValue(containerId, out var publishedAt)
-                    && occurredAt - publishedAt <= DedupeWindow)
+                    && occurredAt - publishedAt <= _dedupeWindow)
                 {
                     return;
                 }
@@ -397,10 +400,10 @@ internal sealed class ContainerEventWatcher : BackgroundService
             var name = actor?.Attributes is { } attributes
                 && attributes.TryGetValue("name", out var attributeName)
                     ? attributeName
-                    : string.Empty;
+                    : String.Empty;
 
             var exitCode = ParseExitCode(actor?.Attributes);
-            var outOfMemory = string.Equals(action, "oom", StringComparison.Ordinal);
+            var outOfMemory = String.Equals(action, "oom", StringComparison.Ordinal);
 
             _recentlyPublished[containerId] = occurredAt;
 
@@ -430,15 +433,21 @@ internal sealed class ContainerEventWatcher : BackgroundService
         /// <returns>无。</returns>
         private void Prune(DateTimeOffset now)
         {
-            if (_recentlyStopped.Count < PruneThreshold && _recentlyPublished.Count < PruneThreshold)
+            if (_recentlyStopped.Count < _pruneThreshold && _recentlyPublished.Count < _pruneThreshold)
             {
                 return;
             }
 
-            PruneOlderThan(_recentlyStopped, now, StopWindow);
-            PruneOlderThan(_recentlyPublished, now, DedupeWindow);
+            PruneOlderThan(_recentlyStopped, now, _stopWindow);
+            PruneOlderThan(_recentlyPublished, now, _dedupeWindow);
         }
 
+        /// <summary>
+        /// 清理早于给定窗口的事件记录。
+        /// </summary>
+        /// <param name="entries">参数 entries。</param>
+        /// <param name="now">当前时刻。</param>
+        /// <param name="window">保留窗口。</param>
         private static void PruneOlderThan(
             Dictionary<string, DateTimeOffset> entries,
             DateTimeOffset now,
@@ -462,7 +471,7 @@ internal sealed class ContainerEventWatcher : BackgroundService
         {
             if (attributes is null
                 || !attributes.TryGetValue("exitCode", out var raw)
-                || !long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var exitCode))
+                || !Int64.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var exitCode))
             {
                 return 0;
             }

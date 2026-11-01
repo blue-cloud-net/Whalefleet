@@ -1,8 +1,11 @@
 using System.Data.Common;
+
 using Dapper;
-using Whalefleet.Application.Abstractions.Persistence;
+
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Options;
+
+using Whalefleet.Application.Abstractions.Persistence;
 
 namespace Whalefleet.Infrastructure.Persistence;
 
@@ -54,6 +57,10 @@ internal sealed class SqliteConnectionFactory : IDbConnectionFactory
     /// <inheritdoc />
     public DbConnection Create() => new SqliteConnection(_connectionString);
 
+    /// <summary>
+    /// 确保数据库文件所在目录存在。
+    /// </summary>
+    /// <param name="databasePath">数据库文件路径。</param>
     private static void EnsureDatabaseDirectory(string databasePath)
     {
         var directory = Path.GetDirectoryName(Path.GetFullPath(databasePath));

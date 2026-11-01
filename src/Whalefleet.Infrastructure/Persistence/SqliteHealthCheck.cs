@@ -1,6 +1,7 @@
-using Whalefleet.Application.Abstractions.Persistence;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
+
+using Whalefleet.Application.Abstractions.Persistence;
 
 namespace Whalefleet.Infrastructure.Persistence;
 
@@ -22,7 +23,7 @@ internal sealed class SqliteHealthCheck : IHealthCheck
     /// <summary>
     /// 检查项名称，会出现在 <c>/healthz</c> 的 <c>checks</c> 字段里。
     /// </summary>
-    internal const string CheckName = "sqlite";
+    internal const string _checkName = "sqlite";
 
     private readonly IDbConnectionFactory _connections;
     private readonly ILogger<SqliteHealthCheck> _logger;
@@ -67,7 +68,7 @@ internal sealed class SqliteHealthCheck : IHealthCheck
             _logger.LogWarning(
                 exception,
                 "SQLite 健康检查失败，路径 {DatabasePath}",
-                context.Registration?.Name ?? CheckName);
+                context.Registration?.Name ?? _checkName);
 
             return HealthCheckResult.Unhealthy(
                 "无法访问 SQLite：{Message}",

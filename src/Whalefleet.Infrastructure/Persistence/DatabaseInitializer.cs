@@ -1,8 +1,10 @@
 using System.Globalization;
-using Whalefleet.Application.Abstractions.Persistence;
-using Whalefleet.Core.Hosts;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+
+using Whalefleet.Application.Abstractions.Persistence;
+using Whalefleet.Core.Hosts;
 
 namespace Whalefleet.Infrastructure.Persistence;
 
@@ -27,17 +29,17 @@ namespace Whalefleet.Infrastructure.Persistence;
         /// <summary>
         /// 默认主机的固定主键（文档中给出，便于运维脚本引用）。
         /// </summary>
-        internal static readonly Guid DefaultHostId = new("00000000-0000-0000-0000-000000000001");
+        internal static readonly Guid _defaultHostId = new("00000000-0000-0000-0000-000000000001");
 
     /// <summary>
     /// 默认主机显示名。
     /// </summary>
-    internal const string DefaultHostName = "local";
+    internal const string _defaultHostName = "local";
 
     /// <summary>
     /// 默认主机端点。
     /// </summary>
-    internal const string DefaultHostEndpoint = "/var/run/docker.sock";
+    internal const string _defaultHostEndpoint = "/var/run/docker.sock";
 
     /// <summary>
     /// 内置的「本机」分组名（由迁移 <c>0005_host_groups.sql</c> 种入）。
@@ -46,7 +48,7 @@ namespace Whalefleet.Infrastructure.Persistence;
     /// 默认主机种入时按名字查这个分组并把自己放进去——否则升级上来的实例里那台
     /// <c>local</c> 会落在未分组，而它显然是「本机」。
     /// </remarks>
-    internal const string LocalGroupName = "local";
+    internal const string _localGroupName = "local";
 
     private readonly IDbConnectionFactory _connections;
     private readonly SqliteSchemaMigrator _migrator;
@@ -87,6 +89,10 @@ namespace Whalefleet.Infrastructure.Persistence;
         _logger.LogInformation("数据库初始化完成（schema 版本 {SchemaVersion}）", schemaVersion);
     }
 
+    /// <summary>
+    /// 打开 SQLite 的 WAL 模式。
+    /// </summary>
+    /// <param name="cancellationToken">取消令牌。</param>
     private async Task EnableWriteAheadLoggingAsync(CancellationToken cancellationToken)
     {
         await using var connection = _connections.Create();
@@ -102,6 +108,10 @@ namespace Whalefleet.Infrastructure.Persistence;
         _logger.LogDebug("SQLite journal_mode = {JournalMode}", mode);
     }
 
+    /// <summary>
+    /// 在 hosts 表为空时种下默认主机。
+    /// </summary>
+    /// <param name="cancellationToken">取消令牌。</param>
     private async Task SeedDefaultHostAsync(CancellationToken cancellationToken)
     {
         // 这里刻意用「物理行数」而不是 IHostRepository.CountAsync：
@@ -118,15 +128,15 @@ namespace Whalefleet.Infrastructure.Persistence;
         var groups = scope.ServiceProvider.GetRequiredService<IHostGroupRepository>();
 
         var host = DockerHost.Register(
-            DefaultHostId,
-            DefaultHostName,
+            _defaultHostId,
+            _defaultHostName,
             DockerHostType.Socket,
-            new HostEndpoint(DefaultHostEndpoint));
+            new HostEndpoint(_defaultHostEndpoint));
 
         // 归入内置的「本机」分组。**必须在这里做，不能写进迁移脚本**：
         // 迁移先于种子执行，那时 hosts 表还是空的，「把名为 local 的主机归组」这句话无事可做。
         // 按名字查而不是硬编码分组主键：主键属于迁移的实现细节，引用它会让两处必须同步。
-        var localGroup = await groups.FindByNameAsync(LocalGroupName, cancellationToken).ConfigureAwait(false);
+        var localGroup = await groups.FindByNameAsync(_localGroupName, cancellationToken).ConfigureAwait(false);
         host.AssignGroup(localGroup?.Id);
 
         await hosts.AddAsync(host, cancellationToken).ConfigureAwait(false);
@@ -138,6 +148,11 @@ namespace Whalefleet.Infrastructure.Persistence;
             host.Endpoint.Value);
     }
 
+    /// <summary>
+    /// 统计 hosts 表的行数。
+    /// </summary>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>主机行数。</returns>
     private async Task<long> CountHostRowsAsync(CancellationToken cancellationToken)
     {
         await using var connection = _connections.Create();

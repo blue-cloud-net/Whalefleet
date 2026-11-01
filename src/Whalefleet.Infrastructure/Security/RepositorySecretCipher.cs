@@ -25,23 +25,23 @@ internal static class RepositorySecretCipher
     /// <summary>
     /// AES-GCM 的 nonce 字节数（96 位，是 GCM 的推荐长度）。
     /// </summary>
-    internal const int NonceSizeBytes = 12;
+    internal const int _nonceSizeBytes = 12;
 
     /// <summary>
     /// GCM 认证标签字节数（128 位）。
     /// </summary>
-    internal const int TagSizeBytes = 16;
+    internal const int _tagSizeBytes = 16;
 
     /// <summary>
     /// 密钥字节数（AES-256）。
     /// </summary>
-    internal const int KeySizeBytes = 32;
+    internal const int _keySizeBytes = 32;
 
     /// <summary>
     /// 把明文口令加密成可安全落库的密文。
     /// </summary>
     /// <param name="plaintext">明文口令。</param>
-    /// <param name="key">密钥材料（长度须为 <see cref="KeySizeBytes"/>）。</param>
+    /// <param name="key">密钥材料（长度须为 <see cref="_keySizeBytes"/>）。</param>
     /// <returns>Base64Url 文本（<c>nonce ‖ tag ‖ ciphertext</c>）。</returns>
     /// <exception cref="ArgumentNullException"><paramref name="key"/> 为 <see langword="null"/>。</exception>
     /// <exception cref="CryptographicException">密钥长度不合法，或加密失败。</exception>
@@ -49,23 +49,21 @@ internal static class RepositorySecretCipher
     {
         ArgumentNullException.ThrowIfNull(key);
 
-        if (key.Length != KeySizeBytes)
+        if (key.Length != _keySizeBytes)
         {
             throw new CryptographicException(
-                $"仓库密钥长度必须为 {KeySizeBytes} 字节，实际为 {key.Length} 字节");
+                $"仓库密钥长度必须为 {_keySizeBytes} 字节，实际为 {key.Length} 字节");
         }
 
         var plainBytes = Encoding.UTF8.GetBytes(plaintext);
-        var nonce = RandomNumberGenerator.GetBytes(NonceSizeBytes);
+        var nonce = RandomNumberGenerator.GetBytes(_nonceSizeBytes);
         var cipherBytes = new byte[plainBytes.Length];
-        var tag = new byte[TagSizeBytes];
+        var tag = new byte[_tagSizeBytes];
 
         try
         {
-            using (var aes = new AesGcm(key, TagSizeBytes))
-            {
-                aes.Encrypt(nonce, plainBytes, cipherBytes, tag);
-            }
+            using var aes = new AesGcm(key, _tagSizeBytes);
+            aes.Encrypt(nonce, plainBytes, cipherBytes, tag);
         }
         finally
         {
@@ -73,10 +71,10 @@ internal static class RepositorySecretCipher
             CryptographicOperations.ZeroMemory(plainBytes);
         }
 
-        var payload = new byte[NonceSizeBytes + TagSizeBytes + cipherBytes.Length];
-        Buffer.BlockCopy(nonce, 0, payload, 0, NonceSizeBytes);
-        Buffer.BlockCopy(tag, 0, payload, NonceSizeBytes, TagSizeBytes);
-        Buffer.BlockCopy(cipherBytes, 0, payload, NonceSizeBytes + TagSizeBytes, cipherBytes.Length);
+        var payload = new byte[_nonceSizeBytes + _tagSizeBytes + cipherBytes.Length];
+        Buffer.BlockCopy(nonce, 0, payload, 0, _nonceSizeBytes);
+        Buffer.BlockCopy(tag, 0, payload, _nonceSizeBytes, _tagSizeBytes);
+        Buffer.BlockCopy(cipherBytes, 0, payload, _nonceSizeBytes + _tagSizeBytes, cipherBytes.Length);
 
         return Base64UrlEncode(payload);
     }
@@ -85,7 +83,7 @@ internal static class RepositorySecretCipher
     /// 解密 <see cref="Encrypt"/> 产出的密文。
     /// </summary>
     /// <param name="protectedText">Base64Url 密文。</param>
-    /// <param name="key">密钥材料（长度须为 <see cref="KeySizeBytes"/>）。</param>
+    /// <param name="key">密钥材料（长度须为 <see cref="_keySizeBytes"/>）。</param>
     /// <returns>明文口令。</returns>
     /// <exception cref="ArgumentNullException"><paramref name="key"/> 为 <see langword="null"/>。</exception>
     /// <exception cref="FormatException">密文不是合法的 Base64Url 文本。</exception>
@@ -96,28 +94,28 @@ internal static class RepositorySecretCipher
     {
         ArgumentNullException.ThrowIfNull(key);
 
-        if (key.Length != KeySizeBytes)
+        if (key.Length != _keySizeBytes)
         {
             throw new CryptographicException(
-                $"仓库密钥长度必须为 {KeySizeBytes} 字节，实际为 {key.Length} 字节");
+                $"仓库密钥长度必须为 {_keySizeBytes} 字节，实际为 {key.Length} 字节");
         }
 
         var payload = Base64UrlDecode(protectedText);
 
-        if (payload.Length < NonceSizeBytes + TagSizeBytes)
+        if (payload.Length < _nonceSizeBytes + _tagSizeBytes)
         {
             throw new CryptographicException("仓库密文长度不合法");
         }
 
-        var nonce = payload[..NonceSizeBytes];
-        var tag = payload[NonceSizeBytes..(NonceSizeBytes + TagSizeBytes)];
-        var cipherBytes = payload[(NonceSizeBytes + TagSizeBytes)..];
+        var nonce = payload[.._nonceSizeBytes];
+        var tag = payload[_nonceSizeBytes..(_nonceSizeBytes + _tagSizeBytes)];
+        var cipherBytes = payload[(_nonceSizeBytes + _tagSizeBytes)..];
 
         var plainBytes = new byte[cipherBytes.Length];
 
         try
         {
-            using var aes = new AesGcm(key, TagSizeBytes);
+            using var aes = new AesGcm(key, _tagSizeBytes);
             aes.Decrypt(nonce, cipherBytes, tag, plainBytes);
         }
         catch (AuthenticationTagMismatchException ex)
@@ -152,7 +150,7 @@ internal static class RepositorySecretCipher
         try
         {
             var payload = Base64UrlDecode(protectedText);
-            return payload.Length >= NonceSizeBytes + TagSizeBytes;
+            return payload.Length >= _nonceSizeBytes + _tagSizeBytes;
         }
         catch (FormatException)
         {

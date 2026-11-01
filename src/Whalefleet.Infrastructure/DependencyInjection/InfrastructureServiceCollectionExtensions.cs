@@ -1,3 +1,10 @@
+using System.Text;
+
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Persistence;
 using Whalefleet.Application.Abstractions.Terminal;
@@ -6,11 +13,6 @@ using Whalefleet.Infrastructure.Docker;
 using Whalefleet.Infrastructure.Permissions;
 using Whalefleet.Infrastructure.Persistence;
 using Whalefleet.Infrastructure.Security;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Options;
-using System.Text;
 
 namespace Whalefleet.Infrastructure.DependencyInjection;
 

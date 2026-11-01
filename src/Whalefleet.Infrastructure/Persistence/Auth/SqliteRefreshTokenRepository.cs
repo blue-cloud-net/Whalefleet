@@ -1,4 +1,5 @@
 using Dapper;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Persistence;
 using Whalefleet.Core.Auth;
@@ -106,7 +107,7 @@ internal sealed class SqliteRefreshTokenRepository : RepositoryBase<RefreshToken
     /// </remarks>
     public override async Task<bool> RemoveByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var connection = await this.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         var affected = await connection.ExecuteAsync(
             new CommandDefinition(_deleteByIdSql, new { Id = id.ToStorageText() }, cancellationToken: cancellationToken))
@@ -122,7 +123,7 @@ internal sealed class SqliteRefreshTokenRepository : RepositoryBase<RefreshToken
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tokenHash);
 
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         return await connection.QuerySingleOrDefaultAsync<RefreshToken>(
@@ -152,7 +153,7 @@ internal sealed class SqliteRefreshTokenRepository : RepositoryBase<RefreshToken
         DateTime utcNow,
         CancellationToken cancellationToken = default)
     {
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         return await connection.ExecuteAsync(
@@ -168,7 +169,7 @@ internal sealed class SqliteRefreshTokenRepository : RepositoryBase<RefreshToken
         DateTime utcNow,
         CancellationToken cancellationToken = default)
     {
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         return await connection.ExecuteAsync(
@@ -176,6 +177,11 @@ internal sealed class SqliteRefreshTokenRepository : RepositoryBase<RefreshToken
             .ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// 把刷新令牌实体转换为 Dapper 参数。
+    /// </summary>
+    /// <param name="token">刷新令牌实体。</param>
+    /// <returns>Dapper 参数对象。</returns>
     private static object ToParameters(RefreshToken token) => new
     {
         // 写入侧显式转文本：Dapper 的参数绑定会绕过类型处理器（值类型直接装箱），

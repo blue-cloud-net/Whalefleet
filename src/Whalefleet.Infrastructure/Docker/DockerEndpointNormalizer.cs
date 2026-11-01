@@ -98,6 +98,13 @@ public static class DockerEndpointNormalizer
         };
     }
 
+    /// <summary>
+    /// 规范化 Socket 端点。
+    /// </summary>
+    /// <param name="raw">端点原文。</param>
+    /// <param name="normalized">规范化后的端点。</param>
+    /// <param name="error">失败原因。</param>
+    /// <returns>规范化成功时为 <see langword="true"/>。</returns>
     private static bool TryNormalizeSocket(
         string raw,
         out NormalizedDockerEndpoint normalized,
@@ -154,6 +161,13 @@ public static class DockerEndpointNormalizer
             : Fail($"Socket 端点无法解析：{raw}", out normalized, out error);
     }
 
+    /// <summary>
+    /// 规范化命名管道端点。
+    /// </summary>
+    /// <param name="raw">端点原文。</param>
+    /// <param name="normalized">规范化后的端点。</param>
+    /// <param name="error">失败原因。</param>
+    /// <returns>规范化成功时为 <see langword="true"/>。</returns>
     private static bool TryNormalizeNamedPipe(
         string raw,
         out NormalizedDockerEndpoint normalized,
@@ -183,6 +197,13 @@ public static class DockerEndpointNormalizer
             : Fail($"命名管道端点无法解析：{raw}", out normalized, out error);
     }
 
+    /// <summary>
+    /// 规范化 TCP 端点。
+    /// </summary>
+    /// <param name="raw">端点原文。</param>
+    /// <param name="normalized">规范化后的端点。</param>
+    /// <param name="error">失败原因。</param>
+    /// <returns>规范化成功时为 <see langword="true"/>。</returns>
     private static bool TryNormalizeTcp(
         string raw,
         out NormalizedDockerEndpoint normalized,
@@ -252,6 +273,15 @@ public static class DockerEndpointNormalizer
             : Fail($"TCP 端点无法解析：{raw}", out normalized, out error);
     }
 
+    /// <summary>
+    /// 在给定位置切分 URL 的 authority 与其余部分。
+    /// </summary>
+    /// <param name="authority">切出的 authority。</param>
+    /// <param name="defaultPort">参数 defaultPort。</param>
+    /// <param name="host">参数 host。</param>
+    /// <param name="port">参数 port。</param>
+    /// <param name="error">失败原因。</param>
+    /// <returns>切分成功时为 <see langword="true"/>。</returns>
     private static bool TrySplitAuthority(
         string authority,
         int defaultPort,
@@ -315,11 +345,24 @@ public static class DockerEndpointNormalizer
         return true;
     }
 
+    /// <summary>
+    /// 判断端点原文是否为命名管道。
+    /// </summary>
+    /// <param name="raw">端点原文。</param>
+    /// <returns>是命名管道时为 <see langword="true"/>。</returns>
     private static bool IsNamedPipe(string raw) =>
         raw.StartsWith(_npipeScheme, StringComparison.OrdinalIgnoreCase)
         || raw.StartsWith(_npipeSlashPrefix, StringComparison.Ordinal)
         || raw.StartsWith(_npipeWindowsPrefix, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// 构造规范化成功的结果。
+    /// </summary>
+    /// <param name="uri">端点 URI。</param>
+    /// <param name="canonical">规范化后的端点。</param>
+    /// <param name="normalized">规范化结果。</param>
+    /// <param name="error">失败原因。</param>
+    /// <returns>恒为 <see langword="true"/>。</returns>
     private static bool Succeed(
         Uri uri,
         string canonical,
@@ -331,6 +374,13 @@ public static class DockerEndpointNormalizer
         return true;
     }
 
+    /// <summary>
+    /// 构造规范化失败的结果。
+    /// </summary>
+    /// <param name="message">失败原因。</param>
+    /// <param name="normalized">规范化结果。</param>
+    /// <param name="error">失败原因。</param>
+    /// <returns>恒为 <see langword="false"/>。</returns>
     private static bool Fail(
         string message,
         out NormalizedDockerEndpoint normalized,

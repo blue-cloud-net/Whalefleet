@@ -1,4 +1,5 @@
 using Dapper;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Persistence;
 using Whalefleet.Core.Hosts;
@@ -133,7 +134,7 @@ internal sealed class SqliteHostTagRepository : RepositoryBase<HostTag, Guid>, I
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         return await connection.QuerySingleOrDefaultAsync<HostTag>(
@@ -151,7 +152,7 @@ internal sealed class SqliteHostTagRepository : RepositoryBase<HostTag, Guid>, I
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         var count = await connection.ExecuteScalarAsync<long>(
@@ -176,7 +177,7 @@ internal sealed class SqliteHostTagRepository : RepositoryBase<HostTag, Guid>, I
             return new Dictionary<Guid, IReadOnlyList<HostTag>>();
         }
 
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         var rows = await connection.QueryAsync<Guid, HostTag, (Guid HostId, HostTag Tag)>(
@@ -199,7 +200,7 @@ internal sealed class SqliteHostTagRepository : RepositoryBase<HostTag, Guid>, I
     public async Task<IReadOnlyDictionary<Guid, int>> CountByTagAsync(
         CancellationToken cancellationToken = default)
     {
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         var rows = await connection.QueryAsync<TagCountRow>(
@@ -223,8 +224,8 @@ internal sealed class SqliteHostTagRepository : RepositoryBase<HostTag, Guid>, I
             return;
         }
 
-        var creatorId = CurrentUserId.ToStorageText();
-        var creationTime = UtcNow;
+        var creatorId = this.CurrentUserId.ToStorageText();
+        var creationTime = this.UtcNow;
 
         var parameters = (
             from hostId in hostIds
@@ -237,7 +238,7 @@ internal sealed class SqliteHostTagRepository : RepositoryBase<HostTag, Guid>, I
                 CreatorId = creatorId,
             }).ToArray();
 
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         await connection.ExecuteAsync(
@@ -262,7 +263,7 @@ internal sealed class SqliteHostTagRepository : RepositoryBase<HostTag, Guid>, I
             return;
         }
 
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         await connection.ExecuteAsync(
@@ -282,7 +283,7 @@ internal sealed class SqliteHostTagRepository : RepositoryBase<HostTag, Guid>, I
         Guid tagId,
         CancellationToken cancellationToken = default)
     {
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         await connection.ExecuteAsync(
@@ -317,6 +318,11 @@ internal sealed class SqliteHostTagRepository : RepositoryBase<HostTag, Guid>, I
         return affected == 1;
     }
 
+    /// <summary>
+    /// 把主机标签实体转换为 Dapper 参数。
+    /// </summary>
+    /// <param name="tag">主机标签实体。</param>
+    /// <returns>Dapper 参数对象。</returns>
     private static object ToParameters(HostTag tag) => new
     {
         // 写入侧显式转文本：Dapper 的参数绑定会绕过类型处理器，主键不转会按驱动默认的大写形态落库
@@ -343,10 +349,14 @@ internal sealed class SqliteHostTagRepository : RepositoryBase<HostTag, Guid>, I
     /// </remarks>
     private sealed class TagCountRow
     {
-        /// <summary>标签主键。</summary>
+        /// <summary>
+        /// 标签主键。
+        /// </summary>
         public Guid TagId { get; set; }
 
-        /// <summary>挂载该标签的主机数。</summary>
+        /// <summary>
+        /// 挂载该标签的主机数。
+        /// </summary>
         public int HostCount { get; set; }
     }
 }

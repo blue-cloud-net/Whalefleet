@@ -1,8 +1,10 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+
 using Whalefleet.Infrastructure.Persistence;
 
 namespace Whalefleet.Infrastructure.Security;
@@ -33,12 +35,12 @@ internal sealed class SecretFileStore : ISecretProvider
     /// <summary>
     /// JWT 签名密钥文件名（位于数据目录下）。
     /// </summary>
-    internal const string JwtSecretFileName = "jwt.key";
+    internal const string _jwtSecretFileName = "jwt.key";
 
     /// <summary>
     /// 初始管理员凭据文件名（位于数据目录下），仅在首次引导时生成。
     /// </summary>
-    internal const string InitialAdminFileName = "initial-admin.txt";
+    internal const string _initialAdminFileName = "initial-admin.txt";
 
     /// <summary>
     /// 生成 JWT 签名密钥时使用的随机字节数。
@@ -47,14 +49,12 @@ internal sealed class SecretFileStore : ISecretProvider
     /// 48 字节远超 <see cref="JwtOptions.MinSecretLengthBytes"/> 要求的 32 字节下限；
     /// Base64 编码后为 64 个字符，满足 HS256 的密钥强度要求。
     /// </remarks>
-    internal const int JwtSecretSizeBytes = 48;
+    internal const int _jwtSecretSizeBytes = 48;
 
     /// <summary>
     /// 日志中用于提示查看凭据的 compose 服务名。
     /// </summary>
-    private const string ServiceNameHint = "whalefleet";
-
-    private readonly string _dataDirectory;
+    private const string _serviceNameHint = "whalefleet";
     private readonly ILogger<SecretFileStore> _logger;
 
     /// <summary>
@@ -80,12 +80,12 @@ internal sealed class SecretFileStore : ISecretProvider
         // 密钥仍与数据库同处一地，语义不变。
         if (String.IsNullOrWhiteSpace(databasePath))
         {
-            _dataDirectory = Directory.GetCurrentDirectory();
+            this.DataDirectory = Directory.GetCurrentDirectory();
         }
         else
         {
             var directory = Path.GetDirectoryName(Path.GetFullPath(databasePath));
-            _dataDirectory = String.IsNullOrEmpty(directory) ? Directory.GetCurrentDirectory() : directory;
+            this.DataDirectory = String.IsNullOrEmpty(directory) ? Directory.GetCurrentDirectory() : directory;
         }
 
         _logger = logger;
@@ -94,7 +94,10 @@ internal sealed class SecretFileStore : ISecretProvider
     /// <summary>
     /// 数据目录（密钥文件的所在目录）。
     /// </summary>
-    internal string DataDirectory => _dataDirectory;
+    internal string DataDirectory
+    {
+        get;
+    }
 
     /// <summary>
     /// 读取 JWT 签名密钥；文件不存在或内容为空时生成并写入。
@@ -108,7 +111,7 @@ internal sealed class SecretFileStore : ISecretProvider
     /// <returns>签名密钥原文（Base64 文本）。</returns>
     public string GetOrCreateJwtSecret()
     {
-        var path = Path.Combine(_dataDirectory, JwtSecretFileName);
+        var path = Path.Combine(this.DataDirectory, _jwtSecretFileName);
 
         var existing = TryRead(path);
         if (existing is not null)
@@ -117,14 +120,14 @@ internal sealed class SecretFileStore : ISecretProvider
             return existing;
         }
 
-        var generated = Convert.ToBase64String(RandomNumberGenerator.GetBytes(JwtSecretSizeBytes));
+        var generated = Convert.ToBase64String(RandomNumberGenerator.GetBytes(_jwtSecretSizeBytes));
         this.WriteAtomically(path, generated);
 
         _logger.LogInformation(
             "未配置 JWT__SECRET，已自动生成签名密钥并保存到 {Path}（{ByteCount} 字节随机数）。"
             + "请连同数据卷一起备份该文件——丢失它会导致所有已登录用户被登出。",
             path,
-            JwtSecretSizeBytes);
+            _jwtSecretSizeBytes);
 
         return generated;
     }
@@ -144,7 +147,7 @@ internal sealed class SecretFileStore : ISecretProvider
         ArgumentException.ThrowIfNullOrWhiteSpace(username);
         ArgumentException.ThrowIfNullOrWhiteSpace(password);
 
-        var path = Path.Combine(_dataDirectory, InitialAdminFileName);
+        var path = Path.Combine(this.DataDirectory, _initialAdminFileName);
 
         // 内容刻意写成可直接 grep 的键值对，运维用 docker compose exec cat 就能读懂。
         // 时间戳用 "O"（往返格式），它本身与区域无关，故直接插值即可。
@@ -160,7 +163,7 @@ internal sealed class SecretFileStore : ISecretProvider
             "已生成初始管理员密码并保存到 {Path}（权限 0600）。密码**未**写入日志——"
             + "请执行 `docker compose exec {Service} cat {Path}` 查看，并在首次登录后删除该文件。",
             path,
-            ServiceNameHint,
+            _serviceNameHint,
             path);
 
         return path;
@@ -194,7 +197,7 @@ internal sealed class SecretFileStore : ISecretProvider
     /// <param name="content">文件内容。</param>
     private void WriteAtomically(string path, string content)
     {
-        System.IO.Directory.CreateDirectory(_dataDirectory);
+        System.IO.Directory.CreateDirectory(this.DataDirectory);
 
         // 临时名带上进程 ID 与随机串，避免两个并发启动的实例写同一个 .tmp。
         var temporaryPath =
@@ -234,6 +237,10 @@ internal sealed class SecretFileStore : ISecretProvider
         File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
     }
 
+    /// <summary>
+    /// 尽力删除文件，失败不影响主流程。
+    /// </summary>
+    /// <param name="path">待删除的文件路径。</param>
     private static void TryDelete(string path)
     {
         try

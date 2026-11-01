@@ -1,6 +1,8 @@
 using System.Data.Common;
 using System.Globalization;
+
 using Dapper;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Persistence;
 using Whalefleet.Core.Users;
@@ -152,7 +154,7 @@ internal sealed class SqliteRoleRepository : RepositoryBase<Role, Guid>, IRoleRe
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         return await connection.QuerySingleOrDefaultAsync<Role>(
@@ -244,8 +246,8 @@ internal sealed class SqliteRoleRepository : RepositoryBase<Role, Guid>, IRoleRe
                 cancellationToken: cancellationToken))
             .ConfigureAwait(false);
 
-        var now = UtcNow;
-        var operatorId = CurrentUserId.ToStorageText();
+        var now = this.UtcNow;
+        var operatorId = this.CurrentUserId.ToStorageText();
 
         foreach (var permission in permissions)
         {
@@ -276,7 +278,7 @@ internal sealed class SqliteRoleRepository : RepositoryBase<Role, Guid>, IRoleRe
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         var count = await connection.ExecuteScalarAsync<long>(
@@ -292,7 +294,7 @@ internal sealed class SqliteRoleRepository : RepositoryBase<Role, Guid>, IRoleRe
     /// <inheritdoc />
     public async Task<Role?> GetDefaultAsync(CancellationToken cancellationToken = default)
     {
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         return await connection.QuerySingleOrDefaultAsync<Role>(
@@ -306,7 +308,7 @@ internal sealed class SqliteRoleRepository : RepositoryBase<Role, Guid>, IRoleRe
     /// <inheritdoc />
     public async Task<int> CountAsync(CancellationToken cancellationToken = default)
     {
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         var count = await connection.ExecuteScalarAsync<long>(
@@ -348,10 +350,10 @@ internal sealed class SqliteRoleRepository : RepositoryBase<Role, Guid>, IRoleRe
     /// <inheritdoc />
     public async Task<bool> SetDefaultAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var now = UtcNow;
-        var operatorId = CurrentUserId;
+        var now = this.UtcNow;
+        var operatorId = this.CurrentUserId;
 
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
@@ -402,16 +404,16 @@ internal sealed class SqliteRoleRepository : RepositoryBase<Role, Guid>, IRoleRe
     /// </remarks>
     public override async Task<bool> RemoveByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var role = await QueryByIdAsync(id, cancellationToken).ConfigureAwait(false);
+        var role = await this.QueryByIdAsync(id, cancellationToken).ConfigureAwait(false);
         if (role is null)
         {
             return false;
         }
 
-        MarkDeleted(role);
-        MarkModified(role);
+        this.MarkDeleted(role);
+        this.MarkModified(role);
 
-        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var connection = await this.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         var affected = await connection.ExecuteAsync(
             new CommandDefinition(
@@ -445,6 +447,11 @@ internal sealed class SqliteRoleRepository : RepositoryBase<Role, Guid>, IRoleRe
         return true;
     }
 
+    /// <summary>
+    /// 把角色实体转换为 Dapper 参数。
+    /// </summary>
+    /// <param name="role">角色实体。</param>
+    /// <returns>Dapper 参数对象。</returns>
     private static object ToParameters(Role role) => new
     {
         Id = role.Id.ToStorageText(),

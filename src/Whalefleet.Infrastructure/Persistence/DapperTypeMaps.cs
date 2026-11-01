@@ -1,6 +1,8 @@
 using System.Data;
 using System.Globalization;
+
 using Dapper;
+
 using Whalefleet.Core.Hosts;
 
 namespace Whalefleet.Infrastructure.Persistence;
@@ -155,7 +157,7 @@ internal static class DapperTypeMaps
         }
 
         public override DateTime? Parse(object value) =>
-            value is null || value is DBNull ? null : UtcDateTimeValue.Parse(value);
+            value is null or DBNull ? null : UtcDateTimeValue.Parse(value);
     }
 
     /// <summary>

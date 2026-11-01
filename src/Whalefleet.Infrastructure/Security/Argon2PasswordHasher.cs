@@ -1,9 +1,12 @@
 using System.Security.Cryptography;
 using System.Text;
+
+using Konscious.Security.Cryptography;
+
+using Microsoft.Extensions.Options;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Core.Auth;
-using Konscious.Security.Cryptography;
-using Microsoft.Extensions.Options;
 
 namespace Whalefleet.Infrastructure.Security;
 
@@ -16,7 +19,7 @@ namespace Whalefleet.Infrastructure.Security;
 /// <para><b>无状态且线程安全</b>：不持有任何可变状态（每次调用新建 <see cref="Argon2id"/> 实例），
 /// 因此注册为 Singleton。</para>
 /// <para><b>常量时间比较</b>：比较交由 <see cref="PasswordHash.IsMatch"/>（内部用
-/// <see cref="CryptographicOperations.FixedTimeEquals(ReadOnlySpan{byte}, ReadOnlySpan{byte})"/>），
+/// <see cref="CryptographicOperations.FixedTimeEquals(ReadOnlySpan{Byte}, ReadOnlySpan{Byte})"/>），
 /// 本类<b>不</b>使用 <c>==</c> 或 <c>SequenceEqual</c> 比较摘要。</para>
 /// <para><b>敏感数据</b>：明文密码的 UTF-8 字节在计算后立即清零；盐与摘要是公开的（本来就要随哈希存储），
 /// 无需清零。</para>
@@ -112,6 +115,16 @@ internal sealed class Argon2PasswordHasher : IPasswordHasher
         _ = this.Verify(password, _dummyHash.Value);
     }
 
+    /// <summary>
+    /// 按 Argon2id 参数派生活摘要。
+    /// </summary>
+    /// <param name="password">口令明文。</param>
+    /// <param name="salt">盐字节。</param>
+    /// <param name="memorySizeKiB">内存用量（KiB）。</param>
+    /// <param name="iterations">迭代次数。</param>
+    /// <param name="parallelism">并行度。</param>
+    /// <param name="hashSizeBytes">参数 hashSizeBytes。</param>
+    /// <returns>派生的摘要字节。</returns>
     private static byte[] DeriveDigest(
         string password,
         byte[] salt,

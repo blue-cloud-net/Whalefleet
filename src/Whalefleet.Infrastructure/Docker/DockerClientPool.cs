@@ -1,9 +1,12 @@
 using System.Collections.Concurrent;
+
 using Docker.DotNet;
-using Whalefleet.Application.Abstractions;
-using Whalefleet.Application.Common;
+
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+
+using Whalefleet.Application.Abstractions;
+using Whalefleet.Application.Common;
 
 namespace Whalefleet.Infrastructure.Docker;
 
@@ -185,6 +188,11 @@ public sealed class DockerClientPool : IDockerClientPool, IDockerClientPoolMaint
         _clients.Clear();
     }
 
+    /// <summary>
+    /// 构造连接池键：规范化端点与凭据指纹的组合。
+    /// </summary>
+    /// <param name="connection">主机连接。</param>
+    /// <returns>连接池键。</returns>
     private static string BuildPoolKey(DockerHostConnection connection)
     {
         if (!DockerEndpointNormalizer.TryNormalize(
@@ -206,6 +214,12 @@ public sealed class DockerClientPool : IDockerClientPool, IDockerClientPoolMaint
             : $"{normalized.CanonicalEndpoint}|{discriminator}";
     }
 
+    /// <summary>
+    /// 判断池条目是否已空闲超时。
+    /// </summary>
+    /// <param name="entry">池条目。</param>
+    /// <param name="now">当前时刻。</param>
+    /// <returns>已超时为 <see langword="true"/>。</returns>
     private bool IsIdleExpired(PoolEntry entry, DateTimeOffset now)
     {
         var idleTimeout = _options.Pool.IdleTimeout;
@@ -213,6 +227,10 @@ public sealed class DockerClientPool : IDockerClientPool, IDockerClientPoolMaint
         return idleTimeout > TimeSpan.Zero && now - entry.LastUsedUtc >= idleTimeout;
     }
 
+    /// <summary>
+    /// 释放池条目持有的客户端。
+    /// </summary>
+    /// <param name="entry">池条目。</param>
     private void DisposeEntry(PoolEntry entry)
     {
         if (!entry.Client.IsValueCreated)
@@ -265,7 +283,7 @@ public sealed class DockerClientPool : IDockerClientPool, IDockerClientPoolMaint
         public Lazy<IDockerClient> Client { get; }
 
         /// <summary>
-        /// 最近一次被取用的时间（UTC）。用 <see cref="long"/> + <c>Volatile</c> 存取，
+        /// 最近一次被取用的时间（UTC）。用 <see cref="Int64"/> + <c>Volatile</c> 存取，
         /// 避免 <see cref="DateTimeOffset"/> 非原子读写导致的撕裂值。
         /// </summary>
         public DateTimeOffset LastUsedUtc => new(Volatile.Read(ref _lastUsedUtcTicks), TimeSpan.Zero);

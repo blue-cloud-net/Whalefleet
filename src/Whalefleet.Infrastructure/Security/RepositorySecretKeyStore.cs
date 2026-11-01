@@ -1,6 +1,8 @@
 using System.Security.Cryptography;
+
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+
 using Whalefleet.Infrastructure.Persistence;
 
 namespace Whalefleet.Infrastructure.Security;
@@ -27,12 +29,12 @@ internal sealed class RepositorySecretKeyStore
     /// <summary>
     /// 仓库加密密钥文件名（位于数据目录下）。
     /// </summary>
-    internal const string KeyFileName = "repository.key";
+    internal const string _keyFileName = "repository.key";
 
     /// <summary>
     /// 改名前的密钥文件名（仅用于兼容已存在的数据卷，**不再新写**）。
     /// </summary>
-    internal const string LegacyKeyFileName = "registry.key";
+    internal const string _legacyKeyFileName = "registry.key";
 
     private readonly string _dataDirectory;
     private readonly ILogger<RepositorySecretKeyStore> _logger;
@@ -74,7 +76,7 @@ internal sealed class RepositorySecretKeyStore
     /// </remarks>
     public byte[] GetKey()
     {
-        var path = Path.Combine(_dataDirectory, KeyFileName);
+        var path = Path.Combine(_dataDirectory, _keyFileName);
 
         if (File.Exists(path))
         {
@@ -93,7 +95,7 @@ internal sealed class RepositorySecretKeyStore
 
         // ⚠️ 旧文件名回退：已部署的数据卷上是 registry.key。
         // 认不出它就会静默生成新密钥 → 库里所有已保存的口令从此解不开。
-        var legacyPath = Path.Combine(_dataDirectory, LegacyKeyFileName);
+        var legacyPath = Path.Combine(_dataDirectory, _legacyKeyFileName);
         if (File.Exists(legacyPath))
         {
             var legacy = TryRead(legacyPath);
@@ -114,7 +116,7 @@ internal sealed class RepositorySecretKeyStore
                 legacyPath);
         }
 
-        var generated = RandomNumberGenerator.GetBytes(RepositorySecretCipher.KeySizeBytes);
+        var generated = RandomNumberGenerator.GetBytes(RepositorySecretCipher._keySizeBytes);
         this.WriteAtomically(path, generated);
 
         _logger.LogInformation(
@@ -142,7 +144,7 @@ internal sealed class RepositorySecretKeyStore
             return null;
         }
 
-        return content.Length == RepositorySecretCipher.KeySizeBytes ? content : null;
+        return content.Length == RepositorySecretCipher._keySizeBytes ? content : null;
     }
 
     /// <summary>
@@ -181,6 +183,10 @@ internal sealed class RepositorySecretKeyStore
         File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
     }
 
+    /// <summary>
+    /// 尽力删除文件，失败不影响主流程。
+    /// </summary>
+    /// <param name="path">待删除的文件路径。</param>
     private static void TryDelete(string path)
     {
         try

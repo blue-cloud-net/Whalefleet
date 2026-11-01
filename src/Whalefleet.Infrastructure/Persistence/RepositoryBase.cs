@@ -1,5 +1,7 @@
 using System.Data.Common;
+
 using Dapper;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Persistence;
 using Whalefleet.Core.Common;
@@ -62,9 +64,9 @@ internal abstract class RepositoryBase<TEntity, TId> : IRepository<TEntity, TId>
         ArgumentNullException.ThrowIfNull(currentUser);
         ArgumentNullException.ThrowIfNull(timeProvider);
 
-        Connections = connections;
-        CurrentUser = currentUser;
-        TimeProvider = timeProvider;
+        this.Connections = connections;
+        this.CurrentUser = currentUser;
+        this.TimeProvider = timeProvider;
     }
 
     /// <summary>
@@ -85,29 +87,29 @@ internal abstract class RepositoryBase<TEntity, TId> : IRepository<TEntity, TId>
     /// <summary>
     /// 当前 UTC 时间（审计写入用）。
     /// </summary>
-    protected DateTime UtcNow => TimeProvider.GetUtcNow().UtcDateTime;
+    protected DateTime UtcNow => this.TimeProvider.GetUtcNow().UtcDateTime;
 
     /// <summary>
     /// 当前用户主键；未认证时为 <see cref="Guid.Empty"/>（默认值哨兵，表示系统操作）。
     /// </summary>
-    protected Guid CurrentUserId => CurrentUser.UserId ?? Guid.Empty;
+    protected Guid CurrentUserId => this.CurrentUser.UserId ?? Guid.Empty;
 
     /// <inheritdoc />
     public virtual async Task<TEntity?> QueryByIdAsync(TId id, CancellationToken cancellationToken = default)
     {
-        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var connection = await this.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        return await QueryByIdAsync(connection, id, cancellationToken).ConfigureAwait(false);
+        return await this.QueryByIdAsync(connection, id, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
     public virtual async Task<IReadOnlyList<TEntity>> QueryAllListAsync(
         CancellationToken cancellationToken = default)
     {
-        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var connection = await this.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         var entities = await connection.QueryAsync<TEntity>(
-            new CommandDefinition(QueryAllSql, cancellationToken: cancellationToken))
+            new CommandDefinition(this.QueryAllSql, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
 
         return entities.AsList();
@@ -118,11 +120,11 @@ internal abstract class RepositoryBase<TEntity, TId> : IRepository<TEntity, TId>
     {
         ArgumentNullException.ThrowIfNull(entity);
 
-        MarkCreated(entity);
+        this.MarkCreated(entity);
 
-        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var connection = await this.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        await ExecuteInsertAsync(connection, entity, cancellationToken).ConfigureAwait(false);
+        await this.ExecuteInsertAsync(connection, entity, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -130,11 +132,11 @@ internal abstract class RepositoryBase<TEntity, TId> : IRepository<TEntity, TId>
     {
         ArgumentNullException.ThrowIfNull(entity);
 
-        MarkModified(entity);
+        this.MarkModified(entity);
 
-        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var connection = await this.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        return await ExecuteUpdateAsync(connection, entity, cancellationToken).ConfigureAwait(false);
+        return await this.ExecuteUpdateAsync(connection, entity, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -144,15 +146,15 @@ internal abstract class RepositoryBase<TEntity, TId> : IRepository<TEntity, TId>
     /// </remarks>
     public virtual async Task<bool> RemoveByIdAsync(TId id, CancellationToken cancellationToken = default)
     {
-        var entity = await QueryByIdAsync(id, cancellationToken).ConfigureAwait(false);
+        var entity = await this.QueryByIdAsync(id, cancellationToken).ConfigureAwait(false);
         if (entity is null)
         {
             return false;
         }
 
-        MarkDeleted(entity);
+        this.MarkDeleted(entity);
 
-        return await UpdateAsync(entity, cancellationToken).ConfigureAwait(false);
+        return await this.UpdateAsync(entity, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -162,7 +164,7 @@ internal abstract class RepositoryBase<TEntity, TId> : IRepository<TEntity, TId>
     /// <returns>已打开的连接；调用方负责释放（返回 <see cref="DbConnection"/> 以便 <c>await using</c>）。</returns>
     protected async Task<DbConnection> OpenAsync(CancellationToken cancellationToken)
     {
-        var connection = Connections.Create();
+        var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         return connection;
@@ -247,7 +249,7 @@ internal abstract class RepositoryBase<TEntity, TId> : IRepository<TEntity, TId>
 
         if (entity is CreationAuditedEntity<TId, Guid> audited)
         {
-            audited.MarkCreated(UtcNow, CurrentUserId);
+            audited.MarkCreated(this.UtcNow, this.CurrentUserId);
         }
     }
 
@@ -261,7 +263,7 @@ internal abstract class RepositoryBase<TEntity, TId> : IRepository<TEntity, TId>
 
         if (entity is AuditedEntity<TId, Guid> audited)
         {
-            audited.MarkModified(UtcNow, CurrentUserId);
+            audited.MarkModified(this.UtcNow, this.CurrentUserId);
         }
     }
 
@@ -275,7 +277,7 @@ internal abstract class RepositoryBase<TEntity, TId> : IRepository<TEntity, TId>
 
         if (entity is FullAuditedEntity<TId, Guid> audited)
         {
-            audited.Delete(UtcNow, CurrentUserId);
+            audited.Delete(this.UtcNow, this.CurrentUserId);
         }
     }
 }

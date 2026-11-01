@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text;
+
 using Dapper;
+
 using Whalefleet.Application.Abstractions.Persistence;
 using Whalefleet.Core.Auditing;
 
@@ -25,7 +27,7 @@ internal sealed class AuditLogRepository : IAuditLogRepository
     /// <summary>
     /// 统一的时间存储格式（与查询过滤共用，保证字典序 = 时间序）。
     /// </summary>
-    internal const string TimeFormat = "yyyy-MM-dd HH:mm:ss.fff";
+    internal const string _timeFormat = "yyyy-MM-dd HH:mm:ss.fff";
 
     private const string _columns =
         "id, category, action, actor_id, actor_name, target_type, target_id, target_name, "
@@ -210,7 +212,7 @@ internal sealed class AuditLogRepository : IAuditLogRepository
     /// 统一时间格式。
     /// </summary>
     private static string Format(DateTime value) =>
-        value.ToString(TimeFormat, CultureInfo.InvariantCulture);
+        value.ToString(_timeFormat, CultureInfo.InvariantCulture);
 
     /// <summary>
     /// 转义 LIKE 的通配符。

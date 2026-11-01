@@ -1,10 +1,12 @@
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
-using Whalefleet.Application.Abstractions;
+
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
+
+using Whalefleet.Application.Abstractions;
 
 namespace Whalefleet.Infrastructure.Security;
 
@@ -65,7 +67,7 @@ internal sealed class JwtTokenService : ITokenService
         // 后者的类型是 IDictionary<string, object>，**同一个键只能有一个值**，
         // 于是 `claims[Role] = name` 每轮都在覆盖前一角色，最终令牌里只剩最后一个。
         // 症状极隐蔽：单角色用户一切正常，只有真正持有多角色的人才发现授权范围不对。
-        var identity = new ClaimsIdentity(string.Empty, JwtClaimNames.UniqueName, JwtClaimNames.Role);
+        var identity = new ClaimsIdentity(String.Empty, JwtClaimNames.UniqueName, JwtClaimNames.Role);
         identity.AddClaim(new Claim(JwtClaimNames.Subject, userId.ToString("D")));
         identity.AddClaim(new Claim(JwtClaimNames.UniqueName, username));
         identity.AddClaim(new Claim(JwtClaimNames.Jti, Guid.NewGuid().ToString("N")));
@@ -98,7 +100,7 @@ internal sealed class JwtTokenService : ITokenService
 
         return new RefreshTokenValue(
             rawToken,
-            HashRefreshToken(rawToken),
+            this.HashRefreshToken(rawToken),
             utcNow.Add(_options.RefreshTokenLifetime));
     }
 

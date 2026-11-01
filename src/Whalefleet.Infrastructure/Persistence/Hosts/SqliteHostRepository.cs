@@ -1,4 +1,5 @@
 using Dapper;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Persistence;
 using Whalefleet.Core.Hosts;
@@ -127,7 +128,7 @@ internal sealed class SqliteHostRepository : RepositoryBase<DockerHost, Guid>, I
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         return await connection.QuerySingleOrDefaultAsync<DockerHost>(
@@ -147,7 +148,7 @@ internal sealed class SqliteHostRepository : RepositoryBase<DockerHost, Guid>, I
             return [];
         }
 
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         var rows = await connection.QueryAsync<DockerHost>(
@@ -167,7 +168,7 @@ internal sealed class SqliteHostRepository : RepositoryBase<DockerHost, Guid>, I
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         var count = await connection.ExecuteScalarAsync<long>(
@@ -183,7 +184,7 @@ internal sealed class SqliteHostRepository : RepositoryBase<DockerHost, Guid>, I
     /// <inheritdoc />
     public async Task<int> CountAsync(CancellationToken cancellationToken = default)
     {
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         var count = await connection.ExecuteScalarAsync<long>(
@@ -197,7 +198,7 @@ internal sealed class SqliteHostRepository : RepositoryBase<DockerHost, Guid>, I
     public async Task<IReadOnlyDictionary<Guid, int>> CountByGroupAsync(
         CancellationToken cancellationToken = default)
     {
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         var rows = await connection.QueryAsync<(string GroupId, long Count)>(
@@ -216,7 +217,7 @@ internal sealed class SqliteHostRepository : RepositoryBase<DockerHost, Guid>, I
         Guid groupId,
         CancellationToken cancellationToken = default)
     {
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         var rows = await connection.QueryAsync<DockerHost>(

@@ -1,4 +1,5 @@
 using Dapper;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Persistence;
 using Whalefleet.Core.Users;
@@ -120,7 +121,7 @@ internal sealed class SqliteUserRepository : RepositoryBase<User, Guid>, IUserRe
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(username);
 
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         return await connection.QuerySingleOrDefaultAsync<User>(
@@ -140,7 +141,7 @@ internal sealed class SqliteUserRepository : RepositoryBase<User, Guid>, IUserRe
             return [];
         }
 
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         var rows = await connection.QueryAsync<User>(
@@ -160,7 +161,7 @@ internal sealed class SqliteUserRepository : RepositoryBase<User, Guid>, IUserRe
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(username);
 
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         var count = await connection.ExecuteScalarAsync<long>(
@@ -179,7 +180,7 @@ internal sealed class SqliteUserRepository : RepositoryBase<User, Guid>, IUserRe
         ArgumentOutOfRangeException.ThrowIfNegative(skip);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(take);
 
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         var users = await connection.QueryAsync<User>(
@@ -192,7 +193,7 @@ internal sealed class SqliteUserRepository : RepositoryBase<User, Guid>, IUserRe
     /// <inheritdoc />
     public async Task<int> CountAsync(CancellationToken cancellationToken = default)
     {
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         var count = await connection.ExecuteScalarAsync<long>(

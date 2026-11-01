@@ -1,13 +1,16 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+
 using Docker.DotNet;
 using Docker.DotNet.BasicAuth;
 using Docker.DotNet.Handler.Abstractions;
 using Docker.DotNet.X509;
+
+using Microsoft.Extensions.Logging;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Hosts;
-using Microsoft.Extensions.Logging;
 
 namespace Whalefleet.Infrastructure.Docker;
 

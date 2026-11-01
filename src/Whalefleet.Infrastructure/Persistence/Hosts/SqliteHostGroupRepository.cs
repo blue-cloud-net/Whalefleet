@@ -1,4 +1,5 @@
 using Dapper;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Persistence;
 using Whalefleet.Core.Hosts;
@@ -97,7 +98,7 @@ internal sealed class SqliteHostGroupRepository : RepositoryBase<HostGroup, Guid
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         return await connection.QuerySingleOrDefaultAsync<HostGroup>(
@@ -115,7 +116,7 @@ internal sealed class SqliteHostGroupRepository : RepositoryBase<HostGroup, Guid
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
-        await using var connection = Connections.Create();
+        await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         var count = await connection.ExecuteScalarAsync<long>(
@@ -152,6 +153,11 @@ internal sealed class SqliteHostGroupRepository : RepositoryBase<HostGroup, Guid
         return affected == 1;
     }
 
+    /// <summary>
+    /// 把主机分组实体转换为 Dapper 参数。
+    /// </summary>
+    /// <param name="group">主机分组实体。</param>
+    /// <returns>Dapper 参数对象。</returns>
     private static object ToParameters(HostGroup group) => new
     {
         // 写入侧显式转文本：Dapper 的参数绑定会绕过类型处理器，主键不转会按驱动默认的大写形态落库

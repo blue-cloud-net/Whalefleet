@@ -1,10 +1,12 @@
 using System.Security.Claims;
 using System.Text;
-using Whalefleet.Application.Abstractions;
-using Whalefleet.Application.Abstractions.Terminal;
+
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
+
+using Whalefleet.Application.Abstractions;
+using Whalefleet.Application.Abstractions.Terminal;
 
 namespace Whalefleet.Infrastructure.Security;
 
@@ -43,15 +45,15 @@ internal sealed class JwtTerminalTokenService : ITerminalTokenService
     /// </summary>
     public const string TokenTypeValue = "terminal";
 
-    private const string HostClaim = "host";
-    private const string ContainerClaim = "container";
-    private const string ShellClaim = "shell";
-    private const string CommandClaim = "cmd";
+    private const string _hostClaim = "host";
+    private const string _containerClaim = "container";
+    private const string _shellClaim = "shell";
+    private const string _commandClaim = "cmd";
 
     /// <summary>
     /// 允许的时钟偏差（与主鉴权的 30 秒一致）。
     /// </summary>
-    private static readonly TimeSpan AllowedClockSkew = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan _allowedClockSkew = TimeSpan.FromSeconds(30);
 
     private readonly JsonWebTokenHandler _handler = new();
     private readonly SigningCredentials _signingCredentials;
@@ -93,7 +95,7 @@ internal sealed class JwtTerminalTokenService : ITerminalTokenService
             ValidateLifetime = true,
 
             // 与主鉴权同一容差：服务端与客户端的时钟差几秒不该让刚签发的令牌失效。
-            ClockSkew = AllowedClockSkew,
+            ClockSkew = _allowedClockSkew,
 
             // 显式限定算法：不设它时验证方会接受令牌头里声明的任何对称算法。
             ValidAlgorithms = [SecurityAlgorithms.HmacSha256],
@@ -113,17 +115,17 @@ internal sealed class JwtTerminalTokenService : ITerminalTokenService
         // 所有声明都写进 ClaimsIdentity（而不是 descriptor.Claims 字典）：
         // 后者同一个键只能有一个值，而这里的语义就是"一个 claim 一个值"，
         // 保持与 JwtTokenService 一致的写法，避免两处风格分叉。
-        var identity = new ClaimsIdentity(string.Empty, JwtClaimNames.UniqueName, JwtClaimNames.Role);
+        var identity = new ClaimsIdentity(String.Empty, JwtClaimNames.UniqueName, JwtClaimNames.Role);
         identity.AddClaim(new Claim(JwtClaimNames.Subject, grant.UserId.ToString("D")));
         identity.AddClaim(new Claim(JwtClaimNames.Jti, Guid.NewGuid().ToString("N")));
         identity.AddClaim(new Claim(TokenTypeClaim, TokenTypeValue));
-        identity.AddClaim(new Claim(HostClaim, grant.HostId));
-        identity.AddClaim(new Claim(ContainerClaim, grant.ContainerId));
-        identity.AddClaim(new Claim(ShellClaim, grant.Shell));
+        identity.AddClaim(new Claim(_hostClaim, grant.HostId));
+        identity.AddClaim(new Claim(_containerClaim, grant.ContainerId));
+        identity.AddClaim(new Claim(_shellClaim, grant.Shell));
 
         if (!String.IsNullOrEmpty(grant.Command))
         {
-            identity.AddClaim(new Claim(CommandClaim, grant.Command));
+            identity.AddClaim(new Claim(_commandClaim, grant.Command));
         }
 
         var descriptor = new SecurityTokenDescriptor
@@ -165,7 +167,7 @@ internal sealed class JwtTerminalTokenService : ITerminalTokenService
         var issued = result.SecurityToken as JsonWebToken;
         var expiresAt = issued?.ValidTo ?? DateTime.MinValue;
 
-        if (expiresAt != DateTime.MinValue && utcNow > expiresAt.Add(AllowedClockSkew))
+        if (expiresAt != DateTime.MinValue && utcNow > expiresAt.Add(_allowedClockSkew))
         {
             return null;
         }
@@ -187,26 +189,26 @@ internal sealed class JwtTerminalTokenService : ITerminalTokenService
             return null;
         }
 
-        if (!claims.TryGetValue(HostClaim, out var host)
+        if (!claims.TryGetValue(_hostClaim, out var host)
             || host is not string hostId
             || String.IsNullOrWhiteSpace(hostId))
         {
             return null;
         }
 
-        if (!claims.TryGetValue(ContainerClaim, out var container)
+        if (!claims.TryGetValue(_containerClaim, out var container)
             || container is not string containerId
             || String.IsNullOrWhiteSpace(containerId))
         {
             return null;
         }
 
-        if (!claims.TryGetValue(ShellClaim, out var shell) || shell is not string shellPath)
+        if (!claims.TryGetValue(_shellClaim, out var shell) || shell is not string shellPath)
         {
             return null;
         }
 
-        var command = claims.TryGetValue(CommandClaim, out var raw) ? raw as string : null;
+        var command = claims.TryGetValue(_commandClaim, out var raw) ? raw as string : null;
 
         cancellationToken.ThrowIfCancellationRequested();
 

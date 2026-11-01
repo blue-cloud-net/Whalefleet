@@ -1,13 +1,15 @@
 using System.Globalization;
+
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Persistence;
 using Whalefleet.Application.Security;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 using Whalefleet.Infrastructure.Security;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace Whalefleet.Infrastructure.Persistence;
 
@@ -26,12 +28,12 @@ internal sealed class AdminBootstrapper : IAdminBootstrapper
     /// <summary>
     /// 初始管理员所用的内置角色名。
     /// </summary>
-    internal const string AdminRoleName = Role.AdminName;
+    internal const string _adminRoleName = Role.AdminName;
 
     /// <summary>
     /// 未配置 <c>Admin:User</c> 时使用的默认用户名。
     /// </summary>
-    internal const string DefaultAdminUserName = "admin";
+    internal const string _defaultAdminUserName = "admin";
 
     private readonly IDbConnectionFactory _connections;
     private readonly IServiceScopeFactory _scopeFactory;
@@ -124,16 +126,16 @@ internal sealed class AdminBootstrapper : IAdminBootstrapper
                 + "）。请修正环境变量 ADMIN__PASSWORD 后重启。");
         }
 
-        var username = String.IsNullOrWhiteSpace(options.User) ? DefaultAdminUserName : options.User;
+        var username = String.IsNullOrWhiteSpace(options.User) ? _defaultAdminUserName : options.User;
 
         await using var scope = _scopeFactory.CreateAsyncScope();
         var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
         var roles = scope.ServiceProvider.GetRequiredService<IRoleRepository>();
         var assignments = scope.ServiceProvider.GetRequiredService<IUserRoleAssignmentRepository>();
 
-        var adminRole = await roles.FindByNameAsync(AdminRoleName, cancellationToken).ConfigureAwait(false)
+        var adminRole = await roles.FindByNameAsync(_adminRoleName, cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException(
-                $"内置角色 {AdminRoleName} 不存在，数据库迁移不完整。");
+                $"内置角色 {_adminRoleName} 不存在，数据库迁移不完整。");
 
         // 用户名格式由实体校验；不合法会抛 ArgumentException 使启动失败（而不是静默跳过）。
         var admin = User.Create(Guid.NewGuid(), username, _passwordHasher.Hash(password));

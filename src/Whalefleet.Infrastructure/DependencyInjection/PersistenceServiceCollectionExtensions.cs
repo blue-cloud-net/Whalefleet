@@ -1,3 +1,8 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Persistence;
 using Whalefleet.Core.Auditing;
@@ -15,10 +20,6 @@ using Whalefleet.Infrastructure.Persistence.Permissions;
 using Whalefleet.Infrastructure.Persistence.Repositories;
 using Whalefleet.Infrastructure.Persistence.Stacks;
 using Whalefleet.Infrastructure.Persistence.Users;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace Whalefleet.Infrastructure.DependencyInjection;
 
@@ -73,7 +74,7 @@ public static class PersistenceServiceCollectionExtensions
         // 而 `HealthCheckService` 按名字索引检查结果——
         // 结果是 /healthz 永远查不到那一项，只能回退成 unhealthy。
         services.AddHealthChecks().AddCheck<SqliteHealthCheck>(
-            SqliteHealthCheck.CheckName,
+            SqliteHealthCheck._checkName,
             failureStatus: HealthStatus.Unhealthy,
             tags: ["ready"]);
 

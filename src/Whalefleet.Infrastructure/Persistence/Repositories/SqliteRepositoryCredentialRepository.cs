@@ -1,5 +1,7 @@
 using System.Data.Common;
+
 using Dapper;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Persistence;
 using Whalefleet.Core.Repositories;

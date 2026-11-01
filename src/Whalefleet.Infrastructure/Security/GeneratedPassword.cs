@@ -24,7 +24,7 @@ internal static class GeneratedPassword
     /// <remarks>
     /// 20 字符远超策略下限（10），给出足够余量；再长对人工抄写也没有额外收益。
     /// </remarks>
-    internal const int DefaultLength = 20;
+    internal const int _defaultLength = 20;
 
     private const string _letters = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ";
     private const string _digits = "23456789";
@@ -35,7 +35,7 @@ internal static class GeneratedPassword
     /// </summary>
     /// <param name="length">密码长度；小于 4 时按 4 处理（至少容纳一个字母、数字、符号及一个填充位）。</param>
     /// <returns>随机密码。</returns>
-    public static string Create(int length = DefaultLength)
+    public static string Create(int length = _defaultLength)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(length, 1);
 
@@ -62,6 +62,11 @@ internal static class GeneratedPassword
         return new string(buffer);
     }
 
+    /// <summary>
+    /// 从给定字符集里随机取一个字符。
+    /// </summary>
+    /// <param name="sets">候选字符集列表。</param>
+    /// <returns>随机字符。</returns>
     private static char Pick(params string[] sets)
     {
         var totalLength = 0;

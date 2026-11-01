@@ -1,10 +1,12 @@
 using System.Collections.Frozen;
+
+using Microsoft.Extensions.Logging;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Hosts;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
-using Microsoft.Extensions.Logging;
 
 namespace Whalefleet.Infrastructure.Permissions;
 
@@ -167,7 +169,7 @@ internal sealed class PermissionChecker : IPermissionChecker
         }
 
         var result = permissions.Count == 0
-            ? FrozenSet<string>.Empty
+            ? []
             : permissions.ToFrozenSet(StringComparer.Ordinal);
 
         _cache[key] = result;

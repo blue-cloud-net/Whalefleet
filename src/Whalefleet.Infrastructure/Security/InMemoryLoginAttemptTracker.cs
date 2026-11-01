@@ -1,5 +1,6 @@
-using Whalefleet.Application.Abstractions;
 using Microsoft.Extensions.Caching.Memory;
+
+using Whalefleet.Application.Abstractions;
 
 namespace Whalefleet.Infrastructure.Security;
 
@@ -37,7 +38,7 @@ internal sealed class InMemoryLoginAttemptTracker : ILoginAttemptTracker
     /// <summary>
     /// 缓存键的维度分隔符。用 NUL 而非冒号，避免"IP 里含冒号"（IPv6）造成键碰撞。
     /// </summary>
-    private const char KeySeparator = '\u0000';
+    private const char _keySeparator = '\u0000';
 
     private readonly IMemoryCache _cache;
     private readonly TimeProvider _timeProvider;
@@ -99,8 +100,14 @@ internal sealed class InMemoryLoginAttemptTracker : ILoginAttemptTracker
         return new FailureWindow(0, now);
     }
 
+    /// <summary>
+    /// 构造登录失败计数的键。
+    /// </summary>
+    /// <param name="clientIp">客户端 IP。</param>
+    /// <param name="username">用户名。</param>
+    /// <returns>计数键。</returns>
     private static string BuildKey(string clientIp, string username) =>
-        String.Concat(clientIp, KeySeparator, username.ToLowerInvariant());
+        String.Concat(clientIp, _keySeparator, username.ToLowerInvariant());
 
     /// <summary>
     /// 一个计数窗口的状态。

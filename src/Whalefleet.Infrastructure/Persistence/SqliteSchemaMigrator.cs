@@ -1,7 +1,9 @@
 using System.Data.Common;
 using System.Globalization;
-using Whalefleet.Application.Abstractions.Persistence;
+
 using Microsoft.Extensions.Logging;
+
+using Whalefleet.Application.Abstractions.Persistence;
 
 namespace Whalefleet.Infrastructure.Persistence;
 
@@ -76,6 +78,10 @@ internal sealed class SqliteSchemaMigrator
         return currentVersion;
     }
 
+    /// <summary>
+    /// 读取全部内置迁移脚本。
+    /// </summary>
+    /// <returns>迁移脚本列表。</returns>
     private static MigrationScript[] LoadScripts()
     {
         var scripts = typeof(SqliteSchemaMigrator).Assembly
@@ -105,6 +111,11 @@ internal sealed class SqliteSchemaMigrator
         return scripts;
     }
 
+    /// <summary>
+    /// 把嵌入资源转换成迁移脚本。
+    /// </summary>
+    /// <param name="resourceName">嵌入资源名。</param>
+    /// <returns>迁移脚本。</returns>
     private static MigrationScript ToScript(string resourceName)
     {
         var markerIndex = resourceName.IndexOf(_resourceMarker, StringComparison.Ordinal);
@@ -121,6 +132,11 @@ internal sealed class SqliteSchemaMigrator
         return new MigrationScript(version, resourceName, ReadResource(resourceName));
     }
 
+    /// <summary>
+    /// 读取嵌入资源文本。
+    /// </summary>
+    /// <param name="resourceName">嵌入资源名。</param>
+    /// <returns>资源文本。</returns>
     private static string ReadResource(string resourceName)
     {
         using var stream = typeof(SqliteSchemaMigrator).Assembly.GetManifestResourceStream(resourceName)
@@ -130,6 +146,12 @@ internal sealed class SqliteSchemaMigrator
         return reader.ReadToEnd();
     }
 
+    /// <summary>
+    /// 读取数据库当前的 user_version。
+    /// </summary>
+    /// <param name="connection">数据库连接。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>user_version 值。</returns>
     private static async Task<int> GetUserVersionAsync(
         DbConnection connection,
         CancellationToken cancellationToken)
@@ -141,6 +163,12 @@ internal sealed class SqliteSchemaMigrator
         return result is null or DBNull ? 0 : Convert.ToInt32(result, CultureInfo.InvariantCulture);
     }
 
+    /// <summary>
+    /// 执行一条迁移脚本并更新 user_version。
+    /// </summary>
+    /// <param name="connection">数据库连接。</param>
+    /// <param name="script">迁移脚本。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     private static async Task ApplyAsync(
         DbConnection connection,
         MigrationScript script,

@@ -1,8 +1,10 @@
 using Docker.DotNet;
+
+using Microsoft.Extensions.Logging;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Hosts;
-using Microsoft.Extensions.Logging;
 
 namespace Whalefleet.Infrastructure.Docker;
 

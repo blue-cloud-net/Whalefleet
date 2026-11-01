@@ -1,9 +1,11 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
+
+using Microsoft.Extensions.Logging;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Core.Repositories;
-using Microsoft.Extensions.Logging;
 
 namespace Whalefleet.Infrastructure.Security;
 
@@ -42,12 +44,12 @@ internal sealed class RepositoryConnectivityProbe : IRepositoryConnectivityProbe
     /// 取 10 秒：自建仓库多在内网，连接建立慢是常态；
     /// 而这个值直接决定「点一下测试按钮要等多久」，不能太长。
     /// </remarks>
-    private const int TimeoutSeconds = 10;
+    private const int _timeoutSeconds = 10;
 
     /// <summary>
     /// Registry V2 版本检查端点。
     /// </summary>
-    private const string VersionCheckPath = "/v2/";
+    private const string _versionCheckPath = "/v2/";
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<RepositoryConnectivityProbe> _logger;
@@ -121,14 +123,14 @@ internal sealed class RepositoryConnectivityProbe : IRepositoryConnectivityProbe
         string? password,
         CancellationToken cancellationToken)
     {
-        var url = $"{scheme}://{address.Value}{VersionCheckPath}";
+        var url = $"{scheme}://{address.Value}{_versionCheckPath}";
 
         var client = _httpClientFactory.CreateClient(nameof(RepositoryConnectivityProbe));
-        client.Timeout = TimeSpan.FromSeconds(TimeoutSeconds);
+        client.Timeout = TimeSpan.FromSeconds(_timeoutSeconds);
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
 
-        if (!string.IsNullOrEmpty(username))
+        if (!String.IsNullOrEmpty(username))
         {
             var raw = $"{username}:{password}";
             request.Headers.Authorization = new AuthenticationHeaderValue(
@@ -172,7 +174,7 @@ internal sealed class RepositoryConnectivityProbe : IRepositoryConnectivityProbe
 
             if (status == HttpStatusCode.Unauthorized)
             {
-                var hasCredentials = !string.IsNullOrEmpty(username);
+                var hasCredentials = !String.IsNullOrEmpty(username);
                 var challenged = response.Headers.WwwAuthenticate.Count > 0;
 
                 return new RepositoryProbeOutcome(
