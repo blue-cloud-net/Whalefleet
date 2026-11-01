@@ -1,8 +1,9 @@
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Logging;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Core.Permissions;
-using Microsoft.Extensions.Logging;
 
 namespace Whalefleet.Api.Realtime;
 

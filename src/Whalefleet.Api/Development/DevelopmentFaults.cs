@@ -14,22 +14,34 @@ namespace Whalefleet.Api.Development;
 /// </remarks>
 internal static class DevelopmentFaults
 {
-    /// <summary>兜底分支：未捕获的通用异常。</summary>
+    /// <summary>
+    /// 兜底分支：未捕获的通用异常。
+    /// </summary>
     public const string Internal = "internal";
 
-    /// <summary>业务异常分支。</summary>
+    /// <summary>
+    /// 业务异常分支。
+    /// </summary>
     public const string Business = "business";
 
-    /// <summary>领域异常分支。</summary>
+    /// <summary>
+    /// 领域异常分支。
+    /// </summary>
     public const string Domain = "domain";
 
-    /// <summary>参数异常分支。</summary>
+    /// <summary>
+    /// 参数异常分支。
+    /// </summary>
     public const string Validation = "validation";
 
-    /// <summary>资源不存在分支。</summary>
+    /// <summary>
+    /// 资源不存在分支。
+    /// </summary>
     public const string NotFound = "notfound";
 
-    /// <summary>超时分支。</summary>
+    /// <summary>
+    /// 超时分支。
+    /// </summary>
     public const string Timeout = "timeout";
 
     /// <summary>

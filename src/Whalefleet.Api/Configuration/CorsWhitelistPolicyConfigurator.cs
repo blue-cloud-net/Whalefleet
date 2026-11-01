@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+
 using AspNetCorsOptions = Microsoft.AspNetCore.Cors.Infrastructure.CorsOptions;
 
 namespace Whalefleet.Api.Configuration;

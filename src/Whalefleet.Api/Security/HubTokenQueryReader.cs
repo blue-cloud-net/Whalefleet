@@ -28,12 +28,12 @@ internal static class HubTokenQueryReader
     /// <c>/ws</c>（0.8.0 的 exec 终端）**不在此列**——它用的是独立的短期 terminal token，
     /// 不是 access token，鉴权方式在 0.8.0 单独设计。
     /// </remarks>
-    private const string HubPathPrefix = "/hubs";
+    private const string _hubPathPrefix = "/hubs";
 
     /// <summary>
     /// 查询参数名。
     /// </summary>
-    private const string AccessTokenQueryKey = "access_token";
+    private const string _accessTokenQueryKey = "access_token";
 
     /// <summary>
     /// 从查询参数读取令牌并改写为 <c>Authorization</c> 头。
@@ -50,7 +50,7 @@ internal static class HubTokenQueryReader
 
         var request = context.Request;
 
-        if (!request.Path.StartsWithSegments(HubPathPrefix, StringComparison.OrdinalIgnoreCase))
+        if (!request.Path.StartsWithSegments(_hubPathPrefix, StringComparison.OrdinalIgnoreCase))
         {
             return Task.CompletedTask;
         }
@@ -61,9 +61,9 @@ internal static class HubTokenQueryReader
             return Task.CompletedTask;
         }
 
-        var token = request.Query[AccessTokenQueryKey].ToString();
+        var token = request.Query[_accessTokenQueryKey].ToString();
 
-        if (string.IsNullOrWhiteSpace(token))
+        if (String.IsNullOrWhiteSpace(token))
         {
             return Task.CompletedTask;
         }

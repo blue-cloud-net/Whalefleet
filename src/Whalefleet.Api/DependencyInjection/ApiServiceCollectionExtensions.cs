@@ -1,13 +1,15 @@
-using Whalefleet.Api.Security;
-using Whalefleet.Application.Abstractions;
-using Whalefleet.Api.Configuration;
-using Whalefleet.Api.Realtime;
-using Whalefleet.Application.Abstractions.Realtime;
-using Whalefleet.Application.Stacks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
+
+using Whalefleet.Api.Configuration;
+using Whalefleet.Api.Realtime;
+using Whalefleet.Api.Security;
+using Whalefleet.Application.Abstractions;
+using Whalefleet.Application.Abstractions.Realtime;
+using Whalefleet.Application.Stacks;
+
 using AspNetCorsOptions = Microsoft.AspNetCore.Cors.Infrastructure.CorsOptions;
 
 namespace Whalefleet.Api.DependencyInjection;

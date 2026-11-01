@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Options;
+
 using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Common;
 
@@ -104,7 +105,7 @@ public sealed class NotificationHub : Hub
     /// </remarks>
     public Task<RealtimeActionResult> SubscribeOperation(string token)
     {
-        if (string.IsNullOrWhiteSpace(token) || token.Length < MinProgressTokenLength)
+        if (String.IsNullOrWhiteSpace(token) || token.Length < MinProgressTokenLength)
         {
             return Task.FromResult(new RealtimeActionResult(
                 false,
@@ -148,7 +149,7 @@ public sealed class NotificationHub : Hub
     /// <returns>退订结果。</returns>
     public async Task<RealtimeActionResult> UnsubscribeOperation(string token)
     {
-        if (string.IsNullOrWhiteSpace(token))
+        if (String.IsNullOrWhiteSpace(token))
         {
             return new RealtimeActionResult(false, ErrorCodes.ValidationFailed, "进度令牌不能为空。");
         }
@@ -173,7 +174,7 @@ public sealed class NotificationHub : Hub
     {
         foreach (var character in token)
         {
-            var isAllowed = char.IsAsciiLetterOrDigit(character) || character == '-';
+            var isAllowed = Char.IsAsciiLetterOrDigit(character) || character == '-';
 
             if (!isAllowed)
             {

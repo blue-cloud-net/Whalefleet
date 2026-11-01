@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Options;
+
 using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Hosts;
@@ -76,7 +77,7 @@ public sealed class ContainerStatsHub : Hub
     /// <returns>订阅结果；失败时带错误码与消息。</returns>
     public async Task<RealtimeActionResult> SubscribeStats(string containerId)
     {
-        if (string.IsNullOrWhiteSpace(containerId))
+        if (String.IsNullOrWhiteSpace(containerId))
         {
             return new RealtimeActionResult(false, ErrorCodes.ValidationFailed, "容器标识不能为空。");
         }
@@ -138,7 +139,7 @@ public sealed class ContainerStatsHub : Hub
     /// <returns>退订结果。</returns>
     public async Task<RealtimeActionResult> UnsubscribeStats(string containerId)
     {
-        if (string.IsNullOrWhiteSpace(containerId))
+        if (String.IsNullOrWhiteSpace(containerId))
         {
             return new RealtimeActionResult(false, ErrorCodes.ValidationFailed, "容器标识不能为空。");
         }

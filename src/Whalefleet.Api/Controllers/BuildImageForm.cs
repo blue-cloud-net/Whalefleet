@@ -20,25 +20,39 @@ namespace Whalefleet.Api.Controllers;
 /// </remarks>
 public sealed class BuildImageForm
 {
-    /// <summary>构建产物的镜像引用（仓库名 + 可选标签，如 <c>myapp:v1</c>）；必填。</summary>
+    /// <summary>
+    /// 构建产物的镜像引用（仓库名 + 可选标签，如 <c>myapp:v1</c>）；必填。
+    /// </summary>
     public string? Tag { get; set; }
 
-    /// <summary>tar 包内的 Dockerfile 路径；省略时为 <c>Dockerfile</c>。</summary>
+    /// <summary>
+    /// tar 包内的 Dockerfile 路径；省略时为 <c>Dockerfile</c>。
+    /// </summary>
     public string? Dockerfile { get; set; }
 
-    /// <summary>构建参数（<c>ARG</c>），以 JSON 对象的字符串传入。</summary>
+    /// <summary>
+    /// 构建参数（<c>ARG</c>），以 JSON 对象的字符串传入。
+    /// </summary>
     public string? BuildArgs { get; set; }
 
-    /// <summary>镜像标签（<c>LABEL</c>），以 JSON 对象的字符串传入。</summary>
+    /// <summary>
+    /// 镜像标签（<c>LABEL</c>），以 JSON 对象的字符串传入。
+    /// </summary>
     public string? Labels { get; set; }
 
-    /// <summary>多阶段构建的目标阶段（<c>--target</c>）。</summary>
+    /// <summary>
+    /// 多阶段构建的目标阶段（<c>--target</c>）。
+    /// </summary>
     public string? Target { get; set; }
 
-    /// <summary>目标平台（如 <c>linux/amd64</c>）。</summary>
+    /// <summary>
+    /// 目标平台（如 <c>linux/amd64</c>）。
+    /// </summary>
     public string? Platform { get; set; }
 
-    /// <summary>是否不使用构建缓存（<c>--no-cache</c>）。</summary>
+    /// <summary>
+    /// 是否不使用构建缓存（<c>--no-cache</c>）。
+    /// </summary>
     public bool? NoCache { get; set; }
 
     /// <summary>
@@ -81,7 +95,7 @@ public sealed class BuildImageForm
     /// <exception cref="BusinessException">不是合法的 JSON 对象（<c>1000</c>）。</exception>
     private static Dictionary<string, string>? ParseDictionary(string? json, string field)
     {
-        if (string.IsNullOrWhiteSpace(json))
+        if (String.IsNullOrWhiteSpace(json))
         {
             return null;
         }

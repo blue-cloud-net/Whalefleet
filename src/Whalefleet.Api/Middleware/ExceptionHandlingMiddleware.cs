@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+
 using Whalefleet.Api.Errors;
 using Whalefleet.Application.Common;
 

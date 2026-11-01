@@ -20,9 +20,9 @@ namespace Whalefleet.Api.Controllers;
 public sealed class HealthController : ControllerBase
 {
     /// <summary>
-    /// SQLite 检查项名称（与 <c>SqliteHealthCheck.CheckName</c> 一致）。
+    /// SQLite 检查项名称（与 <c>SqliteHealthCheck._checkName</c> 一致）。
     /// </summary>
-    private const string SqliteCheckName = "sqlite";
+    private const string _sqliteCheckName = "sqlite";
 
     private readonly HealthCheckService _healthChecks;
 
@@ -53,11 +53,11 @@ public sealed class HealthController : ControllerBase
 
         // 检查项缺失本身就是部署配置错误（Api 侧漏了 AddPersistence 或包引用），
         // 因此回退成 unhealthy 而不是「当作通过」——否则探针会一直绿着而问题无人察觉。
-        var found = report.Entries.TryGetValue(SqliteCheckName, out var entry);
+        var found = report.Entries.TryGetValue(_sqliteCheckName, out var entry);
         var sqliteStatus = found ? entry.Status : HealthStatus.Unhealthy;
         var sqliteDuration = found ? entry.Duration : TimeSpan.Zero;
         var sqliteDescription = found ? entry.Description : "未注册该检查项";
-        Exception? sqliteError = found ? entry.Exception : null;
+        var sqliteError = found ? entry.Exception : null;
 
         var healthy = report.Status == HealthStatus.Healthy;
 

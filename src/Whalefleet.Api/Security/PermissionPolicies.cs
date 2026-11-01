@@ -13,27 +13,43 @@ namespace Whalefleet.Api.Security;
 /// </remarks>
 public static class PermissionPolicies
 {
-    /// <summary>查看用户列表与详情（<c>user.read</c>）。</summary>
+    /// <summary>
+    /// 查看用户列表与详情（<c>user.read</c>）。
+    /// </summary>
     public const string UsersRead = "perm.user.read";
 
-    /// <summary>创建 / 删除用户、改密码（<c>user.write</c>）。</summary>
+    /// <summary>
+    /// 创建 / 删除用户、改密码（<c>user.write</c>）。
+    /// </summary>
     public const string UsersWrite = "perm.user.write";
 
-    /// <summary>查看角色与权限矩阵（<c>role.read</c>）。</summary>
+    /// <summary>
+    /// 查看角色与权限矩阵（<c>role.read</c>）。
+    /// </summary>
     public const string RolesRead = "perm.role.read";
 
-    /// <summary>增删改角色与角色分配（<c>role.write</c>）。</summary>
+    /// <summary>
+    /// 增删改角色与角色分配（<c>role.write</c>）。
+    /// </summary>
     public const string RolesWrite = "perm.role.write";
 
-    /// <summary>新增 / 删除 / 分组主机（<c>host.manage</c>）。</summary>
+    /// <summary>
+    /// 新增 / 删除 / 分组主机（<c>host.manage</c>）。
+    /// </summary>
     public const string HostsManage = "perm.host.manage";
 
-    /// <summary>查看 仓库配置（<c>repository.read</c>；<b>不含口令</b>）。</summary>
+    /// <summary>
+    /// 查看 仓库配置（<c>repository.read</c>；<b>不含口令</b>）。
+    /// </summary>
     public const string RepositoriesRead = "perm.repository.read";
 
-    /// <summary>增删改 仓库配置与凭据（<c>repository.write</c>）。</summary>
+    /// <summary>
+    /// 增删改 仓库配置与凭据（<c>repository.write</c>）。
+    /// </summary>
     public const string RepositoriesWrite = "perm.repository.write";
 
-    /// <summary>查看操作审计（<c>audit.read</c>；审计能力排在 1.0.0 之后）。</summary>
+    /// <summary>
+    /// 查看操作审计（<c>audit.read</c>；审计能力排在 1.0.0 之后）。
+    /// </summary>
     public const string AuditRead = "perm.audit.read";
 }

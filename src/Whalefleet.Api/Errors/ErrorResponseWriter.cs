@@ -1,4 +1,5 @@
 using System.Text.Json;
+
 using Whalefleet.Api.Serialization;
 using Whalefleet.Application.Common;
 
@@ -23,7 +24,7 @@ internal static class ErrorResponseWriter
     /// </summary>
     public const string JsonContentType = "application/json; charset=utf-8";
 
-    private static readonly JsonSerializerOptions SerializerOptions = CreateSerializerOptions();
+    private static readonly JsonSerializerOptions _serializerOptions = CreateSerializerOptions();
 
     /// <summary>
     /// 将错误码与消息序列化为统一响应 JSON。
@@ -32,8 +33,12 @@ internal static class ErrorResponseWriter
     /// <param name="message">错误消息。</param>
     /// <returns>形如 <c>{"success":false,"code":9999,"message":"…","data":null}</c> 的 JSON 字符串。</returns>
     public static string Serialize(int code, string message) =>
-        JsonSerializer.Serialize(ApiResults.Fail<object>(code, message), SerializerOptions);
+        JsonSerializer.Serialize(ApiResults.Fail<object>(code, message), _serializerOptions);
 
+    /// <summary>
+    /// 创建错误响应专用的序列化选项。
+    /// </summary>
+    /// <returns>序列化选项实例。</returns>
     private static JsonSerializerOptions CreateSerializerOptions()
     {
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);

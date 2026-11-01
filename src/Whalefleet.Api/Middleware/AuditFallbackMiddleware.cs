@@ -66,7 +66,7 @@ public sealed class AuditFallbackMiddleware
         catch (Exception exception)
         {
             // 异常路径：外层还没写响应，只能在这里记。
-            await RecordAsync(audit, context, ErrorCodes.InternalError, exception.Message)
+            await this.RecordAsync(audit, context, ErrorCodes.InternalError, exception.Message)
                 .ConfigureAwait(false);
 
             // 原样抛回：响应体由 ExceptionHandlingMiddleware 统一写，这里不重复处理。
@@ -75,7 +75,7 @@ public sealed class AuditFallbackMiddleware
 
         if (context.Response.StatusCode >= 500)
         {
-            await RecordAsync(audit, context, ErrorCodes.InternalError, $"HTTP {context.Response.StatusCode}")
+            await this.RecordAsync(audit, context, ErrorCodes.InternalError, $"HTTP {context.Response.StatusCode}")
                 .ConfigureAwait(false);
         }
     }

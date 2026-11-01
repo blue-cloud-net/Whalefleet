@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;
+
 using Whalefleet.Api.Security;
 using Whalefleet.Core.Permissions;
 

@@ -1,5 +1,6 @@
-using Whalefleet.Application.Common;
 using Microsoft.AspNetCore.Diagnostics;
+
+using Whalefleet.Application.Common;
 
 namespace Whalefleet.Api.Errors;
 

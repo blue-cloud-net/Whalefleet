@@ -1,6 +1,7 @@
-using Whalefleet.Api.Terminal;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.FileProviders;
+
+using Whalefleet.Api.Terminal;
 
 namespace Whalefleet.Api.Configuration;
 
@@ -16,7 +17,7 @@ namespace Whalefleet.Api.Configuration;
 /// 正常路由，未命中时由 <c>UseStatusCodePages</c> 包成 <c>ApiResult</c>（404 / 错误码）。</para>
 /// <para><b>该排除规则成立的前提</b>：所有控制器都挂在 <c>/api/v1</c> 下，
 /// 健康检查在 <c>/healthz</c>。新增<b>非</b>这些前缀的端点时必须同步更新
-/// <see cref="ApiPathPrefixes"/>，否则它会被静默吞成前端页面。</para>
+/// <see cref="_apiPathPrefixes"/>，否则它会被静默吞成前端页面。</para>
 /// <para><b><c>/hubs</c> 与 <c>/ws</c> 同样必须排除</b>（0.5.0 / 0.8.0）：它们是长连接端点，
 /// 路径里<b>没有文件扩展名</b>，正好命中回退的条件。不排除的话，SignalR 的
 /// <c>/hubs/notification/negotiate</c> 会拿到 200 + 一段 index.html，
@@ -33,7 +34,7 @@ internal static class SpaFallbackExtensions
     /// 两者都是长连接端点，<b>不排除就会被回退成前端页面</b>。
     /// <c>/ws</c> 从 <see cref="TerminalRoutes.Prefix"/> 取，避免"常量改了、排除列表没改"。
     /// </remarks>
-    internal static readonly string[] ApiPathPrefixes =
+    internal static readonly string[] _apiPathPrefixes =
         ["/api", "/healthz", "/hubs", TerminalRoutes.Prefix];
 
     /// <summary>
@@ -70,7 +71,7 @@ internal static class SpaFallbackExtensions
         {
             var path = context.Request.Path;
 
-            foreach (var prefix in ApiPathPrefixes)
+            foreach (var prefix in _apiPathPrefixes)
             {
                 if (path.StartsWithSegments(prefix, StringComparison.Ordinal))
                 {

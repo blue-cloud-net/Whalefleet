@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+
 using Whalefleet.Application.Abstractions;
 
 namespace Whalefleet.Api.Security;

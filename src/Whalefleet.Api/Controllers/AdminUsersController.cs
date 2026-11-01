@@ -1,9 +1,10 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
 using Whalefleet.Api.Security;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Users;
 using Whalefleet.Core.Users;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
 
 namespace Whalefleet.Api.Controllers;
 

@@ -1,4 +1,5 @@
 using System.Security.Claims;
+
 using Whalefleet.Application.Abstractions;
 
 namespace Whalefleet.Api.Security;
@@ -56,5 +57,10 @@ internal sealed class HttpContextCurrentUser : ICurrentUser
 
     private ClaimsPrincipal? Principal => _httpContextAccessor.HttpContext?.User;
 
+    /// <summary>
+    /// 按 claim 类型读取当前用户的第一个声明值。
+    /// </summary>
+    /// <param name="claimType">声明类型。</param>
+    /// <returns>声明值；未登录或没有该声明时为 <see langword="null"/>。</returns>
     private string? FindClaim(string claimType) => this.Principal?.FindFirst(claimType)?.Value;
 }

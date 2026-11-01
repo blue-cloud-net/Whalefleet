@@ -23,7 +23,7 @@ namespace Whalefleet.Api.Serialization;
 /// </remarks>
 internal static class ApiJsonDefaults
 {
-    private static readonly JavaScriptEncoder Encoder = JavaScriptEncoder.Create(UnicodeRanges.All);
+    private static readonly JavaScriptEncoder _encoder = JavaScriptEncoder.Create(UnicodeRanges.All);
 
     /// <summary>
     /// 将 API 的 JSON 序列化默认值应用到指定选项实例。
@@ -33,7 +33,7 @@ internal static class ApiJsonDefaults
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        options.Encoder = Encoder;
+        options.Encoder = _encoder;
 
         // 枚举一律以小驼峰字符串出现（DockerHostType.Socket → "socket"）。
         // 默认的数值形态对调用方不友好：接口契约里 type 收的就是 "socket"/"tcp"，

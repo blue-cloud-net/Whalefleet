@@ -1,13 +1,15 @@
 using System.Text;
-using Whalefleet.Api.Security;
-using Whalefleet.Application.Abstractions;
-using Whalefleet.Infrastructure.Security;
+
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+
+using Whalefleet.Api.Security;
+using Whalefleet.Application.Abstractions;
+using Whalefleet.Infrastructure.Security;
 
 namespace Whalefleet.Api.DependencyInjection;
 

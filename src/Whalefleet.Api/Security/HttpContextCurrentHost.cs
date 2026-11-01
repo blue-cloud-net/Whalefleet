@@ -15,16 +15,17 @@ namespace Whalefleet.Api.Security;
 /// </remarks>
 internal sealed class HttpContextCurrentHost : ICurrentHost, ICurrentHostAccessor
 {
-    private string? _hostId;
-
     /// <inheritdoc />
-    public string? HostId => _hostId;
+    public string? HostId
+    {
+        get; private set;
+    }
 
     /// <inheritdoc />
     public void Set(string hostId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
 
-        _hostId = hostId;
+        this.HostId = hostId;
     }
 }

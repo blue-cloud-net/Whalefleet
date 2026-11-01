@@ -2,14 +2,16 @@ using System.Globalization;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
+
 using Whalefleet.Api.Errors;
 using Whalefleet.Application.Abstractions.Auditing;
 using Whalefleet.Application.Abstractions.Terminal;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Containers;
 using Whalefleet.Core.Auditing;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
 
 namespace Whalefleet.Api.Terminal;
 
@@ -39,7 +41,7 @@ internal static class ContainerTerminalEndpoint
     /// 8 KiB 与 xterm 的典型输出块同量级：更小会让高频输出退化成大量小帧，
     /// 更大则让「按下回车后多久看到输出」变差（缓冲区要填满才发）。
     /// </remarks>
-    private const int OutputBufferSize = 8192;
+    private const int _outputBufferSize = 8192;
 
     /// <summary>
     /// 输入方向的缓冲区大小（浏览器 → 容器）。
@@ -47,7 +49,7 @@ internal static class ContainerTerminalEndpoint
     /// <remarks>
     /// 按键是逐个产生的，4 KiB 已经远超「一次粘贴」的常见规模。
     /// </remarks>
-    private const int InputBufferSize = 4096;
+    private const int _inputBufferSize = 4096;
 
     /// <summary>
     /// 注册终端端点。
@@ -305,7 +307,7 @@ internal static class ContainerTerminalEndpoint
         WebSocket socket,
         CancellationToken cancellationToken)
     {
-        var buffer = new byte[OutputBufferSize];
+        var buffer = new byte[_outputBufferSize];
 
         try
         {
@@ -356,7 +358,7 @@ internal static class ContainerTerminalEndpoint
         IContainerTerminalSession session,
         CancellationToken cancellationToken)
     {
-        var buffer = new byte[InputBufferSize];
+        var buffer = new byte[_inputBufferSize];
 
         try
         {

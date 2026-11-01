@@ -1,4 +1,8 @@
 using System.Globalization;
+
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Auditing;
 using Whalefleet.Application.Abstractions.Realtime;
@@ -6,8 +10,6 @@ using Whalefleet.Application.Abstractions.Terminal;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Containers;
 using Whalefleet.Core.Auditing;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
 
 namespace Whalefleet.Api.Controllers;
 
@@ -292,13 +294,13 @@ public sealed class ContainersController : ControllerBase
     {
         var containerId = request.ContainerId?.Trim();
 
-        if (string.IsNullOrWhiteSpace(containerId))
+        if (String.IsNullOrWhiteSpace(containerId))
         {
             throw new ArgumentException("容器标识不能为空。", nameof(request));
         }
 
-        Response.ContentType = "text/plain; charset=utf-8";
-        Response.Headers.ContentDisposition = BuildContentDisposition(containerId);
+        this.Response.ContentType = "text/plain; charset=utf-8";
+        this.Response.Headers.ContentDisposition = BuildContentDisposition(containerId);
 
         // 敏感读：日志里常含内部地址、错误堆栈甚至粘贴进去的凭据。
         // 在开始写正文**之前**记（写完再记就晚了——客户端可能已经拿到整个文件）。
@@ -322,8 +324,8 @@ public sealed class ContainersController : ControllerBase
         {
             // 每行补一个换行符：SDK 的逐行回调**不带**行尾换行符
             // （见 ContainerLogParser 的说明），不补的话整个文件会挤成一行。
-            await Response.WriteAsync(line, cancellationToken).ConfigureAwait(false);
-            await Response.WriteAsync("\n", cancellationToken).ConfigureAwait(false);
+            await this.Response.WriteAsync(line, cancellationToken).ConfigureAwait(false);
+            await this.Response.WriteAsync("\n", cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -340,8 +342,8 @@ public sealed class ContainersController : ControllerBase
     /// </remarks>
     private static string BuildContentDisposition(string containerId)
     {
-        var safeId = string.Concat(containerId.Select(character =>
-            char.IsAsciiLetterOrDigit(character) || character is '-' or '_' ? character : '_'));
+        var safeId = String.Concat(containerId.Select(character =>
+            Char.IsAsciiLetterOrDigit(character) || character is '-' or '_' ? character : '_'));
 
         if (safeId.Length == 0)
         {

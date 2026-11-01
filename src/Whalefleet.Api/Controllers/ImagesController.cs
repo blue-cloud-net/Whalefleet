@@ -1,8 +1,9 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Mvc;
+
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Images;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Http.Features;
 
 namespace Whalefleet.Api.Controllers;
 

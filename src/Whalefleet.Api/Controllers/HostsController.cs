@@ -1,8 +1,9 @@
-using Whalefleet.Application.Common;
-using Whalefleet.Application.Hosts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+
+using Whalefleet.Application.Common;
+using Whalefleet.Application.Hosts;
 
 namespace Whalefleet.Api.Controllers;
 

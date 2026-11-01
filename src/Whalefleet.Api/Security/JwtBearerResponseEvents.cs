@@ -1,8 +1,9 @@
-using Whalefleet.Api.Errors;
-using Whalefleet.Application.Common;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+
+using Whalefleet.Api.Errors;
+using Whalefleet.Application.Common;
 
 namespace Whalefleet.Api.Security;
 

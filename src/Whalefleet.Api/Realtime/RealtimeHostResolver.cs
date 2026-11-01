@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.SignalR;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Hosts;
@@ -61,7 +62,7 @@ public sealed class RealtimeHostResolver
         var httpContext = context.GetHttpContext();
         var hostId = ResolveHostId(httpContext);
 
-        if (string.IsNullOrWhiteSpace(hostId))
+        if (String.IsNullOrWhiteSpace(hostId))
         {
             throw new BusinessException(
                 ErrorCodes.ValidationFailed,
@@ -100,13 +101,13 @@ public sealed class RealtimeHostResolver
         }
 
         var routeValue = httpContext.Request.RouteValues["hostId"] as string;
-        if (!string.IsNullOrWhiteSpace(routeValue))
+        if (!String.IsNullOrWhiteSpace(routeValue))
         {
             return routeValue;
         }
 
         var path = httpContext.Request.Path.Value;
-        if (string.IsNullOrEmpty(path))
+        if (String.IsNullOrEmpty(path))
         {
             return null;
         }
@@ -122,7 +123,7 @@ public sealed class RealtimeHostResolver
         var separator = rest.IndexOf('/', StringComparison.Ordinal);
         var hostId = separator < 0 ? rest : rest[..separator];
 
-        return string.IsNullOrWhiteSpace(hostId) ? null : Uri.UnescapeDataString(hostId);
+        return String.IsNullOrWhiteSpace(hostId) ? null : Uri.UnescapeDataString(hostId);
     }
 
     /// <summary>

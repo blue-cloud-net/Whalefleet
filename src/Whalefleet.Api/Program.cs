@@ -1,22 +1,24 @@
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.FileProviders;
+
+using Serilog;
+using Serilog.Events;
+
+using Whalefleet.Api.Configuration;
 using Whalefleet.Api.DependencyInjection;
 using Whalefleet.Api.Development;
-using Whalefleet.Api.Configuration;
 using Whalefleet.Api.Errors;
 using Whalefleet.Api.Middleware;
 using Whalefleet.Api.Realtime;
 using Whalefleet.Api.Serialization;
 using Whalefleet.Api.Terminal;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.FileProviders;
-using Whalefleet.Application.Abstractions.Terminal;
 using Whalefleet.Application.Abstractions.Persistence;
+using Whalefleet.Application.Abstractions.Terminal;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.DependencyInjection;
 using Whalefleet.Infrastructure.DependencyInjection;
 using Whalefleet.Infrastructure.Persistence;
-using Microsoft.AspNetCore.Mvc;
-using Serilog;
-using Serilog.Events;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -101,7 +103,7 @@ if (spaEnabled && spaRoot is null)
         + "请确认镜像构建时已执行 pnpm build 并把 dist 复制到发布目录的 wwwroot 下。");
 }
 
-// ============================== 管道顺序（不可随意调整） ==============================
+#region 管道顺序（不可随意调整）
 // 0) 反向代理头修正：必须最先执行。
 //    它改写 Connection.RemoteIpAddress，而限流计数与请求日志都读这个值——
 //    任何在它之前读取的中间件都会把「反代的 IP」当成「客户端的 IP」。
@@ -193,8 +195,9 @@ app.UseCurrentHost();
 
 app.MapControllers();
 app.MapHealthChecks("/healthz");
+#endregion
 
-// ============================== 实时通道（0.5.0） ==============================
+#region 实时通道（0.5.0）
 // 三条 Hub：
 //   /hubs/hosts/{hostId}/container-log    容器日志逐行推送（主机作用域）
 //   /hubs/hosts/{hostId}/container-stats  容器资源采样推送（主机作用域）
@@ -209,8 +212,9 @@ app.MapHealthChecks("/healthz");
 app.MapHub<ContainerLogHub>(RealtimeHubRoutes.ContainerLog);
 app.MapHub<ContainerStatsHub>(RealtimeHubRoutes.ContainerStats);
 app.MapHub<NotificationHub>(RealtimeHubRoutes.Notification);
+#endregion
 
-// ============================== 交互式终端（0.8.0） ==============================
+#region 交互式终端（0.8.0）
 // /ws/hosts/{hostId}/containers/exec —— 容器 exec 的原生 WebSocket。
 //
 // ⚠️ 这条端点的请求在 CurrentHostMiddleware 眼里是**匿名**的：它用 terminal token
@@ -242,4 +246,5 @@ app.Run();
 /// <summary>
 /// 标记 Program 为 partial 类，便于集成测试通过 WebApplicationFactory 启动宿主。
 /// </summary>
+#endregion
 public partial class Program;

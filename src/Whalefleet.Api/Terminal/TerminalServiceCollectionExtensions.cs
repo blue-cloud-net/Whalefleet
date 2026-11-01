@@ -1,6 +1,7 @@
-using Whalefleet.Application.Abstractions.Terminal;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+
+using Whalefleet.Application.Abstractions.Terminal;
 
 namespace Whalefleet.Api.Terminal;
 

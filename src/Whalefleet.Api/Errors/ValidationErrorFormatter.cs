@@ -1,5 +1,6 @@
-using Whalefleet.Application.Common;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+
+using Whalefleet.Application.Common;
 
 namespace Whalefleet.Api.Errors;
 
@@ -14,11 +15,15 @@ namespace Whalefleet.Api.Errors;
 /// </remarks>
 internal static class ValidationErrorFormatter
 {
-    /// <summary>最多聚合的错误条数，避免超大请求产生超长响应。</summary>
-    private const int MaxErrors = 10;
+    /// <summary>
+    /// 最多聚合的错误条数，避免超大请求产生超长响应。
+    /// </summary>
+    private const int _maxErrors = 10;
 
-    /// <summary>消息最大长度（字符），超出部分截断。</summary>
-    private const int MaxLength = 500;
+    /// <summary>
+    /// 消息最大长度（字符），超出部分截断。
+    /// </summary>
+    private const int _maxLength = 500;
 
     /// <summary>
     /// 生成校验失败消息。
@@ -33,7 +38,7 @@ internal static class ValidationErrorFormatter
         var errors = modelState
             .Where(entry => entry.Value is { Errors.Count: > 0 })
             .SelectMany(entry => entry.Value!.Errors.Select(error => Describe(entry.Key, error)))
-            .Take(MaxErrors)
+            .Take(_maxErrors)
             .ToArray();
 
         if (errors.Length == 0)
@@ -43,11 +48,17 @@ internal static class ValidationErrorFormatter
 
         var message = String.Join("；", errors);
 
-        return message.Length <= MaxLength
+        return message.Length <= _maxLength
             ? message
-            : String.Concat(message.AsSpan(0, MaxLength), "…");
+            : String.Concat(message.AsSpan(0, _maxLength), "…");
     }
 
+    /// <summary>
+    /// 把一条模型校验错误格式化成可读文本。
+    /// </summary>
+    /// <param name="key">出错字段名。</param>
+    /// <param name="error">校验错误详情。</param>
+    /// <returns>格式化后的错误描述。</returns>
     private static string Describe(string key, ModelError error)
     {
         var detail = String.IsNullOrWhiteSpace(error.ErrorMessage)

@@ -1,7 +1,8 @@
-using Whalefleet.Application.Common;
-using Whalefleet.Application.Stacks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+
+using Whalefleet.Application.Common;
+using Whalefleet.Application.Stacks;
 
 namespace Whalefleet.Api.Controllers;
 

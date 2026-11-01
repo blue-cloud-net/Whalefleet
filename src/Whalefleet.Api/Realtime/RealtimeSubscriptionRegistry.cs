@@ -25,25 +25,35 @@ public sealed class RealtimeSubscription
         ArgumentException.ThrowIfNullOrWhiteSpace(kind);
         ArgumentException.ThrowIfNullOrWhiteSpace(resourceId);
 
-        ConnectionId = connectionId;
-        Kind = kind;
-        ResourceId = resourceId;
-        Cancellation = new CancellationTokenSource();
+        this.ConnectionId = connectionId;
+        this.Kind = kind;
+        this.ResourceId = resourceId;
+        this.Cancellation = new CancellationTokenSource();
     }
 
-    /// <summary>连接标识。</summary>
+    /// <summary>
+    /// 连接标识。
+    /// </summary>
     public string ConnectionId { get; }
 
-    /// <summary>资源类别（日志 / 统计 / 进度）。</summary>
+    /// <summary>
+    /// 资源类别（日志 / 统计 / 进度）。
+    /// </summary>
     public string Kind { get; }
 
-    /// <summary>资源标识（容器 ID / 进度令牌）。</summary>
+    /// <summary>
+    /// 资源标识（容器 ID / 进度令牌）。
+    /// </summary>
     public string ResourceId { get; }
 
-    /// <summary>取消源（断开或退订时触发）。</summary>
+    /// <summary>
+    /// 取消源（断开或退订时触发）。
+    /// </summary>
     public CancellationTokenSource Cancellation { get; }
 
-    /// <summary>后台推送任务。</summary>
+    /// <summary>
+    /// 后台推送任务。
+    /// </summary>
     public Task? Pump { get; set; }
 
     /// <summary>
@@ -200,7 +210,7 @@ public sealed class RealtimeSubscriptionRegistry
 
             foreach (var key in this._subscriptions.Keys.ToList())
             {
-                if (key.StartsWith(string.Concat(connectionId, "|"), StringComparison.Ordinal)
+                if (key.StartsWith(String.Concat(connectionId, "|"), StringComparison.Ordinal)
                     && this._subscriptions.Remove(key, out var subscription))
                 {
                     removed.Add(subscription);
@@ -243,7 +253,7 @@ public sealed class RealtimeSubscriptionRegistry
         ArgumentException.ThrowIfNullOrWhiteSpace(kind);
         ArgumentException.ThrowIfNullOrWhiteSpace(resourceId);
 
-        var suffix = string.Concat('|', kind, '|', resourceId);
+        var suffix = String.Concat('|', kind, '|', resourceId);
         var matches = new List<RealtimeSubscription>();
 
         lock (this._gate)
@@ -268,7 +278,7 @@ public sealed class RealtimeSubscriptionRegistry
     /// <returns>订阅数。</returns>
     private int CountPerKindCore(string connectionId, string kind)
     {
-        var prefix = string.Concat(connectionId, "|", kind, "|");
+        var prefix = String.Concat(connectionId, "|", kind, "|");
         var count = 0;
 
         foreach (var key in this._subscriptions.Keys)
@@ -290,5 +300,5 @@ public sealed class RealtimeSubscriptionRegistry
     /// <param name="resourceId">资源标识。</param>
     /// <returns>组合键。</returns>
     private static string BuildKey(string connectionId, string kind, string resourceId) =>
-        string.Concat(connectionId, "|", kind, "|", resourceId);
+        String.Concat(connectionId, "|", kind, "|", resourceId);
 }

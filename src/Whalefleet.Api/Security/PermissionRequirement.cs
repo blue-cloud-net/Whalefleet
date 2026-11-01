@@ -35,9 +35,11 @@ public sealed class PermissionRequirement : IAuthorizationRequirement
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(permission);
 
-        Permission = permission.Trim().ToLowerInvariant();
+        this.Permission = permission.Trim().ToLowerInvariant();
     }
 
-    /// <summary>需要的全局权限标识。</summary>
+    /// <summary>
+    /// 需要的全局权限标识。
+    /// </summary>
     public string Permission { get; }
 }
