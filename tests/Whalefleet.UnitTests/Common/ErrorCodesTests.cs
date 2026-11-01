@@ -1,6 +1,9 @@
 using System.Reflection;
-using Whalefleet.Application.Common;
+
 using FluentAssertions;
+
+using Whalefleet.Application.Common;
+
 using Xunit;
 
 namespace Whalefleet.UnitTests.Common;

@@ -1,5 +1,7 @@
-using Whalefleet.Application.Containers;
 using FluentAssertions;
+
+using Whalefleet.Application.Containers;
+
 using Xunit;
 
 namespace Whalefleet.UnitTests.Containers;
@@ -45,7 +47,7 @@ public class ContainerLogParserTests
     {
         // 恒定请求 timestamps=1 时回调内容永远不是空串，
         // 因此「空块」只可能来自「没有数据」，当成一行会凭空多出空行。
-        _parser.Append(string.Empty).Should().BeEmpty();
+        _parser.Append(String.Empty).Should().BeEmpty();
     }
 
     [Fact]

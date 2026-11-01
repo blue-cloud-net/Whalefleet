@@ -1,5 +1,7 @@
-using Whalefleet.Core.Auth;
 using FluentAssertions;
+
+using Whalefleet.Core.Auth;
+
 using Xunit;
 
 namespace Whalefleet.UnitTests.Auth;

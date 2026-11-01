@@ -4,8 +4,8 @@ using Whalefleet.Core.Common.Auditing;
 namespace Whalefleet.UnitTests.Common.Auditing;
 
 /// <summary>
-/// 测试用实体：一组仅带创建审计的实体，分别以 <see cref="Guid"/> / <see cref="long"/> /
-/// <see cref="string"/> 作为审计人主键类型，验证 <typeparamref name="TUserKey"/> 不加类型约束。
+/// 测试用实体：一组仅带创建审计的实体，分别以 <see cref="Guid"/> / <see cref="Int64"/> /
+/// <see cref="String"/> 作为审计人主键类型，验证 <typeparamref name="TUserKey"/> 不加类型约束。
 /// </summary>
 internal sealed class GuidCreationAudited : CreationAuditedEntity<Guid, Guid>
 {
@@ -17,7 +17,7 @@ internal sealed class GuidCreationAudited : CreationAuditedEntity<Guid, Guid>
 }
 
 /// <summary>
-/// 测试用实体：审计人主键为 <see cref="long"/>（自增主键场景）。
+/// 测试用实体：审计人主键为 <see cref="Int64"/>（自增主键场景）。
 /// </summary>
 internal sealed class LongCreationAudited : CreationAuditedEntity<Guid, long>
 {
@@ -27,7 +27,7 @@ internal sealed class LongCreationAudited : CreationAuditedEntity<Guid, long>
 }
 
 /// <summary>
-/// 测试用实体：审计人主键为 <see cref="string"/>（引用类型主键场景，验证无约束支持）。
+/// 测试用实体：审计人主键为 <see cref="String"/>（引用类型主键场景，验证无约束支持）。
 /// </summary>
 internal sealed class StringCreationAudited : CreationAuditedEntity<Guid, string>
 {
@@ -61,7 +61,7 @@ internal sealed class GuidFullAudited : FullAuditedEntity<Guid, Guid>
 }
 
 /// <summary>
-/// 测试用实体：全量审计 + 软删除，且审计人主键为 <see cref="long"/>。
+/// 测试用实体：全量审计 + 软删除，且审计人主键为 <see cref="Int64"/>。
 /// </summary>
 internal sealed class LongFullAudited : FullAuditedEntity<Guid, long>
 {
@@ -71,7 +71,7 @@ internal sealed class LongFullAudited : FullAuditedEntity<Guid, long>
 }
 
 /// <summary>
-/// 测试用实体：全量审计 + 软删除，且审计人主键为 <see cref="string"/>。
+/// 测试用实体：全量审计 + 软删除，且审计人主键为 <see cref="String"/>。
 /// </summary>
 internal sealed class StringFullAudited : FullAuditedEntity<Guid, string>
 {

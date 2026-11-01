@@ -1,7 +1,9 @@
+using FluentAssertions;
+
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Permissions;
 using Whalefleet.Core.Permissions;
-using FluentAssertions;
+
 using Xunit;
 
 namespace Whalefleet.UnitTests.Permissions;

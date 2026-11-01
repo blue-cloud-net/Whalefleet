@@ -1,9 +1,13 @@
 using System.Net;
 using System.Net.Sockets;
+
 using Docker.DotNet;
+
+using FluentAssertions;
+
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Docker;
-using FluentAssertions;
+
 using Xunit;
 
 namespace Whalefleet.UnitTests.Docker;
@@ -24,7 +28,7 @@ public class DockerErrorTranslatorTests
     [Fact]
     public async Task 容器不存在_映射为1401()
     {
-        var act = () => ExecuteFailing(ContainerNotFound());
+        static Task act() => ExecuteFailing(ContainerNotFound());
 
         await AssertBusinessCodeAsync(act, ErrorCodes.DockerResourceNotFound);
     }
@@ -32,7 +36,7 @@ public class DockerErrorTranslatorTests
     [Fact]
     public async Task 镜像不存在_映射为1401()
     {
-        var act = () => ExecuteFailing(new DockerImageNotFoundException(HttpStatusCode.NotFound, "sha256:deadbeef"));
+        static Task act() => ExecuteFailing(new DockerImageNotFoundException(HttpStatusCode.NotFound, "sha256:deadbeef"));
 
         await AssertBusinessCodeAsync(act, ErrorCodes.DockerResourceNotFound);
     }
@@ -43,7 +47,7 @@ public class DockerErrorTranslatorTests
     [InlineData(HttpStatusCode.InternalServerError, ErrorCodes.DockerApiFailed)]
     public async Task 通用Api异常_按状态码分流(HttpStatusCode statusCode, int expectedCode)
     {
-        var act = () => ExecuteFailing(new DockerApiException(statusCode, "boom"));
+        Task act() => ExecuteFailing(new DockerApiException(statusCode, "boom"));
 
         await AssertBusinessCodeAsync(act, expectedCode);
     }
@@ -52,7 +56,7 @@ public class DockerErrorTranslatorTests
     public async Task 超时_映射为1403()
     {
         // 调用方没取消，但调用超时了（HttpClient 超时同样抛 TaskCanceledException）。
-        var act = () => ExecuteFailing(new TaskCanceledException("timeout"));
+        static Task act() => ExecuteFailing(new TaskCanceledException("timeout"));
 
         await AssertBusinessCodeAsync(act, ErrorCodes.DockerTimeout);
     }
@@ -60,7 +64,7 @@ public class DockerErrorTranslatorTests
     [Fact]
     public async Task 守护进程不可达_映射为1301()
     {
-        var act = () => ExecuteFailing(new HttpRequestException("connection refused"));
+        static Task act() => ExecuteFailing(new HttpRequestException("connection refused"));
 
         await AssertBusinessCodeAsync(act, ErrorCodes.HostUnreachable);
     }
@@ -68,7 +72,7 @@ public class DockerErrorTranslatorTests
     [Fact]
     public async Task Socket异常_映射为1301()
     {
-        var act = () => ExecuteFailing(new SocketException((int)SocketError.ConnectionRefused));
+        static Task act() => ExecuteFailing(new SocketException((int)SocketError.ConnectionRefused));
 
         await AssertBusinessCodeAsync(act, ErrorCodes.HostUnreachable);
     }

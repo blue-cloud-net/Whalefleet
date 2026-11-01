@@ -1,6 +1,8 @@
+using FluentAssertions;
+
 using Whalefleet.Application.Abstractions.Terminal;
 using Whalefleet.Application.Common;
-using FluentAssertions;
+
 using Xunit;
 
 namespace Whalefleet.UnitTests.Terminal;

@@ -1,5 +1,7 @@
-using Whalefleet.Application.Images;
 using FluentAssertions;
+
+using Whalefleet.Application.Images;
+
 using Xunit;
 
 namespace Whalefleet.UnitTests.Images;

@@ -1,5 +1,7 @@
-using Whalefleet.Core.Users;
 using FluentAssertions;
+
+using Whalefleet.Core.Users;
+
 using Xunit;
 
 namespace Whalefleet.UnitTests.Users;

@@ -1,6 +1,8 @@
+using FluentAssertions;
+
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Stacks;
-using FluentAssertions;
+
 using Xunit;
 
 namespace Whalefleet.UnitTests.Stacks;

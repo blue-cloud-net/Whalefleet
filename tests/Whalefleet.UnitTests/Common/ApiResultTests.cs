@@ -1,6 +1,9 @@
 using System.Text.Json;
-using Whalefleet.Application.Common;
+
 using FluentAssertions;
+
+using Whalefleet.Application.Common;
+
 using Xunit;
 
 namespace Whalefleet.UnitTests.Common;
@@ -14,7 +17,7 @@ namespace Whalefleet.UnitTests.Common;
 /// </remarks>
 public class ApiResultTests
 {
-    private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions _webJson = new(JsonSerializerDefaults.Web);
 
     [Fact]
     public void OkWithoutData_ShouldProduceSuccessResult()
@@ -70,7 +73,7 @@ public class ApiResultTests
     {
         var result = ApiResults.Fail<object>(ErrorCodes.InternalError, "服务器内部错误");
 
-        var json = JsonSerializer.Serialize(result, WebJson);
+        var json = JsonSerializer.Serialize(result, _webJson);
 
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
@@ -87,7 +90,7 @@ public class ApiResultTests
     {
         var result = ApiResults.Ok(new { username = "admin" });
 
-        var json = JsonSerializer.Serialize(result, WebJson);
+        var json = JsonSerializer.Serialize(result, _webJson);
 
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
@@ -103,7 +106,7 @@ public class ApiResultTests
     {
         var result = ApiResults.Fail(ErrorCodes.ValidationFailed, "参数校验失败");
 
-        var json = JsonSerializer.Serialize(result, WebJson);
+        var json = JsonSerializer.Serialize(result, _webJson);
 
         using var document = JsonDocument.Parse(json);
 

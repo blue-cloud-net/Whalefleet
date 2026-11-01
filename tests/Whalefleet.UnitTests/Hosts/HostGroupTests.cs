@@ -1,5 +1,7 @@
-using Whalefleet.Core.Hosts;
 using FluentAssertions;
+
+using Whalefleet.Core.Hosts;
+
 using Xunit;
 
 namespace Whalefleet.UnitTests.Hosts;
@@ -28,7 +30,7 @@ public class HostGroupTests
         group.IsDeleted.Should().BeFalse();
 
         // 审计由仓储填充，实体自身不取时间与用户
-        group.CreationTime.Should().Be(default(DateTime));
+        group.CreationTime.Should().Be(default);
         group.CreatorId.Should().Be(Guid.Empty);
     }
 

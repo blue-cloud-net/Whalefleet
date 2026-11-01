@@ -1,7 +1,10 @@
 using System.Reflection;
+
+using FluentAssertions;
+
 using Whalefleet.Core.Common;
 using Whalefleet.Core.Common.Auditing;
-using FluentAssertions;
+
 using Xunit;
 
 namespace Whalefleet.UnitTests.Common.Auditing;

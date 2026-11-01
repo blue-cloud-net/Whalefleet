@@ -1,9 +1,11 @@
+using FluentAssertions;
+
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Containers;
-using Whalefleet.Application.HostTags;
 using Whalefleet.Application.Hosts;
+using Whalefleet.Application.HostTags;
 using Whalefleet.Core.Hosts;
-using FluentAssertions;
+
 using Xunit;
 
 namespace Whalefleet.UnitTests.Hosts;
@@ -115,7 +117,7 @@ public class HostObservabilityTests
     [InlineData("starting", ContainerHealthStatus.Starting)]
     [InlineData("none", ContainerHealthStatus.None)]
     [InlineData(null, ContainerHealthStatus.None)]
-    public void inspect状态解析健康状态(string? status, ContainerHealthStatus expected)
+    public void Inspect状态解析健康状态(string? status, ContainerHealthStatus expected)
     {
         ContainerHealth.FromInspect(status).Should().Be(expected);
     }

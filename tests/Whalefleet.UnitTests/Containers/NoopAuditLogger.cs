@@ -18,7 +18,9 @@ internal sealed class NoopAuditLogger : IAuditLogger
 {
     private readonly List<AuditLogDraft> _recorded = [];
 
-    /// <summary>已记录的草稿（按调用顺序）。</summary>
+    /// <summary>
+    /// 已记录的草稿（按调用顺序）。
+    /// </summary>
     public IReadOnlyList<AuditLogDraft> Recorded => _recorded;
 
     /// <inheritdoc />

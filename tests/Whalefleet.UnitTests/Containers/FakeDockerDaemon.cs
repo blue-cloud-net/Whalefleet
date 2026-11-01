@@ -1,6 +1,8 @@
 using System.Net;
 using System.Text;
+
 using Docker.DotNet;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Core.Hosts;
 
@@ -33,14 +35,18 @@ internal sealed class FakeDockerDaemon : IAsyncDisposable
     private readonly Task _loop;
     private int _callCount;
 
-    /// <summary>用固定响应体构造。</summary>
+    /// <summary>
+    /// 用固定响应体构造。
+    /// </summary>
     /// <param name="body">每次请求都返回这一份 JSON。</param>
     public FakeDockerDaemon(string body)
         : this(_ => body)
     {
     }
 
-    /// <summary>用「随调用次数变化」的响应体工厂构造。</summary>
+    /// <summary>
+    /// 用「随调用次数变化」的响应体工厂构造。
+    /// </summary>
     /// <param name="bodyFactory">入参是已完成的调用次数（从 0 开始），返回该次要返回的 JSON。</param>
     public FakeDockerDaemon(Func<int, string> bodyFactory)
     {
@@ -50,20 +56,26 @@ internal sealed class FakeDockerDaemon : IAsyncDisposable
 
         // 端口 0 = 让系统分配空闲端口，避免并行测试互相抢端口
         var port = FreeTcpPort();
-        Endpoint = new Uri($"tcp://127.0.0.1:{port}");
+        this.Endpoint = new Uri($"tcp://127.0.0.1:{port}");
         _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
         _listener.Start();
 
-        _loop = Task.Run(ServeAsync);
+        _loop = Task.Run(this.ServeAsync);
     }
 
-    /// <summary>守护进程端点（交给 Docker.DotNet 客户端）。</summary>
+    /// <summary>
+    /// 守护进程端点（交给 Docker.DotNet 客户端）。
+    /// </summary>
     public Uri Endpoint { get; }
 
-    /// <summary>已处理的请求数。</summary>
+    /// <summary>
+    /// 已处理的请求数。
+    /// </summary>
     public int CallCount => Volatile.Read(ref _callCount);
 
-    /// <summary>取一个空闲的 TCP 端口。</summary>
+    /// <summary>
+    /// 取一个空闲的 TCP 端口。
+    /// </summary>
     /// <returns>端口号。</returns>
     private static int FreeTcpPort()
     {
@@ -75,7 +87,9 @@ internal sealed class FakeDockerDaemon : IAsyncDisposable
         return port;
     }
 
-    /// <summary>回环 HTTP 服务循环。</summary>
+    /// <summary>
+    /// 回环 HTTP 服务循环。
+    /// </summary>
     private async Task ServeAsync()
     {
         while (!_cts.IsCancellationRequested)

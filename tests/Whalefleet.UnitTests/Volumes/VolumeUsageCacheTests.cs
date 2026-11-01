@@ -1,6 +1,9 @@
 using Docker.DotNet.Models;
+
 using FluentAssertions;
+
 using Whalefleet.Application.Volumes;
+
 using Xunit;
 
 namespace Whalefleet.UnitTests.Volumes;
@@ -15,7 +18,9 @@ namespace Whalefleet.UnitTests.Volumes;
 /// </remarks>
 public sealed class VolumeUsageCacheTests
 {
-    /// <summary>可手动推进的时间源：缓存是按 <see cref="TimeProvider"/> 判过期的。</summary>
+    /// <summary>
+    /// 可手动推进的时间源：缓存是按 <see cref="TimeProvider"/> 判过期的。
+    /// </summary>
     private sealed class MutableTimeProvider : TimeProvider
     {
         private DateTimeOffset _now = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
@@ -26,7 +31,7 @@ public sealed class VolumeUsageCacheTests
     }
 
     private static Dictionary<string, UsageData> Usage(long size, long refCount) =>
-        new Dictionary<string, UsageData>(StringComparer.Ordinal)
+        new(StringComparer.Ordinal)
         {
             ["v"] = new UsageData { Size = size, RefCount = refCount },
         };

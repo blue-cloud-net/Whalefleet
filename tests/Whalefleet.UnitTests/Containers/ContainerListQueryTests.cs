@@ -1,8 +1,12 @@
 using System.Globalization;
 using System.Text;
-using Whalefleet.Application.Containers;
+
 using FluentAssertions;
+
 using Microsoft.Extensions.Logging.Abstractions;
+
+using Whalefleet.Application.Containers;
+
 using Xunit;
 
 namespace Whalefleet.UnitTests.Containers;
@@ -22,7 +26,9 @@ namespace Whalefleet.UnitTests.Containers;
 /// </remarks>
 public class ContainerListQueryTests
 {
-    /// <summary>造一个指向假守护进程的服务。</summary>
+    /// <summary>
+    /// 造一个指向假守护进程的服务。
+    /// </summary>
     /// <param name="daemon">假守护进程。</param>
     /// <returns>容器查询用例。</returns>
     private static ContainerService ServiceFor(FakeDockerDaemon daemon) =>

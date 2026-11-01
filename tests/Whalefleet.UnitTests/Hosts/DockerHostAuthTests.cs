@@ -1,7 +1,9 @@
+using FluentAssertions;
+
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Hosts;
-using FluentAssertions;
+
 using Xunit;
 
 namespace Whalefleet.UnitTests.Hosts;
@@ -81,7 +83,7 @@ public class DockerHostAuthTests
     {
         var act = () => DockerHostAuth.From(HostCredentials.FromJson(DockerHostAuthKind.Tls, json));
 
-        (act.Should().Throw<BusinessException>())
+        act.Should().Throw<BusinessException>()
             .Which.Code.Should().Be(ErrorCodes.HostUnreachable);
         act.Should().Throw<BusinessException>().WithMessage($"*{missingField}*");
     }
@@ -95,7 +97,7 @@ public class DockerHostAuthTests
     {
         var act = () => DockerHostAuth.From(HostCredentials.FromJson(DockerHostAuthKind.Basic, json));
 
-        (act.Should().Throw<BusinessException>())
+        act.Should().Throw<BusinessException>()
             .Which.Code.Should().Be(ErrorCodes.HostUnreachable);
     }
 

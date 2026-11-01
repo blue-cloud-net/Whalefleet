@@ -1,9 +1,13 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
-using Whalefleet.Application.Containers;
+
 using FluentAssertions;
+
 using Microsoft.Extensions.Logging.Abstractions;
+
+using Whalefleet.Application.Containers;
+
 using Xunit;
 using Xunit.Abstractions;
 
@@ -42,14 +46,20 @@ public class ContainerListPerformanceTests
 
     public ContainerListPerformanceTests(ITestOutputHelper output) => _output = output;
 
-    /// <summary>验收阈值（P95 毫秒）。</summary>
-    private const long P95BudgetMs = 500;
+    /// <summary>
+    /// 验收阈值（P95 毫秒）。
+    /// </summary>
+    private const long _p95BudgetMs = 500;
 
-    /// <summary>预热轮次：首次调用要触发 JIT 与泛型实例化，不计入统计。</summary>
-    private const int WarmupIterations = 5;
+    /// <summary>
+    /// 预热轮次：首次调用要触发 JIT 与泛型实例化，不计入统计。
+    /// </summary>
+    private const int _warmupIterations = 5;
 
-    /// <summary>统计轮次。取 30 次让 P95 至少有 1~2 个真实样本落在尾部。</summary>
-    private const int MeasuredIterations = 30;
+    /// <summary>
+    /// 统计轮次。取 30 次让 P95 至少有 1~2 个真实样本落在尾部。
+    /// </summary>
+    private const int _measuredIterations = 30;
 
     [Fact]
     public async Task 一百个容器的列表_P95_低于500毫秒()
@@ -64,13 +74,13 @@ public class ContainerListPerformanceTests
         var request = new ListContainersRequest { All = true, PageSize = 100 };
 
         // 预热：不计入统计。少了这一步，JIT 与首次泛型实例化会直接吃掉大部分预算
-        for (var i = 0; i < WarmupIterations; i++)
+        for (var i = 0; i < _warmupIterations; i++)
         {
             _ = await service.ListAsync("perf-host", request);
         }
 
-        var samples = new long[MeasuredIterations];
-        for (var i = 0; i < MeasuredIterations; i++)
+        var samples = new long[_measuredIterations];
+        for (var i = 0; i < _measuredIterations; i++)
         {
             var stopwatch = Stopwatch.StartNew();
             var result = await service.ListAsync("perf-host", request);
@@ -91,13 +101,13 @@ public class ContainerListPerformanceTests
         // 更是给后来者一个对照——「上次是 12ms，现在变 60ms」比一句「未超 500ms」有用得多。
         _output.WriteLine(
             $"容器列表基线（100 个）：P50={Percentile(samples, 0.5)}ms, " +
-            $"P95={p95}ms, Max={max}ms, 阈值={P95BudgetMs}ms");
-        _output.WriteLine($"样本（升序）：{string.Join(", ", samples)}");
+            $"P95={p95}ms, Max={max}ms, 阈值={_p95BudgetMs}ms");
+        _output.WriteLine($"样本（升序）：{String.Join(", ", samples)}");
 
         p95.Should().BeLessThan(
-            P95BudgetMs,
+            _p95BudgetMs,
             "容器列表 P95 基线（样本：{0}）",
-            string.Join(", ", samples));
+            String.Join(", ", samples));
     }
 
     [Fact]

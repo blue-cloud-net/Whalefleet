@@ -1,8 +1,10 @@
-using Whalefleet.Core.Repositories;
 using FluentAssertions;
+
+using Whalefleet.Core.Repositories;
+
 using Xunit;
 
-namespace Whalefleet.UnitTests.Registries;
+namespace Whalefleet.UnitTests.Repositories;
 
 /// <summary>
 /// <see cref="RepositoryCredential"/> 实体的不变量测试。

@@ -1,5 +1,7 @@
-using Whalefleet.Core.Hosts;
 using FluentAssertions;
+
+using Whalefleet.Core.Hosts;
+
 using Xunit;
 
 namespace Whalefleet.UnitTests.Hosts;

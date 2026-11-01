@@ -1,6 +1,8 @@
+using FluentAssertions;
+
 using Whalefleet.Application.Auditing;
 using Whalefleet.Core.Auditing;
-using FluentAssertions;
+
 using Xunit;
 
 namespace Whalefleet.UnitTests.Auditing;

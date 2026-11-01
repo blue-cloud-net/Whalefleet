@@ -1,5 +1,7 @@
-using Whalefleet.Core.Users;
 using FluentAssertions;
+
+using Whalefleet.Core.Users;
+
 using Xunit;
 
 namespace Whalefleet.UnitTests.Users;
@@ -30,7 +32,7 @@ public class UserTests
         user.IsDeleted.Should().BeFalse();
 
         // 审计由仓储在写库前填充，实体自身不取当前时间也不取当前用户
-        user.CreationTime.Should().Be(default(DateTime));
+        user.CreationTime.Should().Be(default);
         user.CreatorId.Should().Be(Guid.Empty);
     }
 

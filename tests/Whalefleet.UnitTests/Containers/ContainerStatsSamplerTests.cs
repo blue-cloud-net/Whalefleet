@@ -1,11 +1,15 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+
+using FluentAssertions;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+
 using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Containers;
-using FluentAssertions;
+
 using Xunit;
 
 namespace Whalefleet.UnitTests.Containers;
@@ -25,7 +29,9 @@ namespace Whalefleet.UnitTests.Containers;
 /// </remarks>
 public sealed class ContainerStatsSamplerTests
 {
-    /// <summary>等待采样到达的上限（假提供者一推就到，这个值只是防挂死的保险）。</summary>
+    /// <summary>
+    /// 等待采样到达的上限（假提供者一推就到，这个值只是防挂死的保险）。
+    /// </summary>
     private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(5);
 
     [Fact]
@@ -217,10 +223,14 @@ public sealed class ContainerStatsSamplerTests
         private readonly Channel<ContainerStatsSample> _channel =
             Channel.CreateUnbounded<ContainerStatsSample>();
 
-        /// <summary>流是否已被取消。</summary>
+        /// <summary>
+        /// 流是否已被取消。
+        /// </summary>
         public bool Cancelled { get; private set; }
 
-        /// <summary>让流立即失败（为 <see langword="null"/> 时流正常产出采样）。</summary>
+        /// <summary>
+        /// 让流立即失败（为 <see langword="null"/> 时流正常产出采样）。
+        /// </summary>
         public Exception? Failure { get; init; }
 
         /// <summary>
@@ -252,9 +262,9 @@ public sealed class ContainerStatsSamplerTests
         {
             try
             {
-                if (Failure is not null)
+                if (this.Failure is not null)
                 {
-                    throw Failure;
+                    throw this.Failure;
                 }
 
                 await foreach (var sample in _channel.Reader.ReadAllAsync(cancellationToken))

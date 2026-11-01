@@ -1,5 +1,7 @@
-using Whalefleet.Core.Hosts;
 using FluentAssertions;
+
+using Whalefleet.Core.Hosts;
+
 using Xunit;
 
 namespace Whalefleet.UnitTests.Hosts;
@@ -31,7 +33,7 @@ public class DockerHostTests
         host.IsDeleted.Should().BeFalse();
 
         // 审计由仓储填充，实体自身不取时间与用户
-        host.CreationTime.Should().Be(default(DateTime));
+        host.CreationTime.Should().Be(default);
         host.CreatorId.Should().Be(Guid.Empty);
     }
 
