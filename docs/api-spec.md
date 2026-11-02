@@ -131,10 +131,8 @@
 
 ### 当前已分配的错误码
 
-> **本表是错误码的唯一事实源**。后端常量（`Whalefleet.Application.Common.ErrorCodes`）、
-> 后端语义分类（`ErrorCodeCatalog`）与前端引用（`src/Whalefleet.UI/src/types/api.ts` 的 `ErrorCode`）
-> 三处必须与本表**逐码一致**（含常量名）。新增一个错误码需要同步改四处：本表 → `ErrorCodes` →
-> `ErrorCodeCatalog` → 前端 `ErrorCode`，并补上错误码守卫测试，否则会落入「未登记」兜底分类。
+> 本表记录**当前已实现**的错误码，必须与代码保持一致；未实现的规划编号单列于后文。
+> 新增或修改错误码须同步后端常量、语义分类、HTTP 映射、守卫测试和前端契约，具体同步点见下文。
 
 | code | HTTP | 含义 | 阶段 |
 |------|------|------|------|
@@ -148,14 +146,9 @@
 | `1102` | 401 | Refresh token 已撤销或无效 | 0.0.5 |
 | `1103` | 429 | 登录速率限制（5 次/分钟） | 0.0.4 |
 | `1104` | 401 | Terminal token 无效或已过期 | 0.8.0 |
-| `1105` | 401 | 个人访问令牌（PAT）无效或已撤销 | 0.18.0 |
-| `1106` | 401 | 个人访问令牌已过期 | 0.18.0 |
-| `1107` | 404 | 个人访问令牌不存在 | 0.18.0 |
 | `1200` | 400 | 用户名已存在 | 0.0.8 |
 | `1201` | 404 | 用户不存在 | 0.0.8 |
 | `1202` | 400 | 密码强度不满足要求 | 0.0.5 |
-| `1203` | 400 | 团队名已占用 | 0.13.0 |
-| `1204` | 404 | 团队不存在 | 0.13.0 |
 | `1300` | 404 | 主机不存在 | 0.0.8 |
 | `1301` | 502 | 主机连通性失败 | 0.0.13 |
 | `1302` | 400 | 主机已停用 | 0.0.8 |
@@ -172,7 +165,6 @@
 | `1501` | 403 | 无权限访问此主机 | 0.0.8 |
 | `1502` | 403 | 无权限执行此操作（write 权限缺失） | 0.12.0 |
 | `1503` | 404 | 授权记录不存在 | 0.1.0 |
-| `1504` | 403 | MCP 写工具未启用（`Mcp:AllowWrite=false`） | 0.18.0 |
 | `1510` | 404 | 角色不存在 | 0.1.0 |
 | `1511` | 400 | 角色标识已被占用 | 0.1.0 |
 | `1512` | 400 | 角色仍有有效分配，拒绝删除 | 0.1.0 |
@@ -200,23 +192,33 @@
 > 各代码段保留充足空间：0.9.0 起按需分配更细的错误码（`1600-1699` **预留**给操作审计、
 > `1700-1799` **预留**给告警）。
 
+### 规划中的错误码（尚未实现）
+
+以下编号仅为规划预留，当前服务端不会返回，不属于已实现的客户端契约。
+
+| 错误码 | 规划 HTTP 状态 | 含义 | 规划版本 |
+|--------|----------------|------|----------|
+| `1105` | 401 | 个人访问令牌（PAT）无效或已撤销 | 0.18.0 |
+| `1106` | 401 | 个人访问令牌已过期 | 0.18.0 |
+| `1107` | 404 | 个人访问令牌不存在 | 0.18.0 |
+| `1203` | 400 | 团队名已占用 | 0.13.0 |
+| `1204` | 404 | 团队不存在 | 0.13.0 |
+| `1504` | 403 | MCP 写工具未启用（`Mcp:AllowWrite=false`） | 0.18.0 |
+
 ### Mock 与契约同步
 
-前端有一层 MSW mock（`src/Whalefleet.UI/src/mocks/`）用于**隔离开后端开发**，
-它让本表变成**五处**同步而非四处：
+新增或修改错误码时需核对以下七个同步点（后端五处及前端两处）：
 
-1. 本表（唯一事实源）
-2. 后端 `ErrorCodes`
-3. 后端 `ErrorCodeCatalog`
-4. 前端 `types/api.ts` 的 `ErrorCode`
-5. **mock 的 `src/mocks/envelope.ts`**（含错误码 → HTTP 状态映射与默认文案）
+1. 后端 `ErrorCodes` 常量。
+2. 后端 `ErrorCodeCatalog` 的分类和默认文案。
+3. API 的 `ErrorHttpStatus` 语义分类到 HTTP 状态映射。
+4. `ErrorCodesTests` 与 `ErrorHttpStatusTests` 守卫测试。
+5. 本文的已实现错误码表。
+6. 前端 `types/api.ts` 的 `ErrorCode`。
+7. mock 的 `src/mocks/envelope.ts` 默认文案和状态映射。
 
-> 新增或修改错误码时，**五处都要改**；`tests/mock-contract.spec.ts` 会逐条比对
-> 错误码→HTTP 状态的映射，漏改则测试失败。
-
-mock 的 HTTP 状态码**逐条拄自后端代码**（`ErrorCodeCatalog.Classify` → `ErrorHttpStatus.ToHttpStatus`），
-而不是拄自本表的表格——表格可能滞后，代码不会。未登记的错误码一律兜底 500，
-**不按数值分段推断**（同段内既有 404 也有 502、429）。
+前端 `tests/mock-contract.spec.ts` 比对错误码到 HTTP 状态的映射。未登记错误码一律兜底 500，
+**不按数值分段推断**；mock 应与后端 `ErrorCodeCatalog.Classify` → `ErrorHttpStatus.ToHttpStatus` 一致。
 
 ---
 
@@ -1337,7 +1339,7 @@ nginx: [emerg] …
 | 操作 | 路径 | 阶段 | 说明 |
 |------|------|------|------|
 | 获取列表 | `POST /api/v1/hosts/{hostId}/images/list` | 0.0.10 | Body: `{ all?, search?, pageIndex?, pageSize?, sortBy?, sortDir? }`；分页在服务端**内存**完成（Docker 无分页参数），`pageSize` 上限 100 |
-| 拉取 | `POST /api/v1/hosts/{hostId}/images/pull` | 0.0.10 | Body: `{ image, tag?, platform? }`；0.0.10 一次性返回结果，0.5.0 改 SignalR 实时进度 |
+| 拉取 | `POST /api/v1/hosts/{hostId}/images/pull` | 0.0.10 | Body: `{ image, tag?, platform? }`；按镜像地址匹配已登记的仓库凭据，未登记时匿名拉取；0.5.0 起支持 SignalR 实时进度 |
 | 删除 | `POST /api/v1/hosts/{hostId}/images/remove` | 0.0.10 | Body: `{ imageId, force? }`；被容器占用的镜像返回 `1404`/409 |
 | **批量删除** | `POST /api/v1/hosts/{hostId}/images/batch-remove` | **0.1.0** | Body: `{ imageIds: string[], force? }`；响应为汇总结果，**部分成功也是 200**（数据卷侧同形状） |
 | **打标签** | `POST /api/v1/hosts/{hostId}/images/tag` | **0.3.0** | Body: `{ imageId, repository, tag? }`；对应 `docker tag`。`repository` **不得含标签**（否则 `1000`），`tag` 省略或空串取 `latest` |
@@ -2331,3 +2333,12 @@ nginx: [emerg] …
 - ❌ 应用模板相关 API、GitOps 从 Git 同步 Stack 的 API
 - ❌ 计划任务 / cron 相关 API
 - ❌ MCP 的 stdio 传输与独立部署形态（只做同进程 `/mcp`）
+
+### 开发阶段缺陷修复的行为说明
+
+- 主机管理端点由全局 `host.manage` 保护；主机角色分配端点由全局 `role.read` / `role.write` 保护，均不额外要求目标主机上的 `host.read`。普通主机资源端点仍执行可见性校验。
+- `/healthz` 失败响应保留 `checks.sqlite.error` 字段，使用固定安全文案；内部异常详情记录在服务端日志。
+- 终端文本控制消息支持 WebSocket 分片，累计超过 64 KiB 时以 `MessageTooBig` 关闭；二进制输入按字节流转发。
+- Compose 环境变量必须显式赋值；`KEY: ""`、`KEY=` 表示空字符串，`KEY:`、YAML null 及非标量值会返回 `1904`。
+- 删除 Stack 时若要求删除数据卷，除卷已不存在外，删卷失败会使任务失败并保留 Stack 记录；已删除的资源不会回滚，可解除占用后重试。
+- Webhook 限流在请求之间共享，每个 Stack 在滑动的 60 秒内最多受理十次；被限流请求不延长窗口。

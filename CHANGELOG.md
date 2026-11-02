@@ -89,6 +89,27 @@ before the first public release).
 - **The status filter is remembered**: it is a continuation of "which kind of containers do I
   want to look at this time"; not remembering it means clicking it again on every visit.
 
+### Unassigned — Deployment mode switching (internal draft)
+
+#### Fixed
+
+- **`make docker-up` now starts the direct-socket mode**: the deployment target gained a
+  `MODE=direct|proxy` switch (default `direct`). It used to run a bare
+  `docker compose up -d`, which only starts the services **without** a profile — i.e. the
+  socket-proxy pair — so the direct-socket service was never started at all.
+- **The two deployment modes are now actually mutually exclusive**: `--profile direct` is
+  **additive**, not a switch, so it also started the un-profiled `proxy` service; both
+  containers then fought over the same host port
+  (`Bind for 0.0.0.0:8080 failed: port is already allocated`) and neither came up. Mode
+  switching now **names the service** (`up -d direct` / `up -d proxy socket-proxy`).
+- **`make docker-down` no longer leaves the direct-socket container running**: a plain
+  `docker compose down` only tears down the services visible under the current profile, so
+  the profiled `direct` container survived and kept holding the host port. The target now
+  stops and removes every service of the production compose file explicitly.
+- **`make docker-up` now writes `DOCKER_GID` into `deployments/.env`** (via `deploy-env`),
+  so the direct-socket container joins the host's docker group instead of failing with
+  error 1301 on hosts whose socket GID is not the default 983.
+
 ### `0.10.0` — Compose / Stack basics (internal draft)
 
 #### Added

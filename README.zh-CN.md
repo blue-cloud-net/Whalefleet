@@ -94,33 +94,46 @@ services:
 git clone https://github.com/blue-cloud-net/whalefleet.git
 cd whalefleet
 
-# 2. 构建镜像（Node + .NET SDK + runtime 三阶段）
-docker build -t whalefleet:local .
+# 2. 构建镜像（Node + .NET SDK + runtime 三阶段）。
+#    ⚠️ Dockerfile 在 deployments/，但**构建上下文是仓库根**
+#    （它需要 src/ 与 tests/），因此要显式 -f。
+docker build --load -f deployments/Dockerfile -t whalefleet:local .
 
 # 3. 启动。**无需任何配置**——密码与 JWT 密钥都会自动生成。
 #    默认使用 socket-proxy 模式（推荐）
-docker compose up -d
+docker compose -f deployments/docker-compose.yml up -d
 
 #    改用直挂 socket 模式：先停掉，再
-#    docker compose --profile direct up -d
+#    docker compose -f deployments/docker-compose.yml up -d direct
+#    ⚠️ 不要加 --profile direct：profile 是加法，会把 proxy 一起启起来 → 端口冲突。
 
 # 4. 取回自动生成的初始管理员密码
-docker compose exec whalefleet cat /app/data/initial-admin.txt
+docker compose -f deployments/docker-compose.yml exec whalefleet cat /app/data/initial-admin.txt
 
 # 5. 浏览器访问 http://localhost:8080，用上面文件里的凭据登录
 #
 # ⚠️ 直挂 socket 模式需要把容器加入宿主机 docker 组，否则报 1301：
 #    export DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)
 #
-# 想自己指定密码与密钥？cp .env.example .env 后按注释填。
+# 想自己指定密码与密钥？cp deployments/.env.example deployments/.env 后按注释填。
 # 留空即等价于不传。
+#
+# 💡 或者直接用 Makefile（上面那几步都已经包好了）：
+#    make docker-up              # 构建 → 启动 → 等待健康（默认**直挂 socket**，本机 / 单机用）
+#    make docker-up MODE=proxy   # 走 socket-proxy 中介（对外暴露时用）
+#    make docker-admin-password
+#
+# 📌 要改绑定端口？在 deployments/.env 里设 WHALEFLEET_PORT / WHALEFLEET_UI_PORT，
+#    或单次覆盖：make docker-up API_PORT=9090。
+#    **只有宿主机侧**的端口会变——容器内仍监听 8080，
+#    因此反代与健康检查都不受影响。
 ```
 
 ### 验证部署
 
 ```bash
-docker compose ps                              # 期望 STATUS 为 "healthy"
-docker compose exec whalefleet bash /app/scripts/backup.sh   # 产出经过校验的备份
+docker compose -f deployments/docker-compose.yml ps       # 期望 STATUS 为 "healthy"
+docker compose -f deployments/docker-compose.yml exec whalefleet bash /app/scripts/backup.sh   # 产出经过校验的备份
 
 # ⚠️ 备份目录里除了 .db，还应有一个同名的 .db.jwt.key——
 #    恢复时漏掉它会让所有在线用户被静默登出。

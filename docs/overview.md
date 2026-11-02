@@ -118,6 +118,10 @@ socket-proxy 把 Docker API 权限限定到最小分区集。注意 `POST` 这�
 它关掉时代理只放行 `GET` / `HEAD`，表现为「容器列表正常，但一启停就 403」。
 如必须直挂 socket，请确保 Whalefleet 实例仅暴露给可信网络。
 
+> 仓库根的 `Makefile` 用 `MODE` 开关选模式：`make docker-up` **默认直挂 socket**
+> （适合本机 / 单机使用），`make docker-up MODE=proxy` 才走 socket-proxy 中介。
+> **对外暴露的部署请用后者**——两种模式共用同一个宿主机端口，不能同时跑。
+
 完整安全声明见 [README.zh-CN.md](../README.zh-CN.md#️-安全声明docker-socket-挂载)（[English](../README.md#️-security-notice-docker-socket-mounting)）与
 [constraints.md](constraints.md#docker-socket-挂载-️-高危)。
 

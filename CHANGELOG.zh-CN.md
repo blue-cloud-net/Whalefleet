@@ -78,6 +78,24 @@
 - **状态筛选被记住**：它是「我这次要看哪一类容器」的延续，
   不记住的话每次进页面都要重新点一遍。
 
+### 未分版本——部署模式切换（内部草稿）
+
+#### 修复
+
+- **`make docker-up` 现在启动的是直挂 socket 模式**：部署目标新增 `MODE=direct|proxy`
+  开关（默认 `direct`）。此前执行的是裸 `docker compose up -d`，而它只启
+  **无 profile 的那些 service**——也就是 socket-proxy 那一组，直挂 socket 的 service
+  从来没被启起来。
+- **两种部署模式现在真正互斥**：`--profile direct` 是**加法**不是开关，它会把
+  无 profile 的 `proxy` 一起启起来 → 两个容器抢同一个宿主机端口 →
+  `Bind for 0.0.0.0:8080 failed: port is already allocated`，一个容器都起不来。
+  切换模式现在**点名 service**（`up -d direct` / `up -d proxy socket-proxy`）。
+- **`make docker-down` 不再留下直连容器在跑**：裸 `docker compose down` 只拆当前
+  profile 下可见的 service，带 profile 的 `direct` 容器会活下来并继续占着宿主机端口。
+  该目标现在显式 stop + rm 生产编排的全部 service。
+- **`make docker-up` 现在会把 `DOCKER_GID` 写进 `deployments/.env`**（经 `deploy-env`），
+  直连容器因此能进宿主机的 docker 组，而不是在 socket GID 不是默认 983 的机器上报 1301。
+
 ### `0.10.0`——Compose / Stack 基础功能（内部草稿）
 
 #### 新增

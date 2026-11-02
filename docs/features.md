@@ -274,7 +274,7 @@
 | 功能 | 说明 | 阶段 |
 |------|------|------|
 | ✅ 容器镜像 | Dockerfile 三阶段构建（Node → .NET SDK → runtime）；非 root（uid 10001）运行，只读根文件系统可跑；镜像内含 `curl`（健康检查）与 `sqlite3`（备份） | **0.0.15** |
-| ✅ 一键启动 | `docker-compose.yml` 提供 socket-proxy（推荐，默认）与直挂 socket 两种模式，用 profile 隔离以免 `container_name` 冲突；**零配置**——缺 `JWT__SECRET` / `ADMIN__PASSWORD` 时自动生成并落盘到数据卷 | **0.0.15** |
+| ✅ 一键启动 | `docker-compose.yml` 提供 socket-proxy（推荐，默认）与直挂 socket 两种模式；切换靠**点名 service**（`up -d direct`）——`--profile` 是加法不是开关，两种模式同启会抢同一个宿主机端口；Makefile 侧用 `MODE=direct\|proxy` 选择（默认 `direct`）；**零配置**——缺 `JWT__SECRET` / `ADMIN__PASSWORD` 时自动生成并落盘到数据卷 | **0.0.15** |
 | ✅ 前端同源托管 | API 进程托管 `wwwroot` 下的前端产物（`Spa` 配置节，生产启用）；深链回退到 index.html，但**排除 `/api` 与 `/healthz`**——否则打错的接口路径会变成 200 + HTML | **0.0.15** |
 | ✅ 健康检查 | `/healthz` 探测 SQLite 连通性（`SELECT 1`），失败返回 503 + 异常信息；**不查 Docker daemon**（主机停机时界面仍需可用） | **0.0.15** |
 | ✅ 反代白名单 | `ReverseProxy` 配置节 + 可信代理 / 网段；默认关闭，开启但无白名单则启动失败 | **0.0.15** |

@@ -96,33 +96,47 @@ If you **must mount the socket directly**, make sure the Whalefleet instance is 
 git clone https://github.com/blue-cloud-net/whalefleet.git
 cd whalefleet
 
-# 2. Build the image (Node + .NET SDK + runtime, three stages)
-docker build -t whalefleet:local .
+# 2. Build the image (Node + .NET SDK + runtime, three stages).
+#    ⚠️ The Dockerfile lives in deployments/, but the **build context is the repo root**
+#    (it needs src/ and tests/), hence the explicit -f.
+docker build --load -f deployments/Dockerfile -t whalefleet:local .
 
 # 3. Start. **No configuration required** — the password and JWT key are both generated for you.
 #    The default is socket-proxy mode (recommended).
-docker compose up -d
+docker compose -f deployments/docker-compose.yml up -d
 
 #    To use the direct-socket mode instead, stop first, then:
-#    docker compose --profile direct up -d
+#    docker compose -f deployments/docker-compose.yml up -d direct
+#    ⚠️ Do NOT add --profile direct: profiles are additive, so the proxy comes up
+#       too and the two containers fight over the same host port.
 
 # 4. Retrieve the auto-generated admin password
-docker compose exec whalefleet cat /app/data/initial-admin.txt
+docker compose -f deployments/docker-compose.yml exec whalefleet cat /app/data/initial-admin.txt
 
 # 5. Open http://localhost:8080 and log in with the credentials in that file
 #
 # ⚠️ Direct-socket mode needs the container in the host's docker group, or you get error 1301:
 #    export DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)
 #
-# Prefer to set them yourself? Copy .env.example to .env and fill it in as commented.
-# Leaving a value blank is equivalent to not passing it.
+# Prefer to set them yourself? Copy deployments/.env.example to deployments/.env and fill it in
+# as commented. Leaving a value blank is equivalent to not passing it.
+#
+# 💡 Or just use the Makefile, which wraps all of the above:
+#    make docker-up              # build → start → wait for health (defaults to **direct socket**)
+#    make docker-up MODE=proxy   # via the socket-proxy (use this when exposing the service)
+#    make docker-admin-password
+#
+# 📌 Changing the bind port? Set it in deployments/.env (WHALEFLEET_PORT / WHALEFLEET_UI_PORT)
+#    or override per run: make docker-up API_PORT=9090.
+#    Only the **host-side** port changes — the container still listens on 8080,
+#    so reverse proxies and health checks are unaffected.
 ```
 
 ### Verifying the deployment
 
 ```bash
-docker compose ps                              # expect STATUS "healthy"
-docker compose exec whalefleet bash /app/scripts/backup.sh   # produces a verified backup
+docker compose -f deployments/docker-compose.yml ps       # expect STATUS "healthy"
+docker compose -f deployments/docker-compose.yml exec whalefleet bash /app/scripts/backup.sh   # produces a verified backup
 
 # ⚠️ Alongside the .db you should see a same-named .db.jwt.key —
 #    omitting it on restore silently logs every online user out.

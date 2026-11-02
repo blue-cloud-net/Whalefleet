@@ -283,11 +283,11 @@ services:
 >
 > 另：`INFO` 不能省（`daemon` 信息与容器 / 镜像计数靠 `GetSystemInfoAsync`；卷与网络计数走各自的列表接口），
 > `PING` 是连通性探测，
-> `VERSION` 供概览页展示版本。仓库根 [docker-compose.yml](../docker-compose.yml) 是权威副本。
+> `VERSION` 供概览页展示版本。仓库 [deployments/docker-compose.yml](../deployments/docker-compose.yml) 是权威副本。
 
 详细的安全声明与部署模式见仓库根 [README.zh-CN.md](../README.zh-CN.md#️-安全声明docker-socket-挂载)（[English](../README.md#️-security-notice-docker-socket-mounting)）。
 socket-proxy 的 `POST` 总闸必须为 `1`，否则只放行 `GET` / `HEAD`，表现为「列表正常、启停全 403」。
-仓库根 [docker-compose.yml](../docker-compose.yml) 是权威副本；修改时四处示例需同步
+仓库 [deployments/docker-compose.yml](../deployments/docker-compose.yml) 是权威副本；修改时四处示例需同步
 （`docs/overview.md`、`docs/architecture.md`、两份 `README`）。
 
 ### 日志输出基线（0.0.2 起）

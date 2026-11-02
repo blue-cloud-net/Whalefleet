@@ -19,6 +19,29 @@
 | `Whalefleet.UI` | `src/` | Vue 3 + TS + UnoCSS + Element Plus 单工程 |
 | `Whalefleet.UnitTests` | `tests/` | xUnit 单测。**不得引用 Api / Infrastructure** |
 | `Whalefleet.IntegrationTests` | `tests/` | `WebApplicationFactory` + 真实 Docker socket。唯一允许 `Mvc.Testing` |
+| **部署文件** | `deployments/` | `.env` / `.env.example` / `Dockerfile` / `docker-compose.yml` / `docker-compose.dev.yml` |
+
+> **部署文件在 `deployments/`，不在仓库根**。但 **Docker 构建上下文仍是仓库根**
+> （Dockerfile 要拷 `src/` 与 `tests/`），因此命令是
+> `docker build --load -f deployments/Dockerfile -t whalefleet:local .`。
+> compose 则以 `deployments/` 为项目根（相对路径据此解析），
+> 即 `docker compose -f deployments/docker-compose.yml up -d`。
+> 日常入口是仓库根的 `Makefile`（`make dev` / `make dev-up` / `make docker-up`）。
+>
+> **两种部署模式互斥**：`direct`（直挂 socket，`make docker-up` **默认**）与 `proxy`
+> （socket-proxy 中介，`make docker-up MODE=proxy`）**共用同一个数据卷与同一个宿主机
+> 端口**，不能同时跑——同时起必然是 `port is already allocated`。切换靠**点名
+> service**（`up -d direct` / `up -d proxy socket-proxy`），**不能靠 `--profile`**（见陷阱 83）。
+>
+> **端口分三层，改动前先分清**：
+> · **宿主机端口**——可配。`deployments/.env` 的 `WHALEFLEET_PORT`（默认 8080）
+>   与 `WHALEFLEET_UI_PORT`（默认 30123），或 `make API_PORT=… UI_PORT=…`。
+> · **容器内端口**——**固定 8080**。`appsettings.json` 的 `Urls`、Dockerfile 的
+>   `HEALTHCHECK`、`examples/reverse-proxy/` 的 upstream 三处都写死了它，
+>   改它要三处同步。
+> · **内部端口**（socket-proxy 的 2375、终端的 `/ws`）——由服务名决定，与端口配置无关。
+> ⚠️ `make dev` 时**前端 Vite 的代理目标必须跟着后端端口走**（`VITE_API_PROXY_TARGET`），
+> 否则 Vite 代理到 8080 而后端在 9090，页面全 404——看起来像「接口坏了」。
 
 ---
 
@@ -279,7 +302,7 @@ DDD 战术模式（聚合根 / 领域事件 / 领域服务）**已整体移除**
 | 57 | **PID 1 会忽略带默认动作的信号（含 SIGTERM）** | 内核对 PID 1 的默认动作是「忽略」，只有进程自己装了 handler 才收得到。因此 `docker kill -s SIGTERM` **可能返回成功而容器继续运行**（实测 `sleep` 作 PID 1 即如此）。结论：**「命令没报错」不等于「进程死了」**——判定要读容器**实际状态**。让 SIGTERM 真正生效需要容器里有 `trap "exit 0" TERM` 这样的 handler |
 | 58 | **`TimeSpan.MinValue` 不能当「还没发生过」的初值** | `clock.Elapsed - TimeSpan.MinValue` 越过 `TimeSpan` 的表示范围 → **第一帧上**抛 `OverflowException`。症状极具迷惑性：采样订阅**成功**、后端日志只有一条 `采样流异常结束` 的警告、界面永远停在「等待第一份采样…」——因为抛在**首帧**上，整条流从第一秒起就是空的。正确写法：用 `TimeSpan?` 表示「尚未发布」，首帧因此立即发布（而不是被节流吃掉） |
 | 59 | **容器不在运行时，Docker 给的采样是「全零」（不是「没有数据」）** | 内存 / 网络 / CPU 全为 0，`memory_stats` 整体为空。写采样相关集成测试时，若镜像自带 `ENTRYPOINT`，`cmd=["sleep","60"]` 会被入口点吃掉 → **容器秒退** → 采样全零 → 断言「内存 &gt; 0」以「指标全缺」的面貌失败，看着像业务代码坏了。必须**显式覆盖入口点**（`/bin/sh -c "sleep 60"`），并等容器真正跑起来再订阅 |
-| 60 | **`docker build -t X .` 在 `docker-container` driver 下**不更新**本地镜像** | 默认 builder `multi-platform-builder` 用的是 `docker-container` driver：构建结果**只留在 build cache**（输出末尾一句 `No output specified with docker-container driver. Build result will only remain in the build cache`），`docker images` 里的 `X` **还是旧的那一份**。症状极具迷惑性：构建「成功」、容器也重建了、但改动**一点没生效**——而日志里的堆栈行号仍指向旧代码，容易误判成「改了没用」。**必须 `docker build --load -t X .`**（或把 builder 切回 `docker` driver）。自查：`docker images X --format '{{.CreatedAt}}'` 的时间是不是本次构建的时间 |
+| 60 | **`docker build -t X .` 在 `docker-container` driver 下**不更新**本地镜像** | 默认 builder `multi-platform-builder` 用的是 `docker-container` driver：构建结果**只留在 build cache**（输出末尾一句 `No output specified with docker-container driver. Build result will only remain in the build cache`），`docker images` 里的 `X` **还是旧的那一份**。症状极具迷惑性：构建「成功」、容器也重建了、但改动**一点没生效**——而日志里的堆栈行号仍指向旧代码，容易误判成「改了没用」。**必须 `docker build --load -f deployments/Dockerfile -t X .`**（或把 builder 切回 `docker` driver）。自查：`docker images X --format '{{.CreatedAt}}'` 的时间是不是本次构建的时间 |
 
 | 61 | **`/ws`（0.8.0 终端）必须在 `CurrentHostMiddleware` 里显式跳过** | 终端请求用 **terminal token** 鉴权，不是 access token——在那个中间件眼里 `HttpContext.User` 是**匿名**的，照常往下走 `host.read` 校验必然失败。症状是「一开终端就 403/1501」，而终端本身完全正常、令牌也没问题。排除只针对 `TerminalRoutes.Prefix` 一个前缀，主机校验与 `container.write` 判定改由端点内部完成（不是漏保护，是**换了凭证**） |
 | 62 | **terminal token 靠 audience 被主鉴权拒绝，不能改成手工比对 `typ`** | 它与 access token 共用签名密钥，`aud` 是独立的 `whalefleet-terminal`，而主鉴权只校验主 audience——因此框架在校验阶段就把它拒了。若改成「在 `OnTokenValidated` 里比 `typ` 再拒绝」，漏判一处就等于凭空签发了一批 5 分钟有效、权限完全相同的 access token。`TerminalEndpointsTests` 有一条用例专门拦这个 |
@@ -310,6 +333,7 @@ DDD 战术模式（聚合根 / 领域事件 / 领域服务）**已整体移除**
 | 80 | **搜索/筛选的空值语义要写对** | 「关键字为空 → 全部命中」而不是「都不匹配」。写成后者会让空搜索把整个列表清空，症状是「接口返回成功、列表却是空的」——极难联想到是筛选条件写反了 |
 | 81 | **编排的「发现」与「记忆」是两回事** | 守护进程上的标签是**现状**（用户可能手工删过容器），数据库里的 `stacks` 表是**我们的部署记录**。只看一边都会给出残缺视图。列表接口**合并两边**，并用 `managed` 区分 |
 | 82 | **删除 Stack 成功后要清掉数据库记录** | 否则列表里留下一条「受管但空」的幽灵条目（容器数 0、状态 unknown），用户会以为「删了没生效」而反复重试 |
+| 83 | **compose 的 profile 是「加法」不是开关** | `--profile direct` 会把**无 profile 的 `proxy` 也一起启起来** → 两个容器抢同一个宿主机端口 → `Bind for 0.0.0.0:8080 failed: port is already allocated`，一个容器都起不来。真正互斥要**点名 service**（`up -d direct`）。连带两条：① 裸 `up -d` 起的是「无 profile 的那些服务」（本项目 = proxy 模式），**不是** profile 里的那个；② 普通的 `docker compose down` **不清带 profile 的容器**（只处理当前 profile 可见的服务）——残留容器继续占端口，必须 `down --profile direct` 或显式 `rm -f direct`。`make docker-down` 已按「全 service 列一遍」处理 |
 
 > **Dapper 物化能力（已核实，勿再沿用旧判断）**：Dapper **可以**物化「非公开构造 + 非公开 setter」
 > 的充血实体，用 `skipVisibility` 动态方法。**不需要** Row DTO，**不需要** `InternalsVisibleTo`。
