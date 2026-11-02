@@ -18,7 +18,12 @@
 # 最终镜像就得同时携带两个 SDK 的残留。分成两阶段才能真正「只留产物」。
 #
 # ## 构建
-#   docker build -t whalefleet:local .
+#   docker build --load -t whalefleet:local .
+#
+# ⚠️ **构建上下文是仓库根，不是本文件所在的 deployments/**：
+#    本文件要拷 src/ 与 tests/，上下文必须是整个仓库。
+#    而 .dockerignore 也在仓库根（BuildKit 从上下文根读它）。
+#    因此命令行必须用 `-f deployments/Dockerfile` 指明本文件。
 #
 # ## 注意：前端产物由 publish 阶段复制进 wwwroot
 # Api 进程同源托管前端（见 SpaOptions），因此 dist 必须出现在**发布目录内**，

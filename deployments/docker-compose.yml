@@ -2,7 +2,8 @@
 # Whalefleet — 部署示例
 # ============================================================================
 # **两种模式都在下面，默认启用第 2 种（socket-proxy，推荐）。**
-# 切换方式：用 --profile direct 指定模式（不能靠注释掉其中一个）。
+# 切换方式：**点名 service**（`up -d direct` / `up -d proxy socket-proxy`），
+# 不能靠注释掉其中一个——被注释掉的模式会在某次改动里悄悄消失。
 #
 #   1. direct  —— 直挂 Docker socket。功能完整，但等价于把宿主机 root 权限
 #                 交给容器内任何进程（含本项目自身与将来任何拉进来的依赖）。
@@ -22,8 +23,17 @@
 #   docker compose exec whalefleet cat /app/data/initial-admin.txt
 #
 # 换成直挂 socket 模式：
-#   docker compose down && docker compose --profile direct up -d
+#   docker compose down && docker compose up -d direct
 #   docker compose exec direct cat /app/data/initial-admin.txt
+#
+# ⚠️ **不要用 `--profile direct` 来切模式**：profile 是**加法**不是开关。
+#    `docker compose --profile direct up -d` 会把「无 profile 的 proxy」也一起启起来，
+#    两个容器抢同一个宿主机端口 →
+#    `Bind for 0.0.0.0:8080 failed: port is already allocated`，一个容器都起不来。
+#    要切模式就**点名 service**。
+# ⚠️ 同理，普通的 `docker compose down` **不会**清掉带 profile 的 direct 容器
+#    （down 只处理当前 profile 下可见的服务），它会继续占着宿主机端口。
+#    彻底清理：`docker compose --profile direct down`，或 `docker compose rm -f direct`。
 # ============================================================================
 
 name: whalefleet
@@ -33,7 +43,9 @@ services:
   # 模式 1：直挂 socket
   # ------------------------------------------------------------------
   # ⚠️ 本 service 带 `direct` profile，**默认不启动**。
-  #    启用方式：docker compose --profile direct up -d
+  #    profile 的作用是「让裸 `up -d` 不会同时启两种模式」，**不是切换开关**——
+  #    profile 是加法：`--profile direct` 还会把无 profile 的 proxy 一起启起来。
+  #    启用方式：docker compose up -d direct（点名 service）
   direct:
     profiles: ["direct"]
     image: ${WHALEFLEET_IMAGE:-whalefleet:local}
@@ -45,7 +57,11 @@ services:
     # `docker compose ps` 查实际生成的 <项目>-direct-1。
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      # ⚠️ 左边是**宿主机**端口（可配），右边是**容器内**端口（固定 8080）。
+      #    容器内那个不能改：appsettings.json 的 "Urls"、Dockerfile 的 HEALTHCHECK、
+      #    以及 examples/reverse-proxy/ 的 upstream（proxy:8080）三处都写死了它。
+      #    改宿主机侧不影响反代与健康检查。
+      - "${WHALEFLEET_PORT:-8080}:8080"
     volumes:
       # ⚠️ 这是本文件里最需要认真对待的一行。
       #    容器内任何进程（含本项目的未来依赖）都能通过它创建特权容器、
@@ -78,7 +94,7 @@ services:
   # 模式 2：socket-proxy（默认启用）
   # ------------------------------------------------------------------
   # 切换到另一种模式：先 docker compose down，再
-  #   docker compose --profile direct up -d
+  #   docker compose up -d direct
   # 两者共用同一个数据卷与同一个 8080 端口，无法共存。
   proxy:
     image: ${WHALEFLEET_IMAGE:-whalefleet:local}
@@ -95,7 +111,11 @@ services:
     depends_on:
       - socket-proxy
     ports:
-      - "8080:8080"
+      # ⚠️ 左边是**宿主机**端口（可配），右边是**容器内**端口（固定 8080）。
+      #    容器内那个不能改：appsettings.json 的 "Urls"、Dockerfile 的 HEALTHCHECK、
+      #    以及 examples/reverse-proxy/ 的 upstream（proxy:8080）三处都写死了它。
+      #    改宿主机侧不影响反代与健康检查。
+      - "${WHALEFLEET_PORT:-8080}:8080"
     volumes:
       - whalefleet-data:/app/data
     environment:

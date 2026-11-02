@@ -71,6 +71,7 @@
 **/docker-compose*
 **/Dockerfile*
 **/.dockerignore
+Makefile
 
 # ---------- 文档 ----------
 # 镜像里不需要 Markdown；README 的内容已进入镜像标签与 OCI 元数据。

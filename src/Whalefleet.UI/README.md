@@ -25,6 +25,15 @@ pnpm dev:real   # 连真实后端（默认代理到 http://localhost:8080）
 | `pnpm test` | Vitest（单元测试 + mock 契约守卫） |
 | `pnpm build` | 类型检查 + 生产构建 |
 
+### 开发端口
+
+| 环境变量 | 默认值 | 说明 |
+|----------|--------|------|
+| `VITE_DEV_PORT` | `30123` | dev server 监听端口。**显式设置时启用 `strictPort`**——端口被占用会直接报错，而不是静默顺延到 +1（顺延后日志里仍写着 30123，极难联想到冲突）。 |
+| `VITE_API_PROXY_TARGET` | `http://localhost:8080` | 代理目标（`/api`、`/hubs`、`/ws` 共用）。**改后端端口时必须同步改它**，否则页面全 404。 |
+
+> 仓库根的 `Makefile` 已把两者串好：`make dev API_PORT=9090 UI_PORT=30130`。
+
 ---
 
 ## Mock 模式（隔离开后端开发）

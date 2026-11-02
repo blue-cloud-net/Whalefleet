@@ -79,7 +79,10 @@ jobs:
       - name: 构建镜像
         uses: docker/build-push-action@v7
         with:
+          # ⚠️ Dockerfile 在 deployments/，但**上下文仍是仓库根**：
+          #    镜像构建要拷 src/ 与 tests/，上下文必须是整个仓库。
           context: .
+          file: deployments/Dockerfile
           push: false
           load: true
           tags: whalefleet:ci

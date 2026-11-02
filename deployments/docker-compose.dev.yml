@@ -1,0 +1,128 @@
+# ============================================================================
+# Whalefleet — 开发环境编排（dotnet watch + Vite，均在容器内）
+# ============================================================================
+# 与生产编排（docker-compose.yml）**完全独立**：项目名不同、网络不同、
+# 数据卷不同，两者可以同时跑。
+#
+#   make dev-up     启动（构建镜像 → 起容器）
+#   make dev-logs   看日志
+#   make dev-down   停（保留数据卷）
+#
+# ## 路径约定
+# 本文件位于 deployments/，compose 以**本目录**为项目根解析相对路径，
+# 因此源码目录一律写作 ../src/... 、../ 为仓库根。
+# ⚠️ 构建上下文仍然是**仓库根**（Dockerfile 要拷 src/ 与 tests/），
+#    所以生产构建必须显式 `docker build -f deployments/Dockerfile .`。
+#
+# ⚠️ 与生产编排的三个关键差异：
+#   1. 不挂 docker.socket 的**代理**，而是直挂 socket（开发期需要本机 Docker），
+#      且挂的是 `:ro`（只能限制写 socket 文件本身，不限制 Docker API 能力）。
+#   2. 数据库与日志写在**卷**里（/data），不写在挂载进来的源码树里——
+#      sqlite 文件与日志文件一旦落在源码目录里，dotnet watch 会把它们当成
+#      「源码变更」而无限重启（写一次日志 = 触发一次重编译）。
+#   3. SPA 托管关闭（Spa:Enabled=false，Development 默认），页面由 Vite 提供。
+#
+# ⚠️ 源码目录被挂进容器后，容器内的编译产物（bin/obj）**用命名卷隔离**，
+#    因此不会在宿主机源码树里留下 root 属主的文件。
+# ============================================================================
+
+name: whalefleet-dev
+
+services:
+  # ------------------------------------------------------------------
+  # 后端：dotnet watch（改 .cs 即热重载）
+  # ------------------------------------------------------------------
+  api:
+    image: mcr.microsoft.com/dotnet/sdk:10.0
+    working_dir: /src
+    command:
+      - dotnet
+      - watch
+      - run
+      - --project
+      - src/Whalefleet.Api/Whalefleet.Api.csproj
+      - --no-launch-profile
+    environment:
+      # Development 档：相对路径的数据库 / 日志、且**不**托管前端产物
+      # （否则会去找不存在的 wwwroot 并直接启动失败）。
+      ASPNETCORE_ENVIRONMENT: Development
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "true"
+      # ⚠️ 绑定挂载的文件系统上 inotify 未必可靠（Docker Desktop 尤其），
+      #    不开轮询会表现为「改了 .cs 但不热重载」。
+      DOTNET_USE_POLLING_FILE_WATCHER: "1"
+      # 数据与日志一律落到卷里（理由见文件头注释 2）。
+      Persistence__DatabasePath: /data/whalefleet.db
+      Serilog__WriteTo__1__Args__path: /data/logs/app-.log
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ../:/src
+      - whalefleet-dev-data:/data
+      # 开发期需要能操作本机 Docker（管理容器 / 镜像 / 卷）。
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # NuGet 包缓存卷：否则每次重建容器都要重新下载依赖。
+      - whalefleet-dev-nuget:/root/.nuget/packages
+      # 编译产物放卷里，不写回宿主机源码树。两个理由：
+      #   · 不留 root 属主的 bin/obj（否则还得 sudo chown -R）；
+      #   · 不覆盖宿主机的 obj/project.assets.json——那里面记的是宿主机路径，
+      #     被容器路径覆盖后，本地 `dotnet build` 的还原状态会失效。
+      - whalefleet-dev-api-bin:/src/src/Whalefleet.Api/bin
+      - whalefleet-dev-api-obj:/src/src/Whalefleet.Api/obj
+      - whalefleet-dev-core-bin:/src/src/Whalefleet.Core/bin
+      - whalefleet-dev-core-obj:/src/src/Whalefleet.Core/obj
+      - whalefleet-dev-app-bin:/src/src/Whalefleet.Application/bin
+      - whalefleet-dev-app-obj:/src/src/Whalefleet.Application/obj
+      - whalefleet-dev-infra-bin:/src/src/Whalefleet.Infrastructure/bin
+      - whalefleet-dev-infra-obj:/src/src/Whalefleet.Infrastructure/obj
+    group_add:
+      # 宿主机 socket 通常是 srw-rw---- root:docker，容器内 app 用户不在该组
+      # → 直连会报「无法连接 Docker 守护进程」(1301)。
+      - "${DOCKER_GID:-983}"
+    ports:
+      # 左边是**宿主机**端口（可配），右边是**容器内**端口（固定 8080）。
+      - "${WHALEFLEET_PORT:-8080}:8080"
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------
+  # 前端：Vite dev server（热更新）
+  # ------------------------------------------------------------------
+  ui:
+    image: node:26-alpine
+    working_dir: /ui
+    command: >
+      sh -c "npm install -g pnpm@12.11.2
+      && CI=true pnpm install --frozen-lockfile
+      && pnpm dev"
+    environment:
+      # 容器内 Vite 代理指向 api 服务名（同一 compose 网络），
+      # 而不是我本机的 localhost——后者在容器里指的是容器自己。
+      # ⚠️ 这里用的是**容器内**端口（api 固定监听 8080），
+      #    与宿主机上映射出去的 WHALEFLEET_PORT 无关。
+      VITE_API_PROXY_TARGET: http://api:8080
+      # Vite 在容器内的监听端口。宿主机侧用 ${WHALEFLEET_UI_PORT:-30123} 映射。
+      VITE_DEV_PORT: "30123"
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ../src/Whalefleet.UI:/ui
+      # node_modules 用卷：否则容器每次启动都要把依赖重新装进宿主机的目录。
+      - whalefleet-dev-node-modules:/ui/node_modules
+      # pnpm store 卷：依赖下载一次即可复用。
+      - whalefleet-dev-pnpm-store:/root/.local/share/pnpm/store
+    ports:
+      # 左边是**宿主机**端口（可配），右边是**容器内**端口（固定 30123）。
+      - "${WHALEFLEET_UI_PORT:-30123}:30123"
+    restart: unless-stopped
+
+volumes:
+  whalefleet-dev-data:
+  whalefleet-dev-nuget:
+  whalefleet-dev-node-modules:
+  whalefleet-dev-pnpm-store:
+  whalefleet-dev-api-bin:
+  whalefleet-dev-api-obj:
+  whalefleet-dev-core-bin:
+  whalefleet-dev-core-obj:
+  whalefleet-dev-app-bin:
+  whalefleet-dev-app-obj:
+  whalefleet-dev-infra-bin:
+  whalefleet-dev-infra-obj:
