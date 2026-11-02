@@ -79,7 +79,7 @@ internal static class ComposePlanner
                 definition.External));
         }
 
-        // 服务引用了但顶层没声明的网络：Compose 会把它当作「隐式声明」并创建
+        // 仅补建默认网络；服务引用的其他网络必须在顶层显式声明。
         if (seen.Add(DefaultNetworkName))
         {
             plans.Add(new ComposeNetworkPlan(

@@ -86,6 +86,12 @@ internal sealed class CurrentHostMiddleware
             return;
         }
 
+        if (context.GetEndpoint()?.Metadata.GetMetadata<GlobalHostManagementAttribute>() is not null)
+        {
+            await _next(context).ConfigureAwait(false);
+            return;
+        }
+
         var hostId = context.GetRouteData().Values[RouteValueKey] as string;
 
         if (!String.IsNullOrWhiteSpace(hostId))

@@ -850,8 +850,9 @@ public sealed class StackService
         string? content,
         bool pullAlways,
         bool pruneOrphans,
-        bool removeVolumes) =>
-        _queue.TryEnqueue(new StackOperationRequest(
+        bool removeVolumes)
+    {
+        if (!_queue.TryEnqueue(new StackOperationRequest(
             taskId,
             hostName,
             stackName,
@@ -863,7 +864,12 @@ public sealed class StackService
             _currentUser.UserId,
             _currentUser.Username,
             _clientIp.Ip,
-            null));
+            null)))
+        {
+            _tasks.Abort(taskId);
+            throw new BusinessException(ErrorCodes.StackDeployFailed, "编排队列已关闭，本次操作未被受理。");
+        }
+    }
 
     /// <summary>
     /// 校验 Stack 名称。

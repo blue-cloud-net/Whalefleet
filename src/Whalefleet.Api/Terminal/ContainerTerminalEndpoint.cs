@@ -353,12 +353,13 @@ internal static class ContainerTerminalEndpoint
     /// 控制帧用文本能一眼分清；且它是低频帧，解析成本无意义。定长二进制头会省几微秒，
     /// 但排障时要查表——收益远小于代价。</para>
     /// </remarks>
-    private static async Task<string> PumpFromClientAsync(
+    internal static async Task<string> PumpFromClientAsync(
         WebSocket socket,
         IContainerTerminalSession session,
         CancellationToken cancellationToken)
     {
         var buffer = new byte[_inputBufferSize];
+        using var textMessage = new MemoryStream();
 
         try
         {
@@ -373,21 +374,33 @@ internal static class ContainerTerminalEndpoint
                     return "client-closed";
                 }
 
-                if (result.Count == 0)
+                if (result.MessageType == WebSocketMessageType.Text)
                 {
+                    if (textMessage.Length + result.Count > 64 * 1024)
+                    {
+                        await socket.CloseOutputAsync(WebSocketCloseStatus.MessageTooBig,
+                            "控制消息超过 64 KiB。", cancellationToken).ConfigureAwait(false);
+                        return "message-too-big";
+                    }
+
+                    textMessage.Write(buffer, 0, result.Count);
+                    if (!result.EndOfMessage)
+                    {
+                        continue;
+                    }
+
+                    var bytes = textMessage.GetBuffer();
+                    var count = (int)textMessage.Length;
+                    if (!await TryApplyControlAsync(bytes, count, session, cancellationToken).ConfigureAwait(false))
+                    {
+                        await session.WriteAsync(bytes, 0, count, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    textMessage.SetLength(0);
                     continue;
                 }
 
-                if (result.MessageType == WebSocketMessageType.Text
-                    && await TryApplyControlAsync(buffer, result.Count, session, cancellationToken)
-                        .ConfigureAwait(false))
-                {
-                    continue;
-                }
-
-                await session
-                    .WriteAsync(buffer, 0, result.Count, cancellationToken)
-                    .ConfigureAwait(false);
+                await session.WriteAsync(buffer, 0, result.Count, cancellationToken).ConfigureAwait(false);
             }
 
             return "cancelled";

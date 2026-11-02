@@ -17,15 +17,14 @@ namespace Whalefleet.Api.Controllers;
 /// <para><b><c>{hostId}</c> 是主机名</b>，与 <c>admin/hosts/{hostId}/update</c> 一致；
 /// 分配表里的 <c>host_id</c> 是 <c>hosts.id</c>（GUID），转换在用例层完成。
 /// 这样前端不必为了调分配接口先查一遍主机的 GUID。</para>
-/// <para><b>⚠️ 本控制器不放在 <c>/api/v1/hosts/{hostId}/...</c> 下</b>：那里会经过
-/// <c>CurrentHostMiddleware</c> 的 <c>host.read</c> 校验，而「给某台主机授权」
-/// 需要的是<b>还没被授权的人</b>也能被管理员看见。用管理员自己的权限去守这道门是可行的，
-/// 但会让路由前缀与「主机资源」混为一谈。</para>
+/// <para><b>全局管理端点</b>：通过 <see cref="GlobalHostManagementAttribute"/> 明确跳过
+/// 目标主机的可见性校验，由各动作的全局角色权限策略保护，主机存在性由用例校验。</para>
 /// <para><b>失败路径不在这里处理</b>：用户不存在 <c>1201</c>、主机不存在 <c>1300</c>、
 /// 角色不存在 <c>1510</c>、分配不存在 <c>1515</c> 一律由
 /// <see cref="RoleAssignmentService"/> 抛 <see cref="BusinessException"/>。</para>
 /// </remarks>
 [ApiController]
+[GlobalHostManagement]
 [Route("api/v1/admin/hosts/{hostId}/roles")]
 [Authorize]
 public sealed class AdminHostRoleAssignmentsController : ControllerBase

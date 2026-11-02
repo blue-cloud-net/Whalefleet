@@ -13,7 +13,7 @@ namespace Whalefleet.Api.Controllers;
 /// </summary>
 /// <remarks>
 /// <para><b>为什么是全局作用域</b>：这些端点管理的是「有哪些主机」这件事本身，
-/// 不针对某一台主机——路径里因此<b>没有</b> <c>{hostId}</c> 段（只有更新 / 删除的目标在主键段里）。
+/// 路径中的 <c>{hostId}</c> 仅指定管理目标；通过全局管理标记跳过主机可见性校验。
 /// 带主机的资源操作在 <c>/api/v1/hosts/{hostId}/...</c>。</para>
 /// <para><b>失败路径不在这里处理</b>：字段非法、主机不存在、主机名重复等一律由 <see cref="HostService"/>
 /// 抛 <see cref="BusinessException"/>，交给全局异常中间件统一映射成 HTTP 状态码。
@@ -22,6 +22,7 @@ namespace Whalefleet.Api.Controllers;
 /// 因此「列表」也是 POST，便于带过滤条件与分页参数而不必发明查询串。</para>
 /// </remarks>
 [ApiController]
+[GlobalHostManagement]
 [Route("api/v1/admin/hosts")]
 [Authorize(Policy = PermissionPolicies.HostsManage)]
 public sealed class AdminHostsController : ControllerBase

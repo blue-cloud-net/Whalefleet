@@ -46,26 +46,27 @@ public sealed class TerminalSessionRegistry
             return false;
         }
 
-        // 用 AddOrUpdate 的更新委托做「检查 + 自增」，避免「先读后写」的竞态：
-        // 返回原值时表示超限（不写入），返回新值时表示已占用。
-        var rejected = false;
-        _counts.AddOrUpdate(
-            userId,
-            static _ => 1,
-            (_, current) =>
+        while (true)
+        {
+            if (!_counts.TryGetValue(userId, out var current))
+            {
+                if (_counts.TryAdd(userId, 1))
+                {
+                    break;
+                }
+            }
+            else
             {
                 if (current >= limit)
                 {
-                    rejected = true;
-                    return current;
+                    return false;
                 }
 
-                return current + 1;
-            });
-
-        if (rejected)
-        {
-            return false;
+                if (_counts.TryUpdate(userId, current + 1, current))
+                {
+                    break;
+                }
+            }
         }
 
         lease = new SessionLease(this, userId);

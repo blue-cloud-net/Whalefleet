@@ -64,7 +64,18 @@ internal sealed class ContainerNotificationDispatcher : BackgroundService
         {
             await foreach (var notification in _bus.SubscribeAsync(stoppingToken).ConfigureAwait(false))
             {
-                await this.DispatchAsync(notification, stoppingToken).ConfigureAwait(false);
+                try
+                {
+                    await this.DispatchAsync(notification, stoppingToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    _logger.LogError(exception, "容器事件派发失败，继续处理后续事件。");
+                }
             }
         }
         catch (OperationCanceledException)

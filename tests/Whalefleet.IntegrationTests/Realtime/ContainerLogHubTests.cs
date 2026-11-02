@@ -118,10 +118,8 @@ public sealed class ContainerLogHubTests : IAsyncLifetime
                 })
                 .Build();
 
-            var received = new TaskCompletionSource<LogPayload>(
-                TaskCreationOptions.RunContinuationsAsynchronously);
-
-            connection.On<LogPayload>("OnLog", value => received.TrySetResult(value));
+            var received = System.Threading.Channels.Channel.CreateUnbounded<LogPayload>();
+            connection.On<LogPayload>("OnLog", value => received.Writer.TryWrite(value));
 
             await connection.StartAsync();
 
@@ -131,24 +129,24 @@ public sealed class ContainerLogHubTests : IAsyncLifetime
             var subscribed = await connection.InvokeAsync<ActionResult>(
                 "SubscribeLogs",
                 containerId,
-                1,
+                100,
                 since);
 
             subscribed.Success.Should().BeTrue(subscribed.Message);
 
-            var payload = await received.Task.WaitAsync(_timeout);
-
-            payload.ContainerId.Should().Be(containerId);
-            payload.Lines.Should().NotBeEmpty();
-
-            // 序号单调递增（不要求连续——中间可能丢过行）。
-            for (var i = 1; i < payload.Lines.Count; i++)
+            using var timeout = new CancellationTokenSource(_timeout);
+            var lines = new List<LogLine>();
+            while (lines.Count < 3)
             {
-                payload.Lines[i]!.Seq.Should().BeGreaterThan(payload.Lines[i - 1]!.Seq);
+                var payload = await received.Reader.ReadAsync(timeout.Token);
+                payload.ContainerId.Should().Be(containerId);
+                lines.AddRange(payload.Lines);
             }
 
-            // 每行都有正文与时间戳。
-            payload.Lines.Should().OnlyContain(item => item.Line != null);
+            lines.Select(line => line.Line).Should().Equal("line-one", "line-two", "line-three");
+            lines.Select(line => line.Seq).Should().BeInAscendingOrder().And.OnlyHaveUniqueItems();
+            lines.Should().OnlyContain(line => line.Timestamp != null);
+
         }
         finally
         {

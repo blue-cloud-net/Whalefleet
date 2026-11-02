@@ -49,11 +49,12 @@ public sealed class InProcessContainerEventBus : IContainerEventBus
     private readonly object _gate = new();
 
     /// <inheritdoc />
-    public async ValueTask PublishAsync(
+    public ValueTask PublishAsync(
         ContainerEventNotification notification,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(notification);
+        cancellationToken.ThrowIfCancellationRequested();
 
         List<Channel<ContainerEventNotification>> targets;
 
@@ -68,9 +69,7 @@ public sealed class InProcessContainerEventBus : IContainerEventBus
             channel.Writer.TryWrite(notification);
         }
 
-        await Task.CompletedTask.ConfigureAwait(false);
-
-        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.CompletedTask;
     }
 
     /// <inheritdoc />

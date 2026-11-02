@@ -205,8 +205,17 @@ internal sealed class SecretFileStore : ISecretProvider
 
         try
         {
-            File.WriteAllText(temporaryPath, content);
-            RestrictToOwner(temporaryPath);
+            var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write };
+            if (!OperatingSystem.IsWindows())
+            {
+                options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+            }
+
+            using (var stream = new FileStream(temporaryPath, options))
+            using (var writer = new StreamWriter(stream))
+            {
+                writer.Write(content);
+            }
 
             // Move(overwrite: true) 在同一文件系统内是原子的。
             File.Move(temporaryPath, path, overwrite: true);
@@ -216,25 +225,6 @@ internal sealed class SecretFileStore : ISecretProvider
             TryDelete(temporaryPath);
             throw;
         }
-    }
-
-    /// <summary>
-    /// 把文件权限收紧为 <c>0600</c>（仅属主可读写）。
-    /// </summary>
-    /// <param name="path">文件路径。</param>
-    /// <remarks>
-    /// Windows 没有 POSIX 权限位，直接跳过——该平台的 ACL 由继承目录决定。
-    /// 权限设置失败<b>不静默降级</b>：那意味着密钥可能被同机其他用户读到，
-    /// 必须让部署方知道，而不是制造「以为收紧了其实没收紧」的错觉。
-    /// </remarks>
-    private static void RestrictToOwner(string path)
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
-        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
     }
 
     /// <summary>

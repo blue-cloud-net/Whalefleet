@@ -335,4 +335,30 @@ public class ContainerListQueryTests
 
         return builder.ToString();
     }
+    [Fact]
+    public async Task 端口顺序_所有排序键存在冲突_输出稳定全序()
+    {
+        var expected = new[]
+        {
+            new { PrivatePort = 80, PublicPort = (int?)8080, Type = "tcp", IP = (string?)"192.168.1.10" },
+            new { PrivatePort = 80, PublicPort = (int?)8080, Type = "tcp", IP = (string?)"192.168.1.20" },
+            new { PrivatePort = 80, PublicPort = (int?)8080, Type = "tcp", IP = (string?)"0.0.0.0" },
+            new { PrivatePort = 80, PublicPort = (int?)8080, Type = "tcp", IP = (string?)"2001:db8::1" },
+            new { PrivatePort = 80, PublicPort = (int?)8080, Type = "tcp", IP = (string?)"::" },
+            new { PrivatePort = 80, PublicPort = (int?)8080, Type = "tcp", IP = (string?)null },
+            new { PrivatePort = 80, PublicPort = (int?)8081, Type = "tcp", IP = (string?)"0.0.0.0" },
+            new { PrivatePort = 80, PublicPort = (int?)null, Type = "tcp", IP = (string?)null },
+            new { PrivatePort = 80, PublicPort = (int?)8000, Type = "udp", IP = (string?)"0.0.0.0" },
+            new { PrivatePort = 443, PublicPort = (int?)80, Type = "tcp", IP = (string?)"0.0.0.0" },
+        };
+        var body = System.Text.Json.JsonSerializer.Serialize(new[]
+        {
+            new { Id = "c1", Names = Enumerable.Repeat("/app", 1), Image = "nginx", State = "running", Ports = expected.Reverse() },
+        });
+        await using var daemon = new FakeDockerDaemon(body);
+        var result = await ServiceFor(daemon).ListAsync("local", new ListContainersRequest { All = true });
+        var ports = result.Items.Should().ContainSingle().Subject.Ports;
+        ports.Select(port => (port.PrivatePort, port.PublicPort, port.Type, port.Ip))
+            .Should().Equal(expected.Select(port => (port.PrivatePort, port.PublicPort, port.Type, port.IP)));
+    }
 }

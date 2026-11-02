@@ -22,7 +22,7 @@ namespace Whalefleet.Infrastructure.Security;
 /// <para><b>为什么保留旧文件名回退</b>：本文件从 <c>registry.key</c> 改名为
 /// <c>repository.key</c>，但已部署的数据卷上仍是旧名字。
 /// 若只认新名字，旧卷会**静默生成一把新密钥**——库里已保存的口令从此全部解不开，
-/// 症状是「认证失败」，根因却完全看不出来。因此旧名存在时一律优先读它。</para>
+/// 症状是「认证失败」，根因却完全看不出来。因此新名不存在时继续读取旧名；已有密钥不可读取或损坏时明确失败。</para>
 /// </remarks>
 internal sealed class RepositorySecretKeyStore
 {
@@ -66,7 +66,7 @@ internal sealed class RepositorySecretKeyStore
     }
 
     /// <summary>
-    /// 取得加密密钥；文件不存在或内容不合法时生成并写入。
+    /// 取得加密密钥；仅在文件不存在时生成并写入。
     /// </summary>
     /// <returns>32 字节密钥材料。</returns>
     /// <remarks>
@@ -78,42 +78,19 @@ internal sealed class RepositorySecretKeyStore
     {
         var path = Path.Combine(_dataDirectory, _keyFileName);
 
-        if (File.Exists(path))
+        var existing = TryRead(path);
+        if (existing is not null)
         {
-            var existing = TryRead(path);
-            if (existing is not null)
-            {
-                _logger.LogDebug("复用已有仓库加密密钥文件 {Path}", path);
-                return existing;
-            }
-
-            _logger.LogWarning(
-                "仓库加密密钥文件 {Path} 内容不合法（长度或格式不对），将重新生成。"
-                + "已保存的仓库口令将无法再解密——需要重新填写。",
-                path);
+            _logger.LogDebug("复用已有仓库加密密钥文件 {Path}", path);
+            return existing;
         }
 
-        // ⚠️ 旧文件名回退：已部署的数据卷上是 registry.key。
-        // 认不出它就会静默生成新密钥 → 库里所有已保存的口令从此解不开。
         var legacyPath = Path.Combine(_dataDirectory, _legacyKeyFileName);
-        if (File.Exists(legacyPath))
+        var legacy = TryRead(legacyPath);
+        if (legacy is not null)
         {
-            var legacy = TryRead(legacyPath);
-            if (legacy is not null)
-            {
-                _logger.LogWarning(
-                    "检测到旧版密钥文件 {LegacyPath}，将继续使用它以保证已保存的仓库口令可解密。"
-                    + "建议手动改名为 {Path}。",
-                    legacyPath,
-                    path);
-
-                return legacy;
-            }
-
-            _logger.LogWarning(
-                "旧版密钥文件 {LegacyPath} 内容不合法（长度或格式不对），将重新生成。"
-                + "已保存的仓库口令将无法再解密——需要重新填写。",
-                legacyPath);
+            _logger.LogWarning("继续使用旧版仓库密钥文件 {LegacyPath}，请随数据卷备份。", legacyPath);
+            return legacy;
         }
 
         var generated = RandomNumberGenerator.GetBytes(RepositorySecretCipher._keySizeBytes);
@@ -129,7 +106,7 @@ internal sealed class RepositorySecretKeyStore
     }
 
     /// <summary>
-    /// 读取密钥文件；不存在或长度不对时返回 <see langword="null"/>。
+    /// 读取密钥文件；不存在时返回 <see langword="null"/>。
     /// </summary>
     private static byte[]? TryRead(string path)
     {
@@ -139,12 +116,22 @@ internal sealed class RepositorySecretKeyStore
         {
             content = File.ReadAllBytes(path);
         }
-        catch (IOException)
+        catch (FileNotFoundException)
+        {
+            return null;
+        }
+        catch (DirectoryNotFoundException)
         {
             return null;
         }
 
-        return content.Length == RepositorySecretCipher._keySizeBytes ? content : null;
+        if (content.Length != RepositorySecretCipher._keySizeBytes)
+        {
+            CryptographicOperations.ZeroMemory(content);
+            throw new InvalidDataException("仓库加密密钥长度不合法，请恢复原密钥文件。");
+        }
+
+        return content;
     }
 
     /// <summary>
@@ -159,8 +146,17 @@ internal sealed class RepositorySecretKeyStore
 
         try
         {
-            File.WriteAllBytes(temporaryPath, content);
-            RestrictToOwner(temporaryPath);
+            var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write };
+            if (!OperatingSystem.IsWindows())
+            {
+                options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+            }
+
+            using (var stream = new FileStream(temporaryPath, options))
+            {
+                stream.Write(content);
+            }
+
             File.Move(temporaryPath, path, overwrite: true);
         }
         catch
@@ -168,19 +164,6 @@ internal sealed class RepositorySecretKeyStore
             TryDelete(temporaryPath);
             throw;
         }
-    }
-
-    /// <summary>
-    /// 把文件权限收紧为 <c>0600</c>（仅属主可读写）。
-    /// </summary>
-    private static void RestrictToOwner(string path)
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
-        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
     }
 
     /// <summary>

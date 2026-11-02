@@ -63,10 +63,10 @@ public sealed class AuditFallbackMiddleware
         {
             await _next(context).ConfigureAwait(false);
         }
-        catch (Exception exception)
+        catch (Exception)
         {
             // 异常路径：外层还没写响应，只能在这里记。
-            await this.RecordAsync(audit, context, ErrorCodes.InternalError, exception.Message)
+            await this.RecordAsync(audit, context, ErrorCodes.InternalError, ErrorCodeCatalog.GetDefaultMessage(ErrorCodes.InternalError))
                 .ConfigureAwait(false);
 
             // 原样抛回：响应体由 ExceptionHandlingMiddleware 统一写，这里不重复处理。

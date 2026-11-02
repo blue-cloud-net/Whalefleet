@@ -324,66 +324,79 @@ public class ImageEndpointsTests : IAsyncLifetime
         using var client = await this.CreateAuthenticatedClientAsync(_adminName);
         var reference = $"{_pullableImage}:{_pullableTag}";
 
-        try
-        {
-            var pulled = await PostDataAsync<PullPayload>(
-                client,
-                "pull",
-                new { image = _pullableImage, tag = _pullableTag });
+        // 公共镜像是共享缓存，测试不删除该标签。
+        var pulled = await PostDataAsync<PullPayload>(
+            client,
+            "pull",
+            new
+            {
+                image = _pullableImage,
+                tag = _pullableTag
+            });
 
-            pulled.ImageId.Should().StartWith("sha256:");
-            pulled.Reference.Should().Be(reference);
-            pulled.Size.Should().BeGreaterThan(0);
-            pulled.RepoTags.Should().Contain(reference);
+        pulled.ImageId.Should().StartWith("sha256:");
+        pulled.Reference.Should().Be(reference);
+        pulled.Size.Should().BeGreaterThan(0);
+        pulled.RepoTags.Should().Contain(reference);
 
-            // 拉取完能查到详情（顺带证明确实落盘了）。
-            var detail = await PostDataAsync<DetailPayload>(
-                client,
-                "inspect",
-                new { imageId = reference });
+        // 拉取完能查到详情（顺带证明确实落盘了）。
+        var detail = await PostDataAsync<DetailPayload>(
+            client,
+            "inspect",
+            new
+            {
+                imageId = reference
+            });
 
-            detail.Id.Should().Be(pulled.ImageId);
-        }
-        finally
-        {
-            // 自造镜像用完就清掉：测试不该给别人的镜像库留下垃圾。
-            using var cleanup = await client.PostAsJsonAsync(
-                $"/api/v1/hosts/{_localHost}/images/remove",
-                new { imageId = reference, force = true });
-
-            // 清理失败（镜像本来就没拉到）不算测试失败，这里不断言状态码。
-        }
+        detail.Id.Should().Be(pulled.ImageId);
     }
 
     [DockerRegistryFact]
     public async Task 删除_自造镜像_返回解绑与删除结果()
     {
         using var client = await this.CreateAuthenticatedClientAsync(_adminName);
-        var reference = $"{_pullableImage}:{_pullableTag}";
+        var source = $"{_pullableImage}:{_pullableTag}";
+        await PostDataAsync<PullPayload>(client, "pull", new
+        {
+            image = _pullableImage,
+            tag = _pullableTag
+        });
+        var reference = $"whalefleet-image-test:{Guid.NewGuid():N}";
+        Tag(source, reference);
 
-        await PostDataAsync<PullPayload>(client, "pull", new { image = _pullableImage, tag = _pullableTag });
+        try
+        {
+            using var response = await client.PostAsJsonAsync(
+                $"/api/v1/hosts/{_localHost}/images/remove",
+                new
+                {
+                    imageId = reference
+                });
 
-        using var response = await client.PostAsJsonAsync(
-            $"/api/v1/hosts/{_localHost}/images/remove",
-            new { imageId = reference, force = true });
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+            var removed = await ReadDataAsync<RemovedPayload>(response);
 
-        var removed = await ReadDataAsync<RemovedPayload>(response);
+            // 两种结果都是合法形态：解绑了标签（镜像本体因为还有别的引用而留下），
+            // 或整个删掉。断言的是「结构对得上」，而不是「必须是哪一种」。
+            removed.Untagged.Should().NotBeNull();
+            removed.Deleted.Should().NotBeNull();
 
-        // 两种结果都是合法形态：解绑了标签（镜像本体因为还有别的引用而留下），
-        // 或整个删掉。断言的是「结构对得上」，而不是「必须是哪一种」。
-        removed.Untagged.Should().NotBeNull();
-        removed.Deleted.Should().NotBeNull();
+            (removed.Untagged.Count + removed.Deleted.Count).Should().BeGreaterThan(0);
 
-        (removed.Untagged.Count + removed.Deleted.Count).Should().BeGreaterThan(0);
+            // 删干净了：再查应当如实变成 1401。
+            using var gone = await client.PostAsJsonAsync(
+                $"/api/v1/hosts/{_localHost}/images/inspect",
+                new { imageId = reference });
 
-        // 删干净了：再查应当如实变成 1401。
-        using var gone = await client.PostAsJsonAsync(
-            $"/api/v1/hosts/{_localHost}/images/inspect",
-            new { imageId = reference });
-
-        gone.StatusCode.Should().Be(HttpStatusCode.NotFound);
+            gone.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            // 即使用例失败也只解绑本测试的标签，不删除共享的源镜像。
+            using var cleanup = await client.PostAsJsonAsync(
+                $"/api/v1/hosts/{_localHost}/images/remove", new { imageId = reference });
+        }
     }
 
     [DockerImageFact]

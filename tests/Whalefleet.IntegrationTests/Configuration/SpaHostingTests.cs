@@ -222,4 +222,28 @@ public sealed class SpaHostingTests
         raw.Should().Contain("\"code\"");
         raw.Should().NotContain("<!doctype html>");
     }
+    [Theory]
+    [InlineData("/API/v1/does-not-exist", 404)]
+    [InlineData("/Healthz", 200)]
+    [InlineData("/healthz/missing", 404)]
+    [InlineData("/Hubs/missing", 404)]
+    [InlineData("/hubs/missing", 404)]
+    [InlineData("/WS/missing", 404)]
+    [InlineData("/ws/missing", 404)]
+    public async Task WithArtifacts_ReservedPrefixes_ShouldNeverReturnHtml(string path, int expected)
+    {
+        var root = CreateSpaRoot();
+        try
+        {
+            using var factory = new ApiFactory().WithSetting("Spa:Enabled", "true").WithSetting("Spa:RootPath", root);
+            using var client = factory.CreateClient();
+            using var response = await client.GetAsync(path);
+            ((int)response.StatusCode).Should().Be(expected);
+            (await response.Content.ReadAsStringAsync()).Should().NotContain("<!doctype html>");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
 }

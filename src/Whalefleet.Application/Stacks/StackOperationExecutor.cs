@@ -521,20 +521,15 @@ public sealed class StackOperationExecutor
                 try
                 {
                     await DockerErrorTranslator.ExecuteAsync(
-                        () => client.Volumes.RemoveAsync(volume.Name, true, cancellationToken),
+                        () => client.Volumes.RemoveAsync(volume.Name, false, cancellationToken),
                         $"数据卷 {volume.Name}",
                         cancellationToken).ConfigureAwait(false);
 
                     removedVolumes++;
                 }
-                catch (BusinessException exception)
+                catch (BusinessException exception) when (exception.Code == ErrorCodes.DockerResourceNotFound)
                 {
-                    _logger.LogWarning(
-                        "主机 {HostId} 删除编排 {Stack} 时数据卷 {Volume} 未被删除：{Reason}",
-                        request.HostName,
-                        request.StackName,
-                        volume.Name,
-                        exception.Message);
+                    // 列举后被其他请求删除，视为幂等成功；其余错误必须让任务失败。
                 }
             }
         }

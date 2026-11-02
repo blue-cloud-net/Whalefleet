@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -40,16 +39,6 @@ public sealed class StackWebhookService
     private const int _tokenHintLength = 8;
 
     /// <summary>
-    /// 限流窗口。
-    /// </summary>
-    private static readonly TimeSpan _rateLimitWindow = TimeSpan.FromMinutes(1);
-
-    /// <summary>
-    /// 限流窗口内允许的最大触发次数。
-    /// </summary>
-    private const int _rateLimitMaxTriggers = 10;
-
-    /// <summary>
     /// 同步等待任务结束的上限（秒）。
     /// </summary>
     /// <remarks>
@@ -70,10 +59,7 @@ public sealed class StackWebhookService
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<StackWebhookService> _logger;
 
-    /// <summary>
-    /// 各 Stack 的最近触发时刻（用于限流）。
-    /// </summary>
-    private readonly ConcurrentDictionary<Guid, Queue<DateTime>> _triggers = new();
+    private readonly StackWebhookRateLimiter _rateLimiter;
 
     /// <summary>
     /// 初始化 Webhook 用例。
@@ -84,6 +70,7 @@ public sealed class StackWebhookService
     /// <param name="queue">任务队列。</param>
     /// <param name="timeProvider">时间源。</param>
     /// <param name="logger">日志。</param>
+    /// <param name="rateLimiter">跨请求共享的限流器。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
     public StackWebhookService(
         IStackRepository repository,
@@ -91,7 +78,8 @@ public sealed class StackWebhookService
         StackTaskRegistry tasks,
         StackOperationQueue queue,
         TimeProvider timeProvider,
-        ILogger<StackWebhookService> logger)
+        ILogger<StackWebhookService> logger,
+        StackWebhookRateLimiter rateLimiter)
     {
         ArgumentNullException.ThrowIfNull(repository);
         ArgumentNullException.ThrowIfNull(hosts);
@@ -100,6 +88,8 @@ public sealed class StackWebhookService
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
 
+        ArgumentNullException.ThrowIfNull(rateLimiter);
+        _rateLimiter = rateLimiter;
         _repository = repository;
         _hosts = hosts;
         _tasks = tasks;
@@ -204,10 +194,15 @@ public sealed class StackWebhookService
 
         _tasks.TryRegister(taskId, hostName, stack.Name, StackOperations.Update, _timeProvider.GetUtcNow().UtcDateTime);
 
-        stack.MarkWebhookUsed(_timeProvider.GetUtcNow().UtcDateTime);
-        await _repository.UpdateAsync(stack, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            stack.MarkWebhookUsed(_timeProvider.GetUtcNow().UtcDateTime);
+            if (!await _repository.UpdateAsync(stack, cancellationToken).ConfigureAwait(false))
+            {
+                throw new BusinessException(ErrorCodes.StackNotFound, "编排 Stack 已不存在。");
+            }
 
-        _queue.TryEnqueue(new StackOperationRequest(
+            if (!_queue.TryEnqueue(new StackOperationRequest(
             taskId,
             hostName,
             stack.Name,
@@ -219,7 +214,16 @@ public sealed class StackWebhookService
             ActorId: null,
             ActorName: null,
             ClientIp: null,
-            WebhookTokenHint: stack.WebhookTokenHint));
+            WebhookTokenHint: stack.WebhookTokenHint)))
+            {
+                throw new BusinessException(ErrorCodes.StackDeployFailed, "编排队列已关闭，本次触发未被受理。");
+            }
+        }
+        catch
+        {
+            _tasks.Abort(taskId);
+            throw;
+        }
 
         _logger.LogInformation(
             "编排 {StackName}（主机 {HostName}）被 Webhook 触发重放（任务 {TaskId}）",
@@ -280,9 +284,9 @@ public sealed class StackWebhookService
     /// <returns>表示异步操作的任务。</returns>
     private async Task WaitAsync(string taskId, CancellationToken cancellationToken)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(_waitTimeoutSeconds);
+        var started = _timeProvider.GetTimestamp();
 
-        while (DateTime.UtcNow < deadline)
+        while (_timeProvider.GetElapsedTime(started) < TimeSpan.FromSeconds(_waitTimeoutSeconds))
         {
             var snapshot = _tasks.Get(taskId);
 
@@ -292,7 +296,7 @@ public sealed class StackWebhookService
                 return;
             }
 
-            await Task.Delay(_waitPollIntervalMs, cancellationToken).ConfigureAwait(false);
+            await Task.Delay(TimeSpan.FromMilliseconds(_waitPollIntervalMs), _timeProvider, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -368,32 +372,10 @@ public sealed class StackWebhookService
     /// <exception cref="BusinessException">触发过于频繁（<c>1907</c>）。</exception>
     private void EnsureWithinRateLimit(Guid stackId)
     {
-        var now = _timeProvider.GetUtcNow().UtcDateTime;
-
-        var allowed = _triggers.AddOrUpdate(
-            stackId,
-            _ =>
-            {
-                var queue = new Queue<DateTime>();
-                queue.Enqueue(now);
-                return queue;
-            },
-            (_, existing) =>
-            {
-                while (existing.Count > 0 && now - existing.Peek() > _rateLimitWindow)
-                {
-                    existing.Dequeue();
-                }
-
-                existing.Enqueue(now);
-                return existing;
-            });
-
-        if (allowed.Count > _rateLimitMaxTriggers)
+        if (!_rateLimiter.TryAcquire(stackId))
         {
-            throw new BusinessException(
-                ErrorCodes.StackWebhookRateLimited,
-                $"Webhook 触发过于频繁（{_rateLimitWindow.TotalSeconds:F0} 秒内最多 {_rateLimitMaxTriggers} 次）");
+            throw new BusinessException(ErrorCodes.StackWebhookRateLimited,
+                "Webhook 触发过于频繁（60 秒内最多 10 次）。");
         }
     }
 

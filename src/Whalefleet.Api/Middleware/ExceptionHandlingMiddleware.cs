@@ -177,7 +177,7 @@ public sealed class ExceptionHandlingMiddleware
             ErrorCodeCatalog.GetDefaultMessage(ErrorCodes.ValidationFailed)),
 
         // 未被「客户端断开」过滤器捕获的超时（例如 HttpClient 超时）。
-        TaskCanceledException => (
+        OperationCanceledException => (
             ErrorCodes.OperationTimeout,
             ErrorCodeCatalog.GetDefaultMessage(ErrorCodes.OperationTimeout)),
 

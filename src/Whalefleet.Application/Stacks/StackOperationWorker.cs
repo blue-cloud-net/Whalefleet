@@ -149,13 +149,14 @@ public sealed class StackOperationWorker : BackgroundService
         {
             var failed = _timeProvider.GetUtcNow().UtcDateTime;
 
-            _registry.MarkFailed(
-                request.TaskId,
+            var failure = new BusinessException(
                 ErrorCodes.StackDeployFailed,
-                exception.Message,
-                failed);
+                ErrorCodeCatalog.GetDefaultMessage(ErrorCodes.StackDeployFailed));
+            _registry.MarkFailed(request.TaskId, failure.Code, failure.Message, failed);
 
-            await this.NotifyFailureAsync(request, ErrorCodes.StackDeployFailed, exception.Message, failed)
+            await this.RecordAuditAsync(scope.ServiceProvider, request, false, failure, null, failed)
+                .ConfigureAwait(false);
+            await this.NotifyFailureAsync(request, failure.Code, failure.Message, failed)
                 .ConfigureAwait(false);
 
             _logger.LogError(

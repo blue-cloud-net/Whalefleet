@@ -109,6 +109,7 @@ public static class ApplicationServiceCollectionExtensions
         // 任务登记表与队列（0.10.0）。**必须 Singleton**：
         // 登记表要在「HTTP 请求线程」与「后台工作线程」之间共享状态，
         // 队列更是跨请求传递的唯一通道。
+        services.AddSingleton<StackWebhookRateLimiter>();
         services.AddSingleton<StackTaskRegistry>();
         services.AddSingleton<StackOperationQueue>();
 

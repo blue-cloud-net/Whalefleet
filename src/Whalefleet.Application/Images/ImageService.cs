@@ -28,8 +28,7 @@ namespace Whalefleet.Application.Images;
 /// <para><b>日志纪律</b>：只记主机标识、镜像引用与条数，<b>不</b>记镜像的 <c>ENV</c> / <c>LABEL</c>
 /// （构建参数里常有令牌与密码——记进来等于把凭据写进日志文件）。</para>
 /// <para><b>构建与推送在 <see cref="ImageBuildPushService"/></b>：本类只管「主机上已有的镜像」，
-/// 而 build / push 要额外处理构建上下文流与 仓库凭据，拆开是为了本类的依赖
-/// 保持在两个（主机访问器 + 日志）而不膨胀到五个。</para>
+/// build / push 额外处理构建上下文流；拉取与推送共用仓库凭据解析接口。</para>
 /// </remarks>
 public sealed class ImageService
 {
@@ -55,6 +54,7 @@ public sealed class ImageService
     private const string _untaggedKey = "Untagged";
 
     private readonly IDockerHostAccessor _accessor;
+    private readonly IRepositoryCredentialResolver _credentials;
     private readonly ILogger<ImageService> _logger;
     private readonly IOperationProgressPublisher? _progressPublisher;
 
@@ -63,17 +63,21 @@ public sealed class ImageService
     /// </summary>
     /// <param name="accessor">主机访问器（解析主机并取得 Docker 客户端）。</param>
     /// <param name="logger">日志。</param>
+    /// <param name="credentials">仓库凭据解析器。</param>
     /// <param name="progressPublisher">进度发布器（0.5.0）；为 <see langword="null"/> 时不推实时进度。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
     public ImageService(
         IDockerHostAccessor accessor,
         ILogger<ImageService> logger,
+        IRepositoryCredentialResolver credentials,
         IOperationProgressPublisher? progressPublisher = null)
     {
         ArgumentNullException.ThrowIfNull(accessor);
         ArgumentNullException.ThrowIfNull(logger);
 
+        ArgumentNullException.ThrowIfNull(credentials);
         _accessor = accessor;
+        _credentials = credentials;
         _logger = logger;
         _progressPublisher = progressPublisher;
     }
@@ -199,10 +203,17 @@ public sealed class ImageService
 
         _logger.LogInformation("开始拉取镜像 {Reference}", reference);
 
-        // 认证参数传 null：0.3.0 之前没有 仓库配置，拉的都是公开镜像。
-        // 不能传 new AuthConfig() —— 那会被当成「空用户名 + 空密码」去认证公开仓库并失败。
+        var credential = await _credentials.ResolveCredentialAsync(
+            ImageReference.ExtractServerAddress(image), cancellationToken).ConfigureAwait(false);
+        var authConfig = credential is null ? null : new AuthConfig
+        {
+            Username = credential.Username,
+            Password = credential.Password,
+            ServerAddress = credential.ServerAddress,
+        };
+
         await DockerErrorTranslator.ExecuteAsync(
-            () => client.Images.CreateImageAsync(parameters, authConfig: null, collector, cancellationToken),
+            () => client.Images.CreateImageAsync(parameters, authConfig, collector, cancellationToken),
             $"拉取镜像 {reference}",
             cancellationToken).ConfigureAwait(false);
 

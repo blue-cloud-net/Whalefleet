@@ -73,7 +73,7 @@ internal static class SpaFallbackExtensions
 
             foreach (var prefix in _apiPathPrefixes)
             {
-                if (path.StartsWithSegments(prefix, StringComparison.Ordinal))
+                if (path.StartsWithSegments(prefix, StringComparison.OrdinalIgnoreCase))
                 {
                     await next(context).ConfigureAwait(false);
                     return;

@@ -25,17 +25,20 @@ public sealed class HealthController : ControllerBase
     private const string _sqliteCheckName = "sqlite";
 
     private readonly HealthCheckService _healthChecks;
+    private readonly TimeProvider _clock;
 
     /// <summary>
     /// 初始化 Controller。
     /// </summary>
     /// <param name="healthChecks">健康检查服务。</param>
     /// <exception cref="ArgumentNullException"><paramref name="healthChecks"/> 为 <see langword="null"/>。</exception>
-    public HealthController(HealthCheckService healthChecks)
+    public HealthController(HealthCheckService healthChecks, TimeProvider clock)
     {
         ArgumentNullException.ThrowIfNull(healthChecks);
 
+        ArgumentNullException.ThrowIfNull(clock);
         _healthChecks = healthChecks;
+        _clock = clock;
     }
 
     /// <summary>
@@ -64,7 +67,7 @@ public sealed class HealthController : ControllerBase
         var payload = new
         {
             status = healthy ? "ok" : "degraded",
-            timestamp = DateTimeOffset.UtcNow,
+            timestamp = _clock.GetUtcNow(),
             checks = new
             {
                 sqlite = new
@@ -72,7 +75,7 @@ public sealed class HealthController : ControllerBase
                     status = sqliteStatus.ToString().ToLowerInvariant(),
                     durationMs = Math.Round(sqliteDuration.TotalMilliseconds, 2),
                     description = sqliteDescription,
-                    error = sqliteError?.Message,
+                    error = sqliteError is null ? null : "数据库健康检查失败，请查看服务端日志。",
                 },
             },
         };

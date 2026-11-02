@@ -99,4 +99,32 @@ public class TerminalSessionRegistryTests
         // 字典不该随「历史上的每个用户」单调增长。
         _registry.CountFor(userId).Should().Be(0);
     }
+    [Fact]
+    public async Task 占用_并发争用与释放_不超限且不泄漏()
+    {
+        var userId = Guid.NewGuid();
+        var violations = 0;
+        await Task.WhenAll(Enumerable.Range(0, 16).Select(_ => Task.Run(() =>
+        {
+            for (var i = 0; i < 10000; i++)
+            {
+                if (_registry.TryAcquire(userId, 3, out var lease))
+                {
+                    if (_registry.CountFor(userId) > 3)
+                    {
+                        Interlocked.Increment(ref violations);
+                    }
+
+                    Thread.Yield();
+                    lease!.Dispose();
+                    lease.Dispose();
+                }
+            }
+        })));
+
+        violations.Should().Be(0);
+        _registry.CountFor(userId).Should().Be(0);
+        _registry.TryAcquire(userId, 1, out var final).Should().BeTrue();
+        final!.Dispose();
+    }
 }

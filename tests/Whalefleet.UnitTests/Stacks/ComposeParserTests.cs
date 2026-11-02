@@ -188,7 +188,7 @@ public class ComposeParserTests
                 image: nginx
                 environment:
                   FOO: bar
-                  EMPTY:
+                  EMPTY: ""
             """);
 
         document.Services[0].Environment.Should().BeEquivalentTo(["FOO=bar", "EMPTY="]);
@@ -474,5 +474,30 @@ public class ComposeParserTests
         var exception = Assert.Throws<BusinessException>(() => ComposeParser.Parse("networks: {}"));
 
         exception.Code.Should().Be(ErrorCodes.ComposeInvalid);
+    }
+    [Theory]
+    [InlineData("EMPTY:")]
+    [InlineData("EMPTY: null")]
+    [InlineData("EMPTY: ~")]
+    [InlineData("EMPTY: !!null ''")]
+    [InlineData("EMPTY: [a, b]")]
+    [InlineData("EMPTY: { a: b }")]
+    public void 解析_环境变量没有显式标量值_返回1904(string entry)
+    {
+        var act = () => ComposeParser.Parse("services:\n  web:\n    image: nginx\n    environment:\n      " + entry);
+        act.Should().Throw<BusinessException>().Which.Code.Should().Be(ErrorCodes.ComposeInvalid);
+    }
+
+    [Theory]
+    [InlineData("EMPTY: \"\"", "EMPTY=")]
+    [InlineData("EMPTY: ''", "EMPTY=")]
+    [InlineData("EMPTY: \"null\"", "EMPTY=null")]
+    [InlineData("- EMPTY=", "EMPTY=")]
+    [InlineData("EMPTY: !!str null", "EMPTY=null")]
+    [InlineData("EMPTY: !!str ~", "EMPTY=~")]
+    public void 解析_环境变量显式空串或字符串_保留值(string entry, string expected)
+    {
+        var document = ComposeParser.Parse("services:\n  web:\n    image: nginx\n    environment:\n      " + entry);
+        document.Services[0].Environment.Should().ContainSingle().Which.Should().Be(expected);
     }
 }

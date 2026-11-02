@@ -297,18 +297,19 @@ internal static class ComposeParser
 
                 // 值为 null 的写法（`KEY:`）在 Compose 里表示「从宿主环境取值」，
                 // 而本版本没有环境变量来源，因此显式拒绝而不是让它变成空串。
-                // TODO: 该条件恒为假——同一个表达式不可能既是 YamlScalarNode 又不是，
-                // 因此 1904 这条拒绝分支实际永远不会执行，`KEY:` 会被静默写成 `KEY=`。
-                // 同文件 890/940 行用的是正确写法（`is not YamlScalarNode` 的另一半），
-                // 可见此处是笔误；修它必须同时改单元测试（断言的正是当前的错误行为）。
-                if (pair.Value is YamlScalarNode { Value: null or "" } && pair.Value is not YamlScalarNode)
+                if (pair.Value is not YamlScalarNode scalar
+                    || (scalar.Style == YamlDotNet.Core.ScalarStyle.Plain
+                        && scalar.Tag != "tag:yaml.org,2002:str"
+                        && (String.IsNullOrEmpty(scalar.Value)
+                            || scalar.Value is "~" or "null" or "Null" or "NULL"))
+                    || scalar.Tag == "tag:yaml.org,2002:null")
                 {
                     throw new BusinessException(
                         ErrorCodes.ComposeInvalid,
-                        $"「{path}.environment.{key}」没有值——本版本暂不支持从宿主环境继承变量");
+                        $"「{path}.environment.{key}」必须显式提供标量值，本版本不支持从宿主环境继承变量");
                 }
 
-                var value = pair.Value is YamlScalarNode scalar ? scalar.Value ?? String.Empty : pair.Value.ToString();
+                var value = scalar.Value ?? String.Empty;
 
                 RejectInterpolation(value, $"{path}.environment.{key}");
 

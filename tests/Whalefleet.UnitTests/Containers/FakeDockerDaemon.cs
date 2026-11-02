@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 
 using Docker.DotNet;
+using Docker.DotNet.NativeHttp;
 
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Core.Hosts;
@@ -31,6 +32,7 @@ internal sealed class FakeDockerDaemon : IAsyncDisposable
 {
     private readonly HttpListener _listener = new();
     private readonly Func<int, string> _bodyFactory;
+    private readonly Func<HttpListenerRequest, (int Status, string Body)>? _responseFactory;
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _loop;
     private int _callCount;
@@ -61,6 +63,16 @@ internal sealed class FakeDockerDaemon : IAsyncDisposable
         _listener.Start();
 
         _loop = Task.Run(this.ServeAsync);
+    }
+
+    /// <summary>
+    /// 按请求返回状态码和响应体，用于验证认证头和失败路径。
+    /// </summary>
+    /// <param name="responseFactory">请求处理函数。</param>
+    public FakeDockerDaemon(Func<HttpListenerRequest, (int Status, string Body)> responseFactory)
+        : this(String.Empty)
+    {
+        _responseFactory = responseFactory;
     }
 
     /// <summary>
@@ -109,7 +121,10 @@ internal sealed class FakeDockerDaemon : IAsyncDisposable
                 return;
             }
 
-            var body = _bodyFactory(Interlocked.Increment(ref _callCount) - 1);
+            var index = Interlocked.Increment(ref _callCount) - 1;
+            var response = _responseFactory?.Invoke(context.Request);
+            var body = response?.Body ?? _bodyFactory(index);
+            context.Response.StatusCode = response?.Status ?? 200;
             var payload = Encoding.UTF8.GetBytes(body);
             context.Response.ContentType = "application/json";
             context.Response.ContentLength64 = payload.Length;
@@ -131,6 +146,10 @@ internal sealed class FakeDockerDaemon : IAsyncDisposable
         catch (HttpListenerException)
         {
             // 关闭监听器必然导致它抛异常，这不是失败
+        }
+        catch (ObjectDisposedException) when (_cts.IsCancellationRequested)
+        {
+            // 流式请求的客户端可能先结束，停止监听后响应对象已经释放。
         }
 
         _cts.Dispose();
@@ -161,7 +180,11 @@ internal sealed class StubDockerHostAccessor(Uri endpoint) : IDockerHostAccessor
         // Task<DockerClient> → Task<IDockerClient> 的协变转换报错
         await Task.CompletedTask.ConfigureAwait(false);
 
-        return new DockerClientBuilder().WithEndpoint(endpoint).Build();
+        return new DockerClientBuilder().WithEndpoint(endpoint)
+            .WithTransportOptions(new NativeHttpTransportOptions
+            {
+                ConfigureHandler = handler => handler.UseProxy = false,
+            }).Build();
     }
 
     /// <inheritdoc />

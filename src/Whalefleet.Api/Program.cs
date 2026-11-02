@@ -203,12 +203,8 @@ app.MapHealthChecks("/healthz");
 //   /hubs/hosts/{hostId}/container-stats  容器资源采样推送（主机作用域）
 //   /hubs/notification                    全局通知（容器异常退出、镜像操作进度）
 //
-// ⚠️ 路径里带 {hostId} 的两条：CurrentHostMiddleware 会按路由值解析主机并校验可见性，
-//    因此**不需要**为 Hub 另写一套主机解析。但「能不能读这台主机的容器」是更细的权限，
-//    仍在 Hub 方法里逐次校验（见 RealtimeHostResolver）。
-//
-// ⚠️ 顺序：必须与 MapControllers 同一段（端点映射区），在 UseCurrentHost 之后——
-//    UseCurrentHost 是中间件，读的是路由值，与端点映射的先后无关，但放在同一段更清楚。
+// Hub 路由参数不进入 RouteValues；主机由 RealtimeHostResolver 从路径解析，
+// Hub 内部负责主机存在性及权限校验。
 app.MapHub<ContainerLogHub>(RealtimeHubRoutes.ContainerLog);
 app.MapHub<ContainerStatsHub>(RealtimeHubRoutes.ContainerStats);
 app.MapHub<NotificationHub>(RealtimeHubRoutes.Notification);

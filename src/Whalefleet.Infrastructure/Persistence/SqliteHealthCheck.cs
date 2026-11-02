@@ -67,11 +67,11 @@ internal sealed class SqliteHealthCheck : IHealthCheck
             // 记 Error 会把告警刷满，真正的失败原因反而被淹没。
             _logger.LogWarning(
                 exception,
-                "SQLite 健康检查失败，路径 {DatabasePath}",
+                "SQLite 健康检查失败，检查项 {CheckName}",
                 context.Registration?.Name ?? _checkName);
 
             return HealthCheckResult.Unhealthy(
-                "无法访问 SQLite：{Message}",
+                "无法访问 SQLite，请查看服务端日志。",
                 exception);
         }
     }

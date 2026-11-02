@@ -177,10 +177,9 @@ public sealed class ContainerStatsHub : Hub
         {
             // 采样器是进程内共享的：同一个容器无论多少订阅者，只占一条到 Docker 的流。
             // 订阅时它会先给一段历史快照（环形缓冲），因此新打开的页面不必等一分钟才有图。
-            await using var source = sampler.Subscribe(hostId, containerId);
-
             try
             {
+                await using var source = sampler.Subscribe(hostId, containerId);
                 if (source.History.Count > 0)
                 {
                     await hubContext.Clients
@@ -230,7 +229,7 @@ public sealed class ContainerStatsHub : Hub
                     hubContext,
                     connectionId,
                     ErrorCodes.DockerApiFailed,
-                    $"读取容器采样失败：{exception.Message}",
+                    "读取容器采样失败，请查看服务端日志。",
                     logger).ConfigureAwait(false);
             }
         });
