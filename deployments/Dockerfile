@@ -100,9 +100,6 @@ FROM mcr.microsoft.com/dotnet/aspnet:${DOTNET_RUNTIME_VERSION} AS runtime
 RUN groupmod --gid 10001 app \
     && usermod --uid 10001 --gid 10001 app
 
-WORKDIR /app
-COPY --from=publish --chown=app:app /app/publish ./
-
 # 探针要发 HTTP 请求，而 aspnet 基础镜像默认**不含** curl / wget。
 # 只为健康检查装 curl 是划算的：不装的话 HEALTHCHECK 只能退化成
 # 「检查进程还在」——而那恰恰挡不住 0.0.15 要防的场景
@@ -114,6 +111,9 @@ COPY --from=publish --chown=app:app /app/publish ./
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends curl sqlite3 \
     && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY --from=publish --chown=app:app /app/publish ./
 
 # data 是唯一需要可写的目录：SQLite 文件、WAL 与滚动日志都在这里。
 # 目录必须**在镜像内就存在并属于 app**——否则运行时才 chown 会失败，
