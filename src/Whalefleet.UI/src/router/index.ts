@@ -215,6 +215,15 @@ const routes: RouteRecordRaw[] = [
         meta: { scope: 'host', showInSidebar: false, title: 'container.logs.title', narrow: true }
       },
       {
+        // 容器终端：从详情页的「终端」按钮跳进来。
+        // ⚠️ 刻意**不设 narrow**：详情 / 日志收窄是因为正文是一行行长文本，
+        // 而终端要的是列数——一屏越宽，一次能看到的输出越多。
+        path: 'hosts/:hostId/containers/:id/terminal',
+        name: 'host-container-terminal',
+        component: () => import('@/views/ContainerTerminalView.vue'),
+        meta: { scope: 'host', showInSidebar: false, title: 'container.terminal.title' }
+      },
+      {
         path: 'hosts/:hostId/images',
         name: 'host-images',
         component: () => import('@/views/ImagesView.vue'),

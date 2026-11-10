@@ -441,7 +441,9 @@ HOST_TONE_RAIL[tone]                // 卡片左侧色条
   /hosts/:hostId/status             → HostStatusView（状态图，菜单第一项）
   /hosts/:hostId/stacks             → StacksView（编排 / Compose，0.10.0+）
   /hosts/:hostId/containers         → ContainersView
-    /hosts/:hostId/containers/:id   → ContainerDetailView (tab: info / logs / stats / inspect)
+    /hosts/:hostId/containers/:id/inspect  → ContainerInspectView（配置快照）
+    /hosts/:hostId/containers/:id/logs     → ContainerLogsView（实时日志）
+    /hosts/:hostId/containers/:id/terminal → ContainerTerminalView（交互式终端，独立页）
   /hosts/:hostId/images             → ImagesView
   /hosts/:hostId/volumes            → VolumesView      (0.2.0+)
   /hosts/:hostId/networks           → NetworksView     (0.2.0+)

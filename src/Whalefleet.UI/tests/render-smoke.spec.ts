@@ -714,4 +714,23 @@ describe('0.5.0 实时通道组件渲染冒烟', () => {
     expect(wrapper.text()).toContain('下载日志')
     wrapper.unmount()
   })
+
+  it('容器终端页可独立渲染（0.10.1 从详情页拆成独立路由）', async () => {
+    const ContainerTerminalView = (await import('../src/views/ContainerTerminalView.vue')).default
+
+    const wrapper = await mountSmoke(ContainerTerminalView, {
+      path: '/hosts/prod-01/containers/abc123/terminal'
+    })
+
+    await wrapper.vm.$nextTick()
+    await Promise.resolve()
+    await Promise.resolve()
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    // 页头标题与卡片说明都在（模板改过最容易在这里炸）
+    expect(wrapper.text()).toContain('终端')
+    expect(wrapper.text()).toContain('交互式 shell')
+    wrapper.unmount()
+  })
 })

@@ -416,9 +416,13 @@ onBeforeUnmount(() => {
   行高 / 尺寸必须精确：xterm 依据宿主元素的实际像素尺寸计算行列数，
   用 UnoCSS 的 `h-80` 一类工具类在主题切换或字体加载完成时会抖动，
   因此这里把高度与字号写在 scoped CSS 里（与 LogViewport 的做法一致）。
+
+  高度默认 22rem，可由宿主通过 `--terminal-height` 覆盖——独立终端页
+  （`ContainerTerminalView`）把「扣掉页头之后剩下的视口」给了它。
+  覆盖值同样必须是**确定的高度**（像素或 calc），百分比会让 fit() 算出 0 行。
 */
 .terminal-host {
-  height: 22rem;
+  height: var(--terminal-height, 22rem);
   padding: 8px;
   overflow: hidden;
   border-radius: 6px;

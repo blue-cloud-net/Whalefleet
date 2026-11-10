@@ -23,7 +23,7 @@ import { usePreferencesStore } from '@/stores/preferences'
 import { formatBytes } from '@/utils/container-status'
 import { formatDateTime } from '@/utils/datetime'
 import { formatMemory, formatNetwork, formatPercent, memoryPercent } from '@/utils/log-format'
-import { canPerform, isActive, actionDisabledReason } from '@/utils/container-actions'
+import { canPerform, isActive } from '@/utils/container-actions'
 import type { ByteUnits } from '@/utils/container-status'
 import type { ContainerDetail } from '@/types/api'
 
@@ -33,14 +33,6 @@ import type { ContainerDetail } from '@/types/api'
  */
 const MetricsChart = defineAsyncComponent(
   () => import('@/components/business/MetricsChart.vue')
-)
-
-/**
- * 终端面板同样**懒加载**（0.8.0）：xterm + FitAddon + WebLinksAddon 约 300 KB，
- * 而绝大多数人打开详情页只是看一眼配置。`defineAsyncComponent` 让 Vite 把它拆成独立 chunk。
- */
-const ContainerTerminal = defineAsyncComponent(
-  () => import('@/components/business/ContainerTerminal.vue')
 )
 
 /**
@@ -217,6 +209,19 @@ function openLogs(): void {
 }
 
 /**
+ * 打开终端（0.10.1 起是**独立页面**，不再嵌在详情页底部）。
+ *
+ * 终端是一次长时间的双向会话，而详情页是一份快照：两者混在一页里时，
+ * 刷新 / 状态变化会把会话的「断开」和页面的重绘混为一谈。
+ */
+function openTerminal(): void {
+  void router.push({
+    name: 'host-container-terminal',
+    params: { hostId: hostId.value, id: containerId.value }
+  })
+}
+
+/**
  * 执行一个写操作，然后刷新详情。
  *
  * ⚠️ **成功也刷新**：状态变化不会推给这个页面（实时通道只推「异常退出」），
@@ -355,6 +360,17 @@ watch(
       <template #actions>
         <el-button @click="backToList">{{ t('container.backToList') }}</el-button>
         <el-button @click="openLogs">{{ t('container.action.logs') }}</el-button>
+        <!--
+          终端与日志并列：两者都是「对同一个容器再开一个视图」的导航，
+          而不是生命周期动作——后者会改变容器，前者只换个看它的角度。
+          状态不满足时置灰（暂停中的容器同样打不开：exec 会挂住）。
+        -->
+        <el-button
+          :disabled="!detail || !canPerform('terminal', detail.state.status)"
+          @click="openTerminal"
+        >
+          {{ t('container.action.terminal') }}
+        </el-button>
 
         <!--
           生命周期操作（0.7.0）：详情页**自成一体**，不用回列表页才能操作容器。
@@ -684,19 +700,6 @@ watch(
               <dd class="font-mono text-xs break-all">{{ value }}</dd>
             </div>
           </dl>
-        </SectionCard>
-
-        <!--
-          交互式终端（0.8.0）：面板本身**懒加载**——xterm 加两个 addon 约 300 KB，
-          只有真的点开终端的人需要它。
-        -->
-        <SectionCard :title="t('container.terminal.title')" :description="t('container.terminal.hint')">
-          <ContainerTerminal
-            :host-id="hostId"
-            :container-id="detail.id"
-            :disabled="!canPerform('terminal', detail.state.status)"
-            :disabled-reason="actionDisabledReason('terminal', detail.state.status)"
-          />
         </SectionCard>
       </div>
     </template>
