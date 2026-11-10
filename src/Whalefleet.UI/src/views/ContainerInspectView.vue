@@ -22,6 +22,7 @@ import { useContainerStats } from '@/composables/useContainerStats'
 import { usePreferencesStore } from '@/stores/preferences'
 import { formatBytes } from '@/utils/container-status'
 import { formatDateTime } from '@/utils/datetime'
+import { splitEnvEntry } from '@/utils/env'
 import { formatMemory, formatNetwork, formatPercent, memoryPercent } from '@/utils/log-format'
 import { canPerform, isActive } from '@/utils/container-actions'
 import type { ByteUnits } from '@/utils/container-status'
@@ -159,6 +160,16 @@ const byteUnits = computed<ByteUnits>(() => ({
 function orDash(value: string | null | undefined): string {
   return value && value.length > 0 ? value : '—'
 }
+
+/**
+ * 环境变量拆成「键 / 值」两列（展示用）。
+ *
+ * 后端给的是 `KEY=VALUE` 的字符串数组，直接逐行输出的话值里的连接串会把一行拉得很长，
+ * 而键与值本来是两个独立的列。拆分规则见 `utils/env.ts`。
+ */
+const envEntries = computed(() =>
+  (detail.value?.config.env ?? []).map((entry) => splitEnvEntry(entry))
+)
 
 async function load(): Promise<void> {
   if (!hostId.value || !containerId.value) return
@@ -685,21 +696,53 @@ watch(
         </SectionCard>
 
         <SectionCard :title="t('container.detail.env')" :description="t('container.detail.envHint')">
-          <ul v-if="detail.config.env.length > 0" class="app-log-list">
-            <li v-for="(item, index) in detail.config.env" :key="index" class="font-mono text-xs">
-              {{ item }}
-            </li>
-          </ul>
+          <!--
+            环境变量用**两列表格**而不是逐行原文：
+            `KEY=VALUE` 逐行输出时，值里的连接串会把一行拉到几百字符，
+            键与值其实是两列信息，混在一行里就没法比对（同一组键的值长短参差）。
+            ⚠️ 值列必须 `break-all`：token / 连接串里没有断行点，否则卡片会被撑破。
+          -->
+          <div v-if="envEntries.length > 0" class="app-table-wrap">
+            <table class="app-table">
+              <thead>
+                <tr>
+                  <th class="w-1/3">{{ t('common.key') }}</th>
+                  <th>{{ t('common.value') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(entry, index) in envEntries" :key="`${entry.key}-${index}`">
+                  <td class="font-mono text-xs break-all">{{ entry.key }}</td>
+                  <td class="font-mono text-xs break-all">
+                    <!-- 空值是合法配置（`FOO=`），给一个浅色占位符比留空更容易辨认 -->
+                    <span v-if="entry.value">{{ entry.value }}</span>
+                    <span v-else class="text-content-faint">—</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
           <p v-else class="text-sm text-content-faint">—</p>
         </SectionCard>
 
         <SectionCard v-if="Object.keys(detail.config.labels).length > 0" :title="t('container.detail.labels')">
-          <dl class="app-kv">
-            <div v-for="(value, key) in detail.config.labels" :key="key">
-              <dt class="font-mono">{{ key }}</dt>
-              <dd class="font-mono text-xs break-all">{{ value }}</dd>
-            </div>
-          </dl>
+          <!-- 标签的键是动态的（`com.docker.compose.*` 之类），同样走两列表 -->
+          <div class="app-table-wrap">
+            <table class="app-table">
+              <thead>
+                <tr>
+                  <th class="w-1/3">{{ t('common.key') }}</th>
+                  <th>{{ t('common.value') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(value, key) in detail.config.labels" :key="key">
+                  <td class="font-mono text-xs break-all">{{ key }}</td>
+                  <td class="font-mono text-xs break-all">{{ value }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </SectionCard>
       </div>
     </template>

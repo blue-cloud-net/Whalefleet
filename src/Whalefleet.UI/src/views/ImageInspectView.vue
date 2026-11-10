@@ -11,6 +11,7 @@ import { inspectImage } from '@/api/image'
 import { ApiRequestError } from '@/api'
 import { isDangling, primaryImageName, shortDigest } from '@/utils/image-display'
 import { formatDateTime } from '@/utils/datetime'
+import { splitEnvEntry } from '@/utils/env'
 import type { ImageDetail } from '@/types/api'
 
 /**
@@ -44,6 +45,11 @@ const error = ref<string | null>(null)
 function orDash(value: string | null | undefined): string {
   return value && value.length > 0 ? value : '—'
 }
+
+/** 环境变量拆成「键 / 值」两列（规则与容器详情页同一份：`utils/env.ts`）。 */
+const envEntries = computed(() =>
+  (detail.value?.env ?? []).map((entry) => splitEnvEntry(entry))
+)
 
 async function load(): Promise<void> {
   if (!hostId.value || !imageId.value) return
@@ -170,11 +176,26 @@ watch(imageId, load, { immediate: true })
       </SectionCard>
 
       <SectionCard :title="t('container.detail.env')" :description="t('container.detail.envHint')">
-        <ul v-if="detail.env.length > 0" class="app-log-list">
-          <li v-for="(item, index) in detail.env" :key="index" class="font-mono text-xs">
-            {{ item }}
-          </li>
-        </ul>
+        <!-- 与容器详情页同一口径：`KEY=VALUE` 拆成两列表格，值列允许任意位置断行 -->
+        <div v-if="envEntries.length > 0" class="app-table-wrap">
+          <table class="app-table">
+            <thead>
+              <tr>
+                <th class="w-1/3">{{ t('common.key') }}</th>
+                <th>{{ t('common.value') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(entry, index) in envEntries" :key="`${entry.key}-${index}`">
+                <td class="font-mono text-xs break-all">{{ entry.key }}</td>
+                <td class="font-mono text-xs break-all">
+                  <span v-if="entry.value">{{ entry.value }}</span>
+                  <span v-else class="text-content-faint">—</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
         <p v-else class="text-sm text-content-faint">—</p>
       </SectionCard>
 
@@ -183,12 +204,22 @@ watch(imageId, load, { immediate: true })
         :title="t('container.detail.labels')"
         :description="t('image.detail.labelsHint')"
       >
-        <dl class="app-kv">
-          <div v-for="(value, key) in detail.labels" :key="key">
-            <dt class="font-mono">{{ key }}</dt>
-            <dd class="font-mono text-xs break-all">{{ value }}</dd>
-          </div>
-        </dl>
+        <div class="app-table-wrap">
+          <table class="app-table">
+            <thead>
+              <tr>
+                <th class="w-1/3">{{ t('common.key') }}</th>
+                <th>{{ t('common.value') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(value, key) in detail.labels" :key="key">
+                <td class="font-mono text-xs break-all">{{ key }}</td>
+                <td class="font-mono text-xs break-all">{{ value }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </SectionCard>
 
       <SectionCard :title="t('image.detail.raw')" density="flush">
