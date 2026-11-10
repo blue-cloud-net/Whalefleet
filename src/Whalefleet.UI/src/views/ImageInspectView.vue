@@ -98,7 +98,7 @@ watch(imageId, load, { immediate: true })
 
     <div v-else-if="detail" class="flex flex-col gap-4">
       <SectionCard :title="t('image.detail.overview')">
-        <dl class="app-kv">
+        <dl class="app-facts">
           <div>
             <dt>{{ t('image.col.repository') }}</dt>
             <dd>
@@ -133,7 +133,7 @@ watch(imageId, load, { immediate: true })
       </SectionCard>
 
       <SectionCard :title="t('image.detail.build')">
-        <dl class="app-kv">
+        <dl class="app-facts">
           <div>
             <dt>{{ t('container.create.entrypoint') }}</dt>
             <dd class="font-mono text-xs break-all">{{ orDash(detail.entrypoint.join(' ')) }}</dd>
@@ -150,7 +150,7 @@ watch(imageId, load, { immediate: true })
       </SectionCard>
 
       <SectionCard :title="t('image.detail.declared')">
-        <dl class="app-kv">
+        <dl class="app-facts">
           <div>
             <dt>{{ t('image.detail.exposedPorts') }}</dt>
             <dd>

@@ -6,6 +6,21 @@
    预设变量消费。这样换主题 / 调圆角只需改一处。
    ============================================================ */
 :root {
+  /* 基础刻度 → 语义间距 → 组件尺寸 */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  --spacing-page: var(--space-8);
+  --spacing-panel: var(--space-5);
+  --control-height: 2.25rem;
+  --table-cell-padding: var(--space-3);
+
   /* 圆角刻度 */
   --radius-sm: 6px;
   --radius-md: 8px;
@@ -21,7 +36,7 @@
 
   /* ===== 表面层级：page（页面底）→ card（卡片）→ elevated（浮层）=====
      卡片悬浮态单列一个 token：暗色下阴影几乎不可见，靠表面提亮给反馈。 */
-  --surface-page: #f6f8fa;
+  --surface-page: #f3f6fb;
   --surface-card: #ffffff;
   --surface-card-hover: #fbfcfe;
   --surface-sunken: #f1f5f9;
@@ -82,7 +97,7 @@
 }
 
 html.dark {
-  --surface-page: #0b0f14;
+  --surface-page: #0d121c;
   --surface-card: #141a21;
   --surface-card-hover: #1a222b;
   --surface-sunken: #1b232c;
@@ -178,6 +193,10 @@ html {
 }
 
 body {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
   background: var(--surface-page);
   color: rgb(var(--text-strong));
   transition: background-color var(--duration-base) var(--ease-out), color var(--duration-base) var(--ease-out);
@@ -389,32 +408,45 @@ html.dark {
  * 拆成一长串原子类后，`<dl>` 上那行会长到没人能一眼看出它长什么样。
  * ================================================================== */
 
-/* 键值对网格：标签窄、值宽，标签右对齐后长值不会把布局挤歪。
-   `minmax` 而不是固定列宽——有的字段只有一个字符（如「否」），固定宽会浪费横向空间。 */
-.app-kv {
+/* 定义表：一行一个字段，「字段名 | 值」两列 + 行分隔线。
+   与 `.app-table` 的分工：那边是「多行同类记录」（挂载、网络、环境变量），
+   这里是「一个对象的若干属性」，因此不打表头、行更紧凑。
+
+   早先这里是 `repeat(auto-fit, minmax(240px, 1fr))` 的四方格：字段名压在值上面，
+   窗口一宽就并成四列，读者得靠「哪两行是一对」来判断归属，长 ID 还会把整格撑成三行。
+   改成逐行的两列表后，字段名与值的关系是**同一行**的左右——这正是详情页要回答的
+   「这个字段是什么值」，而不是一张需要人自己配对的网格。 */
+.app-facts {
+  margin: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.app-facts > div {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 0.75rem 1.5rem;
+  grid-template-columns: minmax(7rem, 14rem) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.25rem 1.25rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
-.app-kv > div {
-  display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
-  min-width: 0;
+/* 最后一行不吃分隔线：卡片本身已有下边界，两道线叠在一起会显得脏 */
+.app-facts > div:last-child {
+  border-bottom: none;
 }
 
-.app-kv dt {
+.app-facts dt {
   font-size: 0.75rem;
-  color: var(--text-muted);
+  line-height: 1.5;
+  color: rgb(var(--text-muted));
 }
 
 /* 值允许换行：环境变量值、内存上限这类内容长度不可控，
    `overflow-wrap` 不到就会把卡片撑出横向滚动条。 */
-.app-kv dd {
+.app-facts dd {
   margin: 0;
   font-size: 0.875rem;
-  color: var(--text-body);
+  color: rgb(var(--text-body));
   overflow-wrap: anywhere;
 }
 
@@ -428,7 +460,7 @@ html.dark {
 .app-table th {
   font-size: 0.75rem;
   font-weight: 500;
-  color: var(--text-muted);
+  color: rgb(var(--text-muted));
   white-space: nowrap;
 }
 
@@ -445,5 +477,69 @@ html.dark {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  color: var(--text-muted);
+  color: rgb(var(--text-muted));
+}
+
+
+/* 组件令牌桥接：所有业务页面共用同一套控件、表格与浮层节奏。 */
+:root {
+  --el-font-family: var(--font-sans);
+  --el-font-size-base: 14px;
+  --el-component-size: var(--control-height);
+  --el-border-radius-base: var(--radius-md);
+  --el-border-radius-small: var(--radius-sm);
+  --el-fill-color: var(--surface-sunken);
+  --el-fill-color-light: var(--surface-sunken);
+  --el-fill-color-lighter: var(--surface-card-hover);
+  --el-fill-color-dark: var(--surface-hover);
+  --el-disabled-bg-color: var(--surface-sunken);
+  --el-disabled-text-color: rgb(var(--text-faint));
+  --el-disabled-border-color: var(--border-subtle);
+}
+
+.app-page { padding: var(--spacing-page); }
+.app-page-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid rgb(var(--brand-500) / 0.16);
+  border-radius: var(--radius-lg);
+  background: rgb(var(--brand-500) / 0.08);
+}
+.app-section-header { background: var(--surface-card-hover); }
+.app-stat-card { padding: var(--spacing-panel); }
+
+.el-table {
+  --el-table-header-bg-color: var(--surface-sunken);
+  --el-table-row-hover-bg-color: var(--surface-card-hover);
+  --el-table-current-row-bg-color: rgb(var(--brand-500) / 0.08);
+  --el-table-border-color: var(--border-subtle);
+  --el-table-header-text-color: rgb(var(--text-muted));
+  font-variant-numeric: tabular-nums;
+}
+.el-table th.el-table__cell { font-weight: 600; font-size: 12px; }
+.el-table .el-table__cell { padding-block: var(--table-cell-padding); }
+.el-table .cell { line-height: 1.5; }
+.el-input__wrapper, .el-select__wrapper, .el-textarea__inner {
+  transition: box-shadow var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out);
+}
+.el-form-item__label { font-weight: 500; }
+.el-dialog { --el-dialog-padding-primary: var(--space-6); }
+.el-dialog__header { padding-bottom: var(--space-5); }
+.el-dialog__title { font-weight: 600; }
+.el-dialog__footer { padding-top: var(--space-5); }
+.el-tabs__item { font-weight: 500; }
+.el-pagination { font-variant-numeric: tabular-nums; }
+
+@media (max-width: 639px) {
+  :root { --spacing-page: var(--space-4); --spacing-panel: var(--space-4); }
+  .app-section-header { flex-wrap: wrap; }
+  .app-section-header > :last-child { max-width: 100%; }
+  .el-dialog { max-width: calc(100vw - var(--space-8)); }
+  /* 窄屏：字段名收回值上方，两列硬撑会把值列压到只剩几个字符 */
+  .app-facts > div { grid-template-columns: minmax(0, 1fr); gap: 0.125rem; }
+}
+@media (min-width: 640px) and (max-width: 1023px) {
+  :root { --spacing-page: var(--space-6); }
 }

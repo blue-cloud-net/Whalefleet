@@ -27,9 +27,9 @@ withDefaults(
  */
 const TONE_ICON: Record<string, string> = {
   brand: 'text-brand-500 bg-brand-500/10',
-  neutral: 'text-content-faint bg-surface-sunken',
+  neutral: 'text-content-muted bg-surface-sunken',
   success: 'text-status-ok bg-status-ok-soft/60',
-  warning: 'text-amber-500 bg-amber-500/10',
+  warning: 'text-status-warn bg-status-warn/10',
   danger: 'text-status-down bg-status-down-soft/60'
 }
 </script>
@@ -41,7 +41,7 @@ const TONE_ICON: Record<string, string> = {
     顶对齐会让数值的下缘凸出图标底边 4px，看上去像「数字掉出图标外面」。
     居中对齐后两者边界齐平；出现 hint 撑高文字列时也保持居中而不会顶飞。
   -->
-  <div class="app-card-interactive p-4 flex items-center gap-3.5">
+  <div class="app-card app-stat-card flex items-center gap-3.5">
     <!--
       图标块 h-11（44px）精确等于文字列高度，保证上下边界齐平；
       字号 text-xl（20px × presetIcons 的 1.2 倍 = 24px），与 24px 的数值

@@ -18,9 +18,14 @@ withDefaults(
 
 <template>
   <section class="app-card overflow-hidden">
+    <!--
+      `description` 单独出现时也要渲染卡片头：否则「只给说明、不给标题」的用法
+      （如容器终端页）会把说明整段吞掉——模板里写着、界面上却没有，
+      而 Vue 不会报任何错。
+    -->
     <header
-      v-if="title || $slots.actions"
-      class="flex items-center justify-between gap-3 px-4 sm:px-5 py-3 border-b border-line-subtle"
+      v-if="title || description || $slots.actions"
+      class="app-section-header flex items-center justify-between gap-3 px-4 sm:px-5 py-3 border-b border-line-subtle"
     >
       <div class="min-w-0">
         <h2 v-if="title" class="text-sm font-semibold text-content-strong app-truncate">

@@ -339,7 +339,7 @@ HOST_TONE_RAIL[tone]                // 卡片左侧色条
 |--------|------|
 | 蓝 | `#409EFF` |
 | 绿 | `#67C23A` |
-| 紫 | `#909399`（Element Plus 默认 primary） |
+| 紫 | `#7A40B8` |
 
 ---
 
@@ -389,8 +389,8 @@ HOST_TONE_RAIL[tone]                // 卡片左侧色条
 | 主机管理 / 服务器分组标题 | `i-carbon-data-center` |
 | 主机（总览统计磁贴） | `i-carbon-data-center` |
 | 主机分组 / 未分组 | `i-carbon-folder` / `i-carbon-folder-off` |
-| 容器 | `i-carbon-container-software` |
-| 镜像 | `i-carbon-image` |
+| 容器 | `i-carbon-cube` |
+| 镜像 | `i-carbon-archive` |
 | 数据卷 | `i-carbon-data-volume` |
 | 网络 | `i-carbon-network-3`（状态页指标用 `i-carbon-network-4`） |
 | 编排 | `i-carbon-layers` |
@@ -564,7 +564,7 @@ src/Whalefleet.UI/src/
 
 可交互卡片统一 `app-card-interactive`，其中包含三件事：
 
-1. 抬升 `hover:-translate-y-px`
+1. 保持位置稳定，悬浮时只改变表面、描边与阴影
 2. 描边转品牌色 `hover:border-brand-300`
 3. **表面提亮 `hover:bg-surface-card-hover`**
 
@@ -588,3 +588,23 @@ src/Whalefleet.UI/src/
 - Element Plus 默认风格（https://element-plus.org）
 - Material Design 间距与字号规范
 - 现代管理后台惯例：侧边栏 + 顶栏布局（Portainer CE / Rancher / Kuboard 等）
+
+
+## 全平台视觉基线
+
+以数据密集的运维控制台为方向：中性底色、清晰的卡片层级、少量品牌强调。
+保留蓝／绿／紫三色与亮／暗模式，所有主题共用组件结构。
+
+- **令牌层级**：`main.css` 中的 `--space-*`、`--font-*` 为基础刻度；
+  `--spacing-page`、`--spacing-panel` 为语义间距；`--control-height`、
+  `--table-cell-padding` 为组件尺寸。Element Plus 变量引用同一来源。
+- **页面间距**：手机 16px、平板 24px、桌面 32px；面板内边距 20px，手机 16px。
+- **字体**：正文使用系统无衬线字体栈，不请求外部字体；页面标题 20／24px，
+  表格标题 12px，正文 14px，指标 24px。数字使用等宽数字特性。
+- **标题**：`PageHeader` 使用 40px 品牌淡底图标容器；`SectionCard` 使用轻微下沉色的标题区。
+- **统计**：`StatCard` 是静态信息卡，不采用可点击卡片的悬浮反馈；警告色引用状态令牌。
+- **表格**：表头下沉底色、单元格上下 12px、行悬浮提亮，选中行使用品牌淡底。
+- **控件**：默认高度 36px，圆角引用统一刻度，小尺寸控件沿用 Element Plus 的紧凑规格。
+  表单、分页、弹窗、禁用态与浮层使用公共主题桥接。
+- **动效**：可交互卡片保持位置稳定；键盘焦点环、减少动态效果规则统一由公共样式控制。
+- **窄屏**：区块标题区允许折行，弹窗限制在视口内，键值对收为单列；列表工具条保留三组结构。

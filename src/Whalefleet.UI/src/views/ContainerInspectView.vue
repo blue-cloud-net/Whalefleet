@@ -497,7 +497,7 @@ watch(
     <template v-else-if="detail">
       <div class="flex flex-col gap-4">
         <SectionCard :title="t('container.detail.basic')">
-          <dl class="app-kv">
+          <dl class="app-facts">
             <div><dt>{{ t('container.id') }}</dt><dd class="font-mono text-xs">{{ detail.id }}</dd></div>
             <div><dt>{{ t('container.col.created') }}</dt><dd>{{ formatDateTime(detail.created) }}</dd></div>
             <div>
@@ -597,7 +597,7 @@ watch(
         </SectionCard>
 
         <SectionCard :title="t('container.detail.hostConfig')">
-          <dl class="app-kv">
+          <dl class="app-facts">
             <div>
               <dt>{{ t('container.create.restartPolicy') }}</dt>
               <dd>{{ restartPolicyLabel(detail.hostConfig.restartPolicy) }}</dd>
@@ -623,7 +623,7 @@ watch(
         </SectionCard>
 
         <SectionCard :title="t('container.detail.config')">
-          <dl class="app-kv">
+          <dl class="app-facts">
             <div>
               <dt>{{ t('container.create.cmd') }}</dt>
               <dd class="font-mono text-xs">{{ orDash(detail.config.cmd.join(' ')) }}</dd>

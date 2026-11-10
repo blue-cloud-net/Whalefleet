@@ -266,10 +266,10 @@ export default defineConfig({
       // ===== 卡片 =====
       'app-card':
         'rounded-lg bg-surface-card border border-line-subtle shadow-xs transition-[box-shadow,border-color,background-color] duration-200 ease-out',
-      // 可交互卡片：悬浮抬升 + 品牌色描边 + 表面提亮。
+      // 可交互卡片：位置稳定，悬浮时使用品牌描边、阴影与表面提亮。
       // 表面提亮是暗色下的主要反馈信号——那里的 shadow-md 几乎不可见。
       'app-card-interactive':
-        'app-card hover:shadow-md hover:border-brand-300 hover:bg-surface-card-hover hover:-translate-y-px',
+        'app-card hover:shadow-md hover:border-brand-300 hover:bg-surface-card-hover',
 
       // ===== 导航 =====
       'app-nav-item':
@@ -293,7 +293,7 @@ export default defineConfig({
 
       // ===== 文本 =====
       'app-page-title':
-        'flex items-center gap-2.5 text-xl font-semibold tracking-tight text-content-strong',
+        'flex items-center gap-3 text-xl sm:text-2xl font-semibold tracking-tight text-content-strong',
       'app-page-subtitle': 'mt-1.5 text-sm leading-relaxed text-content-muted',
 
       // ===== 排版辅助 =====
@@ -310,8 +310,8 @@ export default defineConfig({
 
       // ===== 等宽 / 预格式化文本（0.0.11）=====
       // `break-all` 不能省：容器日志与环境变量里的长串（连接串、token）会把卡片撑破。
-      'app-log': 'max-h-[60vh] overflow-auto px-4 py-3 sm:px-5 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all',
-      'app-log-list': 'flex flex-col gap-1'
+      // 环境变量改走 `.app-table` 两列表（0.9.0）后，`app-log-list` 已无引用，随之一并删除。
+      'app-log': 'max-h-[60vh] overflow-auto px-4 py-3 sm:px-5 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all'
     }
   ],
   // 注释里的历史错名一律 blocklist：让 presetIcons 根本不去生成这些规则，

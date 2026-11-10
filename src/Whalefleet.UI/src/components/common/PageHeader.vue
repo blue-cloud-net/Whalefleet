@@ -38,13 +38,20 @@ withDefaults(
         <h1 class="app-page-title">
           <span
             v-if="icon"
-            class="text-2xl text-brand-500 shrink-0 leading-none"
-            :class="icon"
-            aria-hidden="true"
-          />
+            class="app-page-icon text-brand-500 shrink-0 leading-none"
+          >
+            <span class="text-xl" :class="icon" aria-hidden="true" />
+          </span>
+
+          <span class="app-truncate">{{ title }}</span>
+
           <!--
-            标题整体是 tooltip 的触发区：只把 ⓘ 做成触发点的话，
-            用户不会想到「那个小图标能点」，标题文字本身反而点了没反应。
+            **ⓘ 才是 tooltip 的触发点，标题文字不弹提示**。
+            早先是「标题整体悬浮出提示、ⓘ 只是个装饰」：读者把鼠标扫过标题时
+            脸上会莫名其妙冒出一条说明，而那个说明属于旁边的小图标——
+            触发区与它描述的东西对不上，越读越糊涂。
+            ⓘ 是通用的「这里有说明」符号，把光标放到它上面出提示才符合直觉；
+            `cursor-help` 再补一层「这东西可以悬停」的暗示。
           -->
           <el-tooltip
             v-if="titleTip"
@@ -52,15 +59,10 @@ withDefaults(
             placement="bottom-start"
             :show-after="TIP_DELAY_MS"
           >
-            <span class="app-truncate">{{ title }}</span>
+            <span
+              class="i-carbon-information shrink-0 cursor-help text-sm leading-none text-content-faint transition-colors hover:text-content-strong"
+            />
           </el-tooltip>
-          <span v-else class="app-truncate">{{ title }}</span>
-          <!-- ⓘ：说明「标题可以悬浮」——没有它，提示就成了没人知道的彩蛋 -->
-          <span
-            v-if="titleTip"
-            class="i-carbon-information shrink-0 text-sm leading-none text-content-faint"
-            aria-hidden="true"
-          />
           <slot name="badge" />
         </h1>
 

@@ -46,25 +46,29 @@ function onSelect(command: string) {
 <template>
   <el-dropdown trigger="click" @command="onSelect">
     <!--
-      `gap-1.5` 是刻意加的：状态点只有 6px，紧贴主机名时读起来像名字的偏旁，
-      一旦截断（`max-w-28`）点与「…」还会粘在一起。这里给三者
-      「状态点 / 名称 / 展开箭头」各自留出呼吸空间。
+      ⚠️ **间距必须写在按钮内部的这层 `span` 上，不能写在 `el-button` 上**：
+      EP 的 Button 会把默认插槽整个包进一个 `<span>`，于是按钮根节点只有**一个**子节点，
+      写在根上的 `gap-*` 作用在那唯一一个子节点与不存在的兄弟之间——**静默失效**。
+      症状就是「状态点紧贴主机名」，看上去像名字的偏旁；一旦截断（`max-w-28`）
+      点与「…」还会粘在一起。这里给三者「状态点 / 名称 / 展开箭头」各自留出呼吸空间。
     -->
     <el-button
       text
-      class="!px-2 !py-1.5 rounded-md gap-1.5 hover:bg-surface-hover transition-colors"
+      class="!px-2 !py-1.5 rounded-md hover:bg-surface-hover transition-colors"
     >
-      <template v-if="currentHost">
-        <StatusDot :status="currentHost.status" size="sm" />
-        <span class="text-xs font-medium text-content-body max-w-28 app-truncate">
-          {{ currentHost.name }}
-        </span>
-      </template>
-      <template v-else>
-        <span class="i-carbon-cloud-satellite text-base text-content-faint" />
-        <span class="text-xs text-content-muted">{{ t('host.selector.placeholder') }}</span>
-      </template>
-      <span class="i-carbon-chevron-down text-xs text-content-faint" />
+      <span class="inline-flex items-center gap-2 min-w-0">
+        <template v-if="currentHost">
+          <StatusDot :status="currentHost.status" size="sm" />
+          <span class="text-xs font-medium text-content-body max-w-28 app-truncate">
+            {{ currentHost.name }}
+          </span>
+        </template>
+        <template v-else>
+          <span class="i-carbon-cloud-satellite text-base text-content-faint" />
+          <span class="text-xs text-content-muted">{{ t('host.selector.placeholder') }}</span>
+        </template>
+        <span class="i-carbon-chevron-down text-xs text-content-faint" />
+      </span>
     </el-button>
 
     <template #dropdown>
