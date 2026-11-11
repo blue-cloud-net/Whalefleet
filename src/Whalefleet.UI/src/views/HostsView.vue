@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, h, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ElMessage, ElMessageBox, type TableInstance } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/common/PageHeader.vue'
 import SectionCard from '@/components/common/SectionCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -65,12 +65,6 @@ const selectedHosts = ref<AdminHostSummary[]>([])
 const tagBatchVisible = ref(false)
 const tagBatchBusy = ref(false)
 
-/**
- * 表格实例：只有 `clearSelection()` 用得到，但它是实例方法，
- * 模板 ref 是唯一拿得到它的方式（`ListToolbar` 本身不该知道 el-table 的存在）。
- */
-const tableRef = ref<TableInstance | null>(null)
-
 /** 打开批量打标弹窗（选中了才允许）。 */
 function openTagBatch(): void {
   if (selectedHosts.value.length === 0) return
@@ -81,12 +75,6 @@ function openTagBatch(): void {
 /** 表格选区变化。 */
 function onSelectionChange(rows: AdminHostSummary[]): void {
   selectedHosts.value = rows
-}
-
-/** 清空选区。 */
-function clearSelection(table: { clearSelection: () => void } | null): void {
-  table?.clearSelection()
-  selectedHosts.value = []
 }
 
 /** 全量标签（下拉用）。 */
@@ -365,11 +353,7 @@ watch(() => t, load, { immediate: true })
 
     <SectionCard :title="t('host.list.title')" density="flush">
       <template #actions>
-        <ListToolbar
-          :selected-count="selectedHosts.length"
-          :busy="tagBatchBusy"
-          @clear="clearSelection(tableRef)"
-        >
+        <ListToolbar :selected-count="selectedHosts.length" :busy="tagBatchBusy">
           <template #filters>
             <span class="text-xs text-content-muted">{{ t('host.total', { total: hosts.length }) }}</span>
           </template>
@@ -425,7 +409,6 @@ watch(() => t, load, { immediate: true })
           :data="hosts"
           :row-key="(row: AdminHostSummary) => row.id"
           empty-text=""
-          ref="tableRef"
           @selection-change="onSelectionChange"
         >
           <el-table-column type="selection" width="44" reserve-selection />

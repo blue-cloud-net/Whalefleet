@@ -432,11 +432,7 @@ watch(
 
     <SectionCard density="flush">
       <template #actions>
-        <ListToolbar
-          :selected-count="selected.length"
-          :busy="batchBusy"
-          @clear="clearSelection(tableRef)"
-        >
+        <ListToolbar :selected-count="selected.length" :busy="batchBusy">
           <template #filters>
             <!-- ⚠️ `!w-40` 的 `!` 不能省：Element Plus 把 `el-input` 的宽度写死成
                  `var(--el-input-width)`（默认 100%），同特异度下 EP 赢，工具类会被吃掉。 -->
@@ -688,7 +684,7 @@ watch(
     <PruneDialog
       v-model="pruneDialogVisible"
       :host-id="hostId"
-      resource="volumes"
+      scope="volumes"
       @done="load"
     />
   </div>

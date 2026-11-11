@@ -3,7 +3,6 @@ import { computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import type { TableInstance } from 'element-plus'
 import PageHeader from '@/components/common/PageHeader.vue'
 import SectionCard from '@/components/common/SectionCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -12,8 +11,8 @@ import ListPagination from '@/components/common/ListPagination.vue'
 import ListToolbar from '@/components/common/ListToolbar.vue'
 import CreateContainerDialog from '@/components/business/CreateContainerDialog.vue'
 import ContainerBatchActions from '@/components/business/ContainerBatchActions.vue'
+import ContainerListTable from '@/components/business/ContainerListTable.vue'
 import ContainerOperationDialogs from '@/components/business/ContainerOperationDialogs.vue'
-import ContainerStatusBadge from '@/components/business/ContainerStatusBadge.vue'
 import { onActionRequest } from '@/composables/useActionBus'
 import { useListSearch } from '@/composables/useListSearch'
 import {
@@ -30,17 +29,20 @@ import {
   type ContainerStateFilter
 } from '@/api/container'
 import { ApiRequestError } from '@/api'
-import { describePorts, type PortDisplay } from '@/utils/container-status'
 import { canPerform, isActive, type ContainerAction } from '@/utils/container-actions'
-import { formatDateTime } from '@/utils/datetime'
 import { TIP_DELAY_MS } from '@/utils/tooltip'
-import { formatMemory, formatPercent } from '@/utils/log-format'
 import { useContainerStatsBoard } from '@/composables/useContainerStatsBoard'
 import { subscribeContainerDied } from '@/realtime/notification'
-import { PAGE_SIZE_ALL, resolvePageSize, usePreferencesStore } from '@/stores/preferences'
+import {
+  CONTAINER_BASIC_COLUMNS,
+  CONTAINER_METRIC_COLUMNS,
+  PAGE_SIZE_ALL,
+  resolvePageSize,
+  usePreferencesStore,
+  type ContainerColumn
+} from '@/stores/preferences'
 import type {
   ContainerHealthSummary,
-  ContainerStatsSample,
   ContainerSummary
 } from '@/types/api'
 
@@ -126,10 +128,12 @@ const selectedStates = computed(() => selected.value.map((container) => containe
 const batchBusy = ref(false)
 
 /**
- * 表格实例：只有 `clearSelection()` 用得到，但它是实例方法，
- * 模板 ref 是唯一拿得到它的方式（`ListToolbar` 本身不该知道 el-table 的存在）。
+ * 表格组件实例：只有 `clearSelection()` 用得到。
+ *
+ * ⚠️ 它是**组件实例**而不是 `el-table` 实例——表格本体在
+ * `ContainerListTable` 内部，因此清空选择要通过组件暴露的方法转发。
  */
-const tableRef = ref<TableInstance | null>(null)
+const tableRef = ref<InstanceType<typeof ContainerListTable> | null>(null)
 
 // 命令面板 / 快捷键的「创建容器」经动作总线转到这里（对话框开关仍归本页所有）
 onActionRequest('createContainer', () => {
@@ -323,6 +327,29 @@ const metricsEnabled = computed(
   () => columns.value.cpu || columns.value.memory || columns.value.network
 )
 
+/**
+ * 列键 → 词条键。
+ *
+ * ⚠️ **穷举式 `Record`，不在模板里拼 `t(`container.col.${col}`)`**（见 AGENTS.md）：
+ * 拼字符串时少一条词条也不会报错，界面直接显示 `container.col.created` 这种原始路径。
+ * 写成 `Record<ContainerColumn, string>` 后，新增列时 TypeScript 会逼着补齐这一行。
+ */
+const COLUMN_LABELS: Record<ContainerColumn, string> = {
+  image: 'container.col.image',
+  state: 'container.col.state',
+  ports: 'container.col.ports',
+  created: 'container.col.created',
+  cpu: 'container.col.cpu',
+  memory: 'container.col.memory',
+  network: 'container.col.network'
+}
+
+/** 列选择面板的两个分组（顺序即渲染顺序）。 */
+const columnGroups = [
+  { key: 'basic', label: 'container.columns.basic', columns: CONTAINER_BASIC_COLUMNS },
+  { key: 'metrics', label: 'container.columns.metrics', columns: CONTAINER_METRIC_COLUMNS }
+] as const
+
 /** 一次性拉当前页的健康信息。失败时保持旧值（降级为「运行中」而不是报错）。 */
 async function refreshHealth(): Promise<void> {
   if (!hostId.value) return
@@ -378,30 +405,6 @@ async function syncBoard(): Promise<void> {
   await board.sync(ids)
 }
 
-/** 某容器的最新采样（没有则为 null）。 */
-function latestSample(containerId: string): ContainerStatsSample | null {
-  const points = series[containerId]
-
-  return points && points.length > 0 ? (points[points.length - 1] ?? null) : null
-}
-
-/**
- * 每个容器的端口展示结果（容器 ID → 分好组的端口）。
- *
- * ⚠️ **在 `computed` 里算一次**而不是在模板里调函数：
- * 模板里的 `portGroups(row)` 每渲染一次就算一次，而它内部要分组 + 排序——
- * 一页 20 行 × 每次刷新都在重复做同一件事。
- */
-const portGroups = computed<Record<string, PortDisplay[]>>(() => {
-  const map: Record<string, PortDisplay[]> = {}
-
-  for (const container of containers.value) {
-    map[container.id] = describePorts(container.ports)
-  }
-
-  return map
-})
-
 /**
  * 空态的图标 / 标题 / 描述。
  *
@@ -425,49 +428,6 @@ const emptyDescription = computed(() =>
 const hasFilter = computed(
   () => search.value.trim().length > 0 || stateFilter.value !== 'all'
 )
-
-/**
- * 把采样序列画成 SVG polyline 的 `points` 属性。
- *
- * 手写 SVG 而不是给每一行建一个 ECharts 实例：一页 20 行 × 3 列 = 60 个图表实例，
- * canvas 的内存与初始化成本完全不成比例。
- */
-function sparkline(containerId: string, pick: (sample: ContainerStatsSample) => number | null): string {
-  const points = series[containerId]
-  if (!points || points.length < 2) return ''
-
-  const values = points.map(pick)
-  const numeric = values.filter((value): value is number => value !== null)
-
-  if (numeric.length < 2) return ''
-
-  const max = Math.max(...numeric, 1)
-  const width = 80
-  const height = 18
-  const step = width / (values.length - 1)
-
-  return values
-    .map((value, index) => {
-      const y = height - ((value ?? 0) / max) * height
-
-      return `${(index * step).toFixed(1)},${y.toFixed(1)}`
-    })
-    .join(' ')
-}
-
-/**
- * 网络速率的展示。
- *
- * ⚠️ 不能用 `formatPercent`：速率的单位是字节/秒，百分比格式化会把它错写成 `x%`。
- */
-function formatRate(bytesPerSecond: number | null): string {
-  if (bytesPerSecond === null) return '—'
-
-  if (bytesPerSecond >= 1024 * 1024) return `${(bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s`
-  if (bytesPerSecond >= 1024) return `${(bytesPerSecond / 1024).toFixed(0)} KB/s`
-
-  return `${Math.round(bytesPerSecond)} B/s`
-}
 
 /**
  * 执行一次容器变更，然后立刻刷新列表。
@@ -1165,11 +1125,7 @@ onBeforeUnmount(() => {
           那种模型的入口不可发现——页面上没有任何东西提示「勾选行之后能批量操作」。
           现在按钮一直在那儿，没勾选时禁用（禁用原因写在 tooltip 里）。
         -->
-        <ListToolbar
-          :selected-count="selected.length"
-          :busy="batchBusy"
-          @clear="clearSelection(tableRef)"
-        >
+        <ListToolbar :selected-count="selected.length" :busy="batchBusy">
           <template #filters>
             <!--
               搜索框：输入去抖（300ms）+ 回车即时 + 可清空。
@@ -1245,10 +1201,11 @@ onBeforeUnmount(() => {
             </el-tooltip>
 
             <!--
-              显示列（0.6.0）：三个指标列。
+              显示列（0.6.0 起；0.12.0 扩到基础信息列）。
               ⚠️ 指标列默认全关：每开一列，每个可见容器就多占一条到守护进程的流。
               ⚠️ 健康**不在这里**：它已并入「状态」列（见 ContainerStatusBadge），
               再给一个独立开关等于让人以为「关掉就不看健康了」——实际上关不掉。
+              ⚠️ 名称列**不在开关里**：它可是行身份 + 进详情的唯一入口。
 
               压成图标放在工具条最右：它是个「偶尔用一次」的低频开关，
               文字按钮会让它看起来跟刷新 / 新建是同一量级的东西。
@@ -1264,7 +1221,7 @@ onBeforeUnmount(() => {
               ⚠️ tooltip 放**上方**（`placement="top"`）：菜单面板从下方展开，
               tooltip 若也在下方，浮层会盖在面板的角上并**吃掉落在那儿的点击**。
             -->
-            <el-popover placement="bottom-end" :width="200" trigger="click">
+            <el-popover placement="bottom-end" :width="240" trigger="click">
               <template #reference>
                 <el-button text class="!px-1.5" :aria-label="t('container.columns.title')">
                   <el-tooltip
@@ -1277,26 +1234,37 @@ onBeforeUnmount(() => {
                 </el-button>
               </template>
 
-              <div class="flex flex-col gap-2">
-                <el-checkbox
-                  :model-value="columns.cpu"
-                  @change="prefs.setContainerColumn('cpu', $event as boolean)"
-                >
-                  {{ t('container.col.cpu') }}
-                </el-checkbox>
-                <el-checkbox
-                  :model-value="columns.memory"
-                  @change="prefs.setContainerColumn('memory', $event as boolean)"
-                >
-                  {{ t('container.col.memory') }}
-                </el-checkbox>
-                <el-checkbox
-                  :model-value="columns.network"
-                  @change="prefs.setContainerColumn('network', $event as boolean)"
-                >
-                  {{ t('container.col.network') }}
-                </el-checkbox>
+              <!--
+                两组分开：基础信息列**只影响渲染**（关掉不省任何请求），
+                而指标列每开一个就多一条到守护进程的流。
+                成本模型不同的东西混成一列复选框，用户会以为它们在等价地「多占一点资源」。
+
+                `gap-3` 放在**外层**而不是每个分组自己身上：分组之间的间隔要比
+                组标题与它自己的复选框之间更大，否则第二个组标题看起来像是第一个组的最后一项。
+              -->
+              <div class="flex flex-col gap-3">
+                <div v-for="group in columnGroups" :key="group.key" class="flex flex-col gap-1.5">
+                  <p class="text-xs font-medium text-content-muted">
+                    {{ t(group.label) }}
+                  </p>
+                  <el-checkbox
+                    v-for="column in group.columns"
+                    :key="column"
+                    :model-value="columns[column]"
+                    @change="prefs.setContainerColumn(column, $event as boolean)"
+                  >
+                    {{ t(COLUMN_LABELS[column]) }}
+                  </el-checkbox>
+                </div>
               </div>
+
+              <!--
+                名称列不可关：它是行身份 + 进详情的唯一入口。
+                不说清楚的话，用户在面板里找不到「名称」会以为漏了一项。
+              -->
+              <p class="mt-2 text-xs text-content-faint">
+                {{ t('container.columns.nameFixed') }}
+              </p>
 
               <!-- 代价说明放在面板里：图标按钮的 tooltip 只有一行，说不下「为什么默认关闭」 -->
               <p class="mt-2 border-t border-line-subtle pt-2 text-xs text-content-faint">
@@ -1316,309 +1284,89 @@ onBeforeUnmount(() => {
 
       <template v-else>
         <!--
-          列宽分工：`min-width` 的列吃掉容器富余出来的宽度，`width` 的列纹丝不动。
-             状态（徽章 + 一行状态文案）、创建时间（一段定长日期）、操作（一排定宽图标）
-             都是内容长度可预期的列，给固定宽才不会随窗口缩放抖动；
-             名称 / 镜像 / 端口三列内容长度不定，让它们按比例瓜分多余空间。
+          表格本体抽到了 `ContainerListTable`（0.10.0）：
+          编排详情页要展示「按 compose 项目过滤出来的容器」，
+          两处必须**渲染得一模一样**——抄第二遍的话，
+          容器列表页改了端口展示规则，编排详情页不会跟着改，
+          用户会在两个页面看到同一批容器的不同信息量。
 
-             `sortable="custom"` 表示**本地不算、交给后端排**：Docker 侧要一次取全量才能定序，
-             前端排当前页会得出一个看着对、全局错的顺序。见 onSortChange 的 SORT_PROPS。 -->
-        <el-table
+          行动作列由本页提供（插槽）：两个页面的动作不一样
+          （本页有「删除」与「更多」下拉，编排页给的是「终端」）。
+        -->
+        <ContainerListTable
           ref="tableRef"
-          v-loading="loading"
-          :data="containers"
-          :row-key="(row: ContainerSummary) => row.id"
-          empty-text=""
+          :containers="containers"
+          :health-map="healthMap"
+          :series="series"
+          :columns="columns"
+          :loading="loading"
+          @open-detail="openInspect"
           @selection-change="onSelectionChange"
           @sort-change="onSortChange"
         >
-          <el-table-column type="selection" width="44" reserve-selection />
+          <template #row-actions="{ row }">
+            <IconActionButton
+              v-for="action in rowActions(row)"
+              :key="action.key"
+              :icon="action.icon"
+              :label="action.label"
+              :tone="action.tone ?? 'default'"
+              :loading="action.loading"
+              :disabled="action.disabled"
+              @click="action.run(row)"
+            />
+            <!--
+              ⚠️ **下拉的触发器必须是根节点为单一元素的组件**（这里用 `el-button`），
+              **不能直接放 `IconActionButton`**。
 
-          <el-table-column prop="name" :label="t('container.col.name')" min-width="240" sortable="custom">
-            <template #default="{ row }">
-              <div class="min-w-0">
-                <!--
-                  名称即详情入口：用 `<button>` 而不是 `<div @click>`。
-                  div 版本键盘 Tab 不到、读屏念不出「这是个可点的东西」，
-                  也无法响应 Enter / Space——而「点名称看详情」是最顺手的路径，
-                  不该只对鼠标用户成立。
-                  `text-left` + `w-fit`：默认 button 是居中的且撑满，直接套样式会把
-                  两行内容（名称 + 短 ID）居中排掉，左对齐的表格列会被撑歪。
+              原因：EP 的 `el-dropdown` 把默认插槽交给 `ElOnlyChild`，
+              它对插槽里的第一个节点 `cloneVNode` 并挂上 **forwardRef 运行时指令**，
+              靠指令的 `mounted` 钩子拿到真正的 DOM 元素。
+              而 `IconActionButton` 的根是 `el-tooltip`（→ `ElPopper`）——
+              **多根的 fragment**。指令挂到组件上会告警
+              「Runtime directive used on component with non-element root node」，
+              并且**指令不生效** → 下拉拿不到触发元素 → **菜单永远点不开**。
+              （与 `el-popover` 的 reference 插槽是同一个坑，见 AGENTS.md 陷阱 49。）
 
-                  ⚠️ 悬浮提示**始终**给，不按「是否被截断」来判断：
-                  容器名往往带前缀与随机后缀，同一列里有的长有的短，
-                  用户没法从「这行没提示」推断出「这行没被截断」——
-                  提示在不在与内容长短无关，才能被当作可靠的入口。
-                -->
-                <el-tooltip :content="row.name" placement="top-start" :show-after="TIP_DELAY_MS">
-                  <button
-                    type="button"
-                    class="app-truncate block w-fit max-w-full text-left font-medium text-content-strong hover:text-brand-500 hover:underline"
-                    @click="openInspect(row)"
-                  >
-                    {{ row.name }}
-                  </button>
-                </el-tooltip>
-                <el-tooltip :content="row.id" placement="top-start" :show-after="TIP_DELAY_MS">
-                  <div class="app-truncate font-mono text-xs text-content-faint">
-                    {{ row.id.slice(0, 12) }}
-                  </div>
-                </el-tooltip>
-              </div>
-            </template>
-          </el-table-column>
-
-          <el-table-column prop="image" :label="t('container.col.image')" min-width="200" sortable="custom">
-            <template #default="{ row }">
-              <!-- 镜像名同样始终给提示：长镜像名（带仓库地址 + 标签 + 摘要）会被截断 -->
-              <el-tooltip :content="row.image" placement="top-start" :show-after="TIP_DELAY_MS">
-                <span class="app-truncate block text-sm">{{ row.image }}</span>
-              </el-tooltip>
-            </template>
-          </el-table-column>
-
-          <!--
-            状态列：**状态与健康合成一列**。
-            「运行中」和「健康」回答的是同一个问题——「这个服务还好吗」，
-            分成两列时一行里会出现「运行中 / 不健康」两个词，读者得自己判断哪个才是结论。
-            合成后只有四种结论：健康 / 不健康（黄）/ 运行中 / 已停止。
-          -->
-          <el-table-column prop="state" :label="t('container.col.state')" width="170" sortable="custom">
-            <template #default="{ row }">
-              <div class="flex items-center gap-2">
-                <ContainerStatusBadge
-                  :status="row.state"
-                  :health="healthMap[row.id]?.healthStatus ?? null"
-                />
-                <!-- 重启次数：健康信息自带的副产品，丢了可惜；跟着状态一起显示 -->
-                <span
-                  v-if="(healthMap[row.id]?.restartCount ?? 0) > 0"
-                  class="text-xs text-status-warn app-tabular"
-                  :title="t('container.detail.restartCount')"
-                >
-                  ↻ {{ healthMap[row.id]?.restartCount }}
-                </span>
-              </div>
-              <div v-if="row.status" class="app-truncate mt-0.5 text-xs text-content-faint">
-                {{ row.status }}
-              </div>
-            </template>
-          </el-table-column>
-
-          <el-table-column
-            v-if="columns.cpu"
-            :label="t('container.col.cpu')"
-            width="130"
-          >
-            <template #default="{ row }">
-              <div v-if="latestSample(row.id)" class="flex items-center gap-2">
-                <span class="font-mono text-xs app-tabular">
-                  {{ formatPercent(latestSample(row.id)!.cpuPercent) }}
-                </span>
-                <svg class="shrink-0" width="80" height="18" aria-hidden="true">
-                  <polyline
-                    :points="sparkline(row.id, (s) => s.cpuPercent)"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1"
-                    class="text-brand-500"
-                  />
-                </svg>
-              </div>
-              <span v-else class="text-xs text-content-faint">—</span>
-            </template>
-          </el-table-column>
-
-          <el-table-column
-            v-if="columns.memory"
-            :label="t('container.col.memory')"
-            width="150"
-          >
-            <template #default="{ row }">
-              <div v-if="latestSample(row.id)" class="flex items-center gap-2">
-                <span class="font-mono text-xs app-tabular">
-                  {{ formatMemory(latestSample(row.id)!.memoryUsage, latestSample(row.id)!.memoryLimit) }}
-                </span>
-                <svg class="shrink-0" width="80" height="18" aria-hidden="true">
-                  <polyline
-                    :points="sparkline(row.id, (s) => (s.memoryLimit > 0 ? (s.memoryUsage / s.memoryLimit) * 100 : null))"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1"
-                    class="text-surface-accent"
-                  />
-                </svg>
-              </div>
-              <span v-else class="text-xs text-content-faint">—</span>
-            </template>
-          </el-table-column>
-
-          <el-table-column
-            v-if="columns.network"
-            :label="t('container.col.network')"
-            width="130"
-          >
-            <template #default="{ row }">
-              <div v-if="latestSample(row.id)" class="flex items-center gap-2">
-                <span class="font-mono text-xs app-tabular">
-                  {{ formatRate(latestSample(row.id)!.networkRxBytesPerSecond) }}
-                </span>
-                <svg class="shrink-0" width="80" height="18" aria-hidden="true">
-                  <polyline
-                    :points="sparkline(row.id, (s) => s.networkRxBytesPerSecond)"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1"
-                    class="text-status-ok"
-                  />
-                </svg>
-              </div>
-              <span v-else class="text-xs text-content-faint">—</span>
-            </template>
-          </el-table-column>
-
-          <!--
-            端口列。
-
-            ⚠️ **一行一个映射**：`-p 8080:80` 在 Docker 里是两条记录
-            （`0.0.0.0` 与 `::`），逐条渲染会让同一个端口占两行、
-            而两行长得几乎一样——用户会以为是两个端口。合并规则见 `describePorts`。
-
-            ⚠️ **只有 TCP 才是链接**：UDP 没有浏览器能直接打开的语义，
-            做成链接只会让人点开发现打不开。
-          -->
-          <el-table-column :label="t('container.col.ports')" min-width="220">
-            <template #default="{ row }">
-              <div
-                v-if="(portGroups[row.id] ?? []).length > 0"
-                class="flex flex-col gap-0.5 font-mono text-xs leading-relaxed"
+              `el-button` 的根是 `<button>`（单一元素），指令能正常落到 DOM 上。
+              tooltip 挂**按钮内部的图标**上，与本文件「显示列」按钮的写法一致。
+            -->
+            <el-dropdown trigger="click">
+              <el-button
+                text
+                circle
+                size="small"
+                :aria-label="t('container.action.more')"
+                :disabled="busyIds.has(row.id)"
               >
-                <div
-                  v-for="(group, index) in portGroups[row.id] ?? []"
-                  :key="index"
-                  class="flex items-baseline gap-1"
+                <el-tooltip
+                  :content="t('container.action.more')"
+                  placement="top"
+                  :show-after="TIP_DELAY_MS"
                 >
-                  <!--
-                    链接新窗口打开：`target="_blank"` + `rel="noopener noreferrer"`。
-                    ⚠️ `noopener` 不能省：新窗口里的页面能通过 `window.opener`
-                    反向操控本页（改地址、发起请求），而目标地址是用户自己填的端口。
-                  -->
-                  <el-tooltip
-                    v-if="group.url"
-                    :content="group.url"
-                    placement="top-start"
-                    :show-after="TIP_DELAY_MS"
+                  <span class="i-carbon-overflow-menu-horizontal" />
+                </el-tooltip>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item
+                    v-for="action in moreActions(row)"
+                    :key="action.key"
+                    :disabled="action.disabled"
+                    @click="action.run(row)"
                   >
-                    <a
-                      :href="group.url"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="text-brand-500 hover:underline"
-                    >
-                      {{ group.text }}
-                    </a>
-                  </el-tooltip>
-                  <span v-else>{{ group.text }}</span>
-
-                  <!--
-                    同一端口绑了多个**具体**地址：只显示首个，其余收成「+N」。
-                    通配地址（0.0.0.0 / ::）不算——它们只表达「所有网卡」，列出来是噪声。
-                  -->
-                  <span
-                    v-if="group.extraIps.length > 0"
-                    class="text-content-faint"
-                    :title="group.extraIps.join('\n')"
-                  >
-                    +{{ group.extraIps.length }}
-                  </span>
-                </div>
-              </div>
-              <span v-else class="text-xs text-content-faint">—</span>
-            </template>
-          </el-table-column>
-
-          <el-table-column prop="created" :label="t('container.col.created')" width="170" sortable="custom">
-            <template #default="{ row }">
-              <span class="text-xs text-content-muted">{{ formatDateTime(row.created) }}</span>
-            </template>
-          </el-table-column>
-
-          <!--
-            文字标签收进 tooltip 后，这一列从 280px 收窄。
-            `gap-0`：五个 24px 圆形按钮紧邻排列，5×24=120px 比 `gap-0.5` 的 128px 省 8px。
-            ⚠️ 不用负间距（`-space-x-0.5`）压：圆形按钮相叠 24px 会让后一个完全盖住前一个的
-            右半边，圆角处实际可点区更小——看着紧凑，点起来却会点不中。
-            ⚠️ 也用不了 `el-button-group`：它的相邻规则是直接子选择器
-            `>.el-button+.el-button`，而 IconActionButton 为 tooltip 包了一层 span，匹配不上。
-            省略 `align` 即左对齐：表头「操作」必须与图标同侧，右对齐看着是错位的。
-          -->
-          <el-table-column :label="t('container.col.actions')" width="136">
-            <template #default="{ row }">
-              <div class="flex items-center">
-                <IconActionButton
-                  v-for="action in rowActions(row)"
-                  :key="action.key"
-                  :icon="action.icon"
-                  :label="action.label"
-                  :tone="action.tone ?? 'default'"
-                  :loading="action.loading"
-                  :disabled="action.disabled"
-                  @click="action.run(row)"
-                />
-                <!--
-                  ⚠️ **下拉的触发器必须是根节点为单一元素的组件**（这里用 `el-button`），
-                  **不能直接放 `IconActionButton`**。
-
-                  原因：EP 的 `el-dropdown` 把默认插槽交给 `ElOnlyChild`，
-                  它对插槽里的第一个节点 `cloneVNode` 并挂上 **forwardRef 运行时指令**，
-                  靠指令的 `mounted` 钩子拿到真正的 DOM 元素。
-                  而 `IconActionButton` 的根是 `el-tooltip`（→ `ElPopper`）——
-                  **多根的 fragment**。指令挂到组件上会告警
-                  「Runtime directive used on component with non-element root node」，
-                  并且**指令不生效** → 下拉拿不到触发元素 → **菜单永远点不开**。
-                  （与 `el-popover` 的 reference 插槽是同一个坑，见 AGENTS.md 陷阱 49。）
-
-                  `el-button` 的根是 `<button>`（单一元素），指令能正常落到 DOM 上。
-                  tooltip 挂**按钮内部的图标**上，与本文件「显示列」按钮的写法一致。
-                -->
-                <el-dropdown trigger="click">
-                  <el-button
-                    text
-                    circle
-                    size="small"
-                    :aria-label="t('container.action.more')"
-                    :disabled="busyIds.has(row.id)"
-                  >
-                    <el-tooltip
-                      :content="t('container.action.more')"
-                      placement="top"
-                      :show-after="TIP_DELAY_MS"
-                    >
-                      <span class="i-carbon-overflow-menu-horizontal" />
-                    </el-tooltip>
-                  </el-button>
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item
-                        v-for="action in moreActions(row)"
-                        :key="action.key"
-                        :disabled="action.disabled"
-                        @click="action.run(row)"
-                      >
-                        <span :class="action.icon" aria-hidden="true" />
-                        <span class="ml-2">{{ action.label }}</span>
-                        <span
-                          v-if="action.hint"
-                          class="ml-2 text-xs text-status-warn"
-                        >{{ action.hint }}</span>
-                      </el-dropdown-item>
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
-              </div>
-            </template>
-          </el-table-column>
-        </el-table>
+                    <span :class="action.icon" aria-hidden="true" />
+                    <span class="ml-2">{{ action.label }}</span>
+                    <span
+                      v-if="action.hint"
+                      class="ml-2 text-xs text-status-warn"
+                    >{{ action.hint }}</span>
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </template>
+        </ContainerListTable>
 
         <!--
           空态分三种：**没搜 / 搜不到 / 本来就没有**。

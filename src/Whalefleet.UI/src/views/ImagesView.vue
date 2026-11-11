@@ -3,7 +3,6 @@ import { computed, h, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import type { TableInstance } from 'element-plus'
 import PageHeader from '@/components/common/PageHeader.vue'
 import SectionCard from '@/components/common/SectionCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -102,9 +101,6 @@ const sortOrder = ref<'asc' | 'desc'>('desc')
 /** 批量删除选中的镜像 */
 const selected = ref<ImageSummary[]>([])
 const batchBusy = ref(false)
-
-/** 表格实例：只有 `clearSelection()` 用得到 */
-const tableRef = ref<TableInstance | null>(null)
 
 // 命令面板 / 快捷键的「拉取镜像」经动作总线转到这里（对话框开关仍归本页所有）
 onActionRequest('pullImage', () => {
@@ -286,11 +282,6 @@ async function onSortChange({ prop, order }: { prop: string | null; order: strin
 
 function onSelectionChange(rows: ImageSummary[]): void {
   selected.value = rows
-}
-
-function clearSelection(table: { clearSelection: () => void } | null): void {
-  table?.clearSelection()
-  selected.value = []
 }
 
 /**
@@ -492,11 +483,7 @@ watch(
 
     <SectionCard density="flush">
       <template #actions>
-        <ListToolbar
-          :selected-count="selected.length"
-          :busy="batchBusy"
-          @clear="clearSelection(tableRef)"
-        >
+        <ListToolbar :selected-count="selected.length" :busy="batchBusy">
           <template #filters>
             <!-- ⚠️ `!w-40` 的 `!` 不能省：Element Plus 把 `el-input` 的宽度写死成
                  `var(--el-input-width)`（默认 100%），同特异度下 EP 赢，工具类会被吃掉。 -->
@@ -563,7 +550,6 @@ watch(
 
       <template v-else>
         <el-table
-          ref="tableRef"
           v-loading="loading"
           :data="images"
           :row-key="(row: ImageSummary) => row.id"
