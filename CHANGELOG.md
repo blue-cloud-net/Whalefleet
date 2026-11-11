@@ -73,8 +73,36 @@ before the first public release).
 - **Batch actions are always visible**: the old “appears once something is selected” bar is now
   a permanent part of the toolbar, disabled until rows are selected (the reason is in the
   tooltip). The entry point is no longer undiscoverable.
+- **The selection count moved to the far left of the toolbar, and the toolbar stopped jumping**:
+  it used to sit next to the batch buttons, so checking a row added a “N selected” label (plus a
+  “clear selection” button) in the middle of the toolbar. The toolbar is right-aligned, so its
+  width changed and **every control shifted** (measured: the batch buttons moved 130+ px). The
+  count is now a **status readout at the far left**, in a slot of constant width — nothing moves
+  when rows are selected. The “clear selection” button is gone: clicking the header’s “select
+  all” checkbox again, the per-row checkboxes and the batch actions themselves (which clear the
+  selection afterwards) already cover it.
 - **The refresh button is an icon**, and the “updated at …” timestamp is gone — it changed every
   five seconds and nobody read it.
+- **The column picker now covers every optional column, not just the metrics**: image, status,
+  ports and created-at can be hidden too (grouped as *basics*), while CPU / memory / network stay
+  in their own *live metrics* group because they cost a daemon subscription per visible container.
+  Listing only the metric columns made the picker read like a “metrics switch” rather than “which
+  columns do I show”; narrowing a wide table had no entry point.
+- **The name column cannot be hidden**: it is both the row identity and the only way into the
+  details view. Hiding it produced a table that could not be clicked into anything, and after
+  filtering it was impossible to tell which row was which.
+- **Metric cells are stacked, and the memory cell no longer shows the limit**: the cell used to be
+  one horizontal row of “value + 80px chart”, which could not fit `160.0 MB / 62.5 GB` inside
+  130–150px — the text wrapped, every metric row became two lines of text and the table row
+  height was stretched. Value on top, chart underneath keeps each cell a fixed 112px wide with two
+  single-line rows. The memory limit moved into the tooltip: to tell “how close to full is it”,
+  the bar height already carries the answer.
+- **The row sparklines have a frame with an absolute scale**: they used to be drawn bare, scaled to
+  **each row's own peak**, so a container pinned at 0.5% and one oscillating between 40% and 60%
+  produced two identical curves. The frame (1px border, sunken background, half-way dashed line and
+  a baseline) plus a caller-supplied ceiling — 100 for CPU and memory, the peak for network — makes
+  the top edge mean “ceiling” and the bottom edge mean “zero”. The ceiling is also spelled out in
+  the tooltip: a frame can only convey relative height.
 
 #### Notes
 
@@ -93,6 +121,18 @@ before the first public release).
 
 #### Fixed
 
+- **The two image-cleanup entry points no longer open the same dialog**: “clean up dangling
+  images” and “clean up all unused images” shared one title and one subtitle, so the dialog
+  gave no hint of which scope was about to run. Each scope now has its own title and subtitle
+  — and the subtitle states the actual criterion (**no tag at all** vs. **not used by any
+  container**, regardless of tags). The old wording described the *all* scope while sitting
+  on the *dangling* button, which overstated how much the dangling cleanup would remove.
+- **The dangling-image wording is consistent everywhere**: the UI said “悬挂镜像” in some
+  places and “悬空镜像” in others. It is now “悬空镜像” throughout, matching the Docker
+  documentation.
+- **`**bold**` markers in locale strings actually render as bold**: the strings are plain
+  text interpolations with no markdown renderer, so the two asterisks were shown to the user
+  verbatim. They are now rendered as emphasis.
 - **`make docker-up` now starts the direct-socket mode**: the deployment target gained a
   `MODE=direct|proxy` switch (default `direct`). It used to run a bare
   `docker compose up -d`, which only starts the services **without** a profile — i.e. the
@@ -110,11 +150,11 @@ before the first public release).
   so the direct-socket container joins the host's docker group instead of failing with
   error 1301 on hosts whose socket GID is not the default 983.
 
-### `0.10.0` — Compose / Stack basics (internal draft)
+### `0.10.0` — Compose project basics (internal draft)
 
 #### Added
 
-- **Stack management endpoints** (`POST /api/v1/hosts/{hostId}/stacks/{list,inspect,deploy,update,stop,remove,task}`):
+- **Compose project management endpoints** (`POST /api/v1/hosts/{hostId}/composes/{list,inspect,deploy,update,stop,remove,task}`):
   deploy, update, stop, remove and the task snapshot. The list **merges two sources** — Compose
   projects discovered on the daemon (by the `com.docker.compose.project` label) and the projects
   this platform has recorded — because either one alone gives an incomplete view.
@@ -133,32 +173,32 @@ before the first public release).
 - **Two explicit apply options**: "pull latest images" and "remove extra containers". Both are
   checkboxes rather than parameter defaults, because their side effects (a failed pull fails the
   whole apply / a running container is stopped) are irreversible and invisible.
-- **A resource webhook** (`POST /api/v1/webhooks/stacks/{token}`): an **anonymous** endpoint that
+- **A resource webhook** (`POST /api/v1/webhooks/composes/{token}`): an **anonymous** endpoint that
   re-applies the stored Compose file. The token is stored **only as a SHA-256 hash**; the
   plaintext is returned exactly once. Requests are rate limited to 10 per minute.
-- **A stack page and a stack detail page** (`/hosts/:hostId/stacks` and
-  `/hosts/:hostId/stacks/{name}`): the list shows the project status, service count and running
+- **A Compose project page and detail page** (`/hosts/:hostId/composes` and
+  `/hosts/:hostId/composes/{name}`): the list shows the project status, service count and running
   containers; the detail page shows the per-service state, health, ports, restart policy, the
   Compose source and the webhook card.
-- **Stack permissions** `stack.read` and `stack.write` (host scope), granted to admin / operator /
+- **Compose project permissions** `compose.read` and `compose.write` (host scope), granted to admin / operator /
   viewer / auditor as appropriate.
-- **A failed deployment reaches the bell**: `OnStackTaskFailed` on the notification hub. Only
+- **A failed deployment reaches the bell**: `OnComposeTaskFailed` on the notification hub. Only
   failures are pushed — success is already visible on screen, but a failure may happen **after
   the user has left the page** (a CI-triggered deployment).
 
 #### Changed
 
 - **The progress channel is generic**: `SubscribePull` / `OnPullProgress` became
-  `SubscribeOperation` / `OnOperationProgress`, because stack deployments use the same channel.
+  `SubscribeOperation` / `OnOperationProgress`, because Compose deployments use the same channel.
   Breaking changes are allowed during `0.x`, so the old names are not kept.
-- **A stack's status has four values, not two**: `running` / `partial` / `stopped` / `unknown`.
+- **A Compose project's status has four values, not two**: `running` / `partial` / `stopped` / `unknown`.
   "Some services are not running" is the most common orchestration problem, and with only
   running / stopped it would be misreported as stopped.
 
 #### Notes
 
 - **Volumes are never pruned**: a volume holds user data, deleting it is irreversible, and it can
-  be cleaned up separately later. Removing a stack removes its containers and networks.
+  be cleaned up separately later. Removing a compose project removes its containers and networks.
 - **Updating needs the stored YAML**: projects deployed outside this platform (a plain
   `docker compose up` on the command line) can only be stopped or removed — the UI marks them as
   external and does not offer an update.

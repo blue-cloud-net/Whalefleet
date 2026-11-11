@@ -14,7 +14,7 @@
 > | **0.7.0** | 批量操作与资源清理 |
 > | **0.8.0** | exec 终端 |
 > | **0.9.0** | 操作审计（认证日志 + 活动日志） |
-> | **0.10.0** | Compose / Stack 基础功能 |
+> | **0.10.0** | Compose 项目基础功能 |
 > | **0.11.0** | 告警规则体系 |
 > | **0.12.0** | 资源粒度 RBAC |
 > | **0.13.0** | 账号、团队与安全 |
@@ -139,24 +139,24 @@
 
 ---
 
-## Docker Compose / Stack 管理
+## Docker Compose 项目管理
 
-> 主菜单中的「编排」入口（`/hosts/:hostId/stacks`）在 **0.10.0** 已转正为真实页面。
+> 主菜单中的「编排」入口（`/hosts/:hostId/composes`）在 **0.10.0** 已转正为真实页面。
 
 | 功能 | 说明 | 阶段 |
 |------|------|------|
-| ✅ **编排菜单入口** | 主机侧边栏「编排」菜单项 + 列表页与详情页（`/hosts/:hostId/stacks/:name`） | 0.0.7 / 0.10.0 |
-| ✅ Stack 列表 | 展示通过 Compose 部署的 Stack（label `com.docker.compose.project` 过滤）+ **本平台记录的**（两边合并，`managed` 字段区分） | 0.10.0 |
-| ✅ 部署 Stack | 提交 `docker-compose.yml` 部署 Stack（**异步任务 + 实时进度**） | 0.10.0 |
-| ✅ 更新 Stack | 重新提交 YAML 更新 Stack（配置哈希变了才重建容器） | 0.10.0 |
-| ✅ 停止 Stack | 停止 Stack 内所有服务（**容器保留**） | 0.10.0 |
-| ✅ 删除 Stack | 删除 Stack（容器与网络一并清掉，**数据卷默认保留**） | 0.10.0 |
-| ✅ 服务列表 | 查看 Stack 内服务状态（镜像 / 状态 / 健康 / 端口 / 重启策略） | 0.10.0 |
+| ✅ **编排菜单入口** | 主机侧边栏「编排」菜单项 + 列表页与详情页（`/hosts/:hostId/composes/:name`） | 0.0.7 / 0.10.0 |
+| ✅ Compose 项目列表 | 展示通过 Compose 部署的 Compose 项目（label `com.docker.compose.project` 过滤）+ **本平台记录的**（两边合并，`managed` 字段区分） | 0.10.0 |
+| ✅ 部署 Compose 项目 | 提交 `docker-compose.yml` 部署 Compose 项目（**异步任务 + 实时进度**） | 0.10.0 |
+| ✅ 更新 Compose 项目 | 重新提交 YAML 更新 Compose 项目（配置哈希变了才重建容器） | 0.10.0 |
+| ✅ 停止 Compose 项目 | 停止 Compose 项目内所有服务（**容器保留**） | 0.10.0 |
+| ✅ 删除 Compose 项目 | 删除 Compose 项目（容器与网络一并清掉，**数据卷默认保留**） | 0.10.0 |
+| ✅ 服务列表 | 查看 Compose 项目内服务状态（镜像 / 状态 / 健康 / 端口 / 重启策略） | 0.10.0 |
 | ✅ **应用选项** | 应用前显式选择「拉取最新镜像」与「清理多余的容器」（**两个选项的副作用都不可逆且不可见**） | 0.10.0 |
-| ✅ **资源 Webhook** | `POST /api/v1/webhooks/stacks/{token}` 触发重部署（**匿名端点**，令牌只存哈希；限流 10 次/分钟） | **0.10.0** |
+| ✅ **资源 Webhook** | `POST /api/v1/webhooks/composes/{token}` 触发重部署（**匿名端点**，令牌只存哈希；限流 10 次/分钟） | **0.10.0** |
 | ⬜ **Webhook 传参** | `?tag=` 与 `?<VAR>=` 传参（**Portainer 商业版独占**） | **0.15.0** |
-| ⬜ **`.env` 变量与密钥** | 全局变量 + Stack 级变量；引用式注入 compose，**值默认遮罩** | **0.15.0** |
-| ⬜ **导出 Stack 为 YAML / 容器为 `docker run`** | 反向生成可复制的定义（不依赖模板表） | **0.14.0** |
+| ⬜ **`.env` 变量与密钥** | 全局变量 + Compose 项目级变量；引用式注入 compose，**值默认遮罩** | **0.15.0** |
+| ⬜ **导出 Compose 项目为 YAML / 容器为 `docker run`** | 反向生成可复制的定义（不依赖模板表） | **0.14.0** |
 
 ---
 
@@ -288,7 +288,7 @@
 | ⬜ **E2E（Playwright）** | 登录 → 进入主机 → 创建容器 → 删除容器 | **0.19.0** |
 | ⬜ **质量门转硬** | 前端 `pnpm lint` / `pnpm test` 进 CI；`dotnet format` 零违规（去掉 `continue-on-error`） | **0.19.0** |
 | ⬜ **备份 / 恢复 UI** | 界面导出 / 导入；**备份含 `jwt.key`**，恢复后自动修正属主（免手动 `chown 10001`） | **0.17.0** |
-| ⬜ **反向代理配置生成** | 为容器 / Stack 生成 Traefik labels 与 nginx 片段（可复制） | **0.17.0** |
+| ⬜ **反向代理配置生成** | 为容器 / Compose 项目生成 Traefik labels 与 nginx 片段（可复制） | **0.17.0** |
 
 > **CHANGELOG 改为全人工维护**：Release Please 配了 `skip-changelog`，
 > 它的发布 PR 只含版本号变更。CHANGELOG 小节在**发布 PR 内手写**（中英双语），
@@ -325,7 +325,7 @@
 - ❌ **宿主机级实时 CPU / 内存 / 网络 / 负载** → Docker Engine API 无宿主机级指标端点，需要目标主机上的 Agent（1.0.0 之后）
 - ❌ **主机「运行时间」**（守护进程启动时长 / 宿主 boot time） → Docker Engine API 不提供守护进程启动时刻，也不提供宿主 boot time；`/info` 的 `SystemTime` 是**当前时间**。该字段在 `0.6.0` 移除（详见上方「主机」表）
 - ❌ **应用模板**（App Templates 等价物）→ backlog `B-005`
-- ❌ **GitOps：从 Git 仓库同步 Stack** → backlog
+- ❌ **GitOps：从 Git 仓库同步 Compose 项目** → backlog
 - ❌ **计划任务 / cron**（定期备份、定期 prune、定时重启）→ backlog
 - ❌ **共享凭据管理（SSH / Git）、主机快照浏览** → backlog
 - ❌ **SIEM 外发**（认证与活动日志流到 syslog / HTTP）、**告警渠道扩展**（Slack / Telegram / ntfy）→ backlog

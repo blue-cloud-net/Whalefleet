@@ -58,7 +58,7 @@ UnoCSS 默认 + 自定义：
 | 层 | 用途 | 示例 | 位置 |
 |---|---|---|---|
 | **Layout 层** | 顶级布局 | `AppLayout`（+ `AppBreadcrumb` / `AppSidebar` / `SidebarNav` / `UserMenu`） | `src/Whalefleet.UI/src/layouts/` |
-| **通用组件** | 跨页面复用 | `EmptyState`、`PlaceholderSection`、`SectionCard`、`StatCard`、`PageHeader`、`StatusDot`、`IconActionButton`、`LangSwitcher`、`ThemeSwitcher`、`MockBadge`（开发期）；0.0.14 新增 `StatusBadge`、`JsonTree`、`CopyableText`、`CommandPalette`、`ShortcutHelpDialog`；0.7.0 新增 `ListToolbar`（列表页统一工具条） | `src/Whalefleet.UI/src/components/common/` |
+| **通用组件** | 跨页面复用 | `EmptyState`、`PlaceholderSection`、`SectionCard`、`StatCard`、`PageHeader`、`StatusDot`、`IconActionButton`、`LangSwitcher`、`ThemeSwitcher`、`MockBadge`（开发期）；0.0.14 新增 `StatusBadge`、`JsonTree`、`CopyableText`、`CommandPalette`、`ShortcutHelpDialog`；0.7.0 新增 `ListToolbar`（列表页统一工具条）、`EmphasisText`（渲染词条里的 `**强调**`） | `src/Whalefleet.UI/src/components/common/` |
 | **业务组件** | 领域专用 | `HostHero`、`ResourceTile`、`HostCard`、`HostGroupSection`、`HostSelector`；各 `*Dialog.vue`（创建 / 编辑 / 改密）；0.0.14 新增 `ContainerStatusBadge`、`ImageSize`、`PortMappingEditor`、`EnvVarEditor`、`VolumeMountEditor` | `src/Whalefleet.UI/src/components/business/` |
 | **View 层** | 路由对应的页面 | 每个路由一个 .vue 文件 | `src/Whalefleet.UI/src/views/` |
 
@@ -358,7 +358,9 @@ HOST_TONE_RAIL[tone]                // 卡片左侧色条
 | **复制** | `navigator.clipboard` 在非安全上下文不可用，必须 `try/catch` 并降级提示 |
 | **表单** | 必填项标 `*`；提交按钮在表单未变 dirty 时禁用 |
 | **表格** | 默认显示「名称 / 状态 / 创建时间 / 操作」四列；行内动作一律用 `IconActionButton`（图标 + tooltip 文字标签），文字按钮只留在页头 / 工具条；操作列**左对齐**（表头与图标同侧）；分页（默认 20 条/页，可在用户偏好设置中调整 10/20/50/100） |
-| **列表工具条** | 五个列表页（容器 / 镜像 / 卷 / 网络 / 主机）共用 `ListToolbar`，**一律放在卡片头部右侧**，且**分三组**：① 筛选（搜索框，输入去抖 300ms + 回车即时 + 可清空；状态下拉；命中计数）│ ② 批量（动作 + 已选计数 + 「取消选择」）│ ③ 页面操作（图标刷新按钮 → 列设置）。组间用 `gap-x-4` 留白 + 一条 1px 竖线（`bg-line-subtle`，`hidden md:block`）——三组回答的是三个不同问题（找哪几条 / 对它们做什么 / 这一页怎么刷新与显示），挤成一排时批量按钮会被读成搜索栏的附属品。**批量动作用「图标 + 文字」+ 标准带框按钮**（`IconActionButton` 的 `show-label` → `plain`）：它是「这一页支持批量操作」的唯一提示且高频，纯图标得逐个悬停才能分清启动与删除；行内动作则保持纯图标（配文字会把表格撑宽）。**批量按钮之间用 `gap-1` 读成一个按钮组**，与「已选 N / 取消选择」之间的 `gap-2` 区分。**批量按钮必须常驻**：选中才出现的批量条入口不可发现，而常驻 + 禁用既有可发现性、也不会让人怀疑页面坏了。**刷新 / 列设置用图标**：低频开关不值得占一个按钮的宽度 |
+| **容器列表的列选择**（0.12.0） | 列选择面板覆盖**全部可关列**，而不再只有三个指标列（只列指标时它读起来像「指标开关」而不是「显示哪些列」）。按成本分两组：**基础信息**（镜像 / 状态 / 端口 / 创建时间，默认全开，关掉只影响渲染、不省任何请求）与**运行指标**（CPU / 内存 / 网络，默认全关，每开一列给每个可见容器多占一条到守护进程的流）。**名称列刻意不可关**——它既是行身份又是进详情的唯一入口，关掉会得到一张点不进任何地方的表；面板里必须写一句 `nameFixed` 说明，否则用户会以为漏了一项。列可见性存 `preferences.containerColumns`，切换时**按 `CONTAINER_COLUMNS` 重建**（展开旧对象会把旧版遗留的 `health` 与用户手改的野键一路带下去），新增列时必须同时补 `CONTAINER_COLUMNS` / `CONTAINER_COLUMN_DEFAULTS` / 列名 `Record` 三处 |
+| **指标单元格与迷你图**（0.12.0） | 三个指标列统一「**数值在上、迷你图在下**」的纵向布局，列宽固定 112px。早先是横排，一列 130–150px 装不下「160.0 MB / 62.5 GB」这类文案，于是单元格内折行——一行指标变成两行文字，表行高被撑开（看上去就是「挤在一堆」）。**内存只显示已用量**，上限移到 tooltip（要判断「离满还有多远」看图形高度比例就够了）。迷你图必须有**外壳**（`MetricSparkline`：1px `border-line-subtle` + `bg-surface-sunken` + 半程虚线 + 基线）：早先的裸图上限是**每行自己算的峰值**，于是一个恒定 0.5% 的容器与一个在 40%–60% 震荡的容器画出两条一样的曲线——只能看出「有没有起伏」，看不出「处于什么水位」。现在上限由调用方给定（CPU/内存 100、网络取峰值），框顶即上限、框底即 0，并且**上限必须同时写进 tooltip**（外壳只能表达相对高度）。缩放数学收在 `utils/metric-chart.ts`（纯函数，可单测） |
+| **列表工具条** | 五个列表页（容器 / 镜像 / 卷 / 网络 / 主机）共用 `ListToolbar`，**一律放在卡片头部右侧**，且**分三组**：① 筛选（搜索框，输入去抖 300ms + 回车即时 + 可清空；状态下拉；命中计数）│ ② 批量（动作）│ ③ 页面操作（图标刷新按钮 → 列设置）。组间用 `gap-x-4` 留白 + 一条 1px 竖线（`bg-line-subtle`，`hidden md:block`）——三组回答的是三个不同问题（找哪几条 / 对它们做什么 / 这一页怎么刷新与显示），挤成一排时批量按钮会被读成搜索栏的附属品。**「已选 N 项」在工具条最左，占恒定宽度槽位**（`min-w-[4rem]`，计数为 0 时留空不删）：它是状态读数而非控件，且宽度一变（右对齐的工具条就会把所有控件平移，实测批量按钮左移 130 多像素）——所以槽位必须恒定。不传 `selected-count` = 该列表不支持批量选择，槽位不渲染。**没有「取消选择」按钮**：表头「全选」复选框再点一次、逐行复选框、批量动作执行后各页自己清空，三条路足够。**批量动作用「图标 + 文字」+ 标准带框按钮**（`IconActionButton` 的 `show-label` → `plain`）：它是「这一页支持批量操作」的唯一提示且高频，纯图标得逐个悬停才能分清启动与删除；行内动作则保持纯图标（配文字会把表格撑宽）。**批量按钮之间用 `gap-1` 读成一个按钮组**。**批量按钮必须常驻**：选中才出现的批量条入口不可发现，而常驻 + 禁用既有可发现性、也不会让人怀疑页面坏了。**刷新 / 列设置用图标**：低频开关不值得占一个按钮的宽度 |
 | **状态标签** | 容器/镜像状态用统一 `StatusBadge` 组件（颜色 + 图标 + 文本）；主机三态色走 `utils/host-status.ts` |
 | **容器生命周期动作**（0.7.0） | 动作的**可用性由 Docker 语义决定**、判定**只写一处**（`utils/container-actions.ts`），行内按钮 / 批量按钮 / 详情页三处共用：暂停中的容器仍算「还活着」（仍需 `force` 才能删）但**不能被暂停**，「启动」只对没在跑的容器有意义，「恢复」只对已暂停的有意义。**详情页自成一体**：生命周期动作 + 「更多」菜单（复制 / 编辑 / 重建 / 追加挂载），操作一个容器不必回列表页。**批量动作条自适应**：够宽时七个全平铺，不够时四个高频（启动 / 停止 / 重启 / 删除）常驻、其余（终止 / 暂停 / 继续）进「更多」下拉——但**按钮常驻禁用**，不靠「选中才出现」 |
 | **时间格式** | 列表显示相对时间（「2 分钟前」）；详情显示绝对时间（带时区） |
@@ -439,7 +441,7 @@ HOST_TONE_RAIL[tone]                // 卡片左侧色条
   /hosts/:hostId                    → redirect → /hosts/:hostId/dashboard
   /hosts/:hostId/dashboard          → HostDashboardView（落地页，承载「主机信息」卡片；不进侧边栏）
   /hosts/:hostId/status             → HostStatusView（状态图，菜单第一项）
-  /hosts/:hostId/stacks             → StacksView（编排 / Compose，0.10.0+）
+  /hosts/:hostId/composes             → ComposesView（Compose 项目，0.10.0+）
   /hosts/:hostId/containers         → ContainersView
     /hosts/:hostId/containers/:id/inspect  → ContainerInspectView（配置快照）
     /hosts/:hostId/containers/:id/logs     → ContainerLogsView（实时日志）
@@ -448,7 +450,7 @@ HOST_TONE_RAIL[tone]                // 卡片左侧色条
   /hosts/:hostId/volumes            → VolumesView      (0.2.0+)
   /hosts/:hostId/networks           → NetworksView     (0.2.0+)
   /hosts/:hostId/events             → EventsView       (操作审计，0.9.0+ 占位)
-  /hosts/:hostId/stacks/:name       → StackDetailView  (0.10.0+)
+  /hosts/:hostId/composes/:name       → ComposeProjectDetailView  (0.10.0+)
   /hosts/:hostId/repositories        → RepositoryListView (0.4.0+)
 ```
 

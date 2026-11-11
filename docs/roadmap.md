@@ -84,12 +84,12 @@
 | `0.7.0` | 批量操作与资源清理 | ✅ | 前端逐条批量启停（七个动作，带失败原因）+ 容器生命周期端点（终止 / 暂停 / 恢复 / 重建）+ 按分组批量打标 + 资源级 prune + 网络接入/断开 |
 | `0.8.0` | exec 交互式终端 | ✅ | WebSocket + xterm.js + 独立 audience 的短时 terminal token；`/ws` 不进当前主机解析 |
 | `0.9.0` | 操作审计日志 | ✅ | 认证日志 + 活动日志两页；exec 会话接入；CSV 导出（BOM + CRLF） |
-| `0.10.0` | Compose / Stack 基础功能 | ✅ | 列表 / 部署 / 更新 / 停止 / 删除 / 服务列表 / Webhook |
+| `0.10.0` | Compose 项目基础功能 | ✅ | 列表 / 部署 / 更新 / 停止 / 删除 / 服务列表 / Webhook |
 | `0.11.0` | 告警规则体系 | ⬜ | 规则表 + 三级严重度 + 可配阈值 + 渠道 + 冷却期 |
 | `0.12.0` | 资源粒度 RBAC | ⬜ | 授权下沉到容器级 |
 | `0.13.0` | 账号、团队与安全 | ⬜ | Team 花名册 + 批量授权 + 会话列表 + 密码策略 |
 | `0.14.0` | 资源导入导出与文件浏览 | ⬜ | 镜像 save/load、容器 export/import/commit、容器与卷文件浏览 |
-| `0.15.0` | 部署自动化 | ⬜ | Stack/容器 Webhook + `.env` 变量与密钥 + 镜像自动更新 |
+| `0.15.0` | 部署自动化 | ⬜ | Compose 项目 / 容器 Webhook + `.env` 变量与密钥 + 镜像自动更新 |
 | `0.16.0` | 列表与查询 | ⬜ | 服务端过滤 / 排序 / 虚拟滚动 + 镜像可更新指示 |
 | `0.17.0` | 平台与部署配置 | ⬜ | 备份恢复 UI + 服务端偏好 + 站点设置 + 反代配置生成 |
 | `0.18.0` | MCP 服务器（AI 接入） | ⬜ | `/mcp` + PAT + 工具按权限过滤 + 写开关 + env 脱敏 |
@@ -116,7 +116,7 @@
 | 6 运维与发布 | `0.17.0`–`0.19.0` | 平台与部署配置 → MCP 服务器 → API 契约与质量收口 | ✅✅ |
 
 > **退路旋钮**：阶段 1 / 2 / 3 是 1.0.0 的可用性底线，不可后移；
-> 阶段 4 中**只有 `0.10.0`（Compose）不可后移**——`0.14.0` 的「导出 Stack 为 YAML」与
+> 阶段 4 中**只有 `0.10.0`（Compose）不可后移**——`0.14.0` 的「导出 Compose 项目为 YAML」与
 > `0.15.0` 的 Webhook 传参 / 变量都硬依赖它，而 `0.11.0`–`0.13.0` 可整体后移；阶段 5 可整体后移；
 > **阶段 6 可整体后移到 `1.0.0` 之后**——`0.1.0`–`0.16.0` 就是一条完整、可发布的线。
 
@@ -675,18 +675,18 @@ terminal token 过期后无法重连；断开后不残留容器内进程；
 
 ---
 
-### 0.10.0 ✅ — Compose / Stack 基础功能
+### 0.10.0 ✅ — Compose 项目基础功能
 
 **目标**：覆盖最常见的 Compose 使用场景，先交付可用的编排骨架。
 
-- Stack 管理：`POST /api/v1/hosts/{hostId}/stacks/{list,inspect,deploy,update,stop,remove,task}`
+- Compose 项目管理：`POST /api/v1/hosts/{hostId}/composes/{list,inspect,deploy,update,stop,remove,task}`
   （用 Docker.DotNet 调用 + label `com.docker.compose.project` 过滤）
-- 前端：Stack 管理页（提交 YAML、查看服务列表、启停与删除）+ 详情页 + 应用选项对话框
+- 前端：Compose 项目管理页（提交 YAML、查看服务列表、启停与删除）+ 详情页 + 应用选项对话框
 - 主菜单「编排」占位页转正
-- 资源 Webhook：`POST /api/v1/webhooks/stacks/{token}` 触发重部署（**匿名端点**，令牌只存哈希）
+- 资源 Webhook：`POST /api/v1/webhooks/composes/{token}` 触发重部署（**匿名端点**，令牌只存哈希）
 
 **验收**：提交一份 `docker-compose.yml` 能部署出服务并看到状态；
-更新 YAML 后能滚动重启；删除 Stack 后其容器一并消失。
+更新 YAML 后能滚动重启；删除 Compose 项目后其容器一并消失。
 
 > **部署是异步任务**：部署可能要拉镜像（几分钟），而 HTTP 请求抗不住那么长——
 > 反代会把连接掐掉，客户端拿到的是「504 网关超时」而不是「部署失败」。
@@ -703,7 +703,7 @@ terminal token 过期后无法重连；断开后不残留容器内进程；
 > 令牌无效一律 `404`（不区分「不存在 / 已吊销 / 未启用」——区分了就成了令牌探测工具）。
 >
 > **本档原定「Webhook 与 `.env` 变量不在此迭代」**（归 `0.15.0`），
-> 但 Webhook 的**重部署**部分提前到了本档：它的依赖只有 Stack 本身，
+> 但 Webhook 的**重部署**部分提前到了本档：它的依赖只有 Compose 项目本身，
 > 而「CI 推完代码自动重部署」是编排最高频的用法。
 > `0.15.0` 保留的是**传参**（`?tag=` / `?<VAR>=`）与 `.env` 变量管理。
 
@@ -792,8 +792,8 @@ terminal token 过期后无法重连；断开后不残留容器内进程；
 - ⬜ **容器 commit**：把容器当前状态提交为镜像（需二次确认——它会把临时改动固化）
 - ⬜ **文件浏览**：容器文件系统与卷的目录浏览；只读下载单个文件；
   **写入 / 上传只在显式确认后开放**，且默认关闭
-- ⬜ **反向生成定义**：导出 Stack 为 compose YAML；导出容器为 `docker run` 命令 / compose 片段
-  （Stack 部分**依赖 `0.10.0`**）
+- ⬜ **反向生成定义**：导出 Compose 项目为 compose YAML；导出容器为 `docker run` 命令 / compose 片段
+  （Compose 项目部分**依赖 `0.10.0`**）
 - ⬜ 大文件走流式传输与进度回报，不整块读进内存
 
 **验收**：
@@ -815,33 +815,33 @@ terminal token 过期后无法重连；断开后不残留容器内进程；
 
 **目标**：让「部署」这件事被外部事件驱动，而不是靠人点。
 
-> ⚠️ **Webhook 的「重部署」部分已提前到 `0.10.0`**（`POST /api/v1/webhooks/stacks/{token}`
-> 触发重新应用 YAML）。提前的理由：它的依赖只有 Stack 本身，
+> ⚠️ **Webhook 的「重部署」部分已提前到 `0.10.0`**（`POST /api/v1/webhooks/composes/{token}`
+> 触发重新应用 YAML）。提前的理由：它的依赖只有 Compose 项目本身，
 > 而「CI 推完代码自动重部署」是编排最高频的用法。
 > **本档保留的是 Webhook 的传参与变量能力**，以及镜像自动更新。
 
 - ⬜ **Webhook 传参**：`?tag=<新标签>` 与 `?<VAR>=<value>` 传入变量
   （compose 里用 `${VAR}` 引用）；令牌可撤销、可重置
-- ⬜ **`.env` 变量与密钥**：全局变量 + Stack 级变量；界面里以引用式注入 compose，
-  **值默认遮罩**，不落进 Stack 的 YAML 正文
+- ⬜ **`.env` 变量与密钥**：全局变量 + Compose 项目级变量；界面里以引用式注入 compose，
+  **值默认遮罩**，不落进 Compose 项目的 YAML 正文
 - ⬜ **镜像自动更新**：检测上游 digest 变化 → 按策略（仅通知 / 自动重建）处理；
   重建失败**回滚到原容器**并触发告警
 - ⬜ **容器重建 Webhook**：`POST /api/v1/webhooks/{token}` 触发容器重建
-  （`0.10.0` 只做了 Stack 重部署）
-- ⬜ 前端：Stack 详情页变量编辑页；镜像自动更新的策略配置
+  （`0.10.0` 只做了 Compose 项目重部署）
+- ⬜ 前端：Compose 项目详情页变量编辑页；镜像自动更新的策略配置
 
 **验收**：
 
-1. 向 registry push 新镜像后，Webhook 触发 Stack 重新部署并拉取到新 tag
+1. 向 registry push 新镜像后，Webhook 触发 Compose 项目重新部署并拉取到新 tag
 2. 带 `?MODE=dev` 的调用后，compose 里 `${MODE}` 解析为 `dev`
-3. 变量值在界面与 API 响应里默认遮罩，不写进 Stack 的 YAML 正文
+3. 变量值在界面与 API 响应里默认遮罩，不写进 Compose 项目的 YAML 正文
 4. 自动更新：新镜像推送后自动重建；**故意做一个会启动失败的镜像，确认回滚且收到告警**
 5. 恢复备份后原 Webhook 链接仍然有效（token 已被备份）
 
 > **Webhook 在 Portainer 是商业版独占**——做出来是免费版的实打实差异点。
 > **自动更新的检测逻辑落在本迭代**，`0.16.0` 只负责把它显示成列表的一列。
 >
-> **本档依赖 `0.10.0`**：Webhook 的作用对象是 Stack，Stack 能力先于本档交付
+> **本档依赖 `0.10.0`**：Webhook 的作用对象是 Compose 项目，Compose 项目能力先于本档交付
 > （Webhook 的「重部署」部分已在 `0.10.0` 先行交付）。
 
 ---
@@ -879,7 +879,7 @@ terminal token 过期后无法重连；断开后不残留容器内进程；
   恢复后**自动修正文件属主**（现在是「SSH 进去手动 `chown 10001`」）
 - ⬜ **服务端用户偏好**：主题 / 语言 / 每页条数等改为服务端存储，换设备不丢
 - ⬜ **站点级设置**：站点名、默认落地页、会话超时、上传体积上限
-- ⬜ **反向代理配置生成**：为容器 / Stack 生成 Traefik labels 与 nginx 片段（可复制），
+- ⬜ **反向代理配置生成**：为容器 / Compose 项目生成 Traefik labels 与 nginx 片段（可复制），
   与 [examples/reverse-proxy/](../examples/reverse-proxy/) 同源
 
 **验收**：
@@ -1012,7 +1012,7 @@ terminal token 过期后无法重连；断开后不残留容器内进程；
 - Prometheus `/metrics` 端点
 - 公开 demo 实例
 - 应用模板（App Templates 等价物，内置 + 自定义清单）
-- GitOps：从 Git 仓库同步 Stack
+- GitOps：从 Git 仓库同步 Compose 项目
 - 计划任务 / cron（定期备份、定期 prune、定时重启）
 - 共享凭据管理（SSH / Git）、主机快照浏览（离线环境的最后已知状态）
 - SIEM 外发（认证与活动日志流到 syslog / HTTP）、告警渠道扩展（Slack / Telegram / ntfy）

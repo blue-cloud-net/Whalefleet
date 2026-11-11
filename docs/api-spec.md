@@ -126,7 +126,7 @@
 | `1600-1699` | **操作审计**——审计查询、导出等（0.9.0 起，**预留**） |
 | `1700-1799` | **告警与通知**——告警规则、通知渠道等（0.11.0 起，**预留**） |
 | `1800-1899` | **仓库与镜像构建 / 推送**——仓库配置、凭据、构建与推送错误（0.4.0 起） |
-| `1900-1999` | **编排 Stack**——编排项目、Compose 文件校验、Webhook（0.10.0 起） |
+| `1900-1999` | **Compose 项目**——项目列表、Compose 文件校验、Webhook（0.10.0 起） |
 | `9000-9999` | **服务器内部错误**——未捕获异常、数据库错误等 |
 
 ### 当前已分配的错误码
@@ -179,12 +179,12 @@
 | `1805` | 502 | 仓库不可达 | 0.4.0 |
 | `1806` | 500 | 镜像构建失败 | 0.4.0 |
 | `1807` | 500 | 镜像推送失败 | 0.4.0 |
-| `1900` | 404 | 编排 Stack 不存在 | 0.10.0 |
-| `1901` | 500 | Stack 部署 / 更新失败 | 0.10.0 |
-| `1902` | 400 | Stack 名称已被占用 | 0.10.0 |
-| `1903` | 409 | 该 Stack 不是本平台部署的，无法更新 | 0.10.0 |
+| `1900` | 404 | Compose 项目不存在 | 0.10.0 |
+| `1901` | 500 | Compose 项目部署 / 更新失败 | 0.10.0 |
+| `1902` | 400 | Compose 项目名称已被占用 | 0.10.0 |
+| `1903` | 409 | 该 Compose 项目不是本平台部署的，无法更新 | 0.10.0 |
 | `1904` | 400 | Compose 文件非法或含暂不支持的字段 | 0.10.0 |
-| `1905` | 409 | 该 Stack 已有进行中的操作 | 0.10.0 |
+| `1905` | 409 | 该 Compose 项目已有进行中的操作 | 0.10.0 |
 | `1906` | 404 | Webhook 令牌无效或已吊销 | 0.10.0 |
 | `1907` | 429 | Webhook 触发过于频繁 | 0.10.0 |
 | `9999` | 500 | 服务器内部错误 | 0.0.2 |
@@ -437,7 +437,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 活动日志列表 | `POST /api/v1/admin/logs/activity/list` | 0.9.0 |
 | 审计导出 | `POST /api/v1/admin/logs/{activity,authentication}/export` | 0.9.0 |
 | 主机事件 | `POST /api/v1/hosts/{hostId}/events/list` | 0.9.0 |
-| Stack 管理 | `POST /api/v1/hosts/{hostId}/stacks/{list,deploy,update,stop,remove}` | 0.10.0 |
+| Compose 项目管理 | `POST /api/v1/hosts/{hostId}/composes/{list,deploy,update,stop,remove}` | 0.10.0 |
 | 告警规则 | `POST /api/v1/admin/alert-rules/{list,update}` | 0.11.0 |
 | 通知中心 | `POST /api/v1/notifications/{list,read}` | 0.11.0 |
 | 通知渠道测试 | `POST /api/v1/admin/notifications/test` | 0.11.0 |
@@ -856,7 +856,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 操作 | 路径 | 阶段 | 说明 |
 |------|------|------|------|
 | **创建容器** | `POST /api/v1/hosts/{hostId}/containers/create` | 0.0.9 | Body: `{ image, name?, cmd?, entrypoint?, env?, labels?, ports?, volumes?, restartPolicy?, autoRemove?, network?, hostname?, workingDir?, tty?, stdinOpen? }`（**精选子集**，非全部 `CreateContainerParameters` 字段，理由见下文）。**0.3.0** 新增高级参数 `user?`、`capAdd?`、`capDrop?`、`healthCheck?`、`devices?`、`sysctls?`、`ulimits?`、`logDriver?`、`memoryLimitBytes?`、`nanoCpus?`（见下） |
-| 获取列表 | `POST /api/v1/hosts/{hostId}/containers/list` | 0.0.9 | Body: `{ all?, state?, search?, pageIndex?, pageSize?, sortBy?, sortDir? }`；分页在服务端**内存**完成（Docker 无分页参数），`pageSize` 上限 100；`state` / `search` 见下方说明 |
+| 获取列表 | `POST /api/v1/hosts/{hostId}/containers/list` | 0.0.9 / **0.10.0** | Body: `{ all?, state?, search?, project?, pageIndex?, pageSize?, sortBy?, sortDir? }`；分页在服务端**内存**完成（Docker 无分页参数），`pageSize` 上限 100；`state` / `search` / `project` 见下方说明。**0.10.0** 响应项新增 `composeService`（所属 Compose 服务名，非 Compose 容器为 `null`） |
 | 启动 | `POST /api/v1/hosts/{hostId}/containers/start` | 0.0.9 | Body: `{ containerId }` |
 | 停止 | `POST /api/v1/hosts/{hostId}/containers/stop` | 0.0.9 | Body: `{ containerId, waitSeconds? }`；`waitSeconds` 取值 0–300（默认 10，与 Docker 一致） |
 | 重启 | `POST /api/v1/hosts/{hostId}/containers/restart` | 0.0.9 | Body: `{ containerId }` |
@@ -1027,7 +1027,7 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
 ```jsonc
 // POST /api/v1/hosts/local/containers/list
 // Request
-{ "all": true, "pageIndex": 0, "pageSize": 20, "search": "web", "state": "running" }
+{ "all": true, "pageIndex": 0, "pageSize": 20, "search": "web", "state": "running", "project": "shop" }
 // Response.data
 {
   "items": [
@@ -1040,7 +1040,8 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
       "created": "2026-01-02T03:04:05.678+00:00",
       "state": "running",               // Docker 原始状态文本
       "status": "Up 3 hours",
-      "ports": [{ "privatePort": 80, "publicPort": 8080, "type": "tcp", "ip": "0.0.0.0" }]
+      "ports": [{ "privatePort": 80, "publicPort": 8080, "type": "tcp", "ip": "0.0.0.0" }],
+      "composeService": "api"            // 0.10.0：所属 Compose 服务名；非 Compose 容器为 null
     }
   ],
   "total": 7,        // 分页前的总数
@@ -1071,6 +1072,21 @@ Docker 的创建接口只有一个，差别只在界面上，因此不是两套�
 > `state` **优先于** `all`：`all` 是旧契约（布尔开关表达不了「仅未运行」），
 > 保留它只为兼容旧客户端——`state` 省略时按 `all` 的旧语义处理
 > （`true` = 全部，`false` / 省略 = 仅运行中）。
+
+> **`project`（按 Compose 项目过滤，0.10.0）**
+>
+> 只列属于该 Compose 项目的容器。编排详情页用它展示「这个项目下的容器」。
+>
+> - **下推到守护进程**：按 `com.docker.compose.project` 标签过滤，
+>   而不是「拉全机容器回来在内存里筛」——后者的代价等于「列全机容器」，
+>   而编排详情页每 5 秒轮询一次。
+> - **一次性容器被剔除**：带 `com.docker.compose.oneoff=True` 的容器
+>   （`docker compose run` 产生的）不是「某个服务」，混进服务视图会让服务数对不上。
+>   ⚠️ **只在按项目过滤时剔除**——普通列表里它照常显示（那是用户自己起的容器）。
+> - **项目名必须合法**：按 Compose 项目名规则校验（`^[a-z0-9][a-z0-9_-]*$`，长度 1–63），
+>   不合法报 `1000`。项目名会拼进守护进程的标签过滤串，不校验等于把任意字符串透传给 Docker
+>   （放进 `=` 会变成「另一个过滤条件」，症状是「筛出来的容器莫名其妙少几个」）。
+> - 省略 / 空白代表不过滤。
 
 > **`ports` 数组的顺序是对外契约的一部分**
 >
@@ -1359,7 +1375,7 @@ nginx: [emerg] …
   "items": [
     {
       "id": "sha256:3f2c…",
-      "repoTags": ["nginx:latest", "nginx:1.27"],   // 悬挂镜像（<none>）为空数组
+      "repoTags": ["nginx:latest", "nginx:1.27"],   // 悬空镜像（<none>）为空数组
       "repoDigests": ["nginx@sha256:abc…"],
       "created": "2026-01-02T03:04:05+00:00",
       "size": 187654321,                              // 字节
@@ -1375,7 +1391,7 @@ nginx: [emerg] …
 >
 > | `sortBy` | 排序依据 |
 > |---|---|
-> | `repository` | 首个 `repoTags`（悬挂镜像按空串参与比较） |
+> | `repository` | 首个 `repoTags`（悬空镜像按空串参与比较） |
 > | `size` | 字节大小 |
 > | `created` | 创建时间 |
 > | `usedBy` | `containerCount` |
@@ -1529,7 +1545,7 @@ nginx: [emerg] …
 }
 ```
 
-> **推镜像必须带标签**：悬挂镜像（`<none>:<none>`）没有可推的名字，
+> **推镜像必须带标签**：悬空镜像（`<none>:<none>`）没有可推的名字，
 > 因此提前报 `1000`/400，而不是让守护进程回一句看不懂的 `refusing to push unqualified name`。
 >
 > **仓库凭据怎么选**：显式给了 `repositoryId` 就用它（配置不存在报 `1800`/404）；
@@ -1578,6 +1594,9 @@ nginx: [emerg] …
 >   因此界面**必须**在调用前用 `POST /hosts/{hostId}/system/df` 展示候选清单——那是唯一的安全阀。
 > - **`label` 是唯一的范围收窄手段**：省略它，`volumes/prune` 会清掉本机**全部**未被引用的卷，
 >   `images/prune` 会清掉全部悬空镜像。`label` 传 `key` 或 `key=value`。
+> - **「只清悬空」与「清所有未使用」是两个档，界面文案必须分开**：
+>   前者的判据是**没有标签**，后者是**没有被任何容器使用**（无论有没有标签）。
+>   共用一句话会让「只清悬空」看起来比实际更激进——用户以为带标签的镜像也会被删。
 > - **卷清理固定按「连具名卷一起清」下发**：守护进程自 Engine API 1.42 起默认只清匿名卷，
 >   而预览列的是全部未被引用的卷；不补 `all=true` 会出现「清单里有 5 个，删完还在」。
 > - **prune 会跳过带挂载选项的卷**（`bind` 卷）：它们其实不是本地卷，回收不了空间。
@@ -1684,24 +1703,24 @@ nginx: [emerg] …
 
 ---
 
-### Docker Compose / Stack（0.10.0 / 0.15.0）
+### Docker Compose 项目（0.10.0 / 0.15.0）
 
-> **路径为 `/api/v1/hosts/{hostId}/stacks/*`**（主机作用域）。
-> 鉴权：读用 `stack.read`，写用 `stack.write`。
+> **路径为 `/api/v1/hosts/{hostId}/composes/*`**（主机作用域）。
+> 鉴权：读用 `compose.read`，写用 `compose.write`。
 > **主机是否存在（`1300`）与主机可见性（`1501`）由 `CurrentHostMiddleware` 统一处理**，
 > 端点内部不再重复校验。
 
 | 操作 | 路径 | 请求体 | 说明 |
 |------|------|--------|------|
-| 获取列表 | `POST /api/v1/hosts/{hostId}/stacks/list` | `{ search?, status?, pageIndex?, pageSize? }` | 服务端分页；`status` 可选 `running` / `partial` / `stopped` / `unknown` |
-| 获取详情 | `POST /api/v1/hosts/{hostId}/stacks/inspect` | `{ name }` | 含 YAML 原文、服务列表与解析提示 |
-| 部署 | `POST /api/v1/hosts/{hostId}/stacks/deploy` | `{ name, composeContent, taskId, pullAlways?, pruneOrphans? }` | **202**；`name` 已存在报 `1902` |
-| 更新 | `POST /api/v1/hosts/{hostId}/stacks/update` | 同上 | **202**；Stack 不存在报 `1900`，不受管报 `1903` |
-| 停止 | `POST /api/v1/hosts/{hostId}/stacks/stop` | `{ name, taskId }` | **202**；容器保留 |
-| 删除 | `POST /api/v1/hosts/{hostId}/stacks/remove` | `{ name, taskId, removeVolumes? }` | **202**；容器与网络一并清掉，**卷默认保留** |
-| 查询任务 | `POST /api/v1/hosts/{hostId}/stacks/task` | `{ taskId }` | 任务快照；**不存在时 `data` 为 `null`**（不是报错） |
-| 轮换 Webhook 令牌 | `POST /api/v1/hosts/{hostId}/stacks/webhook/rotate` | `{ name }` | **明文只此一次** |
-| 吊销 Webhook 令牌 | `POST /api/v1/hosts/{hostId}/stacks/webhook/revoke` | `{ name }` | 幂等 |
+| 获取列表 | `POST /api/v1/hosts/{hostId}/composes/list` | `{ search?, status?, pageIndex?, pageSize? }` | 服务端分页；`status` 可选 `running` / `partial` / `stopped` / `unknown` |
+| 获取详情 | `POST /api/v1/hosts/{hostId}/composes/inspect` | `{ name }` | 含 YAML 原文、服务列表与解析提示；**0.10.0** 另给 `declaredServiceCount`（YAML 声明的服务数）与 `missingServices`（声明了但还没有容器的服务名） |
+| 部署 | `POST /api/v1/hosts/{hostId}/composes/deploy` | `{ name, composeContent, taskId, pullAlways?, pruneOrphans? }` | **202**；`name` 已存在报 `1902` |
+| 更新 | `POST /api/v1/hosts/{hostId}/composes/update` | 同上 | **202**；Compose 项目不存在报 `1900`，不受管报 `1903` |
+| 停止 | `POST /api/v1/hosts/{hostId}/composes/stop` | `{ name, taskId }` | **202**；容器保留 |
+| 删除 | `POST /api/v1/hosts/{hostId}/composes/remove` | `{ name, taskId, removeVolumes? }` | **202**；容器与网络一并清掉，**卷默认保留** |
+| 查询任务 | `POST /api/v1/hosts/{hostId}/composes/task` | `{ taskId }` | 任务快照；**不存在时 `data` 为 `null`**（不是报错） |
+| 轮换 Webhook 令牌 | `POST /api/v1/hosts/{hostId}/composes/webhook/rotate` | `{ name }` | **明文只此一次** |
+| 吊销 Webhook 令牌 | `POST /api/v1/hosts/{hostId}/composes/webhook/revoke` | `{ name }` | 幂等 |
 
 #### 部署类端点返回 **202**，不是 200
 
@@ -1732,7 +1751,7 @@ nginx: [emerg] …
 {
   "taskId": "…",
   "hostName": "local",
-  "stackName": "shop",
+  "composeName": "shop",
   "operation": "deploy",
   "status": "succeeded",
   "percent": 100,
@@ -1781,8 +1800,8 @@ nginx: [emerg] …
 
 | 操作 | 路径 | 请求体 | 说明 |
 |------|------|--------|------|
-| 触发重部署 | `POST /api/v1/webhooks/stacks/{token}` | `{ pullAlways?, pruneOrphans?, wait? }` | **202**；令牌无效报 `1906` |
-| 查询任务 | `POST /api/v1/webhooks/stacks/{token}/task` | `{ taskId }` | 任务快照 |
+| 触发重部署 | `POST /api/v1/webhooks/composes/{token}` | `{ pullAlways?, pruneOrphans?, wait? }` | **202**；令牌无效报 `1906` |
+| 查询任务 | `POST /api/v1/webhooks/composes/{token}/task` | `{ taskId }` | 任务快照 |
 
 > ⚠️ **路径里不能有 `hostId`**：这是匿名端点，主机由令牌反查得到。
 > 若路径里带上主机标识，`CurrentHostMiddleware` 会拿它去查库并做可见性校验——
@@ -2087,7 +2106,7 @@ nginx: [emerg] …
 | 事件 | 数据 | 说明 |
 |------|------|------|
 | `OnContainerDied` | `{ hostId, containerId, containerName, exitCode, outOfMemory, occurredAt }` | 容器异常退出通知 |
-| `OnStackTaskFailed` | `{ hostName, stackName, operation, errorCode, message, occurredAt }` | 编排任务失败通知（0.10.0） |
+| `OnComposeTaskFailed` | `{ hostName, composeName, operation, errorCode, message, occurredAt }` | Compose 任务失败通知（0.10.0） |
 
 > **可见性由服务端保证**：推送前逐个连接判「该用户对这台主机有没有 `host.read`」，
 > 无权的一律不推。前端**不需要**自己按主机过滤。
@@ -2096,7 +2115,7 @@ nginx: [emerg] …
 > 不会推通知——那种情况由页面自己的操作触发刷新。
 > `outOfMemory` 为 `true` 时 `exitCode` 通常是 `137`。
 >
-> **编排任务只推失败、不推成功**：成功时用户正盯着界面看着进度条走完，
+> **Compose 任务只推失败、不推成功**：成功时用户正盯着界面看着进度条走完，
 > 界面自己就会刷新；而失败可能发生在**用户已经离开页面之后**
 > （webhook 触发的 CI 部署）——那种情况下没有别的途径让用户知道出事了。
 
@@ -2105,7 +2124,7 @@ nginx: [emerg] …
 进度是**按请求**的（一个令牌对应一次操作），因此放在全局 Hub 上最自然。
 
 > **0.10.0 改名**：原为 `SubscribePull` / `UnsubscribePull` / `OnPullProgress`（镜像拉取专用）。
-> 编排 Stack 的部署 / 更新也走这条通道，因此泛化为
+> Compose 项目的部署 / 更新也走这条通道，因此泛化为
 > `SubscribeOperation` / `UnsubscribeOperation` / `OnOperationProgress`。
 > **0.x 期间允许破坏性变更**，不保留旧名。
 
@@ -2135,7 +2154,7 @@ nginx: [emerg] …
 >
 > **0.10.0 起编排也走这条通道**：`operation` 取 `deploy` / `update` / `stop` / `remove`，
 > `token` 就是编排端点的 `taskId`。
-> ⚠️ **进度通道给不了终态与错误码**——失败原因要看 `POST .../stacks/task` 的任务快照。
+> ⚠️ **进度通道给不了终态与错误码**——失败原因要看 `POST .../composes/task` 的任务快照。
 
 ### 订阅上限
 
@@ -2330,7 +2349,7 @@ nginx: [emerg] …
 - ❌ `POST /api/v1/system/prune`（一次清四类）——**资源级 prune 已在 0.7.0 交付**，不做的是「一键全清」
 - ❌ **宿主机级实时指标**（CPU / 内存 / 网络 / 负载）——Docker Engine API 无此端点，需目标主机上的 Agent（1.0.0 之后）
 - ❌ OAuth / OIDC 登录相关 API
-- ❌ 应用模板相关 API、GitOps 从 Git 同步 Stack 的 API
+- ❌ 应用模板相关 API、GitOps 从 Git 同步 Compose 项目的 API
 - ❌ 计划任务 / cron 相关 API
 - ❌ MCP 的 stdio 传输与独立部署形态（只做同进程 `/mcp`）
 
@@ -2340,5 +2359,5 @@ nginx: [emerg] …
 - `/healthz` 失败响应保留 `checks.sqlite.error` 字段，使用固定安全文案；内部异常详情记录在服务端日志。
 - 终端文本控制消息支持 WebSocket 分片，累计超过 64 KiB 时以 `MessageTooBig` 关闭；二进制输入按字节流转发。
 - Compose 环境变量必须显式赋值；`KEY: ""`、`KEY=` 表示空字符串，`KEY:`、YAML null 及非标量值会返回 `1904`。
-- 删除 Stack 时若要求删除数据卷，除卷已不存在外，删卷失败会使任务失败并保留 Stack 记录；已删除的资源不会回滚，可解除占用后重试。
-- Webhook 限流在请求之间共享，每个 Stack 在滑动的 60 秒内最多受理十次；被限流请求不延长窗口。
+- 删除 Compose 项目时若要求删除数据卷，除卷已不存在外，删卷失败会使任务失败并保留 Compose 项目记录；已删除的资源不会回滚，可解除占用后重试。
+- Webhook 限流在请求之间共享，每个 Compose 项目在滑动的 60 秒内最多受理十次；被限流请求不延长窗口。

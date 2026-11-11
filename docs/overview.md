@@ -33,7 +33,7 @@ Whalefleet vs Portainer
 ## 非目标
 
 - **不替代 Kubernetes 管理工具**（如 Lens、Rancher）——专注 Docker 单机与小规模多节点场景。
-- **不提供 CI/CD 编排功能**——容器构建与部署流水线超出本项目范围。
+- **不提供 CI/CD Compose 功能**——容器构建与部署流水线超出本项目范围。
   （0.10.0 起提供的是 **Compose 编排**：把一份 YAML 部署成一套服务，
   并提供一个 Webhook 让 CI 在构建完成后触发一次重部署——
   **它编排的是 Docker Compose 项目，不是流水线**。）
