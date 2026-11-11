@@ -264,15 +264,35 @@ public class NetworkEndpointsTests : IAsyncLifetime
     {
         using var client = await this.LoginAsync();
         var network = NewName("net");
-        var subnet = $"172.{Random.Shared.Next(20, 30)}.0.0/16";
+
+        // ⚠️ **不能只随机取一个子网**：宿主机上别的项目可能正占着
+        // `172.20.0.0/16` 这类网段（本机就有两个），随机撞上会得到 409，
+        // 用例以「创建失败」收场——而它要验的其实与宿主机上已有的网络无关。
+        // 因此从候选池里逐个试，409（子网重叠）就换下一个。
+        HttpResponseMessage? created = null;
+        string? subnet = null;
 
         try
         {
-            using var created = await client.PostAsJsonAsync(
-                $"/api/v1/hosts/{_localHost}/networks/create",
-                new { name = network, driver = "bridge", subnet, attachable = true });
+            foreach (var candidate in SubnetCandidates())
+            {
+                var attempt = await client.PostAsJsonAsync(
+                    $"/api/v1/hosts/{_localHost}/networks/create",
+                    new { name = network, driver = "bridge", subnet = candidate, attachable = true });
 
-            created.StatusCode.Should().Be(HttpStatusCode.OK);
+                if (attempt.StatusCode == HttpStatusCode.OK)
+                {
+                    created = attempt;
+                    subnet = candidate;
+                    break;
+                }
+
+                attempt.Dispose();
+            }
+
+            created.Should().NotBeNull("候选池里的子网应当至少有一个可用");
+            subnet.Should().NotBeNull();
+            created!.StatusCode.Should().Be(HttpStatusCode.OK);
 
             var summary = await ReadDataAsync<NetworkSummaryPayload>(created);
 
@@ -298,6 +318,8 @@ public class NetworkEndpointsTests : IAsyncLifetime
         }
         finally
         {
+            // ⚠️ 先释放响应，再删网络：不释放的话连接会吊在客户端上。
+            created?.Dispose();
             await RemoveNetworkAsync(client, network);
         }
     }
@@ -818,6 +840,30 @@ public class NetworkEndpointsTests : IAsyncLifetime
     /// 对不足 40 的串抛 <see cref="ArgumentOutOfRangeException"/>。
     /// </remarks>
     private static string NewName(string prefix) => $"wf-t-{prefix}-{Guid.NewGuid():N}";
+
+    /// <summary>
+    /// 一串「可能可用」的 <c>/16</c> 子网。
+    /// </summary>
+    /// <returns>候选子网（顺序即尝试顺序）。</returns>
+    /// <remarks>
+    /// <para><b>为什么要候选池而不是随机一个</b>：宿主机上跑着本仓库之外的项目时
+    /// （本机上就有两个占了 <c>172.20.0.0/16</c>、<c>172.21.0.0/16</c>），
+    /// 随机取的子网有相当概率撞上它们 → 守护进程回 409 → 用例以「创建失败」收场。
+    /// 而那个失败与「创建时有没有正确写入 IPAM」毫无关系。</para>
+    /// <para><b>为什么不先枚举已用网段</b>：那要把本机全部网络都 inspect 一遍，
+    /// 而候选池 + 重试更简单，也不依赖「守护进程一定允许列出全部网络」。
+    /// 起始值随机偏移，让并行跑的多个用例尽量落在不同网段。</para>
+    /// </remarks>
+    private static IEnumerable<string> SubnetCandidates()
+    {
+        // 200 起步是为了避开 172.17–172.40 这一带（Docker 默认池与本机常见占用的集中区）。
+        var start = Random.Shared.Next(200, 240);
+
+        for (var offset = 0; offset < 40; offset++)
+        {
+            yield return $"172.{(start + offset) % 256}.0.0/16";
+        }
+    }
 
     private async Task<HttpClient> LoginAsync(string user = _adminName)
     {
