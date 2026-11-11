@@ -52,4 +52,14 @@ public static class PermissionPolicies
     /// 查看操作审计（<c>audit.read</c>；审计能力排在 1.0.0 之后）。
     /// </summary>
     public const string AuditRead = "perm.audit.read";
+
+    /// <summary>
+    /// 查看告警规则与通知渠道（<c>alert.read</c>）。
+    /// </summary>
+    public const string AlertsRead = "perm.alert.read";
+
+    /// <summary>
+    /// 增删改告警规则与通知渠道（<c>alert.write</c>）。
+    /// </summary>
+    public const string AlertsWrite = "perm.alert.write";
 }
