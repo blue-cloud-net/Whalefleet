@@ -1,5 +1,15 @@
 import { defineStore } from 'pinia'
-import type { ContainerDiedEvent, StackTaskFailureEvent } from '@/types/api'
+import {
+  listNotifications,
+  markNotificationsRead,
+  removeNotifications
+} from '@/api/notification'
+import type {
+  ContainerDiedEvent,
+  NotificationDto,
+  NotificationPayload,
+  StackTaskFailureEvent
+} from '@/types/api'
 
 /**
  * 通知 store：顶栏铃铛里的容器异常退出通知与编排任务失败通知。
@@ -60,14 +70,24 @@ export interface NotificationDescription {
  */
 export const useNotificationStore = defineStore('notifications', {
   state: () => ({
-    /** 通知列表（最新的在前）。 */
+    /** 旧的内存态实时通知（保留给既有 toast / 测试）。 */
     items: [] as NotificationItem[],
-    /** 未读条数。 */
-    unread: 0
+    /** 旧的未读条数。 */
+    unread: 0,
+    /** 落库的通知历史（0.11.0）。 */
+    history: [] as NotificationDto[],
+    /** 历史总数。 */
+    historyTotal: 0,
+    /** 历史未读数。 */
+    historyUnread: 0,
+    /** 历史是否正在加载。 */
+    historyLoading: false
   }),
   getters: {
-    /** 是否有未读通知。 */
-    hasUnread: (state) => state.unread > 0
+    /** 是否有未读通知（旧内存态 + 落库历史）。 */
+    hasUnread: (state) => state.unread + state.historyUnread > 0,
+    /** 未读总数。 */
+    unreadTotal: (state) => state.unread + state.historyUnread
   },
   actions: {
     /**
@@ -126,10 +146,94 @@ export const useNotificationStore = defineStore('notifications', {
       this.unread = 0
     },
 
-    /** 清空全部通知。 */
+    /** 清空全部通知（仅旧内存态）。 */
     clear(): void {
       this.items = []
       this.unread = 0
+    },
+
+    /**
+     * 拉取最近的通知历史（铃铛下拉用）。
+     */
+    async fetchRecent(): Promise<void> {
+      this.historyLoading = true
+      try {
+        const result = await listNotifications({ pageIndex: 0, pageSize: 20 })
+        this.history = result.items
+        this.historyTotal = result.total
+        this.historyUnread = result.unread
+      } catch {
+        // 没有历史不影响其它功能；保持现有数据。
+      } finally {
+        this.historyLoading = false
+      }
+    },
+
+    /**
+     * 把实时推送的通知并入历史（去重）。
+     *
+     * @param payload `OnNotification` 载荷。
+     */
+    pushPayload(payload: NotificationPayload): void {
+      if (this.history.some((item) => item.id === payload.id)) return
+
+      let params: NotificationDto['params'] = {}
+
+      try {
+        params = JSON.parse(payload.paramsJson) as NotificationDto['params']
+      } catch {
+        params = {}
+      }
+
+      this.history.unshift({
+        id: payload.id,
+        sourceKind: payload.sourceKind,
+        severity: payload.severity,
+        messageKey: payload.messageKey,
+        params,
+        hostId: payload.hostId,
+        hostName: payload.hostName,
+        read: false,
+        readAt: null,
+        occurredAt: payload.occurredAt
+      })
+
+      this.history = this.history.slice(0, 20)
+      this.historyTotal += 1
+      this.historyUnread += 1
+    },
+
+    /**
+     * 把全部可见通知标记为已读（落库）。
+     */
+    async markAllReadPersisted(): Promise<void> {
+      try {
+        await markNotificationsRead(undefined, true)
+      } finally {
+        this.unread = 0
+        this.history = this.history.map((item) => ({
+          ...item,
+          read: true,
+          readAt: item.readAt ?? new Date().toISOString()
+        }))
+        this.historyUnread = 0
+      }
+    },
+
+    /**
+     * 删除（对本人隐藏）通知。
+     *
+     * @param ids 通知主键。
+     */
+    async removePersisted(ids: string[]): Promise<void> {
+      await removeNotifications(ids)
+
+      const removed = this.history.filter((item) => ids.includes(item.id))
+      const removedUnread = removed.filter((item) => !item.read).length
+
+      this.history = this.history.filter((item) => !ids.includes(item.id))
+      this.historyTotal = Math.max(0, this.historyTotal - removed.length)
+      this.historyUnread = Math.max(0, this.historyUnread - removedUnread)
     }
   }
 })
@@ -177,4 +281,19 @@ export function describe(item: NotificationItem): NotificationDescription {
   return item.kind === 'container-died'
     ? describeContainerDied(item.event)
     : describeStackTaskFailed(item.event)
+}
+
+/**
+ * 把一条落库通知翻译成描述（服务端已给 i18n key + 参数）。
+ *
+ * @param item 通知。
+ * @returns 描述。
+ */
+export function describeNotification(item: NotificationDto): NotificationDescription {
+  return {
+    key: item.messageKey,
+    // i18n 只接受标量参数；bool / null 在现有告警文案里不存在，
+    // 这里做一次窄化避免模板类型检查失败。
+    params: item.params as Record<string, string | number>
+  }
 }

@@ -116,6 +116,10 @@
   },
   "common": {
     "actions": "操作",
+    "disabled": "停用",
+    "enabled": "启用",
+    "reset": "重置",
+    "saved": "已保存",
     "back": "返回",
     "cancel": "取消",
     "clearSelection": "取消选择",
@@ -891,7 +895,9 @@
     "usedBy": "{count} 个容器"
   },
   "nav": {
+    "alerts": "告警规则",
     "audit": "操作审计",
+    "notifications": "通知中心",
     "backToOverview": "返回总览",
     "containers": "容器",
     "events": "事件",
@@ -1003,7 +1009,94 @@
     "oom": "容器「{name}」因内存不足被终止（退出码 {code}）",
     "title": "通知",
     "unread": "{count} 条未读通知",
-    "stackFailed": "编排「{stack}」（{host}）操作失败：{message}"
+    "stackFailed": "编排「{stack}」（{host}）操作失败：{message}",
+    "viewAll": "查看全部",
+    "markAllRead": "全部标为已读",
+    "markedAllRead": "已全部标记为已读",
+    "severity": "严重度",
+    "source": "来源",
+    "unreadOnly": "只看未读",
+    "unreadSummary": "未读 {count} 条",
+    "occurredAt": "时间",
+    "message": "内容",
+    "host": "主机",
+    "center": {
+      "title": "通知中心",
+      "subtitle": "平台推送的告警与事件历史。"
+    },
+    "severityValue": {
+      "info": "提示",
+      "warning": "警告",
+      "critical": "严重"
+    },
+    "sourceValue": {
+      "alert-fired": "告警",
+      "container-died": "容器退出",
+      "stack-task-failed": "编排失败"
+    },
+    "alert": {
+      "hostOffline": "主机「{host}」离线",
+      "containerCpu": "容器「{container}」（{host}）CPU 使用率 {value}%，超过阈值 {threshold}%",
+      "containerMemory": "容器「{container}」（{host}）内存使用率 {value}%，超过阈值 {threshold}%",
+      "containerNetwork": "容器「{container}」（{host}）网络吞吐 {value} MB/s，超过阈值 {threshold} MB/s",
+      "loginFailureSurge": "最近 {window} 秒登录失败 {count} 次"
+    }
+  },
+  "alert": {
+    "tab": {
+      "rules": "告警规则",
+      "channels": "通知渠道"
+    },
+    "kind": {
+      "host-offline": "主机离线",
+      "container-cpu": "容器 CPU",
+      "container-memory": "容器内存",
+      "container-network": "容器网络",
+      "login-failure-surge": "登录失败激增"
+    },
+    "severity": {
+      "info": "提示",
+      "warning": "警告",
+      "critical": "严重"
+    },
+    "channelKind": {
+      "webhook": "Webhook",
+      "email": "邮件"
+    },
+    "rule": {
+      "add": "新增规则",
+      "edit": "编辑规则",
+      "empty": "还没有告警规则",
+      "kind": "规则类型",
+      "scope": "作用范围",
+      "global": "全局",
+      "thresholds": "阈值（info / warning / critical）",
+      "cooldown": "冷却期（秒）",
+      "enabled": "启用",
+      "severity": "严重度",
+      "consecutive": "连续命中次数",
+      "window": "统计窗口（秒）",
+      "channels": "通知渠道"
+    },
+    "channel": {
+      "add": "新增渠道",
+      "edit": "编辑渠道",
+      "empty": "还没有通知渠道",
+      "name": "名称",
+      "kind": "类型",
+      "target": "目标",
+      "test": "测试",
+      "testOk": "测试消息已发送",
+      "confirmRemove": "删除该渠道？绑定它的规则将不再向它发送。",
+      "webhookUrl": "Webhook 地址",
+      "bearerToken": "Bearer 令牌",
+      "tokenHint": "留空表示保留原令牌",
+      "recipients": "收件人",
+      "recipientsHint": "多个地址用逗号分隔"
+    },
+    "confirm": {
+      "remove": "删除该告警规则？"
+    }
   },
   "overview": {
     "filter": {
@@ -1032,6 +1125,9 @@
     "title": "所有服务器"
   },
   "page": {
+    "alerts": {
+      "subtitle": "配置告警阈值、冷却期与通知渠道。"
+    },
     "containers": {
       "subtitle": "查看主机上的容器，启动 / 停止 / 重启 / 删除，或从镜像新建一个。"
     },

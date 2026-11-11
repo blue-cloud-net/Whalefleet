@@ -5,6 +5,7 @@ import { createMockNotificationSource } from '@/realtime/mock'
 import { shouldUseMock } from '@/mocks/switch'
 import type {
   ContainerDiedEvent,
+  NotificationPayload,
   OperationProgress,
   StackTaskFailureEvent
 } from '@/types/api'
@@ -35,11 +36,17 @@ export type ProgressHandler = (progress: OperationProgress) => void
 /** 编排任务失败的处理函数。 */
 export type StackTaskFailedHandler = (event: StackTaskFailureEvent) => void
 
+/** 落库站内通知的处理函数。 */
+export type NotificationHandler = (event: NotificationPayload) => void
+
 /** 容器退出事件的订阅者。 */
 const diedHandlers = new Set<ContainerDiedHandler>()
 
 /** 编排任务失败的订阅者。 */
 const stackFailedHandlers = new Set<StackTaskFailedHandler>()
+
+/** 落库站内通知的订阅者。 */
+const notificationHandlers = new Set<NotificationHandler>()
 
 /** 进度订阅（按令牌）。 */
 const progressHandlers = new Map<string, ProgressHandler>()
@@ -71,6 +78,17 @@ function dispatchDied(event: ContainerDiedEvent): void {
  */
 function dispatchStackFailed(event: StackTaskFailureEvent): void {
   for (const handler of stackFailedHandlers) {
+    handler(event)
+  }
+}
+
+/**
+ * 处理落库站内通知。
+ *
+ * @param event 通知。
+ */
+function dispatchNotification(event: NotificationPayload): void {
+  for (const handler of notificationHandlers) {
     handler(event)
   }
 }
@@ -127,6 +145,7 @@ async function ensureConnected(): Promise<void> {
     hub.on('OnContainerDied', dispatchDied)
     hub.on('OnOperationProgress', dispatchProgress)
     hub.on('OnStackTaskFailed', dispatchStackFailed)
+    hub.on('OnNotification', dispatchNotification)
     hub.onreconnected(() => {
       void subscribeAllProgress(hub)
     })
@@ -146,7 +165,13 @@ async function ensureConnected(): Promise<void> {
  * 没有任何订阅者时关闭连接。
  */
 async function releaseIfIdle(): Promise<void> {
-  if (diedHandlers.size > 0 || progressHandlers.size > 0 || stackFailedHandlers.size > 0) return
+  if (
+    diedHandlers.size > 0 ||
+    progressHandlers.size > 0 ||
+    stackFailedHandlers.size > 0 ||
+    notificationHandlers.size > 0
+  )
+    return
 
   stopMock?.()
   stopMock = null
@@ -195,6 +220,22 @@ export function subscribeStackTaskFailed(handler: StackTaskFailedHandler): () =>
 
   return () => {
     stackFailedHandlers.delete(handler)
+    void releaseIfIdle()
+  }
+}
+
+/**
+ * 订阅落库站内通知（0.11.0）。
+ *
+ * @param handler 处理函数。
+ * @returns 退订函数。
+ */
+export function subscribeNotification(handler: NotificationHandler): () => void {
+  notificationHandlers.add(handler)
+  void ensureConnected()
+
+  return () => {
+    notificationHandlers.delete(handler)
     void releaseIfIdle()
   }
 }

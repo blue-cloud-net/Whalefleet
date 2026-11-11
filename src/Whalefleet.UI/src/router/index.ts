@@ -122,6 +122,34 @@ const routes: RouteRecordRaw[] = [
         }
       },
       {
+        // 告警规则（0.11.0）：规则 + 通知渠道两个页签。
+        //
+        // ⚠️ 用 `requiresPermission`：后端由 `alert.read` / `alert.write` 把守，
+        // 自定义角色可能只带读权限。用 `requiresAdmin` 会把它挡在页外。
+        path: 'alerts',
+        name: 'alerts',
+        component: () => import('@/views/AlertRulesView.vue'),
+        meta: {
+          scope: 'global',
+          requiresPermission: 'alert.read',
+          group: 'manage',
+          icon: 'i-carbon-warning-alt',
+          title: 'nav.alerts'
+        }
+      },
+      {
+        // 通知中心：从铃铛「查看全部」进入，不占侧边栏位置。
+        path: 'notifications',
+        name: 'notifications',
+        component: () => import('@/views/NotificationsView.vue'),
+        meta: {
+          scope: 'global',
+          showInSidebar: false,
+          icon: 'i-carbon-notification',
+          title: 'nav.notifications'
+        }
+      },
+      {
         // 全局设置：**声明在管理组之后**，侧边栏才会把它渲染成管理区下面独立的一组。
         // 菜单顺序直接取路由表声明顺序（见 SidebarNav.navItems），所以「排在下面」
         // 靠的是这里的位置，而不是额外的排序字段。

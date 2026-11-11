@@ -128,6 +128,19 @@ export const ErrorCode = {
   /** Webhook 触发过于频繁 → 429 */
   StackWebhookRateLimited: 1907,
 
+  /** 告警规则不存在 → 404 */
+  AlertRuleNotFound: 1700,
+  /** 告警规则参数非法 → 400 */
+  AlertRuleInvalid: 1701,
+  /** 通知渠道不存在 → 404 */
+  NotificationChannelNotFound: 1702,
+  /** 通知渠道测试失败 → 502 */
+  NotificationChannelTestFailed: 1703,
+  /** 通知不存在 → 404 */
+  NotificationNotFound: 1704,
+  /** 通知渠道名已被占用 → 400 */
+  NotificationChannelNameAlreadyExists: 1705,
+
   /** 服务器内部错误 → 500 */
   InternalError: 9999
 } as const
