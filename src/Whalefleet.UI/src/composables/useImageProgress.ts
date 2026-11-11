@@ -17,7 +17,7 @@ import type { OperationProgress } from '@/types/api'
  * 拉取 / 构建的进度**不属于某台主机**（虽然操作发生在某台主机上），
  * 而 Hub 的路径决定了权限判定。放在全局 Hub 上，进度不依赖主机可见性。
  *
- * 0.10.0 起编排任务也用同一个令牌机制（见 `useStackTask`）。
+ * 0.10.0 起Compose 任务也用同一个令牌机制（见 `useComposeTask`）。
  */
 
 /** 进度令牌的字符集（与后端 `NotificationHub.IsValidToken` 一致）。 */

@@ -2,6 +2,8 @@ import { http, HttpResponse, delay } from 'msw'
 import { ErrorCode, fail, httpStatusOf, ok } from '../envelope'
 import { delayFor, type MockScenario } from '../scenarios'
 import {
+  MOCK_COMPOSE_ONE_OFF_IDS,
+  MOCK_COMPOSE_PROJECT_BY_ID,
   MOCK_CONTAINER_DETAILS,
   MOCK_CONTAINER_LOGS,
   MOCK_CONTAINERS_DEFAULT
@@ -369,14 +371,30 @@ export function containerHandlers(scenario: () => MockScenario) {
         return all || item.state === 'running'
       })
 
+      // ⚠️ **按 compose 项目过滤**（与后端 ContainerService 同口径）：
+      // 只留属于该项目的容器，并剔除一次性容器（`docker compose run` 产生的）。
+      //
+      // 顺序与后端一致：项目过滤在**状态筛选之后、搜索之前**，
+      // 而一次性容器的剔除在**分页之前**——否则 total 与实际命中数对不上。
+      const project = String(body.project ?? '').trim()
+
+      const scoped =
+        project.length === 0
+          ? visible
+          : visible.filter(
+              (item) =>
+                MOCK_COMPOSE_PROJECT_BY_ID[item.id] === project &&
+                !MOCK_COMPOSE_ONE_OFF_IDS.has(item.id)
+            )
+
       // ⚠️ 搜索发生在**分页之前**（后端 Filter 在 Sort 之前）：
       // 匹配名称 / 镜像 / ID，不匹配启动命令。
       const search = String(body.search ?? '').trim().toLowerCase()
 
       const searched =
         search.length === 0
-          ? visible
-          : visible.filter(
+          ? scoped
+          : scoped.filter(
               (item) =>
                 item.name.toLowerCase().includes(search) ||
                 item.image.toLowerCase().includes(search) ||
@@ -1310,6 +1328,8 @@ function toSummary(item: CreatedContainer): ContainerSummary {
     created: detail.created,
     state: detail.state.status,
     status: detail.state.running ? 'Up 0 seconds' : 'Created',
-    ports
+    ports,
+    // 与后端同口径：服务名从 compose 标签里取，没有就是 null
+    composeService: detail.config.labels['com.docker.compose.service'] ?? null
   }
 }

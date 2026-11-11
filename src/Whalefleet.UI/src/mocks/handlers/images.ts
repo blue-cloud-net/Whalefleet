@@ -273,7 +273,7 @@ export function imageHandlers(scenario: () => MockScenario) {
         return HttpResponse.json(ok({ untagged: [imageId], deleted: [] }))
       }
 
-      // 只剩一个标签，或悬挂镜像按 ID 删：整条移出列表
+      // 只剩一个标签，或悬空镜像按 ID 删：整条移出列表
       pulledInSession.delete(image.id)
       untaggedInSession.delete(image.id)
       removedInSession.add(image.id)

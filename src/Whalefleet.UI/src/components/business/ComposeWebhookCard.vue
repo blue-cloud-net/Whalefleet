@@ -2,11 +2,11 @@
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { revokeStackWebhook, rotateStackWebhook } from '@/api/stack'
+import { revokeComposeWebhook, rotateComposeWebhook } from '@/api/compose'
 import { ApiRequestError } from '@/api'
 import { formatDateTime } from '@/utils/datetime'
 import { TIP_DELAY_MS } from '@/utils/tooltip'
-import type { StackSummary } from '@/types/api'
+import type { ComposeProjectSummary } from '@/types/api'
 
 /**
  * 编排 Webhook 卡片（0.10.0）。
@@ -23,8 +23,8 @@ import type { StackSummary } from '@/types/api'
 const props = defineProps<{
   /** 当前主机标识。 */
   hostId: string
-  /** 对应的 Stack。 */
-  stack: StackSummary
+  /** 对应的 Compose 项目。 */
+  compose: ComposeProjectSummary
 }>()
 
 const emit = defineEmits<{ changed: [] }>()
@@ -44,7 +44,7 @@ const errorMessage = ref<string | null>(null)
 const webhookUrl = ref('')
 
 watch(
-  () => [props.hostId, props.stack.name],
+  () => [props.hostId, props.compose.name],
   () => {
     freshToken.value = null
     errorMessage.value = null
@@ -62,7 +62,7 @@ watch(
 function buildUrl(): string {
   const origin = typeof window === 'undefined' ? '' : window.location.origin
 
-  return `${origin}/api/v1/webhooks/stacks/{token}`
+  return `${origin}/api/v1/webhooks/composes/{token}`
 }
 
 /**
@@ -73,12 +73,12 @@ async function rotate(): Promise<void> {
   errorMessage.value = null
 
   try {
-    const info = await rotateStackWebhook(props.hostId, props.stack.name)
+    const info = await rotateComposeWebhook(props.hostId, props.compose.name)
 
     freshToken.value = info.token
     emit('changed')
   } catch (e) {
-    errorMessage.value = e instanceof ApiRequestError ? e.message : t('stack.webhook.rotateFailed')
+    errorMessage.value = e instanceof ApiRequestError ? e.message : t('compose.webhook.rotateFailed')
   } finally {
     busy.value = false
   }
@@ -90,8 +90,8 @@ async function rotate(): Promise<void> {
 async function revoke(): Promise<void> {
   try {
     await ElMessageBox.confirm(
-      t('stack.webhook.revokeConfirm'),
-      t('stack.webhook.revokeTitle'),
+      t('compose.webhook.revokeConfirm'),
+      t('compose.webhook.revokeTitle'),
       {
         type: 'warning',
         confirmButtonText: t('common.confirm'),
@@ -106,12 +106,12 @@ async function revoke(): Promise<void> {
   errorMessage.value = null
 
   try {
-    await revokeStackWebhook(props.hostId, props.stack.name)
+    await revokeComposeWebhook(props.hostId, props.compose.name)
     freshToken.value = null
     emit('changed')
-    ElMessage.success(t('stack.webhook.revoked'))
+    ElMessage.success(t('compose.webhook.revoked'))
   } catch (e) {
-    errorMessage.value = e instanceof ApiRequestError ? e.message : t('stack.webhook.revokeFailed')
+    errorMessage.value = e instanceof ApiRequestError ? e.message : t('compose.webhook.revokeFailed')
   } finally {
     busy.value = false
   }
@@ -140,16 +140,16 @@ async function copyToken(): Promise<void> {
       显示它是为了让用户知道「现在生效的是哪个」，而不是让他拿它去用。
     -->
     <div class="flex flex-wrap items-center gap-3">
-      <el-tag :type="stack.webhookEnabled ? 'success' : 'info'" size="small">
-        {{ stack.webhookEnabled ? t('stack.webhook.enabled') : t('stack.webhook.disabled') }}
+      <el-tag :type="compose.webhookEnabled ? 'success' : 'info'" size="small">
+        {{ compose.webhookEnabled ? t('compose.webhook.enabled') : t('compose.webhook.disabled') }}
       </el-tag>
 
-      <span v-if="stack.webhookTokenHint" class="font-mono text-xs text-content-muted">
-        {{ stack.webhookTokenHint }}…
+      <span v-if="compose.webhookTokenHint" class="font-mono text-xs text-content-muted">
+        {{ compose.webhookTokenHint }}…
       </span>
 
-      <span v-if="stack.webhookLastUsedAt" class="text-xs text-content-muted">
-        {{ t('stack.webhook.lastUsed', { time: formatDateTime(stack.webhookLastUsedAt) }) }}
+      <span v-if="compose.webhookLastUsedAt" class="text-xs text-content-muted">
+        {{ t('compose.webhook.lastUsed', { time: formatDateTime(compose.webhookLastUsedAt) }) }}
       </span>
     </div>
 
@@ -158,8 +158,8 @@ async function copyToken(): Promise<void> {
       否则用户会以为刷新一下还能再看到。
     -->
     <el-alert v-if="freshToken" type="warning" :closable="false" show-icon>
-      <template #title>{{ t('stack.webhook.tokenTitle') }}</template>
-      <p class="mt-1 text-xs">{{ t('stack.webhook.tokenHint') }}</p>
+      <template #title>{{ t('compose.webhook.tokenTitle') }}</template>
+      <p class="mt-1 text-xs">{{ t('compose.webhook.tokenHint') }}</p>
       <div class="mt-2 flex items-center gap-2">
         <code class="flex-1 truncate rounded bg-surface-hover px-2 py-1 font-mono text-xs">
           {{ freshToken }}
@@ -168,7 +168,7 @@ async function copyToken(): Promise<void> {
       </div>
     </el-alert>
 
-    <p class="text-xs text-content-muted">{{ t('stack.webhook.urlHint', { url: webhookUrl }) }}</p>
+    <p class="text-xs text-content-muted">{{ t('compose.webhook.urlHint', { url: webhookUrl }) }}</p>
 
     <el-alert
       v-if="errorMessage"
@@ -179,19 +179,19 @@ async function copyToken(): Promise<void> {
 
     <div class="flex items-center gap-2">
       <el-tooltip
-        :content="t('stack.webhook.rotateHint')"
+        :content="t('compose.webhook.rotateHint')"
         placement="top"
         :show-after="TIP_DELAY_MS"
       >
         <span class="inline-flex">
           <el-button :loading="busy" @click="rotate">
-            {{ stack.webhookEnabled ? t('stack.webhook.rotate') : t('stack.webhook.enable') }}
+            {{ compose.webhookEnabled ? t('compose.webhook.rotate') : t('compose.webhook.enable') }}
           </el-button>
         </span>
       </el-tooltip>
 
-      <el-button v-if="stack.webhookEnabled" :loading="busy" @click="revoke">
-        {{ t('stack.webhook.revoke') }}
+      <el-button v-if="compose.webhookEnabled" :loading="busy" @click="revoke">
+        {{ t('compose.webhook.revoke') }}
       </el-button>
     </div>
   </div>

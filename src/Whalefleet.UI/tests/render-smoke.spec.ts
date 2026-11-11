@@ -49,10 +49,10 @@ vi.mock('../src/api/auth', () => ({
   refreshSession: vi.fn()
 }))
 
-// ===== 0.10.0：编排 Stack 端点 =====
-vi.mock('../src/api/stack', () => ({
-  listStacks: vi.fn(async () => ({ items: [], total: 0, pageIndex: 0, pageSize: 20 })),
-  inspectStack: vi.fn(async () => ({
+// ===== 0.10.0：Compose 项目端点 =====
+vi.mock('../src/api/compose', () => ({
+  listComposeProjects: vi.fn(async () => ({ items: [], total: 0, pageIndex: 0, pageSize: 20 })),
+  inspectComposeProject: vi.fn(async () => ({
     summary: {
       name: 'shop',
       managed: true,
@@ -70,16 +70,22 @@ vi.mock('../src/api/stack', () => ({
     },
     composeContent: 'services:\n  app:\n    image: alpine:3.20\n',
     services: [],
-    warnings: []
+    warnings: [],
+    // ⚠️ **这两个字段不能省**：详情页要读 `detail.missingServices.length`，
+    // 缺字段时模板会抛 `Cannot read properties of undefined`，
+    // 而症状是「整页空白」——与「模板里引用了没导出的函数」一模一样，
+    // 光看现象分不出是哪种原因。
+    declaredServiceCount: 1,
+    missingServices: []
   })),
-  deployStack: vi.fn(),
-  updateStack: vi.fn(),
-  stopStack: vi.fn(),
-  removeStack: vi.fn(),
-  getStackTask: vi.fn(async () => null),
-  rotateStackWebhook: vi.fn(),
-  revokeStackWebhook: vi.fn(),
-  triggerStackWebhook: vi.fn()
+  deployComposeProject: vi.fn(),
+  updateComposeProject: vi.fn(),
+  stopComposeProject: vi.fn(),
+  removeComposeProject: vi.fn(),
+  getComposeTask: vi.fn(async () => null),
+  rotateComposeWebhook: vi.fn(),
+  revokeComposeWebhook: vi.fn(),
+  triggerComposeWebhook: vi.fn()
 }))
 
 // ===== 0.5.0：容器日志端点与实时通道 =====
@@ -214,13 +220,13 @@ const routes: RouteRecordRaw[] = [
     component: { template: '<div />' }
   },
   {
-    path: '/hosts/:hostId/stacks',
-    name: 'host-stacks',
+    path: '/hosts/:hostId/composes',
+    name: 'host-composes',
     component: { template: '<div />' }
   },
   {
-    path: '/hosts/:hostId/stacks/:name',
-    name: 'host-stack-detail',
+    path: '/hosts/:hostId/composes/:name',
+    name: 'host-compose-detail',
     component: { template: '<div />' }
   }
 ]
@@ -363,7 +369,7 @@ describe('三个对话框渲染冒烟（0.4.0）', () => {
     wrapper.unmount()
   })
 
-  it('推送对话框（悬挂镜像：不出标签，也不该崩）', async () => {
+  it('推送对话框（悬空镜像：不出标签，也不该崩）', async () => {
     const Dialog = (await import('../src/components/business/PushImageDialog.vue')).default
     const wrapper = await mountSmoke(Dialog, {
       props: {
@@ -384,7 +390,7 @@ describe('三个对话框渲染冒烟（0.4.0）', () => {
     await wrapper.vm.$nextTick()
 
     expect(templateBugs(), '渲染期告警').toEqual([])
-    expect(wrapper.text()).toContain('悬挂镜像没有标签')
+    expect(wrapper.text()).toContain('悬空镜像没有标签')
     wrapper.unmount()
   })
 
@@ -623,7 +629,7 @@ describe('0.5.0 实时通道组件渲染冒烟', () => {
     wrapper.unmount()
   })
 
-  it('通知铃铛能渲染编排任务失败通知', async () => {
+  it('通知铃铛能渲染Compose 任务失败通知', async () => {
     const NotificationBell = (await import('../src/components/common/NotificationBell.vue')).default
 
     const wrapper = await mountSmoke(NotificationBell)
@@ -631,9 +637,9 @@ describe('0.5.0 实时通道组件渲染冒烟', () => {
     await wrapper.vm.$nextTick()
 
     const { useNotificationStore } = await import('../src/stores/notifications')
-    useNotificationStore().pushStackTaskFailed({
+    useNotificationStore().pushComposeProjectTaskFailed({
       hostName: 'local',
-      stackName: 'shop',
+      composeName: 'shop',
       operation: 'deploy',
       errorCode: 1901,
       message: '拉取镜像失败',
@@ -647,10 +653,10 @@ describe('0.5.0 实时通道组件渲染冒烟', () => {
     wrapper.unmount()
   })
 
-  it('编排列表页渲染出工具条与空态', async () => {
-    const StacksView = (await import('../src/views/StacksView.vue')).default
+  it('Compose 项目列表页渲染出工具条与空态', async () => {
+    const ComposesView = (await import('../src/views/ComposesView.vue')).default
 
-    const wrapper = await mountSmoke(StacksView, { path: '/hosts/prod-01/stacks' })
+    const wrapper = await mountSmoke(ComposesView, { path: '/hosts/prod-01/composes' })
 
     await wrapper.vm.$nextTick()
     await Promise.resolve()
@@ -659,14 +665,14 @@ describe('0.5.0 实时通道组件渲染冒烟', () => {
 
     expect(templateBugs(), '渲染期告警').toEqual([])
     // 空白页也是「无告警」的失败形态，所以必须断言内容非空
-    expect(wrapper.text()).toContain('部署编排')
+    expect(wrapper.text()).toContain('部署 Compose 项目')
     wrapper.unmount()
   })
 
-  it('编排详情页渲染出服务表与 Webhook 卡片', async () => {
-    const StackDetailView = (await import('../src/views/StackDetailView.vue')).default
+  it('Compose 项目详情页渲染出标题、容器区与 Webhook 卡片', async () => {
+    const ComposeDetailView = (await import('../src/views/ComposeDetailView.vue')).default
 
-    const wrapper = await mountSmoke(StackDetailView, { path: '/hosts/prod-01/stacks/shop' })
+    const wrapper = await mountSmoke(ComposeDetailView, { path: '/hosts/prod-01/composes/shop' })
 
     await wrapper.vm.$nextTick()
     await Promise.resolve()
@@ -674,12 +680,16 @@ describe('0.5.0 实时通道组件渲染冒烟', () => {
     await wrapper.vm.$nextTick()
 
     expect(templateBugs(), '渲染期告警').toEqual([])
+    // 标题带项目名：裸项目名看不出「这是个编排」
+    expect(wrapper.text()).toContain('编排：shop')
+    // 容器区（复用容器列表的那张表）
+    expect(wrapper.text()).toContain('容器')
     expect(wrapper.text()).toContain('Webhook')
     wrapper.unmount()
   })
 
   it('编排应用对话框渲染出两个选项', async () => {
-    const Dialog = (await import('../src/components/business/StackApplyDialog.vue')).default
+    const Dialog = (await import('../src/components/business/ComposeApplyDialog.vue')).default
 
     const wrapper = await mountSmoke(Dialog, {
       props: { visible: true, mode: 'deploy' }

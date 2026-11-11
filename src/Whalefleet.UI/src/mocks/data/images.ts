@@ -5,7 +5,7 @@ import type { ImageDetail, ImageSummary } from '@/types/api'
  *
  * 语义夹具（`MOCK_IMAGES_DEFAULT` 的前 4 条）刻意覆盖三种形态，否则界面的分支走查不到：
  * 1. **多标签镜像**（`nginx:latest` + `nginx:1.27`）——验证折叠成「主名 +N」
- * 2. **悬挂镜像**（`repoTags: []`）——验证 `<none>` 占位与「按 ID 删除」
+ * 2. **悬空镜像**（`repoTags: []`）——验证 `<none>` 占位与「按 ID 删除」
  * 3. **被容器引用的镜像**（`containerCount > 0`）——验证不带 force 删除时回 1409/409
  *
  * ## 为什么后面还有一张 60+ 条的长尾表
@@ -56,7 +56,7 @@ const SEMANTIC_IMAGES: ImageSummary[] = [
     containerCount: 0
   },
   {
-    // 悬挂镜像：构建中间层，没有任何标签
+    // 悬空镜像：构建中间层，没有任何标签
     id: DANGLING_ID,
     repoTags: [],
     repoDigests: [],
@@ -82,7 +82,7 @@ interface ImageSeed {
   size: number
   /** 被容器引用的数量；>0 时不带 `force` 删除会回 409。 */
   usedBy?: number
-  /** 悬挂镜像（构建中间层）：没有任何标签，界面上是 `<none>`，只能按 ID 操作。 */
+  /** 悬空镜像（构建中间层）：没有任何标签，界面上是 `<none>`，只能按 ID 操作。 */
   dangling?: boolean
 }
 
@@ -174,7 +174,7 @@ const IMAGE_SEEDS: ImageSeed[] = [
   { ref: 'registry.k8s.io/pause:3.9', size: 742_400 },
   { ref: 'gcr.io/distroless/static-debian12:nonroot', size: 2_306_048 },
 
-  // ===== 悬挂镜像：构建中间层，界面上是 `<none>` =====
+  // ===== 悬空镜像：构建中间层，界面上是 `<none>` =====
   { ref: 'build-cache/frontend-deps:layer-4193', size: 1_604_759_552, dangling: true },
   { ref: 'build-cache/backend-deps:layer-4188', size: 892_289_024, dangling: true },
   { ref: 'build-cache/go-mod-cache', size: 412_975_872, dangling: true },

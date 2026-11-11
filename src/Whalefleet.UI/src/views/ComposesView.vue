@@ -10,19 +10,19 @@ import IconActionButton from '@/components/common/IconActionButton.vue'
 import ListPagination from '@/components/common/ListPagination.vue'
 import ListToolbar from '@/components/common/ListToolbar.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
-import StackApplyDialog from '@/components/business/StackApplyDialog.vue'
+import ComposeApplyDialog from '@/components/business/ComposeApplyDialog.vue'
 import { useListSearch } from '@/composables/useListSearch'
-import { useStackTask } from '@/composables/useStackTask'
-import { deployStack, listStacks, removeStack, stopStack, updateStack } from '@/api/stack'
+import { useComposeTask } from '@/composables/useComposeTask'
+import { deployComposeProject, listComposeProjects, removeComposeProject, stopComposeProject, updateComposeProject } from '@/api/compose'
 import { ApiRequestError } from '@/api'
 import { formatDateTime } from '@/utils/datetime'
-import { stackStatusKey, stackTone } from '@/utils/stack-display'
+import { composeStatusKey, composeTone } from '@/utils/compose-display'
 import { TIP_DELAY_MS } from '@/utils/tooltip'
 import { PAGE_SIZE_ALL, resolvePageSize, usePreferencesStore } from '@/stores/preferences'
-import type { StackListResult, StackStatus, StackSummary } from '@/types/api'
+import type { ComposeProjectListResult, ComposeProjectStatus, ComposeProjectSummary } from '@/types/api'
 
 /**
- * 编排 Stack 列表页（0.10.0）。
+ * Compose 项目列表页（0.10.0）。
  *
  * ## 三处与其他列表页不同
  * 1. **主体是「项目」而不是「容器」**：一行一个 Compose 项目，
@@ -41,7 +41,7 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 
-const stacks = ref<StackSummary[]>([])
+const composeProjects = ref<ComposeProjectSummary[]>([])
 const total = ref(0)
 const pageIndex = ref(0)
 const pageSize = ref<number>(usePreferencesStore().pageSize)
@@ -49,7 +49,7 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 
 /** 状态筛选。 */
-const statusFilter = ref<StackStatus | 'all'>('all')
+const statusFilter = ref<ComposeProjectStatus | 'all'>('all')
 
 /** 正在执行操作的项目名：让对应按钮转圈，而不是整页转圈。 */
 const busyNames = ref<Set<string>>(new Set())
@@ -58,15 +58,15 @@ const busyNames = ref<Set<string>>(new Set())
 const applyVisible = ref(false)
 /** 对话框模式：部署还是更新。 */
 const applyMode = ref<'deploy' | 'update'>('deploy')
-/** 对话框当前操作的 Stack（更新时）。 */
-const applyTarget = ref<StackSummary | null>(null)
+/** 对话框当前操作的 Compose 项目（更新时）。 */
+const applyTarget = ref<ComposeProjectSummary | null>(null)
 
-const { task, busy: taskBusy, percent, step, run } = useStackTask()
+const { task, busy: taskBusy, percent, step, run } = useComposeTask()
 
 /** URL 上的 hostId。**以它为准**而不是 store.currentId：深链进入时 store 可能还没被守卫写入。 */
 const hostId = computed(() => String(route.params.hostId ?? ''))
 
-const isEmpty = computed(() => !loading.value && error.value === null && stacks.value.length === 0)
+const isEmpty = computed(() => !loading.value && error.value === null && composeProjects.value.length === 0)
 
 /**
  * 总页数。
@@ -80,11 +80,11 @@ const pageCount = computed(() =>
 
 /** 状态筛选项。 */
 const statusOptions = computed(() => [
-  { value: 'all', label: t('stack.filter.statusAll') },
-  { value: 'running', label: t('stack.status.running') },
-  { value: 'partial', label: t('stack.status.partial') },
-  { value: 'stopped', label: t('stack.status.stopped') },
-  { value: 'unknown', label: t('stack.status.unknown') }
+  { value: 'all', label: t('compose.filter.statusAll') },
+  { value: 'running', label: t('compose.status.running') },
+  { value: 'partial', label: t('compose.status.partial') },
+  { value: 'stopped', label: t('compose.status.stopped') },
+  { value: 'unknown', label: t('compose.status.unknown') }
 ])
 
 /**
@@ -114,7 +114,7 @@ async function load(): Promise<void> {
 
   loading.value = true
   try {
-    const result: StackListResult = await listStacks(hostId.value, listParams())
+    const result: ComposeProjectListResult = await listComposeProjects(hostId.value, listParams())
 
     // 删光当前页（如把最后一页的最后一个项目删了）时自动回退一页：
     // 否则用户会停在一片空白上，且「共 N 个」与空表同时显示，很容易被读成「全删完了」。
@@ -124,7 +124,7 @@ async function load(): Promise<void> {
       return
     }
 
-    stacks.value = result.items
+    composeProjects.value = result.items
     total.value = result.total
     // ⚠️ 以**服务端回显**的页码 / 页数为准：请求写 pageSize=5000 时后端会夹到 100。
     pageIndex.value = result.pageIndex
@@ -132,7 +132,7 @@ async function load(): Promise<void> {
 
     error.value = null
   } catch (e) {
-    error.value = e instanceof ApiRequestError ? e.message : t('stack.loadFailed')
+    error.value = e instanceof ApiRequestError ? e.message : t('compose.loadFailed')
   } finally {
     loading.value = false
   }
@@ -152,7 +152,7 @@ function onPageSizeChange(size: number): void {
 }
 
 /** 换状态筛选。 */
-async function onStatusFilterChange(next: StackStatus | 'all'): Promise<void> {
+async function onStatusFilterChange(next: ComposeProjectStatus | 'all'): Promise<void> {
   statusFilter.value = next
   pageIndex.value = 0
   await load()
@@ -166,9 +166,9 @@ function openDeploy(): void {
 }
 
 /** 打开更新对话框。 */
-function openUpdate(stack: StackSummary): void {
+function openUpdate(compose: ComposeProjectSummary): void {
   applyMode.value = 'update'
-  applyTarget.value = stack
+  applyTarget.value = compose
   applyVisible.value = true
 }
 
@@ -192,14 +192,14 @@ async function onApply(payload: {
     hostId.value,
     (taskId) =>
       isUpdate
-        ? updateStack(hostId.value, {
+        ? updateComposeProject(hostId.value, {
             name: payload.name,
             composeContent: payload.composeContent,
             taskId,
             pullAlways: payload.pullAlways,
             pruneOrphans: payload.pruneOrphans
           })
-        : deployStack(hostId.value, {
+        : deployComposeProject(hostId.value, {
             name: payload.name,
             composeContent: payload.composeContent,
             taskId,
@@ -212,46 +212,46 @@ async function onApply(payload: {
   busyNames.value.delete(target)
 
   if (!snapshot) {
-    ElMessage.error(t('stack.task.failed'))
+    ElMessage.error(t('compose.task.failed'))
     return
   }
 
   if (snapshot.status === 'failed') {
-    ElMessage.error(snapshot.errorMessage || t('stack.task.failed'))
+    ElMessage.error(snapshot.errorMessage || t('compose.task.failed'))
     return
   }
 
-  ElMessage.success(t('stack.task.succeeded'))
+  ElMessage.success(t('compose.task.succeeded'))
 }
 
 /** 停止编排。 */
-async function stopStackByName(stack: StackSummary): Promise<void> {
-  busyNames.value = new Set([...busyNames.value, stack.name])
+async function stopComposeProjectByName(compose: ComposeProjectSummary): Promise<void> {
+  busyNames.value = new Set([...busyNames.value, compose.name])
 
   const snapshot = await run(
     hostId.value,
-    (taskId) => stopStack(hostId.value, { name: stack.name, taskId }),
+    (taskId) => stopComposeProject(hostId.value, { name: compose.name, taskId }),
     load
   )
 
-  busyNames.value.delete(stack.name)
+  busyNames.value.delete(compose.name)
 
   if (snapshot?.status === 'failed') {
-    ElMessage.error(snapshot.errorMessage || t('stack.task.failed'))
+    ElMessage.error(snapshot.errorMessage || t('compose.task.failed'))
     return
   }
 
   if (snapshot) {
-    ElMessage.success(t('stack.task.succeeded'))
+    ElMessage.success(t('compose.task.succeeded'))
   }
 }
 
 /** 删除编排。 */
-async function removeStackByName(stack: StackSummary): Promise<void> {
+async function removeComposeProjectByName(compose: ComposeProjectSummary): Promise<void> {
   try {
     await ElMessageBox.confirm(
-      t('stack.remove.confirm', { name: stack.name }),
-      t('stack.remove.title'),
+      t('compose.remove.confirm', { name: compose.name }),
+      t('compose.remove.title'),
       {
         type: 'warning',
         confirmButtonText: t('common.confirm'),
@@ -262,33 +262,33 @@ async function removeStackByName(stack: StackSummary): Promise<void> {
     return
   }
 
-  busyNames.value = new Set([...busyNames.value, stack.name])
+  busyNames.value = new Set([...busyNames.value, compose.name])
 
   const snapshot = await run(
     hostId.value,
-    (taskId) => removeStack(hostId.value, { name: stack.name, taskId, removeVolumes: false }),
+    (taskId) => removeComposeProject(hostId.value, { name: compose.name, taskId, removeVolumes: false }),
     load
   )
 
-  busyNames.value.delete(stack.name)
+  busyNames.value.delete(compose.name)
 
   if (snapshot?.status === 'failed') {
-    ElMessage.error(snapshot.errorMessage || t('stack.task.failed'))
+    ElMessage.error(snapshot.errorMessage || t('compose.task.failed'))
     return
   }
 
   if (snapshot) {
-    ElMessage.success(t('stack.task.succeeded'))
+    ElMessage.success(t('compose.task.succeeded'))
   }
 }
 
 /** 进入详情。 */
-function openDetail(stack: StackSummary): void {
+function openDetail(compose: ComposeProjectSummary): void {
   // ⚠️ 传**原始**名字，不要自己 encodeURIComponent：vue-router 会再编码一次，
   // 详情页拿到的 id 永远对不上。
   void router.push({
-    name: 'host-stack-detail',
-    params: { hostId: hostId.value, name: stack.name }
+    name: 'host-compose-detail',
+    params: { hostId: hostId.value, name: compose.name }
   })
 }
 
@@ -308,12 +308,12 @@ watch(
   <div>
     <PageHeader
       icon="i-carbon-layers"
-      :title="t('nav.stacks')"
-      :title-tip="t('page.stacks.subtitle')"
+      :title="t('nav.composes')"
+      :title-tip="t('page.composes.subtitle')"
       narrow
     >
       <template #actions>
-        <el-button type="primary" @click="openDeploy">{{ t('stack.action.deploy') }}</el-button>
+        <el-button type="primary" @click="openDeploy">{{ t('compose.action.deploy') }}</el-button>
       </template>
     </PageHeader>
 
@@ -324,7 +324,7 @@ watch(
     -->
     <div v-if="taskBusy" class="mb-4">
       <el-alert type="info" :closable="false" show-icon>
-        <template #title>{{ t('stack.task.running') }}</template>
+        <template #title>{{ t('compose.task.running') }}</template>
         <div class="mt-1 flex items-center gap-3">
           <el-progress
             :percentage="percent ?? 0"
@@ -347,7 +347,7 @@ watch(
               v-model="search"
               class="!w-40 sm:!w-64"
               clearable
-              :placeholder="t('stack.search.placeholder')"
+              :placeholder="t('compose.search.placeholder')"
               @input="scheduleSearch"
               @keyup.enter="searchNow"
               @clear="searchNow"
@@ -368,7 +368,7 @@ watch(
               />
             </el-select>
 
-            <span class="text-xs text-content-muted">{{ t('stack.total', { total }) }}</span>
+            <span class="text-xs text-content-muted">{{ t('compose.total', { total }) }}</span>
           </template>
 
           <template #extra>
@@ -408,12 +408,12 @@ watch(
         <EmptyState
           v-if="isEmpty"
           icon="i-carbon-layers"
-          :title="t('stack.empty')"
-          :description="t('stack.emptyHint')"
+          :title="t('compose.empty')"
+          :description="t('compose.emptyHint')"
         />
 
-        <el-table v-else :data="stacks" v-loading="loading" row-key="name">
-          <el-table-column :label="t('stack.column.name')" min-width="180">
+        <el-table v-else :data="composeProjects" v-loading="loading" row-key="name">
+          <el-table-column :label="t('compose.column.name')" min-width="180">
             <template #default="{ row }">
               <button
                 type="button"
@@ -427,26 +427,26 @@ watch(
                 没有 YAML，不能更新」。不标的话用户点「更新」必然失败。
               -->
               <el-tag v-if="!row.managed" size="small" type="info" class="ml-2">
-                {{ t('stack.managed.external') }}
+                {{ t('compose.managed.external') }}
               </el-tag>
             </template>
           </el-table-column>
 
-          <el-table-column :label="t('stack.column.status')" width="120">
+          <el-table-column :label="t('compose.column.status')" width="120">
             <template #default="{ row }">
-              <StatusBadge :tone="stackTone(row.status)">
-                {{ t(stackStatusKey(row.status)) }}
+              <StatusBadge :tone="composeTone(row.status)">
+                {{ t(composeStatusKey(row.status)) }}
               </StatusBadge>
             </template>
           </el-table-column>
 
-          <el-table-column :label="t('stack.column.services')" width="100">
+          <el-table-column :label="t('compose.column.services')" width="100">
             <template #default="{ row }">
               <span class="text-sm text-content">{{ row.serviceCount }}</span>
             </template>
           </el-table-column>
 
-          <el-table-column :label="t('stack.column.containers')" width="140">
+          <el-table-column :label="t('compose.column.containers')" width="140">
             <template #default="{ row }">
               <span class="text-sm text-content">
                 {{ row.runningCount }} / {{ row.containerCount }}
@@ -454,11 +454,11 @@ watch(
             </template>
           </el-table-column>
 
-          <el-table-column :label="t('stack.column.resources')" width="150">
+          <el-table-column :label="t('compose.column.resources')" width="150">
             <template #default="{ row }">
               <span class="text-sm text-content-muted">
                 {{
-                  t('stack.resources', {
+                  t('compose.resources', {
                     networks: row.networkCount,
                     volumes: row.volumeCount
                   })
@@ -467,7 +467,7 @@ watch(
             </template>
           </el-table-column>
 
-          <el-table-column :label="t('stack.column.updatedAt')" width="180">
+          <el-table-column :label="t('compose.column.updatedAt')" width="180">
             <template #default="{ row }">
               <span class="text-xs text-content-muted">
                 {{ row.updatedAt ? formatDateTime(row.updatedAt) : '—' }}
@@ -480,18 +480,18 @@ watch(
               <div class="flex items-center justify-end gap-1">
                 <IconActionButton
                   icon="i-carbon-edit"
-                  :label="t('stack.action.update')"
+                  :label="t('compose.action.update')"
                   placement="bottom"
                   :disabled="!row.managed || busyNames.has(row.name)"
-                  :hint="row.managed ? undefined : t('stack.managed.hint')"
+                  :hint="row.managed ? undefined : t('compose.managed.hint')"
                   @click="openUpdate(row)"
                 />
                 <IconActionButton
                   icon="i-carbon-pause"
-                  :label="t('stack.action.stop')"
+                  :label="t('compose.action.stop')"
                   placement="bottom"
                   :disabled="busyNames.has(row.name) || row.runningCount === 0"
-                  @click="stopStackByName(row)"
+                  @click="stopComposeProjectByName(row)"
                 />
                 <IconActionButton
                   icon="i-carbon-trash-can"
@@ -499,7 +499,7 @@ watch(
                   tone="danger"
                   placement="bottom"
                   :disabled="busyNames.has(row.name)"
-                  @click="removeStackByName(row)"
+                  @click="removeComposeProjectByName(row)"
                 />
               </div>
             </template>
@@ -518,10 +518,10 @@ watch(
       @update:page-size="onPageSizeChange"
     />
 
-    <StackApplyDialog
+    <ComposeApplyDialog
       v-model:visible="applyVisible"
       :mode="applyMode"
-      :stack="applyTarget"
+      :compose="applyTarget"
       @submit="onApply"
     />
   </div>

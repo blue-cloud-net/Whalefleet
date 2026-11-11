@@ -105,3 +105,44 @@ describe('面包屑 — 链接可点性', () => {
     expect(new Set(keys).size).toBe(keys.length)
   })
 })
+
+describe('面包屑 — 当前页的具体名称', () => {
+  it('给了具体名称就用它（详情页要看出是「哪个」项目）', () => {
+    const crumbs = buildCrumbs(
+      source({
+        titleKey: 'nav.composes',
+        isHostScope: true,
+        currentHost: { id: 'local', name: 'local' },
+        currentLabel: 'shop'
+      })
+    )
+
+    expect(crumbs.map((crumb) => crumb.label)).toEqual(['nav.overview', 'local', 'shop'])
+  })
+
+  it('没给具体名称时退回分类名', () => {
+    const crumbs = buildCrumbs(source({ titleKey: 'nav.composes', currentLabel: null }))
+
+    expect(crumbs.map((crumb) => crumb.label)).toEqual(['nav.overview', 'nav.composes'])
+  })
+
+  it('空串当作没给（避免面包屑出现一个空的一级）', () => {
+    const crumbs = buildCrumbs(source({ titleKey: 'nav.composes', currentLabel: '' }))
+
+    expect(crumbs.map((crumb) => crumb.label)).toEqual(['nav.overview', 'nav.composes'])
+  })
+
+  it('具体名称不改变层级数（末项仍不可点）', () => {
+    const crumbs = buildCrumbs(
+      source({
+        titleKey: 'nav.composes',
+        isHostScope: true,
+        currentHost: { id: 'local', name: 'local' },
+        currentLabel: 'shop'
+      })
+    )
+
+    expect(crumbs).toHaveLength(3)
+    expect(crumbs.map((crumb) => crumb.to !== undefined)).toEqual([true, true, false])
+  })
+})

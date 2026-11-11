@@ -637,7 +637,7 @@ describe('镜像端点', () => {
     expect((json.data as { items: unknown[] }).items.length).toBeGreaterThan(0)
   })
 
-  it('悬挂镜像以空 repoTags 表示（后端已过滤掉 <none> 标签）', async () => {
+  it('悬空镜像以空 repoTags 表示（后端已过滤掉 <none> 标签）', async () => {
     const { json } = await post('/api/v1/hosts/local/images/list', {})
     const items = (json.data as { items: { repoTags: string[] }[] }).items
 
@@ -1345,7 +1345,7 @@ describe('角色与权限目录端点（0.1.0）', () => {
     const admin = roles.find((role) => role.name === 'admin')!
     expect(admin.isBuiltIn).toBe(true)
     // 0.4.0 把目录从 16 条扩到 18 条（repository.read / repository.write）；
-    // 0.10.0 再加 stack.read / stack.write，扩到 20 条。
+    // 0.10.0 再加 compose.read / compose.write，扩到 20 条。
     // admin 的权限集必须覆盖**整个目录**，因此这里跟着目录长度走：
     // 写死 16 会在新增权限时拦下「admin 漏了一项」——而那正是最该拦的情况。
     expect(admin.permissions).toHaveLength(20)

@@ -170,27 +170,35 @@ const routes: RouteRecordRaw[] = [
         meta: { scope: 'host', icon: 'i-carbon-activity', title: 'nav.status' }
       },
       {
-        // 「编排」= Docker Compose / Stack。后端 /api/v1/stack/* 排 0.10.0，当前先占位建好菜单。
+        // 「Compose」= Docker Compose 项目。后端 /api/v1/composes/* 排 0.10.0，当前先占位建好菜单。
         //
         // 位置放在**容器 / 镜像 / 数据卷 / 网络之前**，不是按依赖排的，而是按用户的实际动线：
         // Compose 项目的日常操作是「看编排 → 看它拉起的容器 / 挂载的卷 / 接入的网络」，
         // 从编排往下点最顺手；反过来从容器找编排得先记得这个容器属于哪个项目。
         // 依赖顺序只体现在**实现节奏**上（后端 0.10.0 才排上），不占用菜单的排列。
-        path: 'hosts/:hostId/stacks',
-        name: 'host-stacks',
-        component: () => import('@/views/StacksView.vue'),
-        meta: { scope: 'host', icon: 'i-carbon-layers', title: 'nav.stacks' }
+        path: 'hosts/:hostId/composes',
+        name: 'host-composes',
+        component: () => import('@/views/ComposesView.vue'),
+        meta: { scope: 'host', icon: 'i-carbon-layers', title: 'nav.composes' }
       },
       {
         // 编排详情。从列表点进去的下级页，不进侧边栏。
         //
-        // ⚠️ `:name` 传**原始** Stack 名（调用方不要自己 encodeURIComponent）：
+        // ⚠️ `:name` 传**原始** Compose 项目名（调用方不要自己 encodeURIComponent）：
         // vue-router 会再编码一次，详情页拿到的名字永远对不上。
         // narrow：正文是 Compose YAML 原文，1600px 的行宽没法读。
-        path: 'hosts/:hostId/stacks/:name',
-        name: 'host-stack-detail',
-        component: () => import('@/views/StackDetailView.vue'),
-        meta: { scope: 'host', showInSidebar: false, title: 'nav.stacks', narrow: true }
+        path: 'hosts/:hostId/composes/:name',
+        name: 'host-compose-detail',
+        component: () => import('@/views/ComposeDetailView.vue'),
+        // titleParam：面包屑末项用**项目名**而不是分类名「编排」——
+        // 深链进来时用户需要知道是**哪个**项目。
+        meta: {
+          scope: 'host',
+          showInSidebar: false,
+          title: 'nav.composes',
+          titleParam: 'name',
+          narrow: true
+        }
       },
       {
         path: 'hosts/:hostId/containers',

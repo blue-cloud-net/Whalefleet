@@ -1,39 +1,39 @@
 import { http, HttpResponse, delay } from 'msw'
 import { ErrorCode, fail, httpStatusOf, ok } from '../envelope'
 import { delayFor, type MockScenario } from '../scenarios'
-import { MOCK_STACKS_DEFAULT, MOCK_STACK_DETAILS } from '../data/stacks'
+import { MOCK_COMPOSE_PROJECTS_DEFAULT, MOCK_COMPOSE_PROJECT_DETAILS } from '../data/composes'
 import type {
-  StackDetail,
-  StackListResult,
-  StackSummary,
-  StackTaskSnapshot,
-  StackWebhookInfo
+  ComposeProjectDetail,
+  ComposeProjectListResult,
+  ComposeProjectSummary,
+  ComposeTaskSnapshot,
+  ComposeWebhookInfo
 } from '@/types/api'
 
 /**
- * 编排 Stack 端点 mock（0.10.0）。
+ * Compose 项目端点 mock（0.10.0）。
  *
  * ## 复刻了后端的哪些「容易被忽略的语义」
  * 1. **部署类端点返回 202**：不是 200。前端若把 202 当失败，会把「已受理」报成「部署失败」。
  * 2. **同名部署报 1902、更新不存在的报 1900**：两者方向相反，是同一个「重名」概念的两面。
  * 3. **任务状态随时间推进**：`queued → running → succeeded`。
  *    mock 若永远返回 `queued`，前端的「完成后刷新列表」分支永远测不到。
- * 4. **同一 Stack 同时只能有一个任务**：第二个请求报 1905。
+ * 4. **同一 Compose 项目同时只能有一个任务**：第二个请求报 1905。
  * 5. **Webhook 令牌明文只给一次**：之后再查只有 `tokenHint`。
  * 6. **YAML 非法报 1904 并带出字段路径**：错误消息里要能看到 `services.xxx`。
  */
 
 /** 会话内新建的编排。 */
-const createdStacks = new Map<string, StackDetail>()
+const createdComposeProjects = new Map<string, ComposeProjectDetail>()
 
 /** 会话内被删除的编排名。 */
-const removedStacks = new Set<string>()
+const removedComposeProjects = new Set<string>()
 
 /** 会话内的任务。 */
 interface MockTask {
   taskId: string
   hostId: string
-  stackName: string
+  composeName: string
   operation: string
   /** 入队时刻（毫秒时间戳） */
   queuedAt: number
@@ -44,27 +44,27 @@ interface MockTask {
 
 const tasks = new Map<string, MockTask>()
 
-/** 会话内的 Webhook 令牌（Stack 名 → 令牌明文）。 */
+/** 会话内的 Webhook 令牌（Compose 项目名 → 令牌明文）。 */
 const webhookTokens = new Map<string, string>()
 
 /** 任务从入队到跑完的时长（毫秒）。mock 里调得很短，否则走查要干等。 */
 const TASK_DURATION_MS = 1200
 
 /** 清空会话内的改动（供测试隔离用）。 */
-export function resetSessionStacks(): void {
-  createdStacks.clear()
-  removedStacks.clear()
+export function resetSessionComposeProjects(): void {
+  createdComposeProjects.clear()
+  removedComposeProjects.clear()
   tasks.clear()
   webhookTokens.clear()
 }
 
 /**
- * 编排 Stack 端点 mock。
+ * Compose 项目端点 mock。
  *
  * @param scenario 场景读取器。
  * @returns MSW handler 列表。
  */
-export function stackHandlers(scenario: () => MockScenario) {
+export function composeHandlers(scenario: () => MockScenario) {
   /** 读取请求体。 */
   async function readBody(request: Request): Promise<Record<string, unknown>> {
     try {
@@ -93,25 +93,25 @@ export function stackHandlers(scenario: () => MockScenario) {
   }
 
   /** 当前场景下的编排列表（夹具 + 会话内新建 − 会话内删除）。 */
-  function stacksFor(current: MockScenario): StackSummary[] {
+  function composeProjectsFor(current: MockScenario): ComposeProjectSummary[] {
     if (current === 'empty') return []
 
     return [
-      ...MOCK_STACKS_DEFAULT.filter((stack) => !removedStacks.has(stack.name)),
-      ...[...createdStacks.values()].map((detail) => detail.summary)
+      ...MOCK_COMPOSE_PROJECTS_DEFAULT.filter((compose) => !removedComposeProjects.has(compose.name)),
+      ...[...createdComposeProjects.values()].map((detail) => detail.summary)
     ]
   }
 
   /** 按名称取编排详情。 */
-  function detailFor(current: MockScenario, name: string): StackDetail | undefined {
+  function detailFor(current: MockScenario, name: string): ComposeProjectDetail | undefined {
     if (current === 'empty') return undefined
 
-    const created = createdStacks.get(name)
+    const created = createdComposeProjects.get(name)
     if (created) return created
 
-    if (removedStacks.has(name)) return undefined
+    if (removedComposeProjects.has(name)) return undefined
 
-    return MOCK_STACK_DETAILS.find((detail) => detail.summary.name === name)
+    return MOCK_COMPOSE_PROJECT_DETAILS.find((detail) => detail.summary.name === name)
   }
 
   /**
@@ -120,7 +120,7 @@ export function stackHandlers(scenario: () => MockScenario) {
    * ⚠️ **不能永远返回 `queued`**：那样前端的「完成后刷新列表」分支永远走不到，
    * 而「部署完列表还是旧的」正是这个功能最容易出的问题。
    */
-  function snapshotOf(task: MockTask): StackTaskSnapshot {
+  function snapshotOf(task: MockTask): ComposeTaskSnapshot {
     const elapsed = Date.now() - task.queuedAt
     const finished = elapsed >= TASK_DURATION_MS
     const running = !finished && elapsed >= TASK_DURATION_MS / 3
@@ -130,7 +130,7 @@ export function stackHandlers(scenario: () => MockScenario) {
     return {
       taskId: task.taskId,
       hostName: task.hostId,
-      stackName: task.stackName,
+      composeName: task.composeName,
       operation: task.operation,
       status,
       percent: finished ? 100 : running ? 45 : null,
@@ -156,10 +156,10 @@ export function stackHandlers(scenario: () => MockScenario) {
     }
   }
 
-  /** 该 Stack 是否已有进行中的任务。 */
-  function hasRunningTask(stackName: string): boolean {
+  /** 该 Compose 项目是否已有进行中的任务。 */
+  function hasRunningTask(composeName: string): boolean {
     for (const task of tasks.values()) {
-      if (task.stackName !== stackName) continue
+      if (task.composeName !== composeName) continue
 
       const status = snapshotOf(task).status
       if (status === 'succeeded' || status === 'failed') continue
@@ -190,13 +190,13 @@ export function stackHandlers(scenario: () => MockScenario) {
   function accept(
     taskId: string,
     hostId: string,
-    stackName: string,
+    composeName: string,
     operation: string
   ): string {
     tasks.set(taskId, {
       taskId,
       hostId,
-      stackName,
+      composeName,
       operation,
       queuedAt: Date.now(),
       error: null,
@@ -209,7 +209,7 @@ export function stackHandlers(scenario: () => MockScenario) {
   return [
     /* ==================== 列表 ==================== */
 
-    http.post('*/api/v1/hosts/:hostId/stacks/list', async ({ request }) => {
+    http.post('*/api/v1/hosts/:hostId/composes/list', async ({ request }) => {
       await delay(delayFor(scenario()))
 
       if (scenario() === 'error') {
@@ -223,20 +223,20 @@ export function stackHandlers(scenario: () => MockScenario) {
       // ⚠️ 搜索发生在**分页之前**（后端先过滤再切片）：
       // 否则 total 是过滤前的条数，页脚显示的数字与翻页结果对不上。
       const search = String(body.search ?? '').trim().toLowerCase()
-      const matched = stacksFor(scenario()).filter((stack) => {
+      const matched = composeProjectsFor(scenario()).filter((compose) => {
         if (search.length === 0) return true
 
-        return stack.name.toLowerCase().includes(search)
+        return compose.name.toLowerCase().includes(search)
       })
 
       const paged = paginate(matched, body)
 
-      return HttpResponse.json(ok(paged satisfies StackListResult))
+      return HttpResponse.json(ok(paged satisfies ComposeProjectListResult))
     }),
 
     /* ==================== 详情 ==================== */
 
-    http.post('*/api/v1/hosts/:hostId/stacks/inspect', async ({ request }) => {
+    http.post('*/api/v1/hosts/:hostId/composes/inspect', async ({ request }) => {
       await delay(delayFor(scenario()))
 
       const body = await readBody(request)
@@ -244,8 +244,8 @@ export function stackHandlers(scenario: () => MockScenario) {
       const detail = name ? detailFor(scenario(), name) : undefined
 
       if (!detail) {
-        return HttpResponse.json(fail(ErrorCode.StackNotFound), {
-          status: httpStatusOf(ErrorCode.StackNotFound)
+        return HttpResponse.json(fail(ErrorCode.ComposeNotFound), {
+          status: httpStatusOf(ErrorCode.ComposeNotFound)
         })
       }
 
@@ -254,7 +254,7 @@ export function stackHandlers(scenario: () => MockScenario) {
 
     /* ==================== 部署 / 更新 ==================== */
 
-    http.post('*/api/v1/hosts/:hostId/stacks/deploy', async ({ request, params }) => {
+    http.post('*/api/v1/hosts/:hostId/composes/deploy', async ({ request, params }) => {
       await delay(delayFor(scenario()))
 
       const body = await readBody(request)
@@ -275,22 +275,22 @@ export function stackHandlers(scenario: () => MockScenario) {
         })
       }
 
-      if (stacksFor(scenario()).some((stack) => stack.name === name)) {
-        return HttpResponse.json(fail(ErrorCode.StackNameAlreadyExists), {
-          status: httpStatusOf(ErrorCode.StackNameAlreadyExists)
+      if (composeProjectsFor(scenario()).some((compose) => compose.name === name)) {
+        return HttpResponse.json(fail(ErrorCode.ComposeNameAlreadyExists), {
+          status: httpStatusOf(ErrorCode.ComposeNameAlreadyExists)
         })
       }
 
       if (hasRunningTask(name)) {
-        return HttpResponse.json(fail(ErrorCode.StackOperationInProgress), {
-          status: httpStatusOf(ErrorCode.StackOperationInProgress)
+        return HttpResponse.json(fail(ErrorCode.ComposeOperationInProgress), {
+          status: httpStatusOf(ErrorCode.ComposeOperationInProgress)
         })
       }
 
       const hostId = String(params.hostId)
 
       // 会话内记住：部署之后紧接着的列表请求要能看到它
-      const summary: StackSummary = {
+      const summary: ComposeProjectSummary = {
         name,
         managed: true,
         status: 'running',
@@ -306,7 +306,7 @@ export function stackHandlers(scenario: () => MockScenario) {
         updatedAt: new Date().toISOString()
       }
 
-      createdStacks.set(name, {
+      createdComposeProjects.set(name, {
         summary,
         composeContent: content,
         services: [
@@ -322,7 +322,10 @@ export function stackHandlers(scenario: () => MockScenario) {
             restartPolicy: 'unless-stopped'
           }
         ],
-        warnings: []
+        warnings: [],
+        // 刚部署完：声明了 1 个服务且容器已建好 → 没有缺失
+        declaredServiceCount: 1,
+        missingServices: []
       })
 
       accept(taskId, hostId, name, 'deploy')
@@ -333,7 +336,7 @@ export function stackHandlers(scenario: () => MockScenario) {
       })
     }),
 
-    http.post('*/api/v1/hosts/:hostId/stacks/update', async ({ request, params }) => {
+    http.post('*/api/v1/hosts/:hostId/composes/update', async ({ request, params }) => {
       await delay(delayFor(scenario()))
 
       const body = await readBody(request)
@@ -344,14 +347,14 @@ export function stackHandlers(scenario: () => MockScenario) {
       const detail = name ? detailFor(scenario(), name) : undefined
 
       if (!detail) {
-        return HttpResponse.json(fail(ErrorCode.StackNotFound), {
-          status: httpStatusOf(ErrorCode.StackNotFound)
+        return HttpResponse.json(fail(ErrorCode.ComposeNotFound), {
+          status: httpStatusOf(ErrorCode.ComposeNotFound)
         })
       }
 
       if (!detail.summary.managed) {
-        return HttpResponse.json(fail(ErrorCode.StackNotManaged), {
-          status: httpStatusOf(ErrorCode.StackNotManaged)
+        return HttpResponse.json(fail(ErrorCode.ComposeNotManaged), {
+          status: httpStatusOf(ErrorCode.ComposeNotManaged)
         })
       }
 
@@ -363,8 +366,8 @@ export function stackHandlers(scenario: () => MockScenario) {
       }
 
       if (hasRunningTask(name)) {
-        return HttpResponse.json(fail(ErrorCode.StackOperationInProgress), {
-          status: httpStatusOf(ErrorCode.StackOperationInProgress)
+        return HttpResponse.json(fail(ErrorCode.ComposeOperationInProgress), {
+          status: httpStatusOf(ErrorCode.ComposeOperationInProgress)
         })
       }
 
@@ -380,7 +383,7 @@ export function stackHandlers(scenario: () => MockScenario) {
 
     /* ==================== 停止 / 删除 ==================== */
 
-    http.post('*/api/v1/hosts/:hostId/stacks/stop', async ({ request, params }) => {
+    http.post('*/api/v1/hosts/:hostId/composes/stop', async ({ request, params }) => {
       await delay(delayFor(scenario()))
 
       const body = await readBody(request)
@@ -390,14 +393,14 @@ export function stackHandlers(scenario: () => MockScenario) {
       const detail = name ? detailFor(scenario(), name) : undefined
 
       if (!detail) {
-        return HttpResponse.json(fail(ErrorCode.StackNotFound), {
-          status: httpStatusOf(ErrorCode.StackNotFound)
+        return HttpResponse.json(fail(ErrorCode.ComposeNotFound), {
+          status: httpStatusOf(ErrorCode.ComposeNotFound)
         })
       }
 
       if (hasRunningTask(name)) {
-        return HttpResponse.json(fail(ErrorCode.StackOperationInProgress), {
-          status: httpStatusOf(ErrorCode.StackOperationInProgress)
+        return HttpResponse.json(fail(ErrorCode.ComposeOperationInProgress), {
+          status: httpStatusOf(ErrorCode.ComposeOperationInProgress)
         })
       }
 
@@ -408,7 +411,7 @@ export function stackHandlers(scenario: () => MockScenario) {
       })
     }),
 
-    http.post('*/api/v1/hosts/:hostId/stacks/remove', async ({ request, params }) => {
+    http.post('*/api/v1/hosts/:hostId/composes/remove', async ({ request, params }) => {
       await delay(delayFor(scenario()))
 
       const body = await readBody(request)
@@ -416,8 +419,8 @@ export function stackHandlers(scenario: () => MockScenario) {
       const taskId = String(body.taskId ?? '').trim()
 
       if (name) {
-        removedStacks.add(name)
-        createdStacks.delete(name)
+        removedComposeProjects.add(name)
+        createdComposeProjects.delete(name)
       }
 
       accept(taskId, String(params.hostId), name, 'remove')
@@ -429,7 +432,7 @@ export function stackHandlers(scenario: () => MockScenario) {
 
     /* ==================== 任务 ==================== */
 
-    http.post('*/api/v1/hosts/:hostId/stacks/task', async ({ request }) => {
+    http.post('*/api/v1/hosts/:hostId/composes/task', async ({ request }) => {
       await delay(delayFor(scenario()))
 
       const body = await readBody(request)
@@ -442,7 +445,7 @@ export function stackHandlers(scenario: () => MockScenario) {
 
     /* ==================== Webhook ==================== */
 
-    http.post('*/api/v1/hosts/:hostId/stacks/webhook/rotate', async ({ request }) => {
+    http.post('*/api/v1/hosts/:hostId/composes/webhook/rotate', async ({ request }) => {
       await delay(delayFor(scenario()))
 
       const body = await readBody(request)
@@ -450,8 +453,8 @@ export function stackHandlers(scenario: () => MockScenario) {
       const detail = name ? detailFor(scenario(), name) : undefined
 
       if (!detail) {
-        return HttpResponse.json(fail(ErrorCode.StackNotFound), {
-          status: httpStatusOf(ErrorCode.StackNotFound)
+        return HttpResponse.json(fail(ErrorCode.ComposeNotFound), {
+          status: httpStatusOf(ErrorCode.ComposeNotFound)
         })
       }
 
@@ -462,7 +465,7 @@ export function stackHandlers(scenario: () => MockScenario) {
       detail.summary.webhookTokenHint = token.slice(0, 8)
 
       // ⚠️ 明文只此一次：之后再查只有 tokenHint
-      const info: StackWebhookInfo = {
+      const info: ComposeWebhookInfo = {
         enabled: true,
         tokenHint: token.slice(0, 8),
         token,
@@ -472,7 +475,7 @@ export function stackHandlers(scenario: () => MockScenario) {
       return HttpResponse.json(ok(info))
     }),
 
-    http.post('*/api/v1/hosts/:hostId/stacks/webhook/revoke', async ({ request }) => {
+    http.post('*/api/v1/hosts/:hostId/composes/webhook/revoke', async ({ request }) => {
       await delay(delayFor(scenario()))
 
       const body = await readBody(request)
@@ -480,8 +483,8 @@ export function stackHandlers(scenario: () => MockScenario) {
       const detail = name ? detailFor(scenario(), name) : undefined
 
       if (!detail) {
-        return HttpResponse.json(fail(ErrorCode.StackNotFound), {
-          status: httpStatusOf(ErrorCode.StackNotFound)
+        return HttpResponse.json(fail(ErrorCode.ComposeNotFound), {
+          status: httpStatusOf(ErrorCode.ComposeNotFound)
         })
       }
 
@@ -489,7 +492,7 @@ export function stackHandlers(scenario: () => MockScenario) {
       detail.summary.webhookEnabled = false
       detail.summary.webhookTokenHint = null
 
-      const info: StackWebhookInfo = {
+      const info: ComposeWebhookInfo = {
         enabled: false,
         tokenHint: null,
         token: null,
@@ -501,7 +504,7 @@ export function stackHandlers(scenario: () => MockScenario) {
 
     /* ==================== Webhook 触发（匿名） ==================== */
 
-    http.post('*/api/v1/webhooks/stacks/:token', async ({ request, params }) => {
+    http.post('*/api/v1/webhooks/composes/:token', async ({ request, params }) => {
       await delay(delayFor(scenario()))
 
       const token = String(params.token ?? '')
@@ -509,8 +512,8 @@ export function stackHandlers(scenario: () => MockScenario) {
 
       if (!entry) {
         // ⚠️ 令牌无效一律 404，不区分「不存在 / 已吊销 / 未启用」
-        return HttpResponse.json(fail(ErrorCode.StackWebhookTokenInvalid), {
-          status: httpStatusOf(ErrorCode.StackWebhookTokenInvalid)
+        return HttpResponse.json(fail(ErrorCode.ComposeWebhookTokenInvalid), {
+          status: httpStatusOf(ErrorCode.ComposeWebhookTokenInvalid)
         })
       }
 

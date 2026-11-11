@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { StackSummary } from '@/types/api'
+import type { ComposeProjectSummary } from '@/types/api'
 
 /**
  * 编排「应用」对话框（0.10.0）。
@@ -27,8 +27,8 @@ import type { StackSummary } from '@/types/api'
 const props = defineProps<{
   /** 模式：部署（新建）或更新（重新应用）。 */
   mode: 'deploy' | 'update'
-  /** 更新时对应的 Stack；部署时为 null。 */
-  stack?: StackSummary | null
+  /** 更新时对应的 Compose 项目；部署时为 null。 */
+  compose?: ComposeProjectSummary | null
   /** 更新时预填的 YAML 原文。 */
   composeContent?: string | null
 }>()
@@ -49,7 +49,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
-/** Stack 名称（Compose 项目名）。 */
+/** Compose 项目名称（Compose 项目名）。 */
 const name = ref('')
 
 /** Compose 文件原文。 */
@@ -72,12 +72,12 @@ const isUpdate = computed(() => props.mode === 'update')
 
 /** 标题。 */
 const title = computed(() =>
-  isUpdate.value ? t('stack.apply.updateTitle') : t('stack.apply.deployTitle')
+  isUpdate.value ? t('compose.apply.updateTitle') : t('compose.apply.deployTitle')
 )
 
 /** 提交按钮文案。 */
 const submitLabel = computed(() =>
-  isUpdate.value ? t('stack.action.update') : t('stack.action.deploy')
+  isUpdate.value ? t('compose.action.update') : t('compose.action.deploy')
 )
 
 /** 名称是否合法（与后端的 Compose 项目名规则一致）。 */
@@ -90,7 +90,7 @@ watch(visible, (open) => {
   submitting.value = false
 
   if (isUpdate.value) {
-    name.value = props.stack?.name ?? ''
+    name.value = props.compose?.name ?? ''
     content.value = props.composeContent ?? ''
     // 更新时默认清理多余容器（与 docker compose up -d 一致）
     pruneOrphans.value = true
@@ -116,12 +116,12 @@ function submit(): void {
   const trimmedContent = content.value.trim()
 
   if (!nameValid.value) {
-    errorMessage.value = t('stack.apply.nameInvalid')
+    errorMessage.value = t('compose.apply.nameInvalid')
     return
   }
 
   if (trimmedContent.length === 0) {
-    errorMessage.value = t('stack.apply.contentRequired')
+    errorMessage.value = t('compose.apply.contentRequired')
     return
   }
 
@@ -150,25 +150,25 @@ function close(): void {
     :close-on-press-escape="!submitting"
   >
     <el-form label-position="top" @submit.prevent>
-      <el-form-item :label="t('stack.apply.name')" required>
+      <el-form-item :label="t('compose.apply.name')" required>
         <el-input
           v-model="name"
-          :placeholder="t('stack.apply.namePlaceholder')"
+          :placeholder="t('compose.apply.namePlaceholder')"
           :disabled="submitting || isUpdate"
         />
-        <p class="mt-1 text-xs text-content-muted">{{ t('stack.apply.nameHint') }}</p>
+        <p class="mt-1 text-xs text-content-muted">{{ t('compose.apply.nameHint') }}</p>
       </el-form-item>
 
-      <el-form-item :label="t('stack.apply.content')" required>
+      <el-form-item :label="t('compose.apply.content')" required>
         <el-input
           v-model="content"
           type="textarea"
           :rows="14"
-          :placeholder="t('stack.apply.contentPlaceholder')"
+          :placeholder="t('compose.apply.contentPlaceholder')"
           :disabled="submitting"
           class="font-mono text-xs"
         />
-        <p class="mt-1 text-xs text-content-muted">{{ t('stack.apply.contentHint') }}</p>
+        <p class="mt-1 text-xs text-content-muted">{{ t('compose.apply.contentHint') }}</p>
       </el-form-item>
 
       <!--
@@ -176,20 +176,20 @@ function close(): void {
         它们的副作用（拉最新可能失败、清理多余会停掉容器）都不直观，
         藏在参数默认值里等于让用户替自己做了不可逆的决定。
       -->
-      <el-form-item :label="t('stack.apply.options')">
+      <el-form-item :label="t('compose.apply.options')">
         <div class="flex flex-col gap-3">
           <el-checkbox v-model="pullAlways" :disabled="submitting">
-            {{ t('stack.apply.pullAlways') }}
+            {{ t('compose.apply.pullAlways') }}
           </el-checkbox>
           <p class="-mt-2 pl-6 text-xs text-content-muted">
-            {{ t('stack.apply.pullAlwaysHint') }}
+            {{ t('compose.apply.pullAlwaysHint') }}
           </p>
 
           <el-checkbox v-model="pruneOrphans" :disabled="submitting">
-            {{ t('stack.apply.pruneOrphans') }}
+            {{ t('compose.apply.pruneOrphans') }}
           </el-checkbox>
           <p class="-mt-2 pl-6 text-xs text-content-muted">
-            {{ t('stack.apply.pruneOrphansHint') }}
+            {{ t('compose.apply.pruneOrphansHint') }}
           </p>
         </div>
       </el-form-item>

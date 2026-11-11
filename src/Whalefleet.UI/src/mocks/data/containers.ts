@@ -210,9 +210,119 @@ interface ContainerSeed {
   cmd?: string[]
   /** 是否分配了 tty（验证日志页的交互式形态） */
   tty?: boolean
+  /**
+   * 所属的 compose 项目名（`com.docker.compose.project` 标签）。
+   *
+   * ⚠️ **与 mock 编排夹具的项目名保持一致**（见 `data/composes.ts`）：
+   * 编排详情页按项目过滤容器，而过滤靠的正是这个标签——
+   * 两者对不上，mock 模式下编排详情页会显示全机容器。
+   */
+  composeProject?: string
+  /** 所属的 compose 服务名（`com.docker.compose.service` 标签） */
+  composeService?: string
+  /**
+   * 是否为一次性容器（`com.docker.compose.oneoff=True`）。
+   *
+   * `docker compose run` 产生的容器带这个标签——按项目过滤时会被剔除。
+   */
+  composeOneOff?: boolean
 }
 
 const CONTAINER_SEEDS: ContainerSeed[] = [
+  // ===== compose 项目：与 `data/composes.ts` 的编排夹具对应 =====
+  //
+  // ⚠️ **项目名与服务名必须与编排夹具一致**：`shop` 有 `api` / `worker` 两个服务，
+  // `blog` 有 `web` / `db` / `cache`，`lab` 有 `notebook`，`external` 有 `app`。
+  // 对不上的话，mock 模式下编排详情页会显示「这个项目下没有容器」——
+  // 而真实环境下同一份 YAML 是能正常起容器的，走查会得出「功能坏了」的错误结论。
+  {
+    name: 'shop-api-1',
+    image: 'nginx:1.27-alpine',
+    state: 'running',
+    ports: ['8080:80'],
+    health: 'healthy',
+    restart: 'unless-stopped',
+    composeProject: 'shop',
+    composeService: 'api',
+    owner: 'shop'
+  },
+  {
+    name: 'shop-worker-1',
+    image: 'busybox:1.37',
+    state: 'running',
+    restart: 'unless-stopped',
+    cmd: ['/bin/sh', '-c', 'sleep 3600'],
+    composeProject: 'shop',
+    composeService: 'worker',
+    owner: 'shop'
+  },
+  {
+    name: 'blog-web-1',
+    image: 'nginx:1.27-alpine',
+    state: 'running',
+    ports: ['8081:80'],
+    health: 'healthy',
+    restart: 'always',
+    composeProject: 'blog',
+    composeService: 'web',
+    owner: 'blog'
+  },
+  {
+    name: 'blog-db-1',
+    image: 'postgres:16-alpine',
+    state: 'running',
+    health: 'healthy',
+    restart: 'unless-stopped',
+    mounts: ['volume:pgdata:/var/lib/postgresql/data'],
+    composeProject: 'blog',
+    composeService: 'db',
+    owner: 'blog'
+  },
+  {
+    // 这一服务没起来——「部分运行」的由来
+    name: 'blog-cache-1',
+    image: 'redis:7-alpine',
+    state: 'exited',
+    exitCode: 1,
+    restart: 'unless-stopped',
+    cmd: ['/bin/sh', '-c', 'sleep 3600'],
+    composeProject: 'blog',
+    composeService: 'cache',
+    owner: 'blog'
+  },
+  {
+    name: 'lab-notebook-1',
+    image: 'jupyter/base-notebook:latest',
+    state: 'exited',
+    restart: 'no',
+    cmd: ['/bin/sh', '-c', 'sleep 3600'],
+    composeProject: 'lab',
+    composeService: 'notebook',
+    owner: 'lab'
+  },
+  {
+    // 外部项目：用户自己在命令行 `docker compose up` 的
+    name: 'external-app-1',
+    image: 'traefik:v3.1',
+    state: 'running',
+    ports: ['9090:8080'],
+    restart: 'always',
+    composeProject: 'external',
+    composeService: 'app',
+    owner: 'external'
+  },
+  {
+    // 一次性容器：`docker compose run` 产生的，按项目过滤时应当被剔除
+    name: 'shop-run-migrate',
+    image: 'alpine:3.20',
+    state: 'exited',
+    restart: 'no',
+    composeProject: 'shop',
+    composeService: 'api',
+    composeOneOff: true,
+    owner: 'shop'
+  },
+
   // ===== 运行中：本平台自己的服务 =====
   {
     name: 'whalefleet-api',
@@ -839,7 +949,15 @@ function buildDetail(seed: ContainerSeed, index: number): ContainerDetail {
       ],
       labels: {
         'com.example.owner': seed.owner ?? seed.name.split('-')[0],
-        'com.example.managed-by': 'whalefleet'
+        'com.example.managed-by': 'whalefleet',
+        // compose 标签：编排详情页靠它按项目筛容器
+        ...(seed.composeProject
+          ? { 'com.docker.compose.project': seed.composeProject }
+          : {}),
+        ...(seed.composeService
+          ? { 'com.docker.compose.service': seed.composeService }
+          : {}),
+        ...(seed.composeOneOff ? { 'com.docker.compose.oneoff': 'True' } : {})
       },
       workingDir: '',
       hostname: id.slice(0, 12),
@@ -942,12 +1060,44 @@ function toSummary(detail: ContainerDetail): ContainerSummary {
       : detail.state.running
         ? 'Up 2 hours'
         : `Exited (${detail.state.exitCode}) 1 hour ago`,
-    ports: PORTS_BY_NAME[detail.name] ?? []
+    ports: PORTS_BY_NAME[detail.name] ?? [],
+    composeService: seed?.composeService ?? null
   }
 }
 
 /** 默认场景的容器列表。 */
 export const MOCK_CONTAINERS_DEFAULT: ContainerSummary[] = MOCK_CONTAINER_DETAILS.map(toSummary)
+
+/**
+ * 容器 → 它的 compose 项目名（按容器 ID 索引）。
+ *
+ * ⚠️ **列表项里没有这个字段**（后端的列表投影也不返回它——
+ * 真实后端是在**守护进程侧**按标签过滤的，客户端根本不需要知道项目名）。
+ * 但 mock 必须在**内存里**做同样的过滤，因此要有一份「容器属于哪个项目」的映射。
+ *
+ * 没有它的话，mock 模式下编排详情页会显示全机容器——
+ * 而真实环境下同一份 YAML 是能正常起容器的，
+ * 走查会得出「功能坏了」的错误结论。
+ */
+export const MOCK_COMPOSE_PROJECT_BY_ID: Record<string, string> = Object.fromEntries(
+  MOCK_CONTAINER_DETAILS.filter((detail) => {
+    const project = detail.config.labels['com.docker.compose.project']
+
+    return typeof project === 'string' && project.length > 0
+  }).map((detail) => [detail.id, detail.config.labels['com.docker.compose.project'] as string])
+)
+
+/**
+ * 容器 → 它是不是一次性容器（按容器 ID 索引）。
+ *
+ * 与后端同口径：**只在按项目过滤时**才剔除一次性容器
+ * （普通容器列表里它照常显示——那是用户自己起的容器）。
+ */
+export const MOCK_COMPOSE_ONE_OFF_IDS: ReadonlySet<string> = new Set(
+  MOCK_CONTAINER_DETAILS.filter(
+    (detail) => detail.config.labels['com.docker.compose.oneoff'] === 'True'
+  ).map((detail) => detail.id)
+)
 
 /** 容器日志夹具（含多行堆栈与长行，验证换行与横向溢出）。 */
 export const MOCK_CONTAINER_LOGS = `2026/10/12 22:04:11 [notice] 1#1: using the "epoll" event method

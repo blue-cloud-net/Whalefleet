@@ -150,13 +150,13 @@ export function buildCommands(actions: CommandActions = {}): CommandItem[] {
       keywords: ['网络', 'networks', 'network']
     },
     {
-      id: 'nav-stacks',
-      label: 'nav.stacks',
+      id: 'nav-composes',
+      label: 'nav.composes',
       group: 'navigation',
       icon: 'i-carbon-layers',
-      routeName: 'host-stacks',
+      routeName: 'host-composes',
       requiresHost: true,
-      keywords: ['编排', 'stacks', 'compose']
+      keywords: ['Compose', 'compose', '编排']
     },
     {
       id: 'nav-events',

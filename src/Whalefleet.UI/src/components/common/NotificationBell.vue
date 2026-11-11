@@ -3,26 +3,26 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { subscribeContainerDied, subscribeStackTaskFailed } from '@/realtime/notification'
+import { subscribeContainerDied, subscribeComposeTaskFailed } from '@/realtime/notification'
 import {
   useNotificationStore,
   describe,
   describeContainerDied,
-  describeStackTaskFailed,
+  describeComposeTaskFailed,
   type NotificationItem
 } from '@/stores/notifications'
 import { usePreferencesStore } from '@/stores/preferences'
-import type { ContainerDiedEvent, StackTaskFailureEvent } from '@/types/api'
+import type { ContainerDiedEvent, ComposeTaskFailureEvent } from '@/types/api'
 
 /**
- * 顶栏铃铛：容器异常退出通知（0.5.0）与编排任务失败通知（0.10.0）。
+ * 顶栏铃铛：容器异常退出通知（0.5.0）与Compose 任务失败通知（0.10.0）。
  *
  * ## 为什么连的是**全局**通知 Hub
  * 容器异常退出是「平台级事件」——用户在任何页面都应当知道
  * 「某台机器上的某个容器挂了」，而不是必须先进入那台主机才能知道。
  * 用带 `hostId` 的路径会强制用户先选主机，而出事时他未必知道是哪台。
  *
- * 编排任务失败同理：失败可能发生在用户已经离开页面之后
+ * Compose 任务失败同理：失败可能发生在用户已经离开页面之后
  * （webhook 触发的 CI 部署），那时候他未必正站在那台主机的页面上。
  *
  * ## 可见性
@@ -50,7 +50,7 @@ const entries = computed(() =>
 
 /** 退订函数。 */
 let unsubscribe: (() => void) | null = null
-let unsubscribeStack: (() => void) | null = null
+let unsubscribeComposeProject: (() => void) | null = null
 
 /**
  * 处理容器退出事件。
@@ -65,14 +65,14 @@ function onContainerDied(event: ContainerDiedEvent): void {
 }
 
 /**
- * 处理编排任务失败事件。
+ * 处理Compose 任务失败事件。
  *
  * @param event 事件。
  */
-function onStackTaskFailed(event: StackTaskFailureEvent): void {
-  notifications.pushStackTaskFailed(event)
+function onComposeProjectTaskFailed(event: ComposeTaskFailureEvent): void {
+  notifications.pushComposeProjectTaskFailed(event)
 
-  const description = describeStackTaskFailed(event)
+  const description = describeComposeTaskFailed(event)
   ElMessage.error(t(description.key, description.params))
 }
 
@@ -93,9 +93,9 @@ function openItem(item: NotificationItem): void {
   }
 
   router.push({
-    name: 'host-stack-detail',
+    name: 'host-compose-detail',
     // ⚠️ 传**原始**名字：自己 encodeURIComponent 会被 vue-router 再编码一次
-    params: { hostId: item.event.hostName, name: item.event.stackName }
+    params: { hostId: item.event.hostName, name: item.event.composeName }
   })
 }
 
@@ -103,12 +103,12 @@ function openItem(item: NotificationItem): void {
 function sync(): void {
   unsubscribe?.()
   unsubscribe = null
-  unsubscribeStack?.()
-  unsubscribeStack = null
+  unsubscribeComposeProject?.()
+  unsubscribeComposeProject = null
 
   if (preferences.realtimeNotifications) {
     unsubscribe = subscribeContainerDied(onContainerDied)
-    unsubscribeStack = subscribeStackTaskFailed(onStackTaskFailed)
+    unsubscribeComposeProject = subscribeComposeTaskFailed(onComposeProjectTaskFailed)
   }
 }
 
@@ -119,8 +119,8 @@ onMounted(sync)
 onUnmounted(() => {
   unsubscribe?.()
   unsubscribe = null
-  unsubscribeStack?.()
-  unsubscribeStack = null
+  unsubscribeComposeProject?.()
+  unsubscribeComposeProject = null
 })
 </script>
 
@@ -165,13 +165,13 @@ onUnmounted(() => {
               <!--
                 副标题按类型给不同的上下文：
                 容器死亡给「主机 + 容器 ID」，编排失败给「主机 + 项目名」——
-                后者给容器 ID 是没有意义的（编排任务不针对某个容器）。
+                后者给容器 ID 是没有意义的（Compose 任务不针对某个容器）。
               -->
               <template v-if="entry.item.kind === 'container-died'">
                 {{ entry.item.event.hostId }} · {{ entry.item.event.containerId.slice(0, 12) }}
               </template>
               <template v-else>
-                {{ entry.item.event.hostName }} · {{ entry.item.event.stackName }}
+                {{ entry.item.event.hostName }} · {{ entry.item.event.composeName }}
               </template>
             </span>
           </div>

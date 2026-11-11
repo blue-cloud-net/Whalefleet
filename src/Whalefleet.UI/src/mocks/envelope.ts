@@ -111,22 +111,22 @@ export const ErrorCode = {
   /** 镜像推送失败 → 500 */
   ImagePushFailed: 1807,
 
-  /** 编排 Stack 不存在 → 404 */
-  StackNotFound: 1900,
-  /** Stack 部署 / 更新失败 → 500 */
-  StackDeployFailed: 1901,
-  /** Stack 名称已被占用 → 400 */
-  StackNameAlreadyExists: 1902,
-  /** 该 Stack 不是本平台部署的，无法更新 → 409 */
-  StackNotManaged: 1903,
+  /** Compose 项目不存在 → 404 */
+  ComposeNotFound: 1900,
+  /** Compose 项目部署 / 更新失败 → 500 */
+  ComposeDeployFailed: 1901,
+  /** Compose 项目名称已被占用 → 400 */
+  ComposeNameAlreadyExists: 1902,
+  /** 该 Compose 项目不是本平台部署的，无法更新 → 409 */
+  ComposeNotManaged: 1903,
   /** Compose 文件非法或含暂不支持的字段 → 400 */
   ComposeInvalid: 1904,
-  /** 该 Stack 已有进行中的操作 → 409 */
-  StackOperationInProgress: 1905,
+  /** 该 Compose 项目已有进行中的操作 → 409 */
+  ComposeOperationInProgress: 1905,
   /** Webhook 令牌无效或已吊销 → 404 */
-  StackWebhookTokenInvalid: 1906,
+  ComposeWebhookTokenInvalid: 1906,
   /** Webhook 触发过于频繁 → 429 */
-  StackWebhookRateLimited: 1907,
+  ComposeWebhookRateLimited: 1907,
 
   /** 服务器内部错误 → 500 */
   InternalError: 9999
@@ -194,14 +194,14 @@ export const ERROR_HTTP_STATUS: Record<number, number> = {
   [ErrorCode.ImageBuildFailed]: 500,
   [ErrorCode.ImagePushFailed]: 500,
 
-  [ErrorCode.StackNotFound]: 404,
-  [ErrorCode.StackDeployFailed]: 500,
-  [ErrorCode.StackNameAlreadyExists]: 400,
-  [ErrorCode.StackNotManaged]: 409,
+  [ErrorCode.ComposeNotFound]: 404,
+  [ErrorCode.ComposeDeployFailed]: 500,
+  [ErrorCode.ComposeNameAlreadyExists]: 400,
+  [ErrorCode.ComposeNotManaged]: 409,
   [ErrorCode.ComposeInvalid]: 400,
-  [ErrorCode.StackOperationInProgress]: 409,
-  [ErrorCode.StackWebhookTokenInvalid]: 404,
-  [ErrorCode.StackWebhookRateLimited]: 429,
+  [ErrorCode.ComposeOperationInProgress]: 409,
+  [ErrorCode.ComposeWebhookTokenInvalid]: 404,
+  [ErrorCode.ComposeWebhookRateLimited]: 429,
 
   [ErrorCode.InternalError]: 500
 }
@@ -260,14 +260,14 @@ export const ERROR_MESSAGES: Record<number, string> = {
   [ErrorCode.ImageBuildFailed]: '镜像构建失败',
   [ErrorCode.ImagePushFailed]: '镜像推送失败',
 
-  [ErrorCode.StackNotFound]: '编排 Stack 不存在',
-  [ErrorCode.StackDeployFailed]: 'Stack 部署 / 更新失败',
-  [ErrorCode.StackNameAlreadyExists]: 'Stack 名称已被占用',
-  [ErrorCode.StackNotManaged]: '该 Stack 不是本平台部署的，无法更新',
+  [ErrorCode.ComposeNotFound]: 'Compose 项目不存在',
+  [ErrorCode.ComposeDeployFailed]: 'Compose 项目部署 / 更新失败',
+  [ErrorCode.ComposeNameAlreadyExists]: 'Compose 项目名称已被占用',
+  [ErrorCode.ComposeNotManaged]: '该 Compose 项目不是本平台部署的，无法更新',
   [ErrorCode.ComposeInvalid]: 'Compose 文件非法或含暂不支持的字段',
-  [ErrorCode.StackOperationInProgress]: '该 Stack 已有进行中的操作',
-  [ErrorCode.StackWebhookTokenInvalid]: 'Webhook 令牌无效或已吊销',
-  [ErrorCode.StackWebhookRateLimited]: 'Webhook 触发过于频繁',
+  [ErrorCode.ComposeOperationInProgress]: '该 Compose 项目已有进行中的操作',
+  [ErrorCode.ComposeWebhookTokenInvalid]: 'Webhook 令牌无效或已吊销',
+  [ErrorCode.ComposeWebhookRateLimited]: 'Webhook 触发过于频繁',
 
   [ErrorCode.InternalError]: '服务器内部错误'
 }

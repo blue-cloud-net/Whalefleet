@@ -91,7 +91,7 @@ describe('路由表', () => {
       'host-images',
       'host-volumes',
       'host-networks',
-      'host-stacks',
+      'host-composes',
       'host-events'
     ]
     for (const name of hostRoutes) {
@@ -113,7 +113,7 @@ describe('路由表', () => {
       .map((r) => r.name)
     expect(order).toEqual([
       'host-status',
-      'host-stacks',
+      'host-composes',
       'host-containers',
       'host-images',
       'host-volumes',

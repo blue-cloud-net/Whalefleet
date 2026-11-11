@@ -6,7 +6,7 @@ import { shouldUseMock } from '@/mocks/switch'
 import type {
   ContainerDiedEvent,
   OperationProgress,
-  StackTaskFailureEvent
+  ComposeTaskFailureEvent
 } from '@/types/api'
 
 /**
@@ -14,7 +14,7 @@ import type {
  *
  * ## 为什么共享
  * 通知 Hub 上有两类订阅：容器退出事件（全局）与后台操作进度（按令牌）。
- * 它们本来会由多个地方分别建连接——顶栏铃铛、容器列表、镜像进度对话框、编排任务——
+ * 它们本来会由多个地方分别建连接——顶栏铃铛、容器列表、镜像进度对话框、Compose 任务——
  * 多个 SignalR 连接就是多条到服务端的长连接，纯粹是浪费。
  *
  * 这里把它们**复用**到一条连接上：第一个订阅者到达时建立连接，
@@ -32,14 +32,14 @@ export type ContainerDiedHandler = (event: ContainerDiedEvent) => void
 /** 后台操作进度的处理函数。 */
 export type ProgressHandler = (progress: OperationProgress) => void
 
-/** 编排任务失败的处理函数。 */
-export type StackTaskFailedHandler = (event: StackTaskFailureEvent) => void
+/** Compose 任务失败的处理函数。 */
+export type ComposeTaskFailedHandler = (event: ComposeTaskFailureEvent) => void
 
 /** 容器退出事件的订阅者。 */
 const diedHandlers = new Set<ContainerDiedHandler>()
 
-/** 编排任务失败的订阅者。 */
-const stackFailedHandlers = new Set<StackTaskFailedHandler>()
+/** Compose 任务失败的订阅者。 */
+const composeFailedHandlers = new Set<ComposeTaskFailedHandler>()
 
 /** 进度订阅（按令牌）。 */
 const progressHandlers = new Map<string, ProgressHandler>()
@@ -65,12 +65,12 @@ function dispatchDied(event: ContainerDiedEvent): void {
 }
 
 /**
- * 处理编排任务失败。
+ * 处理Compose 任务失败。
  *
  * @param event 事件。
  */
-function dispatchStackFailed(event: StackTaskFailureEvent): void {
-  for (const handler of stackFailedHandlers) {
+function dispatchComposeFailed(event: ComposeTaskFailureEvent): void {
+  for (const handler of composeFailedHandlers) {
     handler(event)
   }
 }
@@ -126,7 +126,7 @@ async function ensureConnected(): Promise<void> {
     const hub = createHubConnection('notification')
     hub.on('OnContainerDied', dispatchDied)
     hub.on('OnOperationProgress', dispatchProgress)
-    hub.on('OnStackTaskFailed', dispatchStackFailed)
+    hub.on('OnComposeTaskFailed', dispatchComposeFailed)
     hub.onreconnected(() => {
       void subscribeAllProgress(hub)
     })
@@ -146,7 +146,7 @@ async function ensureConnected(): Promise<void> {
  * 没有任何订阅者时关闭连接。
  */
 async function releaseIfIdle(): Promise<void> {
-  if (diedHandlers.size > 0 || progressHandlers.size > 0 || stackFailedHandlers.size > 0) return
+  if (diedHandlers.size > 0 || progressHandlers.size > 0 || composeFailedHandlers.size > 0) return
 
   stopMock?.()
   stopMock = null
@@ -180,7 +180,7 @@ export function subscribeContainerDied(handler: ContainerDiedHandler): () => voi
 }
 
 /**
- * 订阅「编排任务失败」事件（0.10.0）。
+ * 订阅「Compose 任务失败」事件（0.10.0）。
  *
  * ⚠️ **只推失败、不推成功**：成功时用户正盯着界面看着进度条走完，
  * 界面自己就会刷新；而失败可能发生在用户已经离开页面之后
@@ -189,12 +189,12 @@ export function subscribeContainerDied(handler: ContainerDiedHandler): () => voi
  * @param handler 处理函数。
  * @returns 退订函数。
  */
-export function subscribeStackTaskFailed(handler: StackTaskFailedHandler): () => void {
-  stackFailedHandlers.add(handler)
+export function subscribeComposeTaskFailed(handler: ComposeTaskFailedHandler): () => void {
+  composeFailedHandlers.add(handler)
   void ensureConnected()
 
   return () => {
-    stackFailedHandlers.delete(handler)
+    composeFailedHandlers.delete(handler)
     void releaseIfIdle()
   }
 }

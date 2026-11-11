@@ -31,16 +31,65 @@ export const PAGE_SIZE_ALL = 0
 export type PageSize = (typeof PAGE_SIZE_OPTIONS)[number] | typeof PAGE_SIZE_ALL
 
 /**
- * 容器列表可开关的列。
+ * 容器列表**全部**可开关的列（顺序即列选择面板里的顺序）。
+ *
+ * ## 为什么从「只有三个指标列」扩到七列
+ * 列选择器只列指标时，它读起来像是「指标开关」而不是「显示哪些列」——
+ * 用户想收窄一张很宽的表（隐藏端口 / 创建时间）时找不到入口，
+ * 只能去改窗口宽度。现在基础信息列也是可关的。
+ *
+ * ## 名称列**刻意不在这里**
+ * 名称既是行身份，又是进入详情的唯一入口（`<button>`）。
+ * 允许关掉它，用户就得到一张「点不进任何地方」的表，
+ * 而且筛完条件后连「这是哪一行」都说不出来。
  *
  * ⚠️ **健康不再是可开关的列**：它已并入「状态」列（见 `ContainerStatusBadge`）——
  * 状态与健康回答的是同一个问题，分成两列时一行里会出现「运行中 / 不健康」两个词。
  * 留着 `health` 开关等于让人以为「关掉就不看健康了」，而实际上关不掉。
- *
- * 三个指标列共用一个开关：它们都是**持续订阅**（每个容器一条到守护进程的流），
- * 成本模型相同。
  */
-export type ContainerColumn = 'cpu' | 'memory' | 'network'
+export const CONTAINER_COLUMNS = [
+  'image',
+  'state',
+  'ports',
+  'created',
+  'cpu',
+  'memory',
+  'network'
+] as const
+
+export type ContainerColumn = (typeof CONTAINER_COLUMNS)[number]
+
+/**
+ * 基础信息列：**只影响渲染**，默认全部显示。
+ *
+ * 关掉它们不省任何请求——列表接口本来就把这些字段一起返回了。
+ */
+export const CONTAINER_BASIC_COLUMNS = ['image', 'state', 'ports', 'created'] as const
+
+/**
+ * 运行指标列：默认全部**关闭**。
+ *
+ * 它们与前者的成本模型完全不同——开一列就等于给每个可见容器占一条到守护进程的流，
+ * 因此默认关、且要在列选择面板里单独成组说明代价。
+ */
+export const CONTAINER_METRIC_COLUMNS = ['cpu', 'memory', 'network'] as const
+
+/**
+ * 每一列的**出厂默认可见性**——state 与 `setContainerColumn` 共用这一份。
+ *
+ * ⚠️ 必须集中在这里，不能一处写 state、一处写 `next[key] ?? true`：
+ * 两份默认值分家时，用户在设置里重置 / 旧持久化对象补键，补出来的可见性与
+ * 首次进入页面看到的就不是一回事（「我刚关掉端口，刷新一下它又回来了」）。
+ */
+export const CONTAINER_COLUMN_DEFAULTS: Record<ContainerColumn, boolean> = {
+  image: true,
+  state: true,
+  ports: true,
+  created: true,
+  cpu: false,
+  memory: false,
+  network: false
+}
 
 /**
  * 把界面上的每页条数换算成**可以发给后端的**真实条数。
@@ -83,19 +132,25 @@ export const usePreferencesStore = defineStore('preferences', {
     realtimeStats: true,
 
     /**
-     * 容器列表的列开关（0.6.0）。
+     * 容器列表的列开关（0.6.0，0.12.0 起覆盖基础信息列）。
      *
-     * 指标三列**默认关闭**：每个开着的指标列都意味着给每个可见容器占一条到守护进程的流。
+     * 基础信息列默认显示，指标三列**默认关闭**：
+     * 每个开着的指标列都意味着给每个可见容器占一条到守护进程的流。
      *
      * ⚠️ 这里**没有** `health`：健康已并入状态列（见 `ContainerColumn` 的说明）。
      * 旧版本持久化下来的 `health: true` 会被 `setContainerColumn` 一并丢弃——
-     * 用「显式列出三个键」而不是展开旧对象，才能真正把它清掉。
+     * 按 `CONTAINER_COLUMNS` 重建而不是展开旧对象，才能真正把它清掉。
+     *
+     * ⚠️ **旧版本持久化下来的对象只有 cpu/memory/network 三个键**。
+     * 因此每个键都必须有确定的值（这里从 `CONTAINER_COLUMN_DEFAULTS` 展开），
+     * 否则 hydrate 之后 `containerColumns.image` 是 `undefined` →
+     * 模板里 `v-if="columns.image"` 取到 undefined 为假 → **镜像列凭空消失**，
+     * 而代码里明明写着默认显示。
+     *
+     * 新增一列要同时改三处：`CONTAINER_COLUMNS`、`CONTAINER_COLUMN_DEFAULTS`
+     * （或它对应的分组常量）+ 列选择面板里那个 `Record<ContainerColumn, string>` 标签表。
      */
-    containerColumns: {
-      cpu: false,
-      memory: false,
-      network: false
-    } as Record<ContainerColumn, boolean>,
+    containerColumns: { ...CONTAINER_COLUMN_DEFAULTS },
 
     /**
      * 顶栏铃铛的容器异常退出通知（0.5.0）。
@@ -129,17 +184,24 @@ export const usePreferencesStore = defineStore('preferences', {
     /**
      * 切换容器列表某一列的显示。
      *
-     * ⚠️ **显式列出三个键**而不是 `{ ...旧对象, [column]: visible }`：
+     * ⚠️ **按 `CONTAINER_COLUMNS` 重建**，而不是 `{ ...旧对象, [column]: visible }`：
      * 展开旧对象会把旧版本持久化下来的 `health` 键一直带下去，
-     * 而它已经不对应任何列了。
+     * 而它已经不对应任何列了；同时也会把「用户手改 localStorage 塞进来的野键」一路保留。
+     *
+     * 重建还能顺带修好另一件事：旧版持久化对象里**缺**新加的键，
+     * 展开旧对象时那些键会一直是 `undefined`（列永远不显示），
+     * 而重建会把它们补成本次 state 里的当前值（= 默认显示）。
      */
     setContainerColumn(column: ContainerColumn, visible: boolean) {
-      this.containerColumns = {
-        cpu: this.containerColumns.cpu,
-        memory: this.containerColumns.memory,
-        network: this.containerColumns.network,
-        [column]: visible
+      const next = {} as Record<ContainerColumn, boolean>
+
+      for (const key of CONTAINER_COLUMNS) {
+        // 旧持久化对象里没有的键（新增列）回落到出厂默认，而不是 undefined——
+        // undefined 在模板里 `v-if` 为假，会让新列"默认显示"的约定静默失效。
+        next[key] = key === column ? visible : (this.containerColumns[key] ?? CONTAINER_COLUMN_DEFAULTS[key])
       }
+
+      this.containerColumns = next
     },
 
     /**

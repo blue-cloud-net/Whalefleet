@@ -1,11 +1,11 @@
 import { computed, onUnmounted, ref } from 'vue'
 import { subscribeProgress } from '@/realtime/notification'
 import { createProgressToken } from '@/composables/useImageProgress'
-import { getStackTask } from '@/api/stack'
-import type { OperationProgress, StackTaskSnapshot } from '@/types/api'
+import { getComposeTask } from '@/api/compose'
+import type { OperationProgress, ComposeTaskSnapshot } from '@/types/api'
 
 /**
- * 编排任务（0.10.0）的进度跟踪。
+ * Compose 任务（0.10.0）的进度跟踪。
  *
  * ## 为什么「实时推送 + 轮询」两条腿走路
  * - **实时推送**给的是进度条（百分比与当前步骤），走的是与镜像操作同一条
@@ -29,13 +29,13 @@ const POLL_INTERVAL_MS = 1000
 const POLL_TIMEOUT_MS = 10 * 60 * 1000
 
 /**
- * 编排任务的进度状态。
+ * Compose 任务的进度状态。
  *
  * @returns 任务状态与操作。
  */
-export function useStackTask() {
+export function useComposeTask() {
   /** 最近一次任务快照。 */
-  const task = ref<StackTaskSnapshot | null>(null)
+  const task = ref<ComposeTaskSnapshot | null>(null)
 
   /** 实时进度（可能为 null——推送比轮询先到或后到都正常）。 */
   const progress = ref<OperationProgress | null>(null)
@@ -96,12 +96,12 @@ export function useStackTask() {
    * @param taskId 任务标识。
    * @returns 终态快照；超时或出错时返回当前快照。
    */
-  async function poll(hostId: string, taskId: string): Promise<StackTaskSnapshot | null> {
+  async function poll(hostId: string, taskId: string): Promise<ComposeTaskSnapshot | null> {
     const deadline = Date.now() + POLL_TIMEOUT_MS
 
     while (!cancelled && Date.now() < deadline) {
       try {
-        const snapshot = await getStackTask(hostId, taskId)
+        const snapshot = await getComposeTask(hostId, taskId)
 
         if (snapshot) {
           task.value = snapshot
@@ -135,7 +135,7 @@ export function useStackTask() {
     hostId: string,
     action: (taskId: string) => Promise<unknown>,
     onFinished?: () => void | Promise<void>
-  ): Promise<StackTaskSnapshot | null> {
+  ): Promise<ComposeTaskSnapshot | null> {
     stop()
     cancelled = false
 

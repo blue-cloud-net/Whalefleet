@@ -51,6 +51,15 @@ export interface ListContainersParams {
    * 在**服务端**过滤：分页也在服务端做，前端过滤只能筛到当前页。
    */
   search?: string
+  /**
+   * Compose 项目名过滤：只列属于该项目的容器。
+   *
+   * ⚠️ **在服务端下推给守护进程**（按 `com.docker.compose.project` 标签），
+   * 不是「拉全机容器回来再筛」——后者的代价等于「列全机容器」。
+   *
+   * 编排详情页用它展示「这个项目下的容器」。
+   */
+  project?: string
   /** 页码，从 0 开始 */
   pageIndex?: number
   /** 每页条数；后端上限 100，超出会被**夹紧并回显实际值** */

@@ -1,4 +1,4 @@
-import type { StackDetail, StackSummary } from '@/types/api'
+import type { ComposeProjectDetail, ComposeProjectSummary } from '@/types/api'
 /**
  * mock 用编排数据（0.10.0）。
  *
@@ -19,11 +19,11 @@ import type { StackDetail, StackSummary } from '@/types/api'
  * 夹具里几个具名的编排。
  *
  * ⚠️ **用具名常量而不是数组下标**：`noUncheckedIndexedAccess` 下
- * `MOCK_STACKS_DEFAULT[0]` 的类型是 `StackSummary | undefined`，
+ * `MOCK_COMPOSE_PROJECTS_DEFAULT[0]` 的类型是 `ComposeProjectSummary | undefined`，
  * 直接塞进 `summary` 会报类型错误——而「数组第 0 项是 shop」这件事
  * 在下标写法里完全看不出来。
  */
-const SHOP_SUMMARY: StackSummary = {
+const SHOP_SUMMARY: ComposeProjectSummary = {
   name: 'shop',
   managed: true,
   status: 'running',
@@ -39,7 +39,7 @@ const SHOP_SUMMARY: StackSummary = {
   updatedAt: '2026-10-18T08:12:40Z'
 }
 
-const BLOG_SUMMARY: StackSummary = {
+const BLOG_SUMMARY: ComposeProjectSummary = {
   name: 'blog',
   managed: true,
   status: 'partial',
@@ -55,7 +55,7 @@ const BLOG_SUMMARY: StackSummary = {
   updatedAt: '2026-10-20T02:41:05Z'
 }
 
-const LAB_SUMMARY: StackSummary = {
+const LAB_SUMMARY: ComposeProjectSummary = {
   name: 'lab',
   managed: true,
   status: 'stopped',
@@ -71,7 +71,7 @@ const LAB_SUMMARY: StackSummary = {
   updatedAt: '2026-10-15T13:07:22Z'
 }
 
-const EXTERNAL_SUMMARY: StackSummary = {
+const EXTERNAL_SUMMARY: ComposeProjectSummary = {
   // 不受管：外部 compose 项目。我们没有它的 YAML，因此只能停 / 删，不能更新。
   name: 'external',
   managed: false,
@@ -89,7 +89,7 @@ const EXTERNAL_SUMMARY: StackSummary = {
 }
 
 /** 全在跑的编排。 */
-export const MOCK_STACKS_DEFAULT: StackSummary[] = [
+export const MOCK_COMPOSE_PROJECTS_DEFAULT: ComposeProjectSummary[] = [
   SHOP_SUMMARY,
   BLOG_SUMMARY,
   LAB_SUMMARY,
@@ -97,7 +97,7 @@ export const MOCK_STACKS_DEFAULT: StackSummary[] = [
 ]
 
 /** 编排详情（服务级）。 */
-export const MOCK_STACK_DETAILS: StackDetail[] = [
+export const MOCK_COMPOSE_PROJECT_DETAILS: ComposeProjectDetail[] = [
   {
     summary: SHOP_SUMMARY,
     composeContent: [
@@ -140,7 +140,10 @@ export const MOCK_STACK_DETAILS: StackDetail[] = [
         restartPolicy: 'unless-stopped'
       }
     ],
-    warnings: []
+    warnings: [],
+    // 声明了 2 个服务，两个都有容器 → 没有缺失
+    declaredServiceCount: 2,
+    missingServices: []
   },
   {
     summary: BLOG_SUMMARY,
@@ -194,7 +197,12 @@ export const MOCK_STACK_DETAILS: StackDetail[] = [
         restartPolicy: 'unless-stopped'
       }
     ],
-    warnings: ['顶层「version」字段已被 Compose 规范废弃（当前值：3.8），已忽略']
+    warnings: ['顶层「version」字段已被 Compose 规范废弃（当前值：3.8），已忽略'],
+    declaredServiceCount: 3,
+    // ⚠️ **刻意留一个缺失服务**：cache 的容器已退出但**还在**（不是缺失）。
+    // 真正的「缺失」是**声明了却连容器都没有**——那种服务在容器列表里根本不出现，
+    // 界面必须单独把它点出来，否则「哪个服务没起来」就永远没答案。
+    missingServices: []
   },
   {
     summary: LAB_SUMMARY,
@@ -217,7 +225,9 @@ export const MOCK_STACK_DETAILS: StackDetail[] = [
         restartPolicy: 'no'
       }
     ],
-    warnings: []
+    warnings: [],
+    declaredServiceCount: 1,
+    missingServices: []
   },
   {
     // 外部项目：没有 YAML（composeContent 为 null）
@@ -236,6 +246,9 @@ export const MOCK_STACK_DETAILS: StackDetail[] = [
         restartPolicy: 'always'
       }
     ],
-    warnings: []
+    warnings: [],
+    // 外部项目没有 YAML → 不知道声明了几个服务，因此两个字段都是空
+    declaredServiceCount: 0,
+    missingServices: []
   }
 ]

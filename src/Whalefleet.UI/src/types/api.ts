@@ -127,23 +127,23 @@ export const ErrorCode = {
   /** 镜像推送失败 */
   ImagePushFailed: 1807,
 
-  // ===== 1900-1999 编排 Stack =====
-  /** 编排 Stack 不存在 */
-  StackNotFound: 1900,
-  /** Stack 部署 / 更新失败 */
-  StackDeployFailed: 1901,
-  /** Stack 名称已被占用 */
-  StackNameAlreadyExists: 1902,
-  /** 该 Stack 不是本平台部署的，无法更新 */
-  StackNotManaged: 1903,
+  // ===== 1900-1999 Compose 项目 =====
+  /** Compose 项目不存在 */
+  ComposeNotFound: 1900,
+  /** Compose 项目部署 / 更新失败 */
+  ComposeDeployFailed: 1901,
+  /** Compose 项目名称已被占用 */
+  ComposeNameAlreadyExists: 1902,
+  /** 该 Compose 项目不是本平台部署的，无法更新 */
+  ComposeNotManaged: 1903,
   /** Compose 文件非法或含暂不支持的字段 */
   ComposeInvalid: 1904,
-  /** 该 Stack 已有进行中的操作 */
-  StackOperationInProgress: 1905,
+  /** 该 Compose 项目已有进行中的操作 */
+  ComposeOperationInProgress: 1905,
   /** Webhook 令牌无效或已吊销 */
-  StackWebhookTokenInvalid: 1906,
+  ComposeWebhookTokenInvalid: 1906,
   /** Webhook 触发过于频繁 */
-  StackWebhookRateLimited: 1907,
+  ComposeWebhookRateLimited: 1907,
 
   // ===== 9000-9999 服务器内部错误 =====
   /** 服务器内部错误（未捕获异常） */
@@ -528,6 +528,13 @@ export interface ContainerSummary {
   /** 人类可读状态，如 `Up 3 hours`（后端原样给出，不本地翻译——各语言版本的措辞不同） */
   status: string
   ports: ContainerPort[]
+  /**
+   * 所属的 Compose 服务名；不属于任何 Compose 项目时为 `null`。
+   *
+   * ⚠️ **不是容器名**：compose 建的容器叫 `shop-api-1`，而服务名叫 `api`。
+   * 用户在 Compose 文件里写的是服务名，「哪个服务没起来」这个问题也要靠它才能问出口。
+   */
+  composeService: string | null
 }
 
 /** 容器列表的分页结果 */
@@ -732,7 +739,7 @@ export interface ContainerDiedEvent {
 /**
  * 后台操作进度（SignalR `OnOperationProgress` 的载荷）。
  *
- * 0.10.0 起从「镜像操作进度」泛化：编排 Stack 的部署 / 更新也走这条通道。
+ * 0.10.0 起从「镜像操作进度」泛化：Compose 项目的部署 / 更新也走这条通道。
  */
 export interface OperationProgress {
   /** 进度令牌（与订阅时用的同一个） */
@@ -1487,20 +1494,20 @@ export interface AuditLogQuery {
 }
 
 /* ==================================================================
- * 编排 Stack（0.10.0）
+ * Compose 项目（0.10.0）
  * ================================================================== */
 
 /**
- * 编排项目的整体状态。
+ * Compose 项目的整体状态。
  *
  * ⚠️ **`partial` 不能省**：「部分服务没起来」是编排最常见的问题，
  * 而只有 running / stopped 两档时它会被误报成 stopped——
  * 用户看到「已停止」会去点启动，而真正该做的是看哪个服务挂了。
  */
-export type StackStatus = 'running' | 'partial' | 'stopped' | 'unknown'
+export type ComposeProjectStatus = 'running' | 'partial' | 'stopped' | 'unknown'
 
-/** 编排任务的状态。 */
-export type StackTaskStatus = 'queued' | 'running' | 'succeeded' | 'failed'
+/** Compose 任务的状态。 */
+export type ComposeTaskStatus = 'queued' | 'running' | 'succeeded' | 'failed'
 
 /**
  * 编排列表项。
@@ -1511,13 +1518,13 @@ export type StackTaskStatus = 'queued' | 'running' | 'succeeded' | 'failed'
  * 界面上必须把它显示出来——否则用户会对一个外部项目点「更新」，
  * 而那必然失败。
  */
-export interface StackSummary {
-  /** Stack 名称（= Compose 项目名） */
+export interface ComposeProjectSummary {
+  /** Compose 项目名称（= Compose 项目名） */
   name: string
   /** 是否由本平台部署（决定能不能「更新」） */
   managed: boolean
   /** 整体状态 */
-  status: StackStatus
+  status: ComposeProjectStatus
   /** 服务数 */
   serviceCount: number
   /** 容器数（含已停止的） */
@@ -1540,8 +1547,8 @@ export interface StackSummary {
   updatedAt: string | null
 }
 
-/** 编排项目里的一个服务。 */
-export interface StackServiceSummary {
+/** Compose 项目里的一个服务。 */
+export interface ComposeServiceSummary {
   /** 服务名 */
   name: string
   /** 镜像 */
@@ -1557,13 +1564,13 @@ export interface StackServiceSummary {
   /** 健康状态（none / starting / healthy / unhealthy） */
   health: string | null
   /** 端口映射 */
-  ports: StackServicePort[]
+  ports: ComposeServicePort[]
   /** 重启策略 */
   restartPolicy: string | null
 }
 
 /** 服务的一个端口映射。 */
-export interface StackServicePort {
+export interface ComposeServicePort {
   /** 容器内端口 */
   containerPort: number
   /** 协议（tcp / udp） */
@@ -1575,20 +1582,35 @@ export interface StackServicePort {
 }
 
 /** 编排详情。 */
-export interface StackDetail {
+export interface ComposeProjectDetail {
   /** 列表项（同样的字段，便于前端复用） */
-  summary: StackSummary
+  summary: ComposeProjectSummary
   /** Compose 文件原文；本平台没保存时为 null */
   composeContent: string | null
   /** 服务列表 */
-  services: StackServiceSummary[]
+  services: ComposeServiceSummary[]
   /** 解析期的提示 */
   warnings: string[]
+  /**
+   * YAML 里声明的服务数；本平台没保存 YAML 时为 `0`。
+   *
+   * ⚠️ **与 `summary.serviceCount` 不是一回事**：后者是「有容器的服务数」
+   * （从容器标签数出来的），而这里是「YAML 声明了几个」。
+   * 两者不等 = 有服务还没起来。
+   */
+  declaredServiceCount: number
+  /**
+   * 声明了但当前还没有容器的服务名（按声明顺序）。
+   *
+   * ⚠️ **这是「哪个服务没起来」的直接答案**：详情页的主体是容器列表，
+   * 而容器列表回答不了这个问题——**没有容器的服务在列表里根本不出现**。
+   */
+  missingServices: string[]
 }
 
 /** 编排列表结果（服务端内存分页）。 */
-export interface StackListResult {
-  items: StackSummary[]
+export interface ComposeProjectListResult {
+  items: ComposeProjectSummary[]
   /** 分页前的总条数 */
   total: number
   /** 服务端实际使用的页码 */
@@ -1598,7 +1620,7 @@ export interface StackListResult {
 }
 
 /** 编排操作的结果摘要。 */
-export interface StackOperationResult {
+export interface ComposeOperationResult {
   /** 新建的服务数 */
   created: number
   /** 因配置变化而重建的服务数 */
@@ -1619,18 +1641,18 @@ export interface StackOperationResult {
   volumesRemoved: number
 }
 
-/** 编排任务的快照。 */
-export interface StackTaskSnapshot {
+/** Compose 任务的快照。 */
+export interface ComposeTaskSnapshot {
   /** 任务标识（客户端生成的进度令牌） */
   taskId: string
   /** 所属主机名 */
   hostName: string
-  /** Stack 名称 */
-  stackName: string
+  /** Compose 项目名称 */
+  composeName: string
   /** 操作类型（deploy / update / stop / remove） */
   operation: string
   /** 状态 */
-  status: StackTaskStatus
+  status: ComposeTaskStatus
   /** 总体进度百分比（0–100）；无法确定时为 null（不是 0） */
   percent: number | null
   /** 当前步骤的简短描述 */
@@ -1642,7 +1664,7 @@ export interface StackTaskSnapshot {
   /** 警告 */
   warnings: string[]
   /** 成功时的结果摘要 */
-  result: StackOperationResult | null
+  result: ComposeOperationResult | null
   /** 创建时刻（ISO 8601） */
   createdAt: string
   /** 最后更新时刻（ISO 8601） */
@@ -1650,13 +1672,13 @@ export interface StackTaskSnapshot {
 }
 
 /**
- * 编排任务的受理结果。
+ * Compose 任务的受理结果。
  *
  * ⚠️ 部署类端点返回 **202**：部署可能要拉镜像（几分钟），
  * 而 HTTP 请求扛不住那么长——反代会把连接掐掉，
  * 客户端拿到的是「504 网关超时」而不是「部署失败」。
  */
-export interface StackTaskAccepted {
+export interface ComposeTaskAccepted {
   /** 任务标识 */
   taskId: string
   /** 任务当前状态 */
@@ -1671,7 +1693,7 @@ export interface StackTaskAccepted {
  * ⚠️ **`token` 只在生成 / 轮换的那一刻有值**，之后一律为 null——
  * 库里只存哈希，明文无法再看回来。界面上必须提示用户「请立刻保存」。
  */
-export interface StackWebhookInfo {
+export interface ComposeWebhookInfo {
   /** 是否已启用 */
   enabled: boolean
   /** 令牌提示（明文的前若干位） */
@@ -1683,16 +1705,16 @@ export interface StackWebhookInfo {
 }
 
 /**
- * 编排任务失败通知（SignalR `OnStackTaskFailed` 的载荷）。
+ * Compose 任务失败通知（SignalR `OnComposeProjectTaskFailed` 的载荷）。
  *
  * ⚠️ **只有失败才有通知**：成功时用户正盯着界面看着进度条走完，
  * 界面自己就会刷新；而失败可能发生在用户已经离开页面之后。
  */
-export interface StackTaskFailureEvent {
+export interface ComposeTaskFailureEvent {
   /** 所属主机名 */
   hostName: string
-  /** Stack 名称 */
-  stackName: string
+  /** Compose 项目名称 */
+  composeName: string
   /** 操作类型（deploy / update / stop / remove） */
   operation: string
   /** 业务错误码 */

@@ -8,7 +8,7 @@ import { imageHandlers } from './handlers/images'
 import { repositoryHandlers } from './handlers/repositories'
 import { roleHandlers } from './handlers/permissions'
 import { resourceHandlers } from './handlers/resources'
-import { stackHandlers } from './handlers/stacks'
+import { composeHandlers } from './handlers/composes'
 import { userHandlers } from './handlers/users'
 import { resolveScenario, type MockScenario } from './scenarios'
 
@@ -50,7 +50,7 @@ export const handlers = [
   ...imageHandlers(() => currentScenario),
   ...repositoryHandlers(() => currentScenario),
   ...resourceHandlers(() => currentScenario),
-  ...stackHandlers(() => currentScenario),
+  ...composeHandlers(() => currentScenario),
   ...userHandlers(() => currentScenario),
   ...roleHandlers(() => currentScenario),
   ...auditHandlers()

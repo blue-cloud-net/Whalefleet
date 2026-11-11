@@ -44,10 +44,10 @@ export const MOCK_PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { name: 'network.write', domain: 'network', level: 'write', scope: 'host' },
   { name: 'volume.read', domain: 'volume', level: 'read', scope: 'host' },
   { name: 'volume.write', domain: 'volume', level: 'write', scope: 'host' },
-  // 编排 Stack（0.10.0）：与 container.write 分开——部署一个 Stack 会建网络、卷与一组容器，
+  // Compose 项目（0.10.0）：与 container.write 分开——部署一个 Compose 项目会建网络、卷与一组容器，
   // 影响面远大于「启停一个容器」
-  { name: 'stack.read', domain: 'stack', level: 'read', scope: 'host' },
-  { name: 'stack.write', domain: 'stack', level: 'write', scope: 'host' },
+  { name: 'compose.read', domain: 'compose', level: 'read', scope: 'host' },
+  { name: 'compose.write', domain: 'compose', level: 'write', scope: 'host' },
 
   // ===== Global 作用域（与主机无关） =====
   { name: 'user.read', domain: 'user', level: 'read', scope: 'global' },
@@ -106,8 +106,8 @@ export const MOCK_ROLES_DEFAULT: RoleSummary[] = [
       'network.write',
       'volume.read',
       'volume.write',
-      'stack.read',
-      'stack.write'
+      'compose.read',
+      'compose.write'
     ],
     assignmentCount: 6
   },
@@ -118,7 +118,7 @@ export const MOCK_ROLES_DEFAULT: RoleSummary[] = [
     description: '对已授权资源仅可查看，不可修改',
     isBuiltIn: true,
     isDefault: false,
-    permissions: ['host.read', 'container.read', 'image.read', 'network.read', 'volume.read', 'stack.read'],
+    permissions: ['host.read', 'container.read', 'image.read', 'network.read', 'volume.read', 'compose.read'],
     assignmentCount: 11
   },
   {
@@ -134,7 +134,7 @@ export const MOCK_ROLES_DEFAULT: RoleSummary[] = [
       'image.read',
       'network.read',
       'volume.read',
-      'stack.read',
+      'compose.read',
       'audit.read'
     ],
     assignmentCount: 2

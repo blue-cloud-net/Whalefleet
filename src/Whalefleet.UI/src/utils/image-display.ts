@@ -9,7 +9,7 @@
  * `formatBytes`：同一种展示有两份实现，迟早会在某一边修 bug 时漏掉另一边。
  */
 
-/** 悬挂镜像的展示文本（Docker 内部用 `<none>:<none>` 占位，后端已过滤掉该标签） */
+/** 悬空镜像的展示文本（Docker 内部用 `<none>:<none>` 占位，后端已过滤掉该标签） */
 export const DANGLING_IMAGE_LABEL = '<none>'
 
 /**
@@ -35,7 +35,7 @@ export function stackedTagCount(repoTags: readonly string[] | null | undefined):
   return Math.max(tags.length - 1, 0)
 }
 
-/** 是否是悬挂镜像（没有任何标签）。 */
+/** 是否是悬空镜像（没有任何标签）。 */
 export function isDangling(repoTags: readonly string[] | null | undefined): boolean {
   return (repoTags ?? []).length === 0
 }

@@ -1,4 +1,4 @@
-import type { StackServicePort, StackStatus } from '@/types/api'
+import type { ComposeServicePort, ComposeProjectStatus } from '@/types/api'
 
 /**
  * 编排状态的展示辅助。
@@ -15,7 +15,7 @@ import type { StackServicePort, StackStatus } from '@/types/api'
  */
 
 /** 编排状态 → 语义色调。 */
-export function stackTone(status: StackStatus): 'ok' | 'down' | 'warn' | 'idle' {
+export function composeTone(status: ComposeProjectStatus): 'ok' | 'down' | 'warn' | 'idle' {
   switch (status) {
     case 'running':
       return 'ok'
@@ -38,16 +38,16 @@ export function stackTone(status: StackStatus): 'ok' | 'down' | 'warn' | 'idle' 
  * ⚠️ **返回 key 而不是文案**：文案要能被翻译，
  * 而同一句描述会出现在列表、详情与通知三处。
  */
-export function stackStatusKey(status: StackStatus): string {
+export function composeStatusKey(status: ComposeProjectStatus): string {
   switch (status) {
     case 'running':
-      return 'stack.status.running'
+      return 'compose.status.running'
     case 'partial':
-      return 'stack.status.partial'
+      return 'compose.status.partial'
     case 'stopped':
-      return 'stack.status.stopped'
+      return 'compose.status.stopped'
     default:
-      return 'stack.status.unknown'
+      return 'compose.status.unknown'
   }
 }
 
@@ -60,7 +60,7 @@ export function stackStatusKey(status: StackStatus): string {
  * @remarks
  * 「部分服务没起来」是最需要被看见的状态——它容易被当成「正常」而一直放着。
  */
-export function stackNeedsAttention(status: StackStatus): boolean {
+export function composeNeedsAttention(status: ComposeProjectStatus): boolean {
   return status === 'partial'
 }
 
@@ -81,7 +81,7 @@ export function stackNeedsAttention(status: StackStatus): boolean {
  * @param ports 端口列表。
  * @returns 展示文本；没有端口时返回空串。
  */
-export function describeStackPorts(ports: StackServicePort[]): string {
+export function describeComposePorts(ports: ComposeServicePort[]): string {
   if (ports.length === 0) return ''
 
   return ports

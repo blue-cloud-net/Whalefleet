@@ -18,7 +18,7 @@ function withLabels(items = buildCommands()): SearchableCommand[] {
     'nav.images': '镜像',
     'nav.volumes': '数据卷',
     'nav.networks': '网络',
-    'nav.stacks': '编排',
+    'nav.composes': '编排',
     'nav.events': '事件',
     'nav.hosts': '主机',
     'nav.users': '用户',

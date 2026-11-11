@@ -25,6 +25,15 @@ export interface BreadcrumbSource {
   isHostScope: boolean
   /** 当前主机；未选中或未知时为 `null` */
   currentHost: { id: string; name: string } | null
+  /**
+   * 当前页的具体名称（不是 i18n key）。
+   *
+   * ⚠️ **为什么需要它**：详情页的 `meta.title` 是「编排」这类**分类名**，
+   * 而用户真正想知道的是「**哪个**编排」——
+   * 面包屑只写「编排」的话，深链进来时看不出自己在哪个项目上。
+   * 给了它就用它替换末项文案（末项仍不可点）。
+   */
+  currentLabel?: string | null
   /** i18n 翻译函数 */
   t: (key: string) => string
 }
@@ -53,9 +62,19 @@ export function buildCrumbs(source: BreadcrumbSource): Crumb[] {
     })
   }
 
+  // ⚠️ **具体名称优先于分类名**：给了 `currentLabel` 就用它，
+  // 但**仍然保留分类名作为提示**——「编排 / shop」比「总览 / 主机 / shop」信息更全，
+  // 而完全丢掉分类名会让用户不知道「shop 是什么」。
+  const label =
+    source.currentLabel && source.currentLabel.length > 0
+      ? source.currentLabel
+      : typeof source.titleKey === 'string'
+        ? source.t(source.titleKey)
+        : null
+
   // 重定向路由之类没有 title（`t(undefined)` 会抛错），因此必须判类型
-  if (typeof source.titleKey === 'string' && source.titleKey !== 'nav.overview') {
-    crumbs.push({ key: 'page', label: source.t(source.titleKey) })
+  if (label !== null && source.titleKey !== 'nav.overview') {
+    crumbs.push({ key: 'page', label })
   }
 
   return crumbs

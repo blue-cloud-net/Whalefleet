@@ -11,11 +11,11 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { mockServer } from '../src/mocks/node'
 import { setMockScenario } from '../src/mocks/index'
-import { resetSessionStacks } from '../src/mocks/handlers/stacks'
-import type { StackListResult, StackTaskSnapshot } from '../src/types/api'
+import { resetSessionComposeProjects } from '../src/mocks/handlers/composes'
+import type { ComposeProjectListResult, ComposeTaskSnapshot } from '../src/types/api'
 
 /**
- * 编排 Stack 端点的 mock 契约测试。
+ * Compose 项目端点的 mock 契约测试。
  *
  * ## 重点验的是「容易忽略的语义」
  * 1. **部署返回 202**：不是 200。前端若把 202 当失败，会把「已受理」报成「部署失败」。
@@ -30,7 +30,7 @@ beforeAll(() => mockServer.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
   mockServer.resetHandlers()
   setMockScenario('default')
-  resetSessionStacks()
+  resetSessionComposeProjects()
 })
 afterAll(() => mockServer.close())
 
@@ -51,14 +51,14 @@ const VALID_COMPOSE = `services:
     command: ["/bin/sh", "-c", "sleep 300"]
 `
 
-describe('编排 Stack 列表', () => {
+describe('Compose 项目列表', () => {
   it('返回夹具里的编排，含受管与不受管两类', async () => {
-    const { status, json } = await post('/api/v1/hosts/local/stacks/list', {})
+    const { status, json } = await post('/api/v1/hosts/local/composes/list', {})
 
     expect(status).toBe(200)
     expect(json.success).toBe(true)
 
-    const data = json.data as StackListResult
+    const data = json.data as ComposeProjectListResult
     expect(data.items.length).toBeGreaterThan(0)
 
     // 不受管的外部项目必须在列表里——用户需要知道它存在且「不能更新」
@@ -68,8 +68,8 @@ describe('编排 Stack 列表', () => {
   })
 
   it('搜索在服务端过滤且分页随之收敛', async () => {
-    const { json } = await post('/api/v1/hosts/local/stacks/list', { search: 'blo' })
-    const data = json.data as StackListResult
+    const { json } = await post('/api/v1/hosts/local/composes/list', { search: 'blo' })
+    const data = json.data as ComposeProjectListResult
 
     expect(data.items).toHaveLength(1)
     expect(data.items[0]?.name).toBe('blog')
@@ -78,23 +78,23 @@ describe('编排 Stack 列表', () => {
   })
 
   it('空搜索返回全部（不是空列表）', async () => {
-    const { json } = await post('/api/v1/hosts/local/stacks/list', { search: '' })
-    const data = json.data as StackListResult
+    const { json } = await post('/api/v1/hosts/local/composes/list', { search: '' })
+    const data = json.data as ComposeProjectListResult
 
     expect(data.items.length).toBeGreaterThan(1)
   })
 
   it('empty 场景返回空列表', async () => {
     setMockScenario('empty')
-    const { json } = await post('/api/v1/hosts/local/stacks/list', {})
+    const { json } = await post('/api/v1/hosts/local/composes/list', {})
 
-    expect((json.data as StackListResult).items).toHaveLength(0)
+    expect((json.data as ComposeProjectListResult).items).toHaveLength(0)
   })
 })
 
-describe('编排 Stack 详情', () => {
+describe('Compose 项目详情', () => {
   it('受管项目给出 YAML 原文与服务列表', async () => {
-    const { status, json } = await post('/api/v1/hosts/local/stacks/inspect', { name: 'shop' })
+    const { status, json } = await post('/api/v1/hosts/local/composes/inspect', { name: 'shop' })
 
     expect(status).toBe(200)
 
@@ -104,22 +104,99 @@ describe('编排 Stack 详情', () => {
   })
 
   it('不受管项目的 composeContent 为 null', async () => {
-    const { json } = await post('/api/v1/hosts/local/stacks/inspect', { name: 'external' })
+    const { json } = await post('/api/v1/hosts/local/composes/inspect', { name: 'external' })
 
     expect((json.data as { composeContent: string | null }).composeContent).toBeNull()
   })
 
   it('不存在的编排报 1900 / 404', async () => {
-    const { status, json } = await post('/api/v1/hosts/local/stacks/inspect', { name: 'nope' })
+    const { status, json } = await post('/api/v1/hosts/local/composes/inspect', { name: 'nope' })
 
     expect(status).toBe(404)
     expect(json.code).toBe(1900)
   })
+
+  it('给出声明的服务数与缺失的服务名', async () => {
+    const { json } = await post('/api/v1/hosts/local/composes/inspect', { name: 'shop' })
+
+    const data = json.data as { declaredServiceCount: number; missingServices: string[] }
+
+    expect(data.declaredServiceCount).toBe(2)
+    // 夹具里 shop 的两个服务都有容器 → 没有缺失
+    expect(data.missingServices).toEqual([])
+  })
+
+  it('外部项目没有 YAML，声明服务数与缺失列表都是空', async () => {
+    const { json } = await post('/api/v1/hosts/local/composes/inspect', { name: 'external' })
+
+    const data = json.data as { declaredServiceCount: number; missingServices: string[] }
+
+    // ⚠️ **不能是「缺 1 个」**：外部项目没有 YAML，不知道声明了什么，
+    // 说它「缺了什么」会让用户以为项目坏了。
+    expect(data.declaredServiceCount).toBe(0)
+    expect(data.missingServices).toEqual([])
+  })
 })
 
-describe('编排 Stack 部署', () => {
+describe('容器列表按 Compose 项目过滤', () => {
+  it('只返回该项目下的容器', async () => {
+    const { status, json } = await post('/api/v1/hosts/local/containers/list', {
+      all: true,
+      project: 'shop'
+    })
+
+    expect(status).toBe(200)
+
+    const data = json.data as { items: { name: string; composeService: string | null }[] }
+    const names = data.items.map((item) => item.name)
+
+    expect(names.length).toBeGreaterThan(0)
+    // 只含这个项目的容器
+    expect(names.every((name) => name.startsWith('shop-'))).toBe(true)
+  })
+
+  it('服务名从 compose 标签投影出来', async () => {
+    const { json } = await post('/api/v1/hosts/local/containers/list', {
+      all: true,
+      project: 'shop'
+    })
+
+    const data = json.data as { items: { composeService: string | null }[] }
+
+    expect(data.items.map((item) => item.composeService)).toContain('api')
+  })
+
+  it('一次性容器被剔除（它不是「某个服务」）', async () => {
+    const { json } = await post('/api/v1/hosts/local/containers/list', {
+      all: true,
+      project: 'shop'
+    })
+
+    const data = json.data as { items: { name: string }[] }
+
+    // 夹具里的 shop-run-migrate 带 oneoff=True
+    expect(data.items.map((item) => item.name)).not.toContain('shop-run-migrate')
+  })
+
+  it('不指定项目时返回全部容器（普通列表照常显示一次性容器）', async () => {
+    // ⚠️ `pageSize: 100`：mock 的分页默认只给 20 条，
+    // 而夹具里的容器有四十多个——不分页的话后面那些根本不在返回里。
+    const { json } = await post('/api/v1/hosts/local/containers/list', {
+      all: true,
+      pageSize: 100
+    })
+
+    const data = json.data as { items: { name: string }[] }
+    const names = data.items.map((item) => item.name)
+
+    expect(names).toContain('shop-run-migrate')
+    expect(names).toContain('blog-web-1')
+  })
+})
+
+describe('Compose 项目部署', () => {
   it('返回 202 而不是 200（部署是异步的）', async () => {
-    const { status, json } = await post('/api/v1/hosts/local/stacks/deploy', {
+    const { status, json } = await post('/api/v1/hosts/local/composes/deploy', {
       name: 'demo',
       composeContent: VALID_COMPOSE,
       taskId: 'task-token-0000000000000000000000000000'
@@ -133,7 +210,7 @@ describe('编排 Stack 部署', () => {
   })
 
   it('同名部署报 1902 / 400', async () => {
-    const { status, json } = await post('/api/v1/hosts/local/stacks/deploy', {
+    const { status, json } = await post('/api/v1/hosts/local/composes/deploy', {
       name: 'shop',
       composeContent: VALID_COMPOSE,
       taskId: 'task-token-0000000000000000000000000001'
@@ -144,7 +221,7 @@ describe('编排 Stack 部署', () => {
   })
 
   it('YAML 含不支持的字段报 1904 并带出字段路径', async () => {
-    const { status, json } = await post('/api/v1/hosts/local/stacks/deploy', {
+    const { status, json } = await post('/api/v1/hosts/local/composes/deploy', {
       name: 'demo2',
       composeContent: 'services:\n  app:\n    image: alpine:3.20\n    build: .\n',
       taskId: 'task-token-0000000000000000000000000002'
@@ -156,22 +233,22 @@ describe('编排 Stack 部署', () => {
   })
 
   it('部署后列表里能看到它（mock 必须有记忆）', async () => {
-    await post('/api/v1/hosts/local/stacks/deploy', {
+    await post('/api/v1/hosts/local/composes/deploy', {
       name: 'brand-new',
       composeContent: VALID_COMPOSE,
       taskId: 'task-token-0000000000000000000000000003'
     })
 
-    const { json } = await post('/api/v1/hosts/local/stacks/list', {})
-    const data = json.data as StackListResult
+    const { json } = await post('/api/v1/hosts/local/composes/list', {})
+    const data = json.data as ComposeProjectListResult
 
     expect(data.items.some((item) => item.name === 'brand-new')).toBe(true)
   })
 })
 
-describe('编排 Stack 更新', () => {
+describe('Compose 项目更新', () => {
   it('更新不存在的编排报 1900', async () => {
-    const { status, json } = await post('/api/v1/hosts/local/stacks/update', {
+    const { status, json } = await post('/api/v1/hosts/local/composes/update', {
       name: 'nope',
       composeContent: VALID_COMPOSE,
       taskId: 'task-token-0000000000000000000000000010'
@@ -182,7 +259,7 @@ describe('编排 Stack 更新', () => {
   })
 
   it('更新不受管的外部项目报 1903 / 409', async () => {
-    const { status, json } = await post('/api/v1/hosts/local/stacks/update', {
+    const { status, json } = await post('/api/v1/hosts/local/composes/update', {
       name: 'external',
       composeContent: VALID_COMPOSE,
       taskId: 'task-token-0000000000000000000000000011'
@@ -193,7 +270,7 @@ describe('编排 Stack 更新', () => {
   })
 
   it('更新受管项目返回 202', async () => {
-    const { status } = await post('/api/v1/hosts/local/stacks/update', {
+    const { status } = await post('/api/v1/hosts/local/composes/update', {
       name: 'shop',
       composeContent: VALID_COMPOSE,
       taskId: 'task-token-0000000000000000000000000012'
@@ -203,25 +280,25 @@ describe('编排 Stack 更新', () => {
   })
 })
 
-describe('编排 Stack 任务', () => {
+describe('Compose 项目任务', () => {
   it('任务状态随时间推进到 succeeded', async () => {
     const taskId = 'task-token-0000000000000000000000000020'
 
-    await post('/api/v1/hosts/local/stacks/deploy', {
+    await post('/api/v1/hosts/local/composes/deploy', {
       name: 'progress-demo',
       composeContent: VALID_COMPOSE,
       taskId
     })
 
     // 刚入队：queued
-    const first = await post('/api/v1/hosts/local/stacks/task', { taskId })
-    expect((first.json.data as StackTaskSnapshot).status).toBe('queued')
+    const first = await post('/api/v1/hosts/local/composes/task', { taskId })
+    expect((first.json.data as ComposeTaskSnapshot).status).toBe('queued')
 
     // 等 mock 的任务时长过去（1.2 秒）
     await new Promise((resolve) => setTimeout(resolve, 1400))
 
-    const second = await post('/api/v1/hosts/local/stacks/task', { taskId })
-    const snapshot = second.json.data as StackTaskSnapshot
+    const second = await post('/api/v1/hosts/local/composes/task', { taskId })
+    const snapshot = second.json.data as ComposeTaskSnapshot
 
     expect(snapshot.status).toBe('succeeded')
     expect(snapshot.percent).toBe(100)
@@ -229,7 +306,7 @@ describe('编排 Stack 任务', () => {
   })
 
   it('查询不存在的任务返回 null 而不是报错', async () => {
-    const { status, json } = await post('/api/v1/hosts/local/stacks/task', {
+    const { status, json } = await post('/api/v1/hosts/local/composes/task', {
       taskId: 'task-token-does-not-exist-0000000000'
     })
 
@@ -238,9 +315,9 @@ describe('编排 Stack 任务', () => {
   })
 })
 
-describe('编排 Stack Webhook', () => {
+describe('Compose 项目 Webhook', () => {
   it('轮换令牌时给出明文，之后只能看到提示', async () => {
-    const { json } = await post('/api/v1/hosts/local/stacks/webhook/rotate', { name: 'shop' })
+    const { json } = await post('/api/v1/hosts/local/composes/webhook/rotate', { name: 'shop' })
     const info = json.data as { token: string | null; tokenHint: string | null }
 
     expect(info.token).not.toBeNull()
@@ -249,10 +326,10 @@ describe('编排 Stack Webhook', () => {
   })
 
   it('吊销后令牌失效', async () => {
-    await post('/api/v1/hosts/local/stacks/webhook/revoke', { name: 'shop' })
+    await post('/api/v1/hosts/local/composes/webhook/revoke', { name: 'shop' })
 
-    const { json } = await post('/api/v1/hosts/local/stacks/list', {})
-    const data = json.data as StackListResult
+    const { json } = await post('/api/v1/hosts/local/composes/list', {})
+    const data = json.data as ComposeProjectListResult
     const shop = data.items.find((item) => item.name === 'shop')
 
     expect(shop?.webhookEnabled).toBe(false)
@@ -260,17 +337,17 @@ describe('编排 Stack Webhook', () => {
   })
 
   it('无效令牌触发报 1906 / 404', async () => {
-    const { status, json } = await post('/api/v1/webhooks/stacks/not-a-real-token', {})
+    const { status, json } = await post('/api/v1/webhooks/composes/not-a-real-token', {})
 
     expect(status).toBe(404)
     expect(json.code).toBe(1906)
   })
 
   it('有效令牌触发返回 202', async () => {
-    const rotate = await post('/api/v1/hosts/local/stacks/webhook/rotate', { name: 'blog' })
+    const rotate = await post('/api/v1/hosts/local/composes/webhook/rotate', { name: 'blog' })
     const token = (rotate.json.data as { token: string }).token
 
-    const { status, json } = await post(`/api/v1/webhooks/stacks/${token}`, {})
+    const { status, json } = await post(`/api/v1/webhooks/composes/${token}`, {})
 
     expect(status).toBe(202)
     expect((json.data as { taskId: string }).taskId).toBeTruthy()

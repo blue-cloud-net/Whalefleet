@@ -1,6 +1,10 @@
 import { describe, expect, it, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import {
+  CONTAINER_BASIC_COLUMNS,
+  CONTAINER_COLUMN_DEFAULTS,
+  CONTAINER_COLUMNS,
+  CONTAINER_METRIC_COLUMNS,
   MAX_PAGE_SIZE,
   PAGE_SIZE_ALL,
   PAGE_SIZE_OPTIONS,
@@ -106,5 +110,88 @@ describe('实时更新偏好', () => {
     expect(prefs.realtimeStats).toBe(false)
     expect(prefs.realtimeContainers).toBe(true)
     expect(prefs.realtimeNotifications).toBe(true)
+  })
+})
+
+/**
+ * 容器列表的列开关（0.6.0 起，0.12.0 扩到基础信息列）。
+ *
+ * ## 守的是什么
+ * 列开关有两个容易出错、而且**都不报错**的地方：
+ * ① 新增列时漏了默认值 → 旧持久化对象 hydrate 后该键是 `undefined` →
+ *   `v-if="columns.image"` 为假 → **镜像列凭空消失**，而代码里写着默认显示；
+ * ② `setContainerColumn` 用展开旧对象实现 → 旧版遗留的 `health` 键一直带着，
+ *   用户手改进 localStorage 的野键也会一路保留。
+ */
+describe('容器列表列开关', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('三个分组常量拼起来正好是全部列（不多不少）', () => {
+    const grouped = [...CONTAINER_BASIC_COLUMNS, ...CONTAINER_METRIC_COLUMNS]
+
+    expect([...grouped].sort()).toEqual([...CONTAINER_COLUMNS].sort())
+    // 每列都必须在默认表里有一项，否则就是「有这一列但不知道该不该显示」
+    expect(Object.keys(CONTAINER_COLUMN_DEFAULTS).sort()).toEqual([...CONTAINER_COLUMNS].sort())
+  })
+
+  it('基础信息列默认显示，指标列默认关闭', () => {
+    const prefs = usePreferencesStore()
+
+    for (const column of CONTAINER_BASIC_COLUMNS) {
+      expect(prefs.containerColumns[column], `${column} 应默认显示`).toBe(true)
+    }
+
+    for (const column of CONTAINER_METRIC_COLUMNS) {
+      expect(prefs.containerColumns[column], `${column} 应默认关闭`).toBe(false)
+    }
+  })
+
+  it('切换一列不影响其它列', () => {
+    const prefs = usePreferencesStore()
+
+    prefs.setContainerColumn('ports', false)
+
+    expect(prefs.containerColumns.ports).toBe(false)
+    expect(prefs.containerColumns.image).toBe(true)
+    expect(prefs.containerColumns.cpu).toBe(false)
+  })
+
+  it('切换时丢弃旧版遗留的 health 与野键', () => {
+    const prefs = usePreferencesStore()
+
+    // 模拟旧版本持久化下来的对象：有 health，还有一个根本不存在的键
+    prefs.containerColumns = {
+      ...prefs.containerColumns,
+      health: true,
+      bogus: true
+    } as typeof prefs.containerColumns
+
+    prefs.setContainerColumn('cpu', true)
+
+    expect(prefs.containerColumns.cpu).toBe(true)
+    expect(Object.keys(prefs.containerColumns).sort()).toEqual([...CONTAINER_COLUMNS].sort())
+  })
+
+  it('旧持久化对象缺新键时回落到默认值（不能变成 undefined）', () => {
+    const prefs = usePreferencesStore()
+
+    // 模拟 0.11 及以前的对象：只有三个指标键
+    prefs.containerColumns = {
+      cpu: true,
+      memory: false,
+      network: false
+    } as typeof prefs.containerColumns
+
+    prefs.setContainerColumn('memory', true)
+
+    // 缺的四个基础信息键必须补成默认的 true，而不是 undefined
+    for (const column of CONTAINER_BASIC_COLUMNS) {
+      expect(prefs.containerColumns[column], `${column} 应为 true 而不是 undefined`).toBe(true)
+    }
+
+    expect(prefs.containerColumns.cpu).toBe(true)
+    expect(prefs.containerColumns.memory).toBe(true)
   })
 })
