@@ -6,8 +6,10 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
 using Whalefleet.Application.Abstractions;
+using Whalefleet.Application.Abstractions.Notify;
 using Whalefleet.Application.Abstractions.Persistence;
 using Whalefleet.Application.Abstractions.Terminal;
+using Whalefleet.Application.Alerting;
 using Whalefleet.Core.Auth;
 using Whalefleet.Infrastructure.Docker;
 using Whalefleet.Infrastructure.Permissions;
@@ -137,7 +139,36 @@ public static class InfrastructureServiceCollectionExtensions
         // 仓库凭据加密（0.4.0）：密钥文件（registry.key）与 JWT 密钥同机制——
         // 落盘、0600、生成一次后复用。两者**分开**是为了「泄漏 JWT 密钥 ≠ 能解出口令」。
         services.AddSingleton<RepositorySecretKeyStore>();
-        services.AddSingleton<IRepositorySecretProtector, RepositorySecretProtector>();
+
+        // 同一个实例以两个接口暴露：仓库口令（历史接口）与通用敏感文本（通知渠道）。
+        // 两者共用 repository.key，该文件已纳入备份脚本；不要再新增一个密钥文件。
+        services.AddSingleton<RepositorySecretProtector>();
+        services.AddSingleton<IRepositorySecretProtector>(static provider =>
+            provider.GetRequiredService<RepositorySecretProtector>());
+        services.AddSingleton<ISecretProtector>(static provider =>
+            provider.GetRequiredService<RepositorySecretProtector>());
+
+        // 告警与通知（0.11.0）：选项绑定与启动校验放在基础设施层——
+        // 它们由后台服务与适配器消费，而应用层不引入配置绑定包（与 RealtimeOptions 同口径）。
+        services
+            .AddOptions<AlertsOptions>()
+            .Bind(configuration.GetSection(AlertsOptions.SectionName))
+            .Validate(
+                static options => options.IsValid(),
+                "Alerts 配置非法：评估间隔 / 同步间隔 / 监控上限 / 保留天数必须为正值")
+            .ValidateOnStart();
+
+        services
+            .AddOptions<NotificationsOptions>()
+            .Bind(configuration.GetSection(NotificationsOptions.SectionName))
+            .Validate(
+                static options => options.IsValid(),
+                "Notifications 配置非法：Webhook 超时须为正、SMTP 端口须在 1-65535 之间")
+            .ValidateOnStart();
+
+        services.AddHttpClient("notify");
+        services.AddSingleton<IWebhookSender, WebhookSender>();
+        services.AddSingleton<IEmailSender, SmtpEmailSender>();
 
         // 仓库连通性探测（0.4.0）：发 HTTPS 请求，需要 HttpClient 工厂托管连接池。
         // 不手写 new HttpClient()——那会让 DNS 变更在长时间运行的实例上失效。
