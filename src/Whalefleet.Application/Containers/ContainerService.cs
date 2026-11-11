@@ -12,6 +12,7 @@ using Whalefleet.Application.Abstractions.Auditing;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Docker;
 using Whalefleet.Core.Auditing;
+using Whalefleet.Core.Composes;
 
 using SdkState = Docker.DotNet.Models.State;
 
@@ -121,17 +122,22 @@ public sealed partial class ContainerService
 
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
         var filter = ResolveStateFilter(request);
+        var project = ResolveProject(request.Project);
 
         var containers = await DockerErrorTranslator.ExecuteAsync(
             () => client.Containers.ListContainersAsync(
-                new ContainersListParameters { All = filter.IncludeStopped },
+                new ContainersListParameters
+                {
+                    All = filter.IncludeStopped,
+                    Filters = BuildFilters(project)
+                },
                 cancellationToken),
             "容器列表",
             cancellationToken).ConfigureAwait(false);
 
         // 过滤 → 排序 → 分页，顺序不能换：
         // 先分页再过滤会让 total 与实际命中数不一致（页脚说 100 个、翻过去只有 3 个）。
-        var filtered = Filter(containers, request.Search, filter);
+        var filtered = Filter(containers, request.Search, filter, project);
 
         // 客户端**显式**指定排序字段时才重排：那时顺序是用户要的；没指定就保持守护进程
         // 返回的顺序（创建时间降序），它本来就是稳定的，额外重排只会让「翻页时看到的东西变了」
@@ -142,11 +148,12 @@ public sealed partial class ContainerService
         var pageSize = Math.Clamp(request.PageSize ?? _defaultPageSize, 1, _maxPageSize);
 
         _logger.LogDebug(
-            "主机 {HostId} 容器列表：共 {Total} 个（状态={State}，搜索={Search}，排序={SortBy}/{SortDir}），返回第 {PageIndex} 页（每页 {PageSize}）",
+            "主机 {HostId} 容器列表：共 {Total} 个（状态={State}，搜索={Search}，项目={Project}，排序={SortBy}/{SortDir}），返回第 {PageIndex} 页（每页 {PageSize}）",
             hostId,
             ordered.Count,
             filter.Kind,
             String.IsNullOrWhiteSpace(request.Search) ? "无" : request.Search.Trim(),
+            project ?? "全部",
             request.SortBy ?? "默认",
             request.SortDir ?? "desc",
             pageIndex,
@@ -157,6 +164,65 @@ public sealed partial class ContainerService
             ordered.Count,
             pageIndex,
             pageSize);
+    }
+
+    /// <summary>
+    /// 解析 Compose 项目名过滤。
+    /// </summary>
+    /// <param name="project">原始项目名。</param>
+    /// <returns>项目名；未指定时返回 <see langword="null"/>。</returns>
+    /// <exception cref="BusinessException">项目名非法（<c>1000</c>）。</exception>
+    /// <remarks>
+    /// <b>必须校验</b>：项目名会拼进守护进程的标签过滤串
+    /// （<c>label=com.docker.compose.project=&lt;name&gt;</c>），
+    /// 不校验等于把任意字符串透传给 Docker——它可能带上 <c>=</c> 或逗号，
+    /// 从而变成「另一个过滤条件」，症状是「筛出来的容器莫名其妙少了几个」。
+    /// </remarks>
+    private static string? ResolveProject(string? project)
+    {
+        if (String.IsNullOrWhiteSpace(project))
+        {
+            return null;
+        }
+
+        var trimmed = project.Trim();
+
+        if (!ComposeProject.IsValidName(trimmed))
+        {
+            throw BusinessException.Validation(
+                "project 不是合法的 Compose 项目名（只能是小写字母、数字、连字符与下划线，且以字母或数字开头）");
+        }
+
+        return trimmed;
+    }
+
+    /// <summary>
+    /// 构建守护进程的过滤条件。
+    /// </summary>
+    /// <param name="project">Compose 项目名；未指定时返回 <see langword="null"/>（不加过滤）。</param>
+    /// <returns>过滤条件；无过滤时返回 <see langword="null"/>。</returns>
+    /// <remarks>
+    /// <b>为什么下推到守护进程而不是拉回来再筛</b>：守护进程的标签过滤是**索引级**的，
+    /// 成本与命中数成正比；而「拉全量回来在内存里筛」的代价等于「列全机容器」——
+    /// 一台跑着两百个容器的宿主机上，编排详情页每 5 秒轮询一次就会把接口打满。
+    /// <br/>
+    /// <b>键的写法是 <c>标签名=标签值</c></b>：只写标签名（<c>com.docker.compose.project</c>）
+    /// 表示「有这个标签就行」，值不参与匹配。
+    /// </remarks>
+    private static Dictionary<string, IDictionary<string, bool>>? BuildFilters(string? project)
+    {
+        if (project is null)
+        {
+            return null;
+        }
+
+        return new Dictionary<string, IDictionary<string, bool>>(StringComparer.Ordinal)
+        {
+            ["label"] = new Dictionary<string, bool>(StringComparer.Ordinal)
+            {
+                [$"{ComposeLabels.Project}={project}"] = true,
+            },
+        };
     }
 
     /// <summary>
@@ -260,6 +326,7 @@ public sealed partial class ContainerService
     /// <param name="containers">守护进程返回的容器。</param>
     /// <param name="search">搜索关键字；为空时不做关键字过滤。</param>
     /// <param name="filter">状态筛选。</param>
+    /// <param name="project">Compose 项目名；非空时剔除一次性容器（见 <see cref="IsOneOff"/>）。</param>
     /// <returns>命中的容器。</returns>
     /// <remarks>
     /// <b>必须在分页之前</b>：分页也在服务端内存里做，先分页再过滤会让
@@ -268,7 +335,8 @@ public sealed partial class ContainerService
     private static IReadOnlyList<ContainerListResponse> Filter(
         IList<ContainerListResponse> containers,
         string? search,
-        StateFilter filter)
+        StateFilter filter,
+        string? project)
     {
         var query = containers.Where(c => filter.Matches(c.State));
 
@@ -282,8 +350,33 @@ public sealed partial class ContainerService
                 || Contains(container.ID, keyword));
         }
 
+        // ⚠️ **一次性容器只在按项目过滤时剔除**。
+        //
+        // `docker compose run` 产生的容器带 `com.docker.compose.oneoff=True`，
+        // 它跑完就退出、随即被删掉——但在那之前它确实存在，
+        // 因此**普通的容器列表照常显示它**（那是用户自己起的容器）。
+        // 而在编排详情页里，它不是「某个服务」，
+        // 混进去会让「服务数」与实际声明的服务数对不上。
+        //
+        // 剔除放在内存里而不是守护进程的过滤串：
+        // Docker 的 label 过滤器表达不了「标签值不等于某值」。
+        if (project is not null)
+        {
+            query = query.Where(container => !IsOneOff(container));
+        }
+
         return [.. query];
     }
+
+    /// <summary>
+    /// 判断容器是不是 Compose 的一次性容器（<c>docker compose run</c> 产生的）。
+    /// </summary>
+    /// <param name="container">守护进程返回的容器。</param>
+    /// <returns>是一次性容器返回 <see langword="true"/>。</returns>
+    private static bool IsOneOff(ContainerListResponse container) =>
+        container.Labels is not null
+        && container.Labels.TryGetValue(ComposeLabels.OneOff, out var value)
+        && String.Equals(value, "True", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// 关键字包含判断（不区分大小写）。
@@ -1441,7 +1534,31 @@ public sealed partial class ContainerService
             Created: ToUtc(source.Created),
             State: source.State,
             Status: source.Status,
-            Ports: MapPorts(source.Ports));
+            Ports: MapPorts(source.Ports),
+            ComposeService: MapComposeService(source));
+    }
+
+    /// <summary>
+    /// 取容器所属的 Compose 服务名。
+    /// </summary>
+    /// <param name="source">SDK 列表项。</param>
+    /// <returns>服务名；不属于任何 Compose 项目时返回 <see langword="null"/>。</returns>
+    /// <remarks>
+    /// ⚠️ **空串要退化成 <see langword="null"/>**：标签存在但值为空的情况是有的
+    /// （用户手工 <c>docker run --label com.docker.compose.service= ...</c>）。
+    /// 界面拿到空串会渲染出一个空白的「服务」格，而 <c>null</c> 能让它显示「—」。
+    /// </remarks>
+    private static string? MapComposeService(ContainerListResponse source)
+    {
+        if (source.Labels is null
+            || !source.Labels.TryGetValue(ComposeLabels.Service, out var service))
+        {
+            return null;
+        }
+
+        var trimmed = service?.Trim();
+
+        return String.IsNullOrEmpty(trimmed) ? null : trimmed;
     }
 
     /// <summary>

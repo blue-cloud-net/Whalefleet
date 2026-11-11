@@ -12,6 +12,7 @@ namespace Whalefleet.Application.Containers;
 /// <param name="State">状态（如 <c>running</c> / <c>exited</c>）。</param>
 /// <param name="Status">人类可读状态（如 <c>Up 3 hours</c>）。</param>
 /// <param name="Ports">端口映射，<b>已按确定性顺序排列</b>（见下）。</param>
+/// <param name="ComposeService">所属的 Compose 服务名；不属于任何 Compose 项目时为 <see langword="null"/>。</param>
 /// <remarks>
 /// <para><b>为什么逐字段挑选而不是直接序列化 SDK 的 <c>ContainerListResponse</c></b>：
 /// 一是那个对象带着 <c>HostConfig</c> / <c>NetworkSettings</c> 等一大坨列表页用不到的东西，
@@ -23,6 +24,9 @@ namespace Whalefleet.Application.Containers;
 /// 客户端可以直接依赖这个顺序，不必自己再排一次。</para>
 /// <para><b>同一个端口可能有多条记录</b>：<c>-p 8080:80</c> 会被 Docker 记成
 /// <c>0.0.0.0</c> 与 <c>::</c> 两条。是否合并成一行是<b>展示层</b>的决定。</para>
+/// <para><b><see cref="ComposeService"/> 是编排视图的必需字段</b>：
+/// 编排详情页要展示「这个项目里的服务」，而容器名（<c>shop-api-1</c>）与
+/// 服务名（<c>api</c>）不是一回事——用户在 Compose 文件里写的是服务名。</para>
 /// </remarks>
 public sealed record ContainerSummary(
     string Id,
@@ -33,7 +37,8 @@ public sealed record ContainerSummary(
     DateTimeOffset Created,
     string State,
     string Status,
-    IReadOnlyList<ContainerPort> Ports);
+    IReadOnlyList<ContainerPort> Ports,
+    string? ComposeService);
 
 /// <summary>
 /// 端口映射。

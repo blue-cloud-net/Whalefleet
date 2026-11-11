@@ -42,6 +42,22 @@ public sealed record ListContainersRequest
     public string? Search { get; init; }
 
     /// <summary>
+    /// Compose 项目名过滤：只列属于该项目的容器。
+    /// </summary>
+    /// <remarks>
+    /// <para><b>用途</b>：编排详情页要展示「这个 Compose 项目下的容器」，
+    /// 而容器列表本身是全主机维度的——不按项目过滤的话，用户会看到一堆
+    /// 与该编排毫无关系的容器。</para>
+    /// <para><b>实现方式</b>：靠 <c>com.docker.compose.project</c> 标签过滤，
+    /// <b>在守护进程侧完成</b>（而不是把全机容器拉回来再筛）——
+    /// 后者会让「筛一个项目」的代价等于「列全机容器」。</para>
+    /// <para><b>校验</b>：项目名会拼进守护进程的标签过滤串，因此必须先按
+    /// Compose 项目名规则校验（见 <c>ComposeProject.IsValidName</c>），
+    /// 不能把任意字符串直接透传给 Docker。</para>
+    /// </remarks>
+    public string? Project { get; init; }
+
+    /// <summary>
     /// 页码（从 0 开始）；省略时按 0 处理。
     /// </summary>
     public int? PageIndex { get; init; }

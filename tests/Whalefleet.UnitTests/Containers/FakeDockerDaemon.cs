@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 
 using Docker.DotNet;
 using Docker.DotNet.NativeHttp;
@@ -86,6 +87,22 @@ internal sealed class FakeDockerDaemon : IAsyncDisposable
     public int CallCount => Volatile.Read(ref _callCount);
 
     /// <summary>
+    /// 最近一次请求的查询串（不含路径）。
+    /// </summary>
+    /// <remarks>
+    /// <b>为什么需要它</b>：假守护进程刻意不校验路径（见文件头），
+    /// 因此「过滤条件有没有真的下推到 Docker」只能靠**请求里带了什么**来验。
+    /// 而这恰恰是「按 compose 项目过滤」最该守住的一点——
+    /// 过滤若没下推，代价就是每次都把全机容器拉回来（见 <c>ContainerService.BuildFilters</c>）。
+    /// </remarks>
+    public string? LastQueryString => Volatile.Read(ref _lastQueryString);
+
+    /// <summary>
+    /// 最近一次请求的查询串。
+    /// </summary>
+    private string? _lastQueryString;
+
+    /// <summary>
     /// 取一个空闲的 TCP 端口。
     /// </summary>
     /// <returns>端口号。</returns>
@@ -122,8 +139,16 @@ internal sealed class FakeDockerDaemon : IAsyncDisposable
             }
 
             var index = Interlocked.Increment(ref _callCount) - 1;
+            Volatile.Write(ref _lastQueryString, context.Request.Url?.Query);
             var response = _responseFactory?.Invoke(context.Request);
             var body = response?.Body ?? _bodyFactory(index);
+
+            // ⚠️ **按标签过滤真实生效**：守护进程侧的过滤是索引级的，
+            // 而「下推过滤」这件事如果只在测试里靠断言查询串来验，
+            // 就漏掉了一半——「过滤串写对了，但守护进程根本没按它筛」同样会让结果全错。
+            // 因此这里真的按 label 过滤一次，返回的条数与真实守护进程一致。
+            body = ApplyLabelFilters(context.Request, body);
+
             context.Response.StatusCode = response?.Status ?? 200;
             var payload = Encoding.UTF8.GetBytes(body);
             context.Response.ContentType = "application/json";
@@ -131,6 +156,110 @@ internal sealed class FakeDockerDaemon : IAsyncDisposable
             await context.Response.OutputStream.WriteAsync(payload).ConfigureAwait(false);
             context.Response.Close();
         }
+    }
+
+    /// <summary>
+    /// 按请求里的 <c>filters</c> 过滤容器标签。
+    /// </summary>
+    /// <param name="request">请求。</param>
+    /// <param name="body">响应体（容器数组的 JSON）。</param>
+    /// <returns>过滤后的响应体。</returns>
+    /// <remarks>
+    /// <para>只支持 <c>label</c> 过滤，且只支持 <c>标签名</c> 与 <c>标签名=标签值</c> 两种写法
+    /// （守护进程的真实语义）。<c>filters</c> 缺失或格式不认识时**原样返回**——
+    /// 「假装过滤成功」比「不滤」更容易让人误判。</para>
+    /// </remarks>
+    private static string ApplyLabelFilters(HttpListenerRequest request, string body)
+    {
+        var filters = request.Url?.Query
+            .TrimStart('?')
+            .Split('&')
+            .Select(part => part.Split('=', 2))
+            .Where(pair => pair.Length == 2 && pair[0] == "filters")
+            .Select(pair => Uri.UnescapeDataString(pair[1]))
+            .FirstOrDefault();
+
+        if (string.IsNullOrEmpty(filters))
+        {
+            return body;
+        }
+
+        using var document = JsonDocument.Parse(filters);
+
+        // ⚠️ `TryGetProperty` 只对对象有效，根不是对象时会直接抛异常。
+        if (document.RootElement.ValueKind != JsonValueKind.Object
+            || !document.RootElement.TryGetProperty("label", out var labelFilter)
+            || labelFilter.ValueKind != JsonValueKind.Object)
+        {
+            return body;
+        }
+
+        var predicates = new List<Func<JsonElement, bool>>();
+
+        foreach (var entry in labelFilter.EnumerateObject())
+        {
+            var key = entry.Name;
+            var separator = key.IndexOf('=', StringComparison.Ordinal);
+
+            if (separator < 0)
+            {
+                predicates.Add(container =>
+                    container.TryGetProperty("Labels", out var labels)
+                    && labels.ValueKind == JsonValueKind.Object
+                    && labels.TryGetProperty(key, out _));
+            }
+            else
+            {
+                var labelKey = key[..separator];
+                var labelValue = key[(separator + 1)..];
+
+                predicates.Add(container =>
+                    container.TryGetProperty("Labels", out var labels)
+                    && labels.ValueKind == JsonValueKind.Object
+                    && labels.TryGetProperty(labelKey, out var value)
+                    && value.GetString() == labelValue);
+            }
+        }
+
+        if (predicates.Count == 0)
+        {
+            return body;
+        }
+
+        using var containers = JsonDocument.Parse(body);
+
+        // ⚠️ **只对「容器数组」生效**：同一个假守护进程还会回应
+        // `/volumes`（根是对象 `{ "Volumes": [...] }`）、`/networks` 等端点，
+        // 而它们同样会带上 `filters` 查询串。对非数组的根直接原样返回——
+        // 硬套 `EnumerateArray()` 会抛
+        // `The requested operation requires an element of type 'Array'`，
+        // 而那会表现为「某个与之无关的用例 1 分 40 秒后超时失败」，
+        // 极难联想到是过滤辅助函数的问题。
+        if (containers.RootElement.ValueKind != JsonValueKind.Array)
+        {
+            return body;
+        }
+
+        var kept = containers.RootElement
+            .EnumerateArray()
+            .Where(container => predicates.All(predicate => predicate(container)))
+            .ToList();
+
+        var buffer = new MemoryStream();
+
+        using (var writer = new Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartArray();
+
+            foreach (var container in kept)
+            {
+                container.WriteTo(writer);
+            }
+
+            writer.WriteEndArray();
+        }
+
+        return Encoding.UTF8.GetString(buffer.ToArray());
     }
 
     /// <inheritdoc />
