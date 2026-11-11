@@ -187,6 +187,12 @@
 | `1905` | 409 | 该 Compose 项目已有进行中的操作 | 0.10.0 |
 | `1906` | 404 | Webhook 令牌无效或已吊销 | 0.10.0 |
 | `1907` | 429 | Webhook 触发过于频繁 | 0.10.0 |
+| `1700` | 404 | 告警规则不存在 | 0.11.0 |
+| `1701` | 400 | 告警规则参数非法（阈值顺序 / 取值） | 0.11.0 |
+| `1702` | 404 | 通知渠道不存在 | 0.11.0 |
+| `1703` | 502 | 通知渠道测试失败 | 0.11.0 |
+| `1704` | 404 | 通知不存在 | 0.11.0 |
+| `1705` | 400 | 通知渠道名已被占用 | 0.11.0 |
 | `9999` | 500 | 服务器内部错误 | 0.0.2 |
 
 > 各代码段保留充足空间：0.9.0 起按需分配更细的错误码（`1600-1699` **预留**给操作审计、
@@ -2105,8 +2111,14 @@ nginx: [emerg] …
 
 | 事件 | 数据 | 说明 |
 |------|------|------|
-| `OnContainerDied` | `{ hostId, containerId, containerName, exitCode, outOfMemory, occurredAt }` | 容器异常退出通知 |
-| `OnComposeTaskFailed` | `{ hostName, composeName, operation, errorCode, message, occurredAt }` | Compose 任务失败通知（0.10.0） |
+| `OnNotification` | `{ id, sourceKind, severity, messageKey, paramsJson, hostId, hostName, occurredAt }` | 落库后的站内通知（0.11.0） |
+
+> **0.11.0 起统一为 `OnNotification`**：容器异常退出、Compose 任务失败与告警触发都先写入
+> `notifications` 表，再由派发器推这一条事件。旧的 `OnContainerDied` / `OnComposeTaskFailed`
+> 不再发送——通知中心与铃铛因此使用同一份历史数据。
+>
+> `paramsJson` 是插值参数的 JSON 字符串；`messageKey` 是对应语言包里的 i18n key。
+> 前端本地解析后渲染，服务端不拼成品文案。
 
 > **可见性由服务端保证**：推送前逐个连接判「该用户对这台主机有没有 `host.read`」，
 > 无权的一律不推。前端**不需要**自己按主机过滤。

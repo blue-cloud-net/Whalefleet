@@ -3,26 +3,36 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { subscribeContainerDied, subscribeComposeTaskFailed } from '@/realtime/notification'
+import {
+  subscribeContainerDied,
+  subscribeNotification,
+  subscribeComposeTaskFailed
+} from '@/realtime/notification'
 import {
   useNotificationStore,
   describe,
   describeContainerDied,
+  describeNotification,
   describeComposeTaskFailed,
   type NotificationItem
 } from '@/stores/notifications'
 import { usePreferencesStore } from '@/stores/preferences'
-import type { ContainerDiedEvent, ComposeTaskFailureEvent } from '@/types/api'
+import type {
+  ContainerDiedEvent,
+  NotificationDto,
+  NotificationPayload,
+  ComposeTaskFailureEvent
+} from '@/types/api'
 
 /**
- * 顶栏铃铛：容器异常退出通知（0.5.0）与Compose 任务失败通知（0.10.0）。
+ * 顶栏铃铛：容器异常退出通知（0.5.0）与编排任务失败通知（0.10.0）。
  *
  * ## 为什么连的是**全局**通知 Hub
  * 容器异常退出是「平台级事件」——用户在任何页面都应当知道
  * 「某台机器上的某个容器挂了」，而不是必须先进入那台主机才能知道。
  * 用带 `hostId` 的路径会强制用户先选主机，而出事时他未必知道是哪台。
  *
- * Compose 任务失败同理：失败可能发生在用户已经离开页面之后
+ * 编排任务失败同理：失败可能发生在用户已经离开页面之后
  * （webhook 触发的 CI 部署），那时候他未必正站在那台主机的页面上。
  *
  * ## 可见性
@@ -40,17 +50,42 @@ const preferences = usePreferencesStore()
 
 const open = ref(false)
 
+/** 铃铛下拉里的一条条目（落库历史或旧内存态事件）。 */
+type BellEntry =
+  | { kind: 'history'; key: string; text: string; item: NotificationDto }
+  | { kind: 'legacy'; key: string; text: string; item: NotificationItem }
+
 /** 通知条目（含渲染好的文案）。 */
-const entries = computed(() =>
-  notifications.items.map((item) => {
-    const description = describe(item)
-    return { item, text: t(description.key, description.params) }
+const entries = computed<BellEntry[]>(() => {
+  const history = notifications.history.map((item) => {
+    const description = describeNotification(item)
+
+    return {
+      kind: 'history' as const,
+      key: `history:${item.id}`,
+      text: t(description.key, description.params),
+      item
+    }
   })
-)
+
+  const legacy = notifications.items.map((item) => {
+    const description = describe(item)
+
+    return {
+      kind: 'legacy' as const,
+      key: item.key,
+      text: t(description.key, description.params),
+      item
+    }
+  })
+
+  return [...history, ...legacy]
+})
 
 /** 退订函数。 */
 let unsubscribe: (() => void) | null = null
-let unsubscribeComposeProject: (() => void) | null = null
+let unsubscribeComposeTask: (() => void) | null = null
+let unsubscribeNotification: (() => void) | null = null
 
 /**
  * 处理容器退出事件。
@@ -65,15 +100,39 @@ function onContainerDied(event: ContainerDiedEvent): void {
 }
 
 /**
- * 处理Compose 任务失败事件。
+ * 处理编排任务失败事件。
  *
  * @param event 事件。
  */
-function onComposeProjectTaskFailed(event: ComposeTaskFailureEvent): void {
+function onComposeTaskFailed(event: ComposeTaskFailureEvent): void {
   notifications.pushComposeProjectTaskFailed(event)
 
   const description = describeComposeTaskFailed(event)
   ElMessage.error(t(description.key, description.params))
+}
+
+/**
+ * 处理落库站内通知（0.11.0）。
+ *
+ * @param event 通知载荷。
+ */
+function onNotification(event: NotificationPayload): void {
+  notifications.pushPayload(event)
+
+  const item = notifications.history.find((entry) => entry.id === event.id)
+  const description = item
+    ? describeNotification(item)
+    : { key: event.messageKey, params: {} as Record<string, string | number> }
+
+  const text = t(description.key, description.params)
+
+  if (event.severity === 'critical') {
+    ElMessage.error(text)
+  } else if (event.severity === 'warning') {
+    ElMessage.warning(text)
+  } else {
+    ElMessage.info(text)
+  }
 }
 
 /**
@@ -93,34 +152,87 @@ function openItem(item: NotificationItem): void {
   }
 
   router.push({
-    name: 'host-compose-detail',
+    name: 'host-stack-detail',
     // ⚠️ 传**原始**名字：自己 encodeURIComponent 会被 vue-router 再编码一次
     params: { hostId: item.event.hostName, name: item.event.composeName }
   })
+}
+
+/** 点击一条落库通知：打开通知中心。 */
+function openHistory(): void {
+  open.value = false
+  void router.push({ name: 'notifications' })
+}
+
+/**
+ * 点击一条条目。
+ *
+ * @param entry 条目。
+ */
+function onEntryClick(entry: BellEntry): void {
+  if (entry.kind === 'history') {
+    openHistory()
+    return
+  }
+
+  openItem(entry.item)
+}
+
+/**
+ * 条目的副标题（主机 / 容器上下文）。
+ *
+ * @param entry 条目。
+ * @returns 副标题。
+ */
+function subtitleOf(entry: BellEntry): string {
+  if (entry.kind === 'history') {
+    return entry.item.hostName || 'Whalefleet'
+  }
+
+  if (entry.item.kind === 'container-died') {
+    return `${entry.item.event.hostId} · ${entry.item.event.containerId.slice(0, 12)}`
+  }
+
+  return `${entry.item.event.hostName} · ${entry.item.event.composeName}`
 }
 
 /** 订阅（或退订）通知事件。 */
 function sync(): void {
   unsubscribe?.()
   unsubscribe = null
-  unsubscribeComposeProject?.()
-  unsubscribeComposeProject = null
+  unsubscribeComposeTask?.()
+  unsubscribeComposeTask = null
+  unsubscribeNotification?.()
+  unsubscribeNotification = null
 
   if (preferences.realtimeNotifications) {
     unsubscribe = subscribeContainerDied(onContainerDied)
-    unsubscribeComposeProject = subscribeComposeTaskFailed(onComposeProjectTaskFailed)
+    unsubscribeComposeTask = subscribeComposeTaskFailed(onComposeTaskFailed)
+    unsubscribeNotification = subscribeNotification(onNotification)
   }
 }
 
 watch(() => preferences.realtimeNotifications, sync)
 
-onMounted(sync)
+// 打开下拉即把落库通知标记为已读（与 0.5.0「打开即清零」一致，但状态现在会落库）
+watch(open, (value) => {
+  if (value) {
+    void notifications.markAllReadPersisted()
+  }
+})
+
+onMounted(() => {
+  void notifications.fetchRecent()
+  sync()
+})
 
 onUnmounted(() => {
   unsubscribe?.()
   unsubscribe = null
-  unsubscribeComposeProject?.()
-  unsubscribeComposeProject = null
+  unsubscribeComposeTask?.()
+  unsubscribeComposeTask = null
+  unsubscribeNotification?.()
+  unsubscribeNotification = null
 })
 </script>
 
@@ -140,7 +252,7 @@ onUnmounted(() => {
         class="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-danger ring-2 ring-surface-card"
       />
       <span v-if="notifications.hasUnread" class="sr-only">
-        {{ t('notification.unread', { count: notifications.unread }) }}
+        {{ t('notification.unread', { count: notifications.unreadTotal }) }}
       </span>
     </button>
 
@@ -156,8 +268,8 @@ onUnmounted(() => {
 
         <el-dropdown-item
           v-for="entry in entries"
-          :key="entry.item.key"
-          @click="openItem(entry.item)"
+          :key="entry.key"
+          @click="onEntryClick(entry)"
         >
           <div class="flex flex-col gap-0.5 py-1">
             <span class="text-xs text-content">{{ entry.text }}</span>
@@ -165,16 +277,15 @@ onUnmounted(() => {
               <!--
                 副标题按类型给不同的上下文：
                 容器死亡给「主机 + 容器 ID」，编排失败给「主机 + 项目名」——
-                后者给容器 ID 是没有意义的（Compose 任务不针对某个容器）。
+                后者给容器 ID 是没有意义的（编排任务不针对某个容器）。
               -->
-              <template v-if="entry.item.kind === 'container-died'">
-                {{ entry.item.event.hostId }} · {{ entry.item.event.containerId.slice(0, 12) }}
-              </template>
-              <template v-else>
-                {{ entry.item.event.hostName }} · {{ entry.item.event.composeName }}
-              </template>
+              {{ subtitleOf(entry) }}
             </span>
           </div>
+        </el-dropdown-item>
+
+        <el-dropdown-item divided @click="openHistory">
+          <span class="text-xs text-brand">{{ t('notification.viewAll') }}</span>
         </el-dropdown-item>
       </el-dropdown-menu>
     </template>

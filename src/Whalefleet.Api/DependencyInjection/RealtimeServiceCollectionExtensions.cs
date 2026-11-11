@@ -57,8 +57,11 @@ public static class RealtimeServiceCollectionExtensions
         // 进度发布器：接口在应用层，实现在这里——「怎么推」是入站适配器的事。
         services.AddSingleton<IOperationProgressPublisher, HubOperationProgressPublisher>();
 
-        // 通知派发（0.5.0）：订阅事件总线，把容器事件推给有权的在线连接。
+        // 通知派发（0.5.0）：订阅容器事件总线，把容器事件落库为站内通知。
         services.AddHostedService<ContainerNotificationDispatcher>();
+
+        // 站内通知派发（0.11.0）：订阅通知总线，逐连接判可见性后推 OnNotification。
+        services.AddHostedService<NotificationDispatcher>();
 
         return services;
     }

@@ -25,9 +25,9 @@ public class DatabaseInitializerTests
     /// <remarks>
     /// 0.1.0 新增 <c>0006_rbac.sql</c>；0.4.0 新增 <c>0007_repositories.sql</c>；
     /// 0.6.0 新增 <c>0008_host_tags.sql</c>；0.9.0 新增 <c>0009_audit_logs.sql</c>；
-    /// 0.10.0 新增 <c>0010_composes.sql</c>。
+    /// 0.10.0 新增 <c>0010_composes.sql</c>；0.11.0 新增 <c>0011_alerts.sql</c>。
     /// </remarks>
-    private const int _expectedSchemaVersion = 10;
+    private const int _expectedSchemaVersion = 11;
 
     [Fact]
     public async Task 初始化_建出业务表并推进架构版本()

@@ -145,6 +145,20 @@ export const ErrorCode = {
   /** Webhook 触发过于频繁 */
   ComposeWebhookRateLimited: 1907,
 
+  // ===== 1700-1799 告警与通知 =====
+  /** 告警规则不存在 */
+  AlertRuleNotFound: 1700,
+  /** 告警规则参数非法（阈值顺序 / 取值） */
+  AlertRuleInvalid: 1701,
+  /** 通知渠道不存在 */
+  NotificationChannelNotFound: 1702,
+  /** 通知渠道测试失败 */
+  NotificationChannelTestFailed: 1703,
+  /** 通知不存在 */
+  NotificationNotFound: 1704,
+  /** 通知渠道名已被占用 */
+  NotificationChannelNameAlreadyExists: 1705,
+
   // ===== 9000-9999 服务器内部错误 =====
   /** 服务器内部错误（未捕获异常） */
   InternalError: 9999
@@ -1722,5 +1736,125 @@ export interface ComposeTaskFailureEvent {
   /** 失败原因 */
   message: string
   /** 发生时刻（ISO 8601） */
+  occurredAt: string
+}
+
+// ===== 告警与通知（0.11.0） =====
+
+/** 告警类型（与后端 kebab-case 文本一致）。 */
+export type AlertKind =
+  | 'host-offline'
+  | 'container-cpu'
+  | 'container-memory'
+  | 'container-network'
+  | 'login-failure-surge'
+
+/** 告警严重度。 */
+export type AlertSeverity = 'info' | 'warning' | 'critical'
+
+/** 通知渠道类型。 */
+export type NotificationChannelKind = 'webhook' | 'email'
+
+/** 站内通知来源。 */
+export type NotificationSourceKind = 'alert-fired' | 'container-died' | 'compose-task-failed'
+
+/** 告警规则。 */
+export interface AlertRule {
+  id: string
+  hostId: string | null
+  hostName: string | null
+  kind: AlertKind
+  enabled: boolean
+  infoThreshold: number | null
+  warningThreshold: number | null
+  criticalThreshold: number | null
+  severity: AlertSeverity
+  consecutiveSamples: number
+  windowSeconds: number | null
+  cooldownSeconds: number
+  channelIds: string[]
+  createdAt: string
+}
+
+/** 新建 / 更新告警规则的请求。 */
+export interface SaveAlertRuleRequest {
+  id?: string
+  host?: string | null
+  kind: AlertKind
+  enabled: boolean
+  infoThreshold: number | null
+  warningThreshold: number | null
+  criticalThreshold: number | null
+  severity: AlertSeverity
+  consecutiveSamples: number
+  windowSeconds: number | null
+  cooldownSeconds: number
+  channelIds: string[]
+}
+
+/** 通知渠道（**不含令牌 / 密码**）。 */
+export interface NotificationChannel {
+  id: string
+  name: string
+  kind: NotificationChannelKind
+  enabled: boolean
+  webhookUrl: string | null
+  hasWebhookToken: boolean
+  emailRecipients: string[] | null
+}
+
+/** 新建 / 更新通知渠道的请求。 */
+export interface SaveNotificationChannelRequest {
+  id?: string
+  name: string
+  kind: NotificationChannelKind
+  enabled: boolean
+  webhookUrl?: string | null
+  webhookBearerToken?: string | null
+  emailRecipients?: string[] | null
+}
+
+/** 站内通知。 */
+export interface NotificationDto {
+  id: string
+  sourceKind: NotificationSourceKind
+  severity: AlertSeverity
+  messageKey: string
+  params: Record<string, string | number | boolean | null>
+  hostId: string | null
+  hostName: string | null
+  read: boolean
+  readAt: string | null
+  occurredAt: string
+}
+
+/** 通知分页结果。 */
+export interface NotificationListResult {
+  items: NotificationDto[]
+  total: number
+  unread: number
+  pageIndex: number
+  pageSize: number
+}
+
+/** 通知列表查询。 */
+export interface NotificationQuery {
+  unreadOnly?: boolean | null
+  severity?: AlertSeverity | null
+  sourceKind?: NotificationSourceKind | null
+  search?: string | null
+  pageIndex?: number
+  pageSize?: number
+}
+
+/** SignalR `OnNotification` 的载荷。 */
+export interface NotificationPayload {
+  id: string
+  sourceKind: NotificationSourceKind
+  severity: AlertSeverity
+  messageKey: string
+  paramsJson: string
+  hostId: string | null
+  hostName: string | null
   occurredAt: string
 }

@@ -67,6 +67,27 @@ public sealed record ContainerLogPayload(string ContainerId, IReadOnlyList<Conta
 public sealed record ContainerStatsPayload(string ContainerId, ContainerStatsSample Stats);
 
 /// <summary>
+/// 一条站内通知（0.11.0）。
+/// </summary>
+/// <param name="Id">通知主键。</param>
+/// <param name="SourceKind">来源类型（kebab-case）。</param>
+/// <param name="Severity">严重度（info / warning / critical）。</param>
+/// <param name="MessageKey">i18n key。</param>
+/// <param name="ParamsJson">插值参数 JSON。</param>
+/// <param name="HostId">主机主键；全局通知为 <see langword="null"/>。</param>
+/// <param name="HostName">主机名快照。</param>
+/// <param name="OccurredAt">发生时刻（UTC）。</param>
+public sealed record NotificationPayload(
+    Guid Id,
+    string SourceKind,
+    string Severity,
+    string MessageKey,
+    string ParamsJson,
+    Guid? HostId,
+    string? HostName,
+    DateTime OccurredAt);
+
+/// <summary>
 /// 订阅时补发的一批历史采样（0.6.0）。
 /// </summary>
 /// <param name="ContainerId">容器标识。</param>

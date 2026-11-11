@@ -90,6 +90,14 @@ public class ErrorCodesTests
         [nameof(ErrorCodes.ComposeWebhookTokenInvalid)] = 1906,
         [nameof(ErrorCodes.ComposeWebhookRateLimited)] = 1907,
 
+        // 告警与通知
+        [nameof(ErrorCodes.AlertRuleNotFound)] = 1700,
+        [nameof(ErrorCodes.AlertRuleInvalid)] = 1701,
+        [nameof(ErrorCodes.NotificationChannelNotFound)] = 1702,
+        [nameof(ErrorCodes.NotificationChannelTestFailed)] = 1703,
+        [nameof(ErrorCodes.NotificationNotFound)] = 1704,
+        [nameof(ErrorCodes.NotificationChannelNameAlreadyExists)] = 1705,
+
         // 服务器内部错误
         [nameof(ErrorCodes.InternalError)] = 9999,
     };

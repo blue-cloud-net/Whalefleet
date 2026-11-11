@@ -128,6 +128,19 @@ export const ErrorCode = {
   /** Webhook 触发过于频繁 → 429 */
   ComposeWebhookRateLimited: 1907,
 
+  /** 告警规则不存在 → 404 */
+  AlertRuleNotFound: 1700,
+  /** 告警规则参数非法 → 400 */
+  AlertRuleInvalid: 1701,
+  /** 通知渠道不存在 → 404 */
+  NotificationChannelNotFound: 1702,
+  /** 通知渠道测试失败 → 502 */
+  NotificationChannelTestFailed: 1703,
+  /** 通知不存在 → 404 */
+  NotificationNotFound: 1704,
+  /** 通知渠道名已被占用 → 400 */
+  NotificationChannelNameAlreadyExists: 1705,
+
   /** 服务器内部错误 → 500 */
   InternalError: 9999
 } as const
@@ -203,6 +216,13 @@ export const ERROR_HTTP_STATUS: Record<number, number> = {
   [ErrorCode.ComposeWebhookTokenInvalid]: 404,
   [ErrorCode.ComposeWebhookRateLimited]: 429,
 
+  [ErrorCode.AlertRuleNotFound]: 404,
+  [ErrorCode.AlertRuleInvalid]: 400,
+  [ErrorCode.NotificationChannelNotFound]: 404,
+  [ErrorCode.NotificationChannelTestFailed]: 502,
+  [ErrorCode.NotificationNotFound]: 404,
+  [ErrorCode.NotificationChannelNameAlreadyExists]: 400,
+
   [ErrorCode.InternalError]: 500
 }
 
@@ -268,6 +288,13 @@ export const ERROR_MESSAGES: Record<number, string> = {
   [ErrorCode.ComposeOperationInProgress]: '该 Compose 项目已有进行中的操作',
   [ErrorCode.ComposeWebhookTokenInvalid]: 'Webhook 令牌无效或已吊销',
   [ErrorCode.ComposeWebhookRateLimited]: 'Webhook 触发过于频繁',
+
+  [ErrorCode.AlertRuleNotFound]: '告警规则不存在',
+  [ErrorCode.AlertRuleInvalid]: '告警规则参数非法',
+  [ErrorCode.NotificationChannelNotFound]: '通知渠道不存在',
+  [ErrorCode.NotificationChannelTestFailed]: '通知渠道测试失败',
+  [ErrorCode.NotificationNotFound]: '通知不存在',
+  [ErrorCode.NotificationChannelNameAlreadyExists]: '通知渠道名已被占用',
 
   [ErrorCode.InternalError]: '服务器内部错误'
 }

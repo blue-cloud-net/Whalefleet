@@ -32,14 +32,15 @@ describe('路由表', () => {
     expect(roles?.meta?.icon).toBe('i-carbon-user-role')
   })
 
-  it('管理组菜单顺序：主机 → 用户 → 角色 → Registry → 审计（日常动线是「看人再建角色」）', () => {
+  it('管理组菜单顺序：主机 → 用户 → 角色 → Registry → 审计 → 告警（日常动线是「看人再建角色」）', () => {
     const manage = children()
       .filter((r) => r.meta?.scope !== 'host' && r.meta?.group === 'manage')
       .map((r) => r.name)
 
     // Registry 与审计排在末尾：管理组前三项是「人」的动线（看主机 → 看人 → 缺角色再建），
     // 后两项是「配一次就不动」的基础设施（Registry）与「出事才查」的审计。
-    expect(manage).toEqual(['hosts', 'users', 'roles', 'repositories', 'audit'])
+    // 0.11.0 的告警规则同样属于「出事才查」，排在审计之后。
+    expect(manage).toEqual(['hosts', 'users', 'roles', 'repositories', 'audit', 'alerts'])
   })
 
   it('audit 用 audit.read 权限把门（内置 auditor 只带这一项）', () => {

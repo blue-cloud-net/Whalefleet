@@ -304,6 +304,19 @@ public static class AuditActions
     /// 服务端错误兜底（中间件记录，无业务动作可归）。
     /// </summary>
     public const string HttpError = "http.error";
+
+    #region 告警与通知
+
+    /// <summary>
+    /// 新增 / 修改 / 删除 / 启停告警规则。
+    /// </summary>
+    public const string AlertRuleUpdate = "alert.rule.update";
+
+    /// <summary>
+    /// 新增 / 修改 / 删除 / 测试通知渠道。
+    /// </summary>
+    public const string NotificationChannelUpdate = "alert.channel.update";
+    #endregion
 }
     #endregion
 
@@ -370,4 +383,14 @@ public static class AuditTargetTypes
     /// 审计日志本身。
     /// </summary>
     public const string Audit = "audit";
+
+    /// <summary>
+    /// 告警规则。
+    /// </summary>
+    public const string AlertRule = "alert-rule";
+
+    /// <summary>
+    /// 通知渠道。
+    /// </summary>
+    public const string NotificationChannel = "notification-channel";
 }

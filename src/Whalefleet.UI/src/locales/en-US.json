@@ -125,8 +125,10 @@
     "copyFailed": "Copy failed — select the text and copy it manually",
     "create": "Create",
     "delete": "Delete",
+    "disabled": "Disabled",
     "edit": "Edit",
     "empty": "No data",
+    "enabled": "Enabled",
     "key": "Key",
     "loading": "Loading…",
     "menu": "Menu",
@@ -137,8 +139,10 @@
     "pageSizeOption": "{size} / page",
     "prev": "Previous",
     "refresh": "Refresh",
+    "reset": "Reset",
     "retry": "Retry",
     "save": "Save",
+    "saved": "Saved",
     "search": "Search",
     "selected": "{count} selected",
     "sidebar": "Toggle sidebar",
@@ -898,7 +902,9 @@
     "usedBy": "{count} containers"
   },
   "nav": {
+    "alerts": "Alert rules",
     "audit": "Audit log",
+    "notifications": "Notification center",
     "backToOverview": "Back to overview",
     "containers": "Containers",
     "events": "Events",
@@ -1010,7 +1016,94 @@
     "oom": "Container “{name}” was killed for running out of memory (code {code})",
     "title": "Notifications",
     "unread": "{count} unread notifications",
-    "composeFailed": "Compose project “{compose}” on {host} failed: {message}"
+    "composeFailed": "Compose project “{compose}” on {host} failed: {message}",
+    "viewAll": "View all",
+    "markAllRead": "Mark all as read",
+    "markedAllRead": "All notifications marked as read",
+    "severity": "Severity",
+    "source": "Source",
+    "unreadOnly": "Unread only",
+    "unreadSummary": "{count} unread",
+    "occurredAt": "Time",
+    "message": "Message",
+    "host": "Host",
+    "center": {
+      "title": "Notification center",
+      "subtitle": "History of alerts and events pushed by the platform."
+    },
+    "severityValue": {
+      "info": "Info",
+      "warning": "Warning",
+      "critical": "Critical"
+    },
+    "sourceValue": {
+      "alert-fired": "Alert",
+      "container-died": "Container exit",
+      "compose-task-failed": "Stack failure"
+    },
+    "alert": {
+      "hostOffline": "Host “{host}” is offline",
+      "containerCpu": "Container “{container}” on {host} CPU usage {value}%, above {threshold}%",
+      "containerMemory": "Container “{container}” on {host} memory usage {value}%, above {threshold}%",
+      "containerNetwork": "Container “{container}” on {host} network throughput {value} MB/s, above {threshold} MB/s",
+      "loginFailureSurge": "{count} login failures in the last {window} seconds"
+    }
+  },
+  "alert": {
+    "tab": {
+      "rules": "Alert rules",
+      "channels": "Notification channels"
+    },
+    "kind": {
+      "host-offline": "Host offline",
+      "container-cpu": "Container CPU",
+      "container-memory": "Container memory",
+      "container-network": "Container network",
+      "login-failure-surge": "Login failure surge"
+    },
+    "severity": {
+      "info": "Info",
+      "warning": "Warning",
+      "critical": "Critical"
+    },
+    "channelKind": {
+      "webhook": "Webhook",
+      "email": "Email"
+    },
+    "rule": {
+      "add": "Add rule",
+      "edit": "Edit rule",
+      "empty": "No alert rules yet",
+      "kind": "Rule type",
+      "scope": "Scope",
+      "global": "Global",
+      "thresholds": "Thresholds (info / warning / critical)",
+      "cooldown": "Cooldown (seconds)",
+      "enabled": "Enabled",
+      "severity": "Severity",
+      "consecutive": "Consecutive samples",
+      "window": "Window (seconds)",
+      "channels": "Channels"
+    },
+    "channel": {
+      "add": "Add channel",
+      "edit": "Edit channel",
+      "empty": "No notification channels yet",
+      "name": "Name",
+      "kind": "Type",
+      "target": "Target",
+      "test": "Test",
+      "testOk": "Test message sent",
+      "confirmRemove": "Delete this channel? Rules bound to it will stop sending.",
+      "webhookUrl": "Webhook URL",
+      "bearerToken": "Bearer token",
+      "tokenHint": "Leave blank to keep the existing token",
+      "recipients": "Recipients",
+      "recipientsHint": "Separate multiple addresses with commas"
+    },
+    "confirm": {
+      "remove": "Delete this alert rule?"
+    }
   },
   "overview": {
     "filter": {

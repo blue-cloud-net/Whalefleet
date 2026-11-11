@@ -5,6 +5,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Persistence;
+using Whalefleet.Core.Alerting;
 using Whalefleet.Core.Auditing;
 using Whalefleet.Core.Auth;
 using Whalefleet.Core.Hosts;
@@ -13,6 +14,7 @@ using Whalefleet.Core.Repositories;
 using Whalefleet.Core.Composes;
 using Whalefleet.Core.Users;
 using Whalefleet.Infrastructure.Persistence;
+using Whalefleet.Infrastructure.Persistence.Alerting;
 using Whalefleet.Infrastructure.Persistence.Auditing;
 using Whalefleet.Infrastructure.Persistence.Auth;
 using Whalefleet.Infrastructure.Persistence.Hosts;
@@ -99,6 +101,13 @@ public static class PersistenceServiceCollectionExtensions
 
         // 审计日志（0.9.0）：只追加 + 只查，因此不派生 RepositoryBase（那个基类带更新与软删除）。
         services.AddScoped<IAuditLogRepository, AuditLogRepository>();
+
+        // 告警与通知（0.11.0）：规则 / 渠道是配置（软删除），事件与通知是只增事实。
+        services.AddScoped<IAlertRuleRepository, SqliteAlertRuleRepository>();
+        services.AddScoped<IAlertRuleChannelRepository, SqliteAlertRuleChannelRepository>();
+        services.AddScoped<IAlertEventRepository, SqliteAlertEventRepository>();
+        services.AddScoped<INotificationChannelRepository, SqliteNotificationChannelRepository>();
+        services.AddScoped<INotificationRepository, SqliteNotificationRepository>();
 
         return services;
     }

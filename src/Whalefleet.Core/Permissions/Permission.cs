@@ -171,6 +171,20 @@ public static class Permission
     public const string AuditRead = "audit.read";
 
     /// <summary>
+    /// 查看告警规则与通知渠道配置（不含发送测试）。
+    /// </summary>
+    public const string AlertRead = "alert.read";
+
+    /// <summary>
+    /// 增删改告警规则与通知渠道、发送渠道测试。
+    /// </summary>
+    /// <remarks>
+    /// 单独成权限而不是复用 <see cref="HostManage"/>：告警是<b>全局</b>配置，
+    /// 一台主机的管理员不该因此获得「修改所有主机告警阈值」的能力。
+    /// </remarks>
+    public const string AlertWrite = "alert.write";
+
+    /// <summary>
     /// 全局作用域的全部权限标识。
     /// </summary>
     public static readonly IReadOnlyList<string> Globals =
@@ -183,6 +197,8 @@ public static class Permission
         RepositoryRead,
         RepositoryWrite,
         AuditRead,
+        AlertRead,
+        AlertWrite,
     ];
 
     /// <summary>

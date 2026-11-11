@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import { ErrorCode, fail, httpStatusOf } from './envelope'
+import { alertHandlers } from './handlers/alerts'
 import { auditHandlers } from './handlers/audit'
 import { authHandlers } from './handlers/auth'
 import { containerHandlers } from './handlers/containers'
@@ -53,7 +54,8 @@ export const handlers = [
   ...composeHandlers(() => currentScenario),
   ...userHandlers(() => currentScenario),
   ...roleHandlers(() => currentScenario),
-  ...auditHandlers()
+  ...auditHandlers(),
+  ...alertHandlers()
 ]
 
 /**

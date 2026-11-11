@@ -14,7 +14,7 @@ namespace Whalefleet.Infrastructure.Security;
 /// <para><b>不记录任何口令内容</b>：本类<b>刻意没有</b> <c>ILogger</c> 字段——
 /// 一旦有日志，就多了一个「顺手打个 debug 日志」的机会，而那等于把口令写进日志文件。</para>
 /// </remarks>
-internal sealed class RepositorySecretProtector : IRepositorySecretProtector
+internal sealed class RepositorySecretProtector : IRepositorySecretProtector, ISecretProtector
 {
     private readonly RepositorySecretKeyStore _keyStore;
 

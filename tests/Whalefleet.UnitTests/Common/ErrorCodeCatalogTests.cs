@@ -49,6 +49,13 @@ public class ErrorCodeCatalogTests
         { ErrorCodes.HostForbidden, ErrorCategory.Forbidden },
         { ErrorCodes.OperationForbidden, ErrorCategory.Forbidden },
 
+        { ErrorCodes.AlertRuleNotFound, ErrorCategory.NotFound },
+        { ErrorCodes.AlertRuleInvalid, ErrorCategory.Validation },
+        { ErrorCodes.NotificationChannelNotFound, ErrorCategory.NotFound },
+        { ErrorCodes.NotificationChannelTestFailed, ErrorCategory.UpstreamFailure },
+        { ErrorCodes.NotificationNotFound, ErrorCategory.NotFound },
+        { ErrorCodes.NotificationChannelNameAlreadyExists, ErrorCategory.Validation },
+
         { ErrorCodes.InternalError, ErrorCategory.Internal },
     };
 

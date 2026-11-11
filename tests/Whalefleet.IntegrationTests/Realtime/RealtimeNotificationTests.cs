@@ -100,10 +100,11 @@ public sealed class RealtimeNotificationTests : IAsyncLifetime
                 DateTimeOffset.UtcNow),
             received);
 
-        result.ContainerId.Should().Be("container-abc");
-        result.ContainerName.Should().Be("web");
-        result.OutOfMemory.Should().BeTrue();
-        result.ExitCode.Should().Be(137);
+        result.SourceKind.Should().Be("container-died");
+        result.Severity.Should().Be("critical");
+        result.MessageKey.Should().Be("notification.oom");
+        result.HostName.Should().Be(_localHost);
+        result.ParamsJson.Should().Contain("\"code\":137");
     }
 
     [Fact]
@@ -121,24 +122,24 @@ public sealed class RealtimeNotificationTests : IAsyncLifetime
                 DateTimeOffset.UtcNow),
             received);
 
-        result.ExitCode.Should().Be(0);
-        result.OutOfMemory.Should().BeFalse();
+        result.MessageKey.Should().Be("notification.exited");
+        result.Severity.Should().Be("warning");
     }
 
     /// <summary>
     /// 连上通知 Hub 并登记好接收回调。
     /// </summary>
     /// <returns>接收任务。</returns>
-    private async Task<TaskCompletionSource<ContainerDiedEvent>> ConnectAndReceiveAsync()
+    private async Task<TaskCompletionSource<NotificationPayloadDto>> ConnectAndReceiveAsync()
     {
         var token = await this.LoginAsync(_adminName);
 
         var connection = this.BuildConnection(token);
 
-        var received = new TaskCompletionSource<ContainerDiedEvent>(
+        var received = new TaskCompletionSource<NotificationPayloadDto>(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
-        connection.On<ContainerDiedEvent>("OnContainerDied", value => received.TrySetResult(value));
+        connection.On<NotificationPayloadDto>("OnNotification", value => received.TrySetResult(value));
 
         await connection.StartAsync();
 
@@ -159,9 +160,9 @@ public sealed class RealtimeNotificationTests : IAsyncLifetime
     /// <param name="notification">事件内容。</param>
     /// <param name="received">接收任务。</param>
     /// <returns>客户端收到的事件。</returns>
-    private async Task<ContainerDiedEvent> PublishUntilReceivedAsync(
+    private async Task<NotificationPayloadDto> PublishUntilReceivedAsync(
         ContainerEventNotification notification,
-        TaskCompletionSource<ContainerDiedEvent> received)
+        TaskCompletionSource<NotificationPayloadDto> received)
     {
         using var scope = _factory.Services.CreateScope();
         var bus = scope.ServiceProvider.GetRequiredService<IContainerEventBus>();
@@ -209,19 +210,23 @@ public sealed class RealtimeNotificationTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// 通知事件在 Hub 侧的载荷。
+    /// 通知事件在 Hub 侧的载荷（<c>OnNotification</c>）。
     /// </summary>
-    /// <param name="HostId">主机标识。</param>
-    /// <param name="ContainerId">容器标识。</param>
-    /// <param name="ContainerName">容器名。</param>
-    /// <param name="ExitCode">退出码。</param>
-    /// <param name="OutOfMemory">是否 OOM。</param>
+    /// <param name="Id">通知主键。</param>
+    /// <param name="SourceKind">来源类型。</param>
+    /// <param name="Severity">严重度。</param>
+    /// <param name="MessageKey">i18n key。</param>
+    /// <param name="ParamsJson">插值参数 JSON。</param>
+    /// <param name="HostId">主机主键。</param>
+    /// <param name="HostName">主机名。</param>
     /// <param name="OccurredAt">发生时刻。</param>
-    private sealed record ContainerDiedEvent(
-        string HostId,
-        string ContainerId,
-        string ContainerName,
-        long ExitCode,
-        bool OutOfMemory,
-        DateTimeOffset OccurredAt);
+    private sealed record NotificationPayloadDto(
+        Guid Id,
+        string SourceKind,
+        string Severity,
+        string MessageKey,
+        string ParamsJson,
+        Guid? HostId,
+        string? HostName,
+        DateTime OccurredAt);
 }

@@ -3,6 +3,7 @@ using System.Globalization;
 
 using Dapper;
 
+using Whalefleet.Core.Alerting;
 using Whalefleet.Core.Hosts;
 
 namespace Whalefleet.Infrastructure.Persistence;
@@ -69,6 +70,14 @@ internal static class DapperTypeMaps
             SqlMapper.AddTypeHandler(new EnumTextTypeHandler<DockerHostType>());
             SqlMapper.AddTypeHandler(new EnumTextTypeHandler<DockerHostAuthKind>());
 
+            // 告警（0.11.0）：AlertKind / NotificationSourceKind 的库中形态是 kebab-case
+            // （host-offline / alert-fired），默认的 Enum.Parse 认不出来，因此各给一个处理器。
+            // AlertSeverity / NotificationChannelKind 的小写名与库中形态一致，走通用处理器。
+            SqlMapper.AddTypeHandler(new AlertKindTypeHandler());
+            SqlMapper.AddTypeHandler(new NotificationSourceKindTypeHandler());
+            SqlMapper.AddTypeHandler(new EnumTextTypeHandler<AlertSeverity>());
+            SqlMapper.AddTypeHandler(new EnumTextTypeHandler<NotificationChannelKind>());
+
             _initialized = true;
         }
     }
@@ -102,6 +111,50 @@ internal static class DapperTypeMaps
             int number => (TEnum)Enum.ToObject(typeof(TEnum), number),
             _ => throw new DataException(
                 $"无法把 {value?.GetType().Name ?? "null"} 解析为 {typeof(TEnum).Name}"),
+        };
+    }
+
+    /// <summary>
+    /// <see cref="AlertKind"/> ↔ kebab-case 文本。
+    /// </summary>
+    private sealed class AlertKindTypeHandler : SqlMapper.TypeHandler<AlertKind>
+    {
+        public override void SetValue(IDbDataParameter parameter, AlertKind value)
+        {
+            ArgumentNullException.ThrowIfNull(parameter);
+
+            parameter.DbType = DbType.String;
+            parameter.Value = AlertKindText.ToText(value);
+        }
+
+        public override AlertKind Parse(object value) => value switch
+        {
+            string text => AlertKindText.Parse(text),
+            AlertKind typed => typed,
+            _ => throw new DataException(
+                $"无法把 {value?.GetType().Name ?? "null"} 解析为 {nameof(AlertKind)}"),
+        };
+    }
+
+    /// <summary>
+    /// <see cref="NotificationSourceKind"/> ↔ kebab-case 文本。
+    /// </summary>
+    private sealed class NotificationSourceKindTypeHandler : SqlMapper.TypeHandler<NotificationSourceKind>
+    {
+        public override void SetValue(IDbDataParameter parameter, NotificationSourceKind value)
+        {
+            ArgumentNullException.ThrowIfNull(parameter);
+
+            parameter.DbType = DbType.String;
+            parameter.Value = NotificationSourceKindText.ToText(value);
+        }
+
+        public override NotificationSourceKind Parse(object value) => value switch
+        {
+            string text => NotificationSourceKindText.Parse(text),
+            NotificationSourceKind typed => typed,
+            _ => throw new DataException(
+                $"无法把 {value?.GetType().Name ?? "null"} 解析为 {nameof(NotificationSourceKind)}"),
         };
     }
 
