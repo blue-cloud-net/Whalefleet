@@ -80,15 +80,15 @@ public class ErrorCodesTests
         [nameof(ErrorCodes.ImageBuildFailed)] = 1806,
         [nameof(ErrorCodes.ImagePushFailed)] = 1807,
 
-        // 编排 Stack
-        [nameof(ErrorCodes.StackNotFound)] = 1900,
-        [nameof(ErrorCodes.StackDeployFailed)] = 1901,
-        [nameof(ErrorCodes.StackNameAlreadyExists)] = 1902,
-        [nameof(ErrorCodes.StackNotManaged)] = 1903,
+        // 编排 ComposeProject
+        [nameof(ErrorCodes.ComposeNotFound)] = 1900,
+        [nameof(ErrorCodes.ComposeDeployFailed)] = 1901,
+        [nameof(ErrorCodes.ComposeNameAlreadyExists)] = 1902,
+        [nameof(ErrorCodes.ComposeNotManaged)] = 1903,
         [nameof(ErrorCodes.ComposeInvalid)] = 1904,
-        [nameof(ErrorCodes.StackOperationInProgress)] = 1905,
-        [nameof(ErrorCodes.StackWebhookTokenInvalid)] = 1906,
-        [nameof(ErrorCodes.StackWebhookRateLimited)] = 1907,
+        [nameof(ErrorCodes.ComposeOperationInProgress)] = 1905,
+        [nameof(ErrorCodes.ComposeWebhookTokenInvalid)] = 1906,
+        [nameof(ErrorCodes.ComposeWebhookRateLimited)] = 1907,
 
         // 服务器内部错误
         [nameof(ErrorCodes.InternalError)] = 9999,

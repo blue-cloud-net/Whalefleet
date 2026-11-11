@@ -11,7 +11,7 @@ using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Hosts;
 using Whalefleet.Core.Permissions;
-using Whalefleet.Core.Stacks;
+using Whalefleet.Core.Composes;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
 
@@ -31,7 +31,7 @@ namespace Whalefleet.IntegrationTests.Endpoints;
 /// 表现为「令牌还没验，主机先报错」。</para>
 /// </remarks>
 #pragma warning disable CA1001
-public class StackWebhookEndpointsTests : IAsyncLifetime
+public class ComposeWebhookEndpointsTests : IAsyncLifetime
 #pragma warning restore CA1001
 {
     private const string _password = "StrongP@ss123";
@@ -76,7 +76,7 @@ public class StackWebhookEndpointsTests : IAsyncLifetime
         using var client = _factory.CreateClient();
 
         using var response = await client.PostAsJsonAsync(
-            "/api/v1/webhooks/stacks/not-a-real-token",
+            "/api/v1/webhooks/composes/not-a-real-token",
             new { });
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
@@ -89,7 +89,7 @@ public class StackWebhookEndpointsTests : IAsyncLifetime
         using var client = _factory.CreateClient();
 
         using var response = await client.PostAsJsonAsync(
-            "/api/v1/webhooks/stacks/",
+            "/api/v1/webhooks/composes/",
             new { });
 
         // 路径里没有令牌段 → 路由不匹配 → 404（包装成 1000 语义）
@@ -101,15 +101,15 @@ public class StackWebhookEndpointsTests : IAsyncLifetime
     {
         using var client = await this.CreateAuthenticatedClientAsync();
 
-        var name = NewStackName();
-        var token = await this.SeedStackWithWebhookAsync(name);
+        var name = NewComposeName();
+        var token = await this.SeedComposeWithWebhookAsync(name);
 
         try
         {
             using var anonymous = _factory.CreateClient();
 
             using var response = await anonymous.PostAsJsonAsync(
-                $"/api/v1/webhooks/stacks/{token}",
+                $"/api/v1/webhooks/composes/{token}",
                 new { wait = false });
 
             response.StatusCode.Should().Be(
@@ -131,13 +131,13 @@ public class StackWebhookEndpointsTests : IAsyncLifetime
     {
         using var client = await this.CreateAuthenticatedClientAsync();
 
-        var name = NewStackName();
-        var token = await this.SeedStackWithWebhookAsync(name);
+        var name = NewComposeName();
+        var token = await this.SeedComposeWithWebhookAsync(name);
 
         try
         {
             using var revoke = await client.PostAsJsonAsync(
-                $"/api/v1/hosts/{_localHost}/stacks/webhook/revoke",
+                $"/api/v1/hosts/{_localHost}/composes/webhook/revoke",
                 new { name });
 
             revoke.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -145,7 +145,7 @@ public class StackWebhookEndpointsTests : IAsyncLifetime
             using var anonymous = _factory.CreateClient();
 
             using var response = await anonymous.PostAsJsonAsync(
-                $"/api/v1/webhooks/stacks/{token}",
+                $"/api/v1/webhooks/composes/{token}",
                 new { });
 
             response.StatusCode.Should().Be(HttpStatusCode.NotFound);
@@ -162,15 +162,15 @@ public class StackWebhookEndpointsTests : IAsyncLifetime
     {
         using var client = await this.CreateAuthenticatedClientAsync();
 
-        var name = NewStackName();
-        var token = await this.SeedStackWithWebhookAsync(name);
+        var name = NewComposeName();
+        var token = await this.SeedComposeWithWebhookAsync(name);
 
         try
         {
             using var anonymous = _factory.CreateClient();
 
             using var trigger = await anonymous.PostAsJsonAsync(
-                $"/api/v1/webhooks/stacks/{token}",
+                $"/api/v1/webhooks/composes/{token}",
                 new { wait = false });
 
             trigger.StatusCode.Should().Be(HttpStatusCode.Accepted);
@@ -181,14 +181,14 @@ public class StackWebhookEndpointsTests : IAsyncLifetime
                 .GetString();
 
             using var task = await anonymous.PostAsJsonAsync(
-                $"/api/v1/webhooks/stacks/{token}/task",
+                $"/api/v1/webhooks/composes/{token}/task",
                 new { taskId });
 
             task.StatusCode.Should().Be(HttpStatusCode.OK);
 
             var snapshot = (await ReadAsync(task)).GetProperty("data");
             snapshot.GetProperty("taskId").GetString().Should().Be(taskId);
-            snapshot.GetProperty("stackName").GetString().Should().Be(name);
+            snapshot.GetProperty("composeName").GetString().Should().Be(name);
         }
         finally
         {
@@ -201,18 +201,18 @@ public class StackWebhookEndpointsTests : IAsyncLifetime
     {
         using var client = await this.CreateAuthenticatedClientAsync();
 
-        var name = NewStackName();
-        var otherName = NewStackName();
-        var token = await this.SeedStackWithWebhookAsync(name);
+        var name = NewComposeName();
+        var otherName = NewComposeName();
+        var token = await this.SeedComposeWithWebhookAsync(name);
 
         try
         {
-            await this.SeedStackWithWebhookAsync(otherName);
+            await this.SeedComposeWithWebhookAsync(otherName);
 
             using var anonymous = _factory.CreateClient();
 
             using var response = await anonymous.PostAsJsonAsync(
-                $"/api/v1/webhooks/stacks/{token}/task",
+                $"/api/v1/webhooks/composes/{token}/task",
                 new { taskId = Guid.NewGuid().ToString("N") });
 
             response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -230,33 +230,33 @@ public class StackWebhookEndpointsTests : IAsyncLifetime
     #region 辅助
 
     /// <summary>
-    /// 生成一个本次用例专用的 Stack 名称。
+    /// 生成一个本次用例专用的 Compose 项目名称。
     /// </summary>
-    /// <returns>Stack 名称。</returns>
-    private static string NewStackName() => $"wfhook{Guid.NewGuid():N}"[..24];
+    /// <returns>Compose 项目名称。</returns>
+    private static string NewComposeName() => $"wfhook{Guid.NewGuid():N}"[..24];
 
     /// <summary>
-    /// 造一个带 Webhook 令牌的 Stack 记录，并返回令牌明文。
+    /// 造一个带 Webhook 令牌的 Compose 项目记录，并返回令牌明文。
     /// </summary>
-    /// <param name="name">Stack 名称。</param>
+    /// <param name="name">Compose 项目名称。</param>
     /// <returns>令牌明文。</returns>
     /// <remarks>
-    /// <b>直接写库而不是走轮换端点</b>：轮换端点要求该 Stack 已存在，
+    /// <b>直接写库而不是走轮换端点</b>：轮换端点要求该 Compose 项目已存在，
     /// 而「先有记录再发令牌」的顺序在这里没意义——
     /// 用例要的是「有一个可用的令牌」，不是「轮换端点怎么工作」。
     /// </remarks>
-    private async Task<string> SeedStackWithWebhookAsync(string name)
+    private async Task<string> SeedComposeWithWebhookAsync(string name)
     {
         var token = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
 
         using var scope = _factory.Services.CreateScope();
-        var repository = scope.ServiceProvider.GetRequiredService<IStackRepository>();
+        var repository = scope.ServiceProvider.GetRequiredService<IComposeProjectRepository>();
         var hosts = scope.ServiceProvider.GetRequiredService<IHostRepository>();
 
         var host = await hosts.FindByNameAsync(_localHost);
         host.Should().NotBeNull();
 
-        var entity = Stack.Create(Guid.NewGuid(), host!.Id, name, ComposeYaml());
+        var entity = ComposeProject.Create(Guid.NewGuid(), host!.Id, name, ComposeYaml());
         entity.SetWebhook(HashToken(token), token[..8]);
 
         await repository.AddAsync(entity);
@@ -288,13 +288,13 @@ public class StackWebhookEndpointsTests : IAsyncLifetime
     /// 清掉本次用例留下的全部资源。
     /// </summary>
     /// <param name="client">已认证客户端。</param>
-    /// <param name="name">Stack 名称。</param>
+    /// <param name="name">Compose 项目名称。</param>
     /// <returns>表示异步操作的任务。</returns>
     /// <remarks>
     /// <para><b>Webhook 触发会真的部署</b>：它入队的是一次真实的「更新」操作，
     /// 因此会在守护进程上建出网络与容器。清库里的记录是不够的——
     /// 残留的网络会占掉网段，让别的集成测试（子网 / IPAM）随机地 409。</para>
-    /// <para><b>为什么删除可能先撞上 1905</b>：同一个 Stack 不允许并发任务，
+    /// <para><b>为什么删除可能先撞上 1905</b>：同一个 Compose 项目不允许并发任务，
     /// 而触发出来的部署任务可能还在跑。因此这里**重试**，
     /// 而不是把一次 409 当成「删除失败」就放弃。</para>
     /// </remarks>
@@ -303,7 +303,7 @@ public class StackWebhookEndpointsTests : IAsyncLifetime
         for (var attempt = 0; attempt < 60; attempt++)
         {
             using var response = await client.PostAsJsonAsync(
-                $"/api/v1/hosts/{_localHost}/stacks/remove",
+                $"/api/v1/hosts/{_localHost}/composes/remove",
                 new { name, taskId = Guid.NewGuid().ToString("N"), removeVolumes = true });
 
             if (response.StatusCode == HttpStatusCode.Accepted)
@@ -324,7 +324,7 @@ public class StackWebhookEndpointsTests : IAsyncLifetime
                 break;
             }
 
-            // 1905：该 Stack 还有任务在跑，等它结束再来
+            // 1905：该 Compose 项目还有任务在跑，等它结束再来
             await Task.Delay(500);
         }
 
@@ -333,14 +333,14 @@ public class StackWebhookEndpointsTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// 直接删掉库里的 Stack 记录。
+    /// 直接删掉库里的 Compose 项目记录。
     /// </summary>
-    /// <param name="name">Stack 名称。</param>
+    /// <param name="name">Compose 项目名称。</param>
     /// <returns>表示异步操作的任务。</returns>
     private async Task DeleteRecordAsync(string name)
     {
         using var scope = _factory.Services.CreateScope();
-        var repository = scope.ServiceProvider.GetRequiredService<IStackRepository>();
+        var repository = scope.ServiceProvider.GetRequiredService<IComposeProjectRepository>();
         var hosts = scope.ServiceProvider.GetRequiredService<IHostRepository>();
 
         var host = await hosts.FindByNameAsync(_localHost);
@@ -393,7 +393,7 @@ public class StackWebhookEndpointsTests : IAsyncLifetime
     private static async Task<T> PostDataAsync<T>(HttpClient client, string action, object body)
     {
         using var response = await client.PostAsJsonAsync(
-            $"/api/v1/hosts/{_localHost}/stacks/{action}",
+            $"/api/v1/hosts/{_localHost}/composes/{action}",
             body);
 
         response.StatusCode.Should().Be(
@@ -444,7 +444,7 @@ public class StackWebhookEndpointsTests : IAsyncLifetime
 
     private sealed record TaskPayload(
         string TaskId,
-        string StackName,
+        string ComposeName,
         string Operation,
         string Status,
         int? ErrorCode,

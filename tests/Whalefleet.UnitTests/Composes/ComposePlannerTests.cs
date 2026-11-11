@@ -1,11 +1,11 @@
 using FluentAssertions;
 
 using Whalefleet.Application.Common;
-using Whalefleet.Application.Stacks;
+using Whalefleet.Application.Composes;
 
 using Xunit;
 
-namespace Whalefleet.UnitTests.Stacks;
+namespace Whalefleet.UnitTests.Composes;
 
 /// <summary>
 /// <see cref="ComposePlanner"/> 的行为测试。

@@ -77,14 +77,14 @@ public class ErrorHttpStatusTests
         [ErrorCodes.ImageBuildFailed] = 500,
         [ErrorCodes.ImagePushFailed] = 500,
 
-        [ErrorCodes.StackNotFound] = 404,
-        [ErrorCodes.StackDeployFailed] = 500,
-        [ErrorCodes.StackNameAlreadyExists] = 400,
-        [ErrorCodes.StackNotManaged] = 409,
+        [ErrorCodes.ComposeNotFound] = 404,
+        [ErrorCodes.ComposeDeployFailed] = 500,
+        [ErrorCodes.ComposeNameAlreadyExists] = 400,
+        [ErrorCodes.ComposeNotManaged] = 409,
         [ErrorCodes.ComposeInvalid] = 400,
-        [ErrorCodes.StackOperationInProgress] = 409,
-        [ErrorCodes.StackWebhookTokenInvalid] = 404,
-        [ErrorCodes.StackWebhookRateLimited] = 429,
+        [ErrorCodes.ComposeOperationInProgress] = 409,
+        [ErrorCodes.ComposeWebhookTokenInvalid] = 404,
+        [ErrorCodes.ComposeWebhookRateLimited] = 429,
 
         [ErrorCodes.InternalError] = 500,
     };

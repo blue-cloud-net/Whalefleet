@@ -1,11 +1,11 @@
 using FluentAssertions;
 
 using Whalefleet.Application.Common;
-using Whalefleet.Application.Stacks;
+using Whalefleet.Application.Composes;
 
 using Xunit;
 
-namespace Whalefleet.UnitTests.Stacks;
+namespace Whalefleet.UnitTests.Composes;
 
 /// <summary>
 /// <see cref="ComposeParser"/> 的行为测试。
@@ -53,7 +53,7 @@ public class ComposeParserTests
     }
 
     [Fact]
-    public void 解析_顶层name字段_提示项目名以Stack名称为准()
+    public void 解析_顶层name字段_提示项目名以Compose项目名称为准()
     {
         var document = ComposeParser.Parse("""
             name: my-project

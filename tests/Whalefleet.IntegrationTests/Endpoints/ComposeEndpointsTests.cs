@@ -11,7 +11,7 @@ using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Hosts;
 using Whalefleet.Core.Permissions;
-using Whalefleet.Core.Stacks;
+using Whalefleet.Core.Composes;
 using Whalefleet.Core.Users;
 using Whalefleet.IntegrationTests.Infrastructure;
 
@@ -20,7 +20,7 @@ using Xunit;
 namespace Whalefleet.IntegrationTests.Endpoints;
 
 /// <summary>
-/// 编排 Stack 端点（部署 / 更新 / 停止 / 删除 / 任务 / Webhook）的端到端测试。
+/// 编排 Compose 项目端点（部署 / 更新 / 停止 / 删除 / 任务 / Webhook）的端到端测试。
 /// </summary>
 /// <remarks>
 /// <para><b>为什么必须跑真守护进程</b>：编排的核心语义全在守护进程那边
@@ -31,11 +31,11 @@ namespace Whalefleet.IntegrationTests.Endpoints;
 /// 真正的执行在后台线程上。断言必须等任务落到终态，
 /// 否则测的是「请求被受理了」而不是「编排真的生效了」。</para>
 /// <para><b>清理要彻底</b>：编排会建出容器、网络与卷，
-/// 而卷默认保留（删 Stack 不删数据）——因此每条用例都要显式清掉卷，
+/// 而卷默认保留（删 Compose 项目不删数据）——因此每条用例都要显式清掉卷，
 /// 否则下一次跑时那个卷已经存在，「新建卷」的断言就会失败。</para>
 /// </remarks>
 #pragma warning disable CA1001
-public class StackEndpointsTests : IAsyncLifetime
+public class ComposeEndpointsTests : IAsyncLifetime
 #pragma warning restore CA1001
 {
     private const string _password = "StrongP@ss123";
@@ -86,7 +86,7 @@ public class StackEndpointsTests : IAsyncLifetime
     {
         using var client = await this.CreateAuthenticatedClientAsync();
 
-        var name = NewStackName();
+        var name = NewComposeName();
         var image = DockerAvailability.ImageReference!;
 
         try
@@ -119,7 +119,7 @@ public class StackEndpointsTests : IAsyncLifetime
     {
         using var client = await this.CreateAuthenticatedClientAsync();
 
-        var name = NewStackName();
+        var name = NewComposeName();
         var image = DockerAvailability.ImageReference!;
 
         try
@@ -150,13 +150,13 @@ public class StackEndpointsTests : IAsyncLifetime
     {
         using var client = await this.CreateAuthenticatedClientAsync();
 
-        var name = NewStackName();
+        var name = NewComposeName();
 
         // 先塞一条记录（不真的部署——用例会话里没有镜像也会走到这一步）
-        await this.SeedStackAsync(name);
+        await this.SeedComposeAsync(name);
 
         using var response = await client.PostAsJsonAsync(
-            $"/api/v1/hosts/{_localHost}/stacks/deploy",
+            $"/api/v1/hosts/{_localHost}/composes/deploy",
             new { name, composeContent = ComposeYaml("alpine:3.20"), taskId = NewTaskId() });
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -169,10 +169,10 @@ public class StackEndpointsTests : IAsyncLifetime
         using var client = await this.CreateAuthenticatedClientAsync();
 
         using var response = await client.PostAsJsonAsync(
-            $"/api/v1/hosts/{_localHost}/stacks/update",
+            $"/api/v1/hosts/{_localHost}/composes/update",
             new
             {
-                name = NewStackName(),
+                name = NewComposeName(),
                 composeContent = ComposeYaml("alpine:3.20"),
                 taskId = NewTaskId(),
             });
@@ -187,10 +187,10 @@ public class StackEndpointsTests : IAsyncLifetime
         using var client = await this.CreateAuthenticatedClientAsync();
 
         using var response = await client.PostAsJsonAsync(
-            $"/api/v1/hosts/{_localHost}/stacks/deploy",
+            $"/api/v1/hosts/{_localHost}/composes/deploy",
             new
             {
-                name = NewStackName(),
+                name = NewComposeName(),
                 composeContent = "services:\n  app:\n    image: alpine:3.20\n    build: .\n",
                 taskId = NewTaskId(),
             });
@@ -208,7 +208,7 @@ public class StackEndpointsTests : IAsyncLifetime
         using var client = await this.CreateAuthenticatedClientAsync();
 
         using var response = await client.PostAsJsonAsync(
-            $"/api/v1/hosts/{_localHost}/stacks/deploy",
+            $"/api/v1/hosts/{_localHost}/composes/deploy",
             new
             {
                 name = "BadName",
@@ -226,7 +226,7 @@ public class StackEndpointsTests : IAsyncLifetime
         using var client = _factory.CreateClient();
 
         using var response = await client.PostAsJsonAsync(
-            $"/api/v1/hosts/{_localHost}/stacks/list",
+            $"/api/v1/hosts/{_localHost}/composes/list",
             new { });
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
@@ -240,7 +240,7 @@ public class StackEndpointsTests : IAsyncLifetime
     {
         using var client = await this.CreateAuthenticatedClientAsync();
 
-        var name = NewStackName();
+        var name = NewComposeName();
         var image = DockerAvailability.ImageReference!;
 
         try
@@ -253,7 +253,7 @@ public class StackEndpointsTests : IAsyncLifetime
             var stopTaskId = NewTaskId();
 
             using var stopResponse = await client.PostAsJsonAsync(
-                $"/api/v1/hosts/{_localHost}/stacks/stop",
+                $"/api/v1/hosts/{_localHost}/composes/stop",
                 new { name, taskId = stopTaskId });
 
             stopResponse.StatusCode.Should().Be(HttpStatusCode.Accepted);
@@ -280,7 +280,7 @@ public class StackEndpointsTests : IAsyncLifetime
     {
         using var client = await this.CreateAuthenticatedClientAsync();
 
-        var name = NewStackName();
+        var name = NewComposeName();
         var image = DockerAvailability.ImageReference!;
 
         try
@@ -293,7 +293,7 @@ public class StackEndpointsTests : IAsyncLifetime
             var removeTaskId = NewTaskId();
 
             using var removeResponse = await client.PostAsJsonAsync(
-                $"/api/v1/hosts/{_localHost}/stacks/remove",
+                $"/api/v1/hosts/{_localHost}/composes/remove",
                 new { name, taskId = removeTaskId, removeVolumes = true });
 
             removeResponse.StatusCode.Should().Be(HttpStatusCode.Accepted);
@@ -319,7 +319,7 @@ public class StackEndpointsTests : IAsyncLifetime
     {
         using var client = await this.CreateAuthenticatedClientAsync();
 
-        var name = NewStackName();
+        var name = NewComposeName();
         var image = DockerAvailability.ImageReference!;
 
         try
@@ -329,7 +329,7 @@ public class StackEndpointsTests : IAsyncLifetime
             var snapshot = await WaitForTerminalAsync(client, taskId);
 
             snapshot.TaskId.Should().Be(taskId);
-            snapshot.StackName.Should().Be(name);
+            snapshot.ComposeName.Should().Be(name);
             snapshot.Operation.Should().Be("deploy");
             snapshot.Status.Should().Be("succeeded");
             snapshot.Result.Should().NotBeNull();
@@ -358,7 +358,7 @@ public class StackEndpointsTests : IAsyncLifetime
     {
         using var client = await this.CreateAuthenticatedClientAsync();
 
-        var name = NewStackName();
+        var name = NewComposeName();
         var image = DockerAvailability.ImageReference!;
 
         try
@@ -396,8 +396,8 @@ public class StackEndpointsTests : IAsyncLifetime
         using var client = await this.CreateAuthenticatedClientAsync();
 
         using var response = await client.PostAsJsonAsync(
-            $"/api/v1/hosts/{_localHost}/stacks/webhook/rotate",
-            new { name = NewStackName() });
+            $"/api/v1/hosts/{_localHost}/composes/webhook/rotate",
+            new { name = NewComposeName() });
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await ReadCodeAsync(response)).Should().Be(1900);
@@ -407,10 +407,10 @@ public class StackEndpointsTests : IAsyncLifetime
     #region 辅助
 
     /// <summary>
-    /// 生成一个本次用例专用的 Stack 名称。
+    /// 生成一个本次用例专用的 Compose 项目名称。
     /// </summary>
-    /// <returns>Stack 名称（小写字母、数字与连字符）。</returns>
-    private static string NewStackName() => $"wftest{Guid.NewGuid():N}"[..24];
+    /// <returns>Compose 项目名称（小写字母、数字与连字符）。</returns>
+    private static string NewComposeName() => $"wftest{Guid.NewGuid():N}"[..24];
 
     /// <summary>
     /// 生成一个任务标识。
@@ -437,20 +437,20 @@ public class StackEndpointsTests : IAsyncLifetime
         """;
 
     /// <summary>
-    /// 直接往库里塞一条 Stack 记录（用于「重名」这类不需要真部署的断言）。
+    /// 直接往库里塞一条 Compose 项目记录（用于「重名」这类不需要真部署的断言）。
     /// </summary>
-    /// <param name="name">Stack 名称。</param>
+    /// <param name="name">Compose 项目名称。</param>
     /// <returns>表示异步操作的任务。</returns>
-    private async Task SeedStackAsync(string name)
+    private async Task SeedComposeAsync(string name)
     {
         using var scope = _factory.Services.CreateScope();
-        var repository = scope.ServiceProvider.GetRequiredService<IStackRepository>();
+        var repository = scope.ServiceProvider.GetRequiredService<IComposeProjectRepository>();
         var hosts = scope.ServiceProvider.GetRequiredService<IHostRepository>();
 
         var host = await hosts.FindByNameAsync(_localHost);
         host.Should().NotBeNull();
 
-        var entity = Stack.Create(Guid.NewGuid(), host!.Id, name, ComposeYaml("alpine:3.20"));
+        var entity = ComposeProject.Create(Guid.NewGuid(), host!.Id, name, ComposeYaml("alpine:3.20"));
 
         await repository.AddAsync(entity);
     }
@@ -459,7 +459,7 @@ public class StackEndpointsTests : IAsyncLifetime
     /// 部署并返回任务标识。
     /// </summary>
     /// <param name="client">已认证客户端。</param>
-    /// <param name="name">Stack 名称。</param>
+    /// <param name="name">Compose 项目名称。</param>
     /// <param name="composeContent">Compose 文件原文。</param>
     /// <returns>任务标识。</returns>
     private static async Task<string> DeployAsync(HttpClient client, string name, string composeContent)
@@ -467,7 +467,7 @@ public class StackEndpointsTests : IAsyncLifetime
         var taskId = NewTaskId();
 
         using var response = await client.PostAsJsonAsync(
-            $"/api/v1/hosts/{_localHost}/stacks/deploy",
+            $"/api/v1/hosts/{_localHost}/composes/deploy",
             new { name, composeContent, taskId });
 
         response.StatusCode.Should().Be(
@@ -505,10 +505,10 @@ public class StackEndpointsTests : IAsyncLifetime
     /// 清掉本次用例留下的全部资源（容器、网络、卷与数据库记录）。
     /// </summary>
     /// <param name="client">已认证客户端。</param>
-    /// <param name="name">Stack 名称。</param>
+    /// <param name="name">Compose 项目名称。</param>
     /// <returns>表示异步操作的任务。</returns>
     /// <remarks>
-    /// <para><b>为什么删除可能先撞上 1905</b>：同一个 Stack 不允许并发任务，
+    /// <para><b>为什么删除可能先撞上 1905</b>：同一个 Compose 项目不允许并发任务，
     /// 而刚发起的部署可能还在跑。因此这里**重试**，
     /// 而不是把一次 409 当成「删除失败」就放弃——
     /// 放弃的话残留的网络会占掉网段，让别的集成测试（子网 / IPAM）随机地 409。</para>
@@ -522,7 +522,7 @@ public class StackEndpointsTests : IAsyncLifetime
             for (var attempt = 0; attempt < 60; attempt++)
             {
                 using var response = await client.PostAsJsonAsync(
-                    $"/api/v1/hosts/{_localHost}/stacks/remove",
+                    $"/api/v1/hosts/{_localHost}/composes/remove",
                     new { name, taskId = NewTaskId(), removeVolumes = true });
 
                 if (response.StatusCode == HttpStatusCode.Accepted)
@@ -543,7 +543,7 @@ public class StackEndpointsTests : IAsyncLifetime
                     return;
                 }
 
-                // 1905：该 Stack 还有任务在跑，等它结束再来
+                // 1905：该 Compose 项目还有任务在跑，等它结束再来
                 await Task.Delay(500);
             }
         }
@@ -573,7 +573,7 @@ public class StackEndpointsTests : IAsyncLifetime
     private static async Task PostOkAsync(HttpClient client, string action, object body)
     {
         using var response = await client.PostAsJsonAsync(
-            $"/api/v1/hosts/{_localHost}/stacks/{action}",
+            $"/api/v1/hosts/{_localHost}/composes/{action}",
             body);
 
         response.StatusCode.Should().Be(
@@ -584,7 +584,7 @@ public class StackEndpointsTests : IAsyncLifetime
     private static async Task<T> PostDataAsync<T>(HttpClient client, string action, object body)
     {
         using var response = await client.PostAsJsonAsync(
-            $"/api/v1/hosts/{_localHost}/stacks/{action}",
+            $"/api/v1/hosts/{_localHost}/composes/{action}",
             body);
 
         response.StatusCode.Should().Be(
@@ -641,7 +641,7 @@ public class StackEndpointsTests : IAsyncLifetime
 
     private sealed record TaskPayload(
         string TaskId,
-        string StackName,
+        string ComposeName,
         string Operation,
         string Status,
         double? Percent,

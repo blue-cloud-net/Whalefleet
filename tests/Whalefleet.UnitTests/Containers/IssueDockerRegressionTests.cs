@@ -11,7 +11,7 @@ using Whalefleet.Application.Common;
 using Whalefleet.Application.Images;
 using Whalefleet.Application.Networks;
 using Whalefleet.Application.Repositories;
-using Whalefleet.Application.Stacks;
+using Whalefleet.Application.Composes;
 
 using Xunit;
 
@@ -84,9 +84,9 @@ public sealed class IssueDockerRegressionTests
         });
         var accessor = new StubDockerHostAccessor(daemon.Endpoint);
         var images = new ImageService(accessor, NullLogger<ImageService>.Instance, new Credentials(false));
-        var executor = new StackOperationExecutor(accessor, images, new NoopProgress(),
-            NullLogger<StackOperationExecutor>.Instance);
-        var request = new StackOperationRequest("task", "local", "demo", StackOperations.Remove,
+        var executor = new ComposeOperationExecutor(accessor, images, new NoopProgress(),
+            NullLogger<ComposeOperationExecutor>.Instance);
+        var request = new ComposeOperationRequest("task", "local", "demo", ComposeOperations.Remove,
             null, false, false, true, null, null, null, null);
         if (succeeds)
         {
