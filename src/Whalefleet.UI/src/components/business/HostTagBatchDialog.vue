@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { assignHostTags, listHostTags, revokeHostTags } from '@/api/host-tag'
+import EmphasisText from '@/components/common/EmphasisText.vue'
 import type { HostTag } from '@/types/api'
 
 /**
@@ -95,7 +96,7 @@ async function save(): Promise<void> {
     width="440px"
     @update:model-value="emit('update:modelValue', $event)"
   >
-    <p class="mb-3 text-xs text-content-muted">{{ t('host.tag.batch.hint') }}</p>
+    <p class="mb-3 text-xs text-content-muted"><EmphasisText :text="t('host.tag.batch.hint')" /></p>
 
     <label class="text-xs text-content-muted" for="host-tag-batch-add">
       {{ t('host.tag.batch.add') }}

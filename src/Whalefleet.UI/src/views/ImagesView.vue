@@ -79,17 +79,18 @@ const tagDialogVisible = ref(false)
  * 清理对话框（0.7.0）。
  *
  * ⚠️ **两种清理范围的措辞必须不同**：
- * - `true`（只清悬空）= 一个标签都不剩的镜像；
- * - `false` = **不止悬空**（等价 `docker image prune -a`），任何未被容器使用的镜像都算。
+ * - `dangling`（只清悬空）= 一个标签都不剩的镜像；
+ * - `all` = **不止悬空**（等价 `docker image prune -a`），任何未被容器使用的镜像都算。
  *
  * 写成「清理非悬空镜像」会让用户以为只会删掉没标签的那一批——
  * 而实际删掉的是**所有**没被容器用上的镜像（包括带标签的）。
  */
 const pruneDialogVisible = ref(false)
-const pruneDanglingOnly = ref(true)
+/** 当前打开的清理范围；决定对话框的标题、副标题与实际请求的 `danglingOnly`。 */
+const pruneScope = ref<'dangling' | 'all'>('dangling')
 
-function openPrune(danglingOnly: boolean): void {
-  pruneDanglingOnly.value = danglingOnly
+function openPrune(scope: 'dangling' | 'all'): void {
+  pruneScope.value = scope
   pruneDialogVisible.value = true
 }
 const tagTarget = ref<ImageSummary | null>(null)
@@ -326,7 +327,7 @@ async function batchRemove(): Promise<void> {
 
   batchBusy.value = true
 
-  // 后端接受 ID / 短 ID / 仓库名 / 仓库:标签 四种形态；悬挂镜像没有标签，
+  // 后端接受 ID / 短 ID / 仓库名 / 仓库:标签 四种形态；悬空镜像没有标签，
   // 只能按 ID 删——这与单条删除用的是同一套判据。
   const referenceOf = (image: ImageSummary): string =>
     isDangling(image.repoTags) ? image.id : primaryImageName(image.repoTags)
@@ -403,7 +404,7 @@ function openInspect(image: ImageSummary): void {
 /**
  * 打开打标签对话框（0.3.0）。
  *
- * ⚠️ 悬挂镜像（`repoTags` 为空）不能打标签：它连一个可引用的名字都没有，
+ * ⚠️ 悬空镜像（`repoTags` 为空）不能打标签：它连一个可引用的名字都没有，
  * 而 `docker tag` 需要一个源标识。对它开放这个入口只会得到一句看不懂的报错，
  * 因此这里直接不打开并给出原因。
  */
@@ -469,10 +470,10 @@ watch(
           <el-button>{{ t('common.actions') }}</el-button>
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item @click="openPrune(true)">
+              <el-dropdown-item @click="openPrune('dangling')">
                 {{ t('prune.action.dangling') }}
               </el-dropdown-item>
-              <el-dropdown-item @click="openPrune(false)">
+              <el-dropdown-item @click="openPrune('all')">
                 {{ t('prune.action.all') }}
               </el-dropdown-item>
             </el-dropdown-menu>
@@ -644,7 +645,7 @@ watch(
 
           <!-- 与容器列表共用 IconActionButton：图标按钮 + tooltip 文字标签。
                `gap-0` + 112px 定宽：四个 24px 按钮 = 96px，gap-0.5 时是 102px，取 112 留余量。
-               悬挂镜像没有标签，打标签（要源标识）与推送（要 仓库:标签）都不成立，
+               悬空镜像没有标签，打标签（要源标识）与推送（要 仓库:标签）都不成立，
                那一行只剩「详情 / 删除」两个按钮。 -->
           <el-table-column :label="t('container.col.actions')" width="112">
             <template #default="{ row }">
@@ -725,8 +726,7 @@ watch(
     <PruneDialog
       v-model="pruneDialogVisible"
       :host-id="hostId"
-      resource="images"
-      :dangling-only="pruneDanglingOnly"
+      :scope="pruneScope"
       @done="load"
     />
 

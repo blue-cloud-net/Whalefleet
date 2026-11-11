@@ -7,6 +7,7 @@ import { pruneImages } from '@/api/image'
 import { pruneVolumes } from '@/api/volume'
 import { buildPrunePreview, pruneCandidateLabel } from '@/utils/prune-preview'
 import { formatBytes } from '@/utils/container-status'
+import EmphasisText from '@/components/common/EmphasisText.vue'
 import type { PruneResult } from '@/types/api'
 import type { PrunePreview } from '@/utils/prune-preview'
 
@@ -26,18 +27,47 @@ import type { PrunePreview } from '@/utils/prune-preview'
  * 因此结果区展示的是**实际删掉了什么**（后端回传的 `deleted`），
  * 而不是把预览原样再念一遍。
  */
+/**
+ * 清理的三种范围。
+ *
+ * ⚠️ **它们必须各自有独立的标题与副标题**：
+ * 「清理悬空镜像」与「清理所有未使用镜像」删掉的东西**完全不同**，
+ * 而两者的不可逆程度差了一个数量级（后者会连带删掉有标签的镜像）。
+ * 共用一句话 = 用户在点「确认清理」之前不知道自己在删什么。
+ */
+type PruneScope = 'dangling' | 'all' | 'volumes'
+
+/**
+ * 范围 → 标题 / 副标题的 i18n key。
+ *
+ * ⚠️ **必须显式映射，不能在模板里拼 ``t(`prune.title.${scope}`)``**：
+ * 拼出来的 key 一旦不存在，vue-i18n **只告警不报错**，界面上直接显示
+ * `prune.title.dangling` 这种原始 key 路径——构建与测试都拦不住
+ * （见 AGENTS.md「常见陷阱」）。显式映射让「范围」与「词条」的关系
+ * 一眼可查，新增范围时漏登记词条也会在这里露出来。
+ */
+const SCOPE_TITLE_KEYS: Record<PruneScope, string> = {
+  dangling: 'prune.title.dangling',
+  all: 'prune.title.all',
+  volumes: 'prune.title.volumes'
+}
+
+const SCOPE_SUBTITLE_KEYS: Record<PruneScope, string> = {
+  dangling: 'prune.subtitle.dangling',
+  all: 'prune.subtitle.all',
+  volumes: 'prune.subtitle.volumes'
+}
+
 const props = defineProps<{
   hostId: string
-  /** 要清理的资源类别 */
-  resource: 'images' | 'volumes'
   /**
-   * 镜像专用：是否只清悬空镜像。
+   * 清理范围。
    *
-   * `true`（默认）= 只清一个标签都不剩的镜像；
-   * `false` = **不止悬空**（等价 `docker image prune -a`），
-   * 任何未被容器使用的镜像都是候选——这是不可逆的大动作。
+   * - `dangling` = 只清悬空镜像（一个标签都不剩的）；
+   * - `all` = 清所有未被容器使用的镜像（等价 `docker image prune -a`）；
+   * - `volumes` = 清未被引用的数据卷。
    */
-  danglingOnly?: boolean
+  scope: PruneScope
 }>()
 
 const visible = defineModel<boolean>({ required: true })
@@ -51,18 +81,30 @@ const submitting = ref(false)
 const errorMessage = ref<string | null>(null)
 const preview = ref<PrunePreview>({ candidates: [], unknownCount: 0, reclaimable: null, totalCount: null })
 
-/** 「高级」折叠区默认收起：标签过滤是低频用法。 */
-const advancedOpen = ref(false)
+/**
+ * 「高级」折叠区当前展开的折叠项名称。
+ *
+ * ⚠️ **必须是数组**：Element Plus 的 `el-collapse` 的 `modelValue` 契约是
+ * `Array | String | Number`，传布尔值会触发 prop 类型告警，且展开状态
+ * 由 `name` 匹配决定——布尔值永远匹配不上任何 `name`，折叠项因此打不开。
+ * 这里用**名称数组**（而不是布尔量）正是为了对上那个契约。
+ */
+const advancedOpen = ref<string[]>([])
 /** 标签过滤表达式（`key` 或 `key=value`）；空串 = 不过滤。 */
 const label = ref('')
 
 /** 清理完成后的实际结果；非 `null` 时对话框切到「结果」视图。 */
 const result = ref<PruneResult | null>(null)
 
-const isImages = computed(() => props.resource === 'images')
+const isImages = computed(() => props.scope !== 'volumes')
 
-/** 只清悬空镜像时，悬空的判据是「一个标签都不剩」。 */
-const effectiveDanglingOnly = computed(() => props.danglingOnly ?? true)
+/**
+ * 是否只清悬空镜像。
+ *
+ * 悬空的判据是「一个标签都不剩」——**不是**「没被容器使用」。
+ * 后者对应 `all` 范围，会连带删掉有标签的镜像。
+ */
+const danglingOnly = computed(() => props.scope === 'dangling')
 
 const byteUnits = computed(() => ({
   b: t('unit.byte'),
@@ -95,7 +137,7 @@ async function load(): Promise<void> {
     )
 
     preview.value = buildPrunePreview(isImages.value ? usage.images : usage.volumes, {
-      danglingOnly: isImages.value ? effectiveDanglingOnly.value : undefined
+      danglingOnly: isImages.value ? danglingOnly.value : undefined
     })
   } catch (e) {
     errorMessage.value = e instanceof Error ? e.message : String(e)
@@ -109,7 +151,7 @@ watch(visible, (open) => {
   if (!open) return
 
   label.value = ''
-  advancedOpen.value = false
+  advancedOpen.value = []
   result.value = null
   void load()
 })
@@ -127,7 +169,7 @@ async function submit(): Promise<void> {
     result.value = isImages.value
       ? await pruneImages(props.hostId, {
           ...payload,
-          danglingOnly: effectiveDanglingOnly.value
+          danglingOnly: danglingOnly.value
         })
       : await pruneVolumes(props.hostId, payload)
 
@@ -150,7 +192,7 @@ function close(): void {
 <template>
   <el-dialog
     v-model="visible"
-    :title="t(isImages ? 'prune.title.images' : 'prune.title.volumes')"
+    :title="t(SCOPE_TITLE_KEYS[scope])"
     width="560px"
   >
     <!-- 结果视图：展示「实际删掉了什么」 -->
@@ -176,7 +218,7 @@ function close(): void {
     <!-- 预览视图 -->
     <div v-else v-loading="loading">
       <p class="text-sm text-content-muted">
-        {{ t(isImages ? 'prune.subtitle.images' : 'prune.subtitle.volumes') }}
+        <EmphasisText :text="t(SCOPE_SUBTITLE_KEYS[scope])" />
       </p>
 
       <p v-if="errorMessage !== null" class="mt-3 text-sm text-status-down">
@@ -206,7 +248,7 @@ function close(): void {
         不说清楚就是隐性谎报——用户会以为清单里那些都会被删。
       -->
       <p v-if="hasLabelFilter" class="mt-3 text-xs text-status-warn">
-        {{ t('prune.label.previewNote') }}
+        <EmphasisText :text="t('prune.label.previewNote')" />
       </p>
 
       <div class="mt-4 flex items-baseline justify-between">

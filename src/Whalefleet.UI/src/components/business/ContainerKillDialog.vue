@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { killContainer } from '@/api/container'
+import EmphasisText from '@/components/common/EmphasisText.vue'
 import {
   COMMON_SIGNALS,
   DEFAULT_SIGNAL,
@@ -128,7 +129,7 @@ async function submit(): Promise<void> {
       </p>
 
       <p v-if="nonTerminating" class="mt-2 text-xs text-status-warn">
-        {{ t('container.kill.nonTerminating', { signal: normalizedSignal ?? '' }) }}
+        <EmphasisText :text="t('container.kill.nonTerminating', { signal: normalizedSignal ?? '' })" />
       </p>
     </el-form>
 

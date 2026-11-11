@@ -826,7 +826,7 @@ export interface ContainerRecreatedResult {
 /**
  * 镜像列表项。
  *
- * `repoTags` 为**空数组**表示悬挂镜像（Docker 内部用 `<none>:<none>` 占位，
+ * `repoTags` 为**空数组**表示悬空镜像（Docker 内部用 `<none>:<none>` 占位，
  * 后端已把它过滤掉）——界面要显示「`<none>`」而不是一行空白，
  * 并且仍允许按 ID 删除。
  */
