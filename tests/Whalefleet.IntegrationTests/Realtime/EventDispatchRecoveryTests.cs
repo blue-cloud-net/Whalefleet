@@ -4,13 +4,14 @@ using Docker.DotNet;
 
 using FluentAssertions;
 
-using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Whalefleet.Api.Realtime;
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Realtime;
+using Whalefleet.Application.Alerting;
+using Whalefleet.Core.Alerting;
 using Whalefleet.Core.Hosts;
 
 using Xunit;
@@ -28,15 +29,14 @@ public sealed class EventDispatchRecoveryTests
         var accessor = new IntermittentAccessor();
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSignalR();
         services.AddSingleton<IDockerHostAccessor>(accessor);
         services.AddSingleton<IPermissionChecker, NoPermissions>();
+        services.AddSingleton<INotificationWriter, NoopWriter>();
         using var provider = services.BuildServiceProvider();
-        var connections = new RealtimeConnectionRegistry();
-        connections.Add("connection", Guid.NewGuid());
-        using var dispatcher = new ContainerNotificationDispatcher(new Events(), connections,
-            provider.GetRequiredService<IHubContext<NotificationHub>>(),
-            provider.GetRequiredService<IServiceScopeFactory>(), NullLogger<ContainerNotificationDispatcher>.Instance);
+        using var dispatcher = new ContainerNotificationDispatcher(
+            new Events(),
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<ContainerNotificationDispatcher>.Instance);
         await dispatcher.StartAsync(CancellationToken.None);
         await dispatcher.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(5));
         accessor.Attempts.Should().Be(2);
@@ -75,6 +75,21 @@ public sealed class EventDispatchRecoveryTests
         public Task<bool> TestConnectionAsync(DockerHostConnection connection, CancellationToken cancellationToken = default)
             => throw new NotSupportedException();
         public void Invalidate(DockerHostConnection connection) => throw new NotSupportedException();
+    }
+
+    private sealed class NoopWriter : INotificationWriter
+    {
+        public Task<Notification> CreateAsync(NotificationDraft draft, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Notification.Create(
+                Guid.NewGuid(),
+                draft.SourceKind,
+                draft.Severity,
+                draft.MessageKey,
+                "{}",
+                draft.HostId,
+                draft.HostName,
+                draft.DedupeKey,
+                draft.OccurredAt));
     }
 
     private sealed class NoPermissions : IPermissionChecker

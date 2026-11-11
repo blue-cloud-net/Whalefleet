@@ -86,6 +86,13 @@ public class ErrorHttpStatusTests
         [ErrorCodes.StackWebhookTokenInvalid] = 404,
         [ErrorCodes.StackWebhookRateLimited] = 429,
 
+        [ErrorCodes.AlertRuleNotFound] = 404,
+        [ErrorCodes.AlertRuleInvalid] = 400,
+        [ErrorCodes.NotificationChannelNotFound] = 404,
+        [ErrorCodes.NotificationChannelTestFailed] = 502,
+        [ErrorCodes.NotificationNotFound] = 404,
+        [ErrorCodes.NotificationChannelNameAlreadyExists] = 400,
+
         [ErrorCodes.InternalError] = 500,
     };
 
