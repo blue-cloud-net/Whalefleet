@@ -10,6 +10,7 @@
   // 文件嵌套设置
   "explorer.fileNesting.enabled": true,
   "explorer.fileNesting.patterns": {
+    ".env": ".env.*",
     ".gitignore": ".gitmodules, .gitattributes",
     "tsconfig.json": "tsconfig.*.json, env.d.ts",
     "vite.config.*": "jsconfig*, vitest.config.*, cypress.config.*, playwright.config.*",
