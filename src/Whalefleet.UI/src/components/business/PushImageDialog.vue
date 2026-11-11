@@ -54,7 +54,7 @@ const reference = computed(() => {
   return tags.length > 0 ? tags[0] : ''
 })
 
-/** 悬挂镜像没有标签，推送必然失败（后端返回 1000）——界面直接拦住。 */
+/** 悬空镜像没有标签，推送必然失败（后端返回 1000）——界面直接拦住。 */
 const isUntagged = computed(() => props.image === null || isDangling(props.image.repoTags))
 
 /** 自动匹配到的配置（仅用于展示，提交时仍交给后端再匹配一次）。 */

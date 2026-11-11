@@ -594,7 +594,7 @@ public sealed class ImageService
     /// 翻到第二页可能出现在不同位置，用户会以为有镜像凭空消失了。
     /// ID 唯一，拿它当次级键能让顺序可复现。
     /// <br/>
-    /// <b>仓库名取首个标签</b>：悬挂镜像（无标签）的 <c>RepoTags</c> 为空，
+    /// <b>仓库名取首个标签</b>：悬空镜像（无标签）的 <c>RepoTags</c> 为空，
     /// 直接取 <c>[0]</c> 会抛 <see cref="ArgumentOutOfRangeException"/>。
     /// 空列表按空串参与比较，排在有名字的镜像后面（升序）/ 前面（降序）——任一都是可预期的，
     /// 抛异常则不是。
@@ -646,7 +646,7 @@ public sealed class ImageService
     }
 
     /// <summary>
-    /// 仓库名排序键：取首个标签，悬挂镜像（无标签）用空串。
+    /// 仓库名排序键：取首个标签，悬空镜像（无标签）用空串。
     /// </summary>
     private static string RepositoryKey(ImagesListResponse image) =>
         image.RepoTags?.FirstOrDefault() ?? String.Empty;
@@ -880,7 +880,7 @@ public sealed class ImageService
     /// 界面可以显示成「&lt;none&gt;」并仍允许按 ID 操作。
     /// <br/>
     /// 声明为 <c>internal</c>：<see cref="ImageBuildPushService"/> 在推送前也用它过滤掉
-    /// <c>&lt;none&gt;</c> 占位标签，否则会把「悬挂镜像」误判成「有标签」。
+    /// <c>&lt;none&gt;</c> 占位标签，否则会把「悬空镜像」误判成「有标签」。
     /// </remarks>
     internal static IReadOnlyList<string> MapReferences(IList<string>? references) =>
         references is null

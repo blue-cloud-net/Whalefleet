@@ -175,11 +175,11 @@ const imagesLoading = ref(false)
 
 /** 镜像下拉的候选项。 */
 interface ImageOption {
-  /** 传给 Docker 的镜像引用（标签优先，悬挂镜像用 ID） */
+  /** 传给 Docker 的镜像引用（标签优先，悬空镜像用 ID） */
   reference: string
   /** 展示文本 */
   label: string
-  /** 副标题（悬挂镜像没有标签，用短 ID 提示） */
+  /** 副标题（悬空镜像没有标签，用短 ID 提示） */
   hint: string
 }
 
@@ -199,7 +199,7 @@ async function loadImages(): Promise<void> {
     imageOptions.value = result.items.flatMap((item) => {
       const tags = item.repoTags.filter((tag) => tag.length > 0 && tag !== '<none>:<none>')
 
-      // 悬挂镜像（没有任何标签）只能用 ID 启动，展示成短 ID + 完整 ID 的提示
+      // 悬空镜像（没有任何标签）只能用 ID 启动，展示成短 ID + 完整 ID 的提示
       if (tags.length === 0) {
         const short = item.id.replace(/^sha256:/, '').slice(0, 12)
 

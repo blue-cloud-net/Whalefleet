@@ -358,7 +358,7 @@ public class ImageBuildPushEndpointsTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// 悬挂镜像没有可推的名字——提前报错，而不是让守护进程回一句
+    /// 悬空镜像没有可推的名字——提前报错，而不是让守护进程回一句
     /// <c>refusing to push unqualified name</c>。
     /// </summary>
     [DockerFact]
@@ -366,7 +366,7 @@ public class ImageBuildPushEndpointsTests : IAsyncLifetime
     {
         using var client = await this.CreateAuthenticatedClientAsync();
 
-        // 构造一个悬挂镜像：build 出一个镜像后立刻删掉它的标签
+        // 构造一个悬空镜像：build 出一个镜像后立刻删掉它的标签
         var tag = NewTag();
 
         try
@@ -382,7 +382,7 @@ public class ImageBuildPushEndpointsTests : IAsyncLifetime
                 build.StatusCode.Should().Be(HttpStatusCode.OK, "实际响应体：" + buildBody);
             }
 
-            // 用 RemoveImage 删除：Docker 的 remove 只会解绑标签，镜像本体变成悬挂镜像。
+            // 用 RemoveImage 删除：Docker 的 remove 只会解绑标签，镜像本体变成悬空镜像。
             // 这里直接用 docker 命令剥掉标签，避免依赖「删镜像会让整条记录消失」。
             var built = await PostDataAsync<ListPayload>(
                 client,
@@ -398,7 +398,7 @@ public class ImageBuildPushEndpointsTests : IAsyncLifetime
                 $"/api/v1/hosts/{_localHost}/images/push",
                 new { image = imageId });
 
-            // 删掉标签后镜像要么没了（1401）要么变成悬挂镜像（1000）——两者都不是成功
+            // 删掉标签后镜像要么没了（1401）要么变成悬空镜像（1000）——两者都不是成功
             var code = await ReadCodeAsync(response);
             code.Should().BeOneOf(ErrorCodes.ValidationFailed, ErrorCodes.DockerResourceNotFound);
         }

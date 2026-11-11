@@ -4,7 +4,7 @@ namespace Whalefleet.Application.Images;
 /// 镜像列表项。
 /// </summary>
 /// <param name="Id">镜像完整 ID（<c>sha256:…</c>）。</param>
-/// <param name="RepoTags">仓库标签（如 <c>nginx:latest</c>）；悬挂镜像为空列表。</param>
+/// <param name="RepoTags">仓库标签（如 <c>nginx:latest</c>）；悬空镜像为空列表。</param>
 /// <param name="RepoDigests">内容寻址摘要（如 <c>nginx@sha256:…</c>）。</param>
 /// <param name="Created">创建时间（UTC）。</param>
 /// <param name="Size">镜像大小（字节）。</param>
@@ -14,7 +14,7 @@ namespace Whalefleet.Application.Images;
 /// <para><b>为什么逐字段挑选而不是直接序列化 SDK 的 <c>ImagesListResponse</c></b>：
 /// 那个对象带着 <c>Descriptor</c> / <c>ParentID</c> / <c>Manifests</c> 等列表页用不到的东西，
 /// 而且其中多数只在新版 Docker 才有——原样透传等于让「响应里有什么」随守护进程版本变化。</para>
-/// <para><b>悬挂镜像（<c>&lt;none&gt;:&lt;none&gt;</c>）的标签被过滤掉</b>：Docker 用
+/// <para><b>悬空镜像（<c>&lt;none&gt;:&lt;none&gt;</c>）的标签被过滤掉</b>：Docker 用
 /// <c>&lt;none&gt;</c> 占位表示「这个镜像没有标签」（例如构建中间层）。原样返回会让界面上出现
 /// 一行叫「&lt;none&gt;:&lt;none&gt;」的镜像；过滤后它只是 <c>repoTags: []</c>，
 /// 界面可以据此显示为「&lt;none&gt;」并仍允许按 ID 操作。</para>

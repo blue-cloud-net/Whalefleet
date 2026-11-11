@@ -22,7 +22,7 @@ describe('镜像主展示名', () => {
     expect(primaryImageName(['nginx:latest', 'nginx:1.27'])).toBe('nginx:latest')
   })
 
-  it('悬挂镜像显示占位名而不是空串', () => {
+  it('悬空镜像显示占位名而不是空串', () => {
     expect(primaryImageName([])).toBe(DANGLING_IMAGE_LABEL)
     expect(primaryImageName(null)).toBe(DANGLING_IMAGE_LABEL)
     expect(primaryImageName(undefined)).toBe(DANGLING_IMAGE_LABEL)
@@ -34,7 +34,7 @@ describe('镜像主展示名', () => {
     expect(stackedTagCount(['nginx:latest', 'nginx:1.27', 'nginx:1'])).toBe(2)
   })
 
-  it('悬挂镜像的判定只看标签数量', () => {
+  it('悬空镜像的判定只看标签数量', () => {
     expect(isDangling([])).toBe(true)
     expect(isDangling(['alpine:3.20'])).toBe(false)
     expect(isDangling(null)).toBe(true)

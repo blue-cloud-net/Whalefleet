@@ -263,7 +263,7 @@ public sealed class ImageBuildPushService
     /// </exception>
     /// <remarks>
     /// <para><b>为什么必须带标签</b>：<c>docker push</c> 推的是「仓库:标签」，
-    /// 而悬挂镜像（<c>&lt;none&gt;</lt;none&gt;</c>）没有可推的名字。
+    /// 而悬空镜像（<c>&lt;none&gt;</lt;none&gt;</c>）没有可推的名字。
     /// 这里提前报错，而不是让守护进程回一句看不懂的 <c>refusing to push unqualified name</c>。</para>
     /// <para><b>仓库凭据怎么选</b>：显式给了主键就用它（配置不存在报 <c>1800</c>）；
     /// 否则从镜像引用里切出地址段（如 <c>harbor.local:5000/app:v1</c> → <c>harbor.local:5000</c>）
