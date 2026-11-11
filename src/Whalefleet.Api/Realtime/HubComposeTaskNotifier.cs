@@ -19,12 +19,12 @@ namespace Whalefleet.Api.Realtime;
 /// <para><b>为什么不抛异常</b>：通知失败不能让已经失败的任务再失败一次——
 /// 失败原因已经写进任务快照与审计日志了，推不出去只是「用户没收到铃铛」。</para>
 /// </remarks>
-internal sealed class HubStackTaskNotifier : IStackTaskNotifier
+internal sealed class HubComposeTaskNotifier : IComposeTaskNotifier
 {
     private readonly RealtimeConnectionRegistry _connections;
     private readonly IHubContext<NotificationHub> _hubContext;
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly ILogger<HubStackTaskNotifier> _logger;
+    private readonly ILogger<HubComposeTaskNotifier> _logger;
 
     /// <summary>
     /// 初始化通知器。
@@ -34,11 +34,11 @@ internal sealed class HubStackTaskNotifier : IStackTaskNotifier
     /// <param name="scopeFactory">依赖注入作用域工厂。</param>
     /// <param name="logger">日志。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
-    public HubStackTaskNotifier(
+    public HubComposeTaskNotifier(
         RealtimeConnectionRegistry connections,
         IHubContext<NotificationHub> hubContext,
         IServiceScopeFactory scopeFactory,
-        ILogger<HubStackTaskNotifier> logger)
+        ILogger<HubComposeTaskNotifier> logger)
     {
         ArgumentNullException.ThrowIfNull(connections);
         ArgumentNullException.ThrowIfNull(hubContext);
@@ -53,7 +53,7 @@ internal sealed class HubStackTaskNotifier : IStackTaskNotifier
 
     /// <inheritdoc />
     public async Task NotifyFailedAsync(
-        StackTaskFailureNotification notification,
+        ComposeTaskFailureNotification notification,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(notification);
@@ -89,7 +89,7 @@ internal sealed class HubStackTaskNotifier : IStackTaskNotifier
                 {
                     await _hubContext.Clients
                         .Client(connectionId)
-                        .SendAsync("OnStackTaskFailed", notification, cancellationToken)
+                        .SendAsync("OnComposeTaskFailed", notification, cancellationToken)
                         .ConfigureAwait(false);
                 }
                 catch (Exception exception)
@@ -106,9 +106,9 @@ internal sealed class HubStackTaskNotifier : IStackTaskNotifier
         {
             _logger.LogWarning(
                 exception,
-                "推送编排任务失败通知失败（主机={HostName}，编排={StackName}）",
+                "推送编排任务失败通知失败（主机={HostName}，编排={ComposeName}）",
                 notification.HostName,
-                notification.StackName);
+                notification.ComposeName);
         }
     }
 }

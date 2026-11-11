@@ -7,12 +7,12 @@ using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Docker;
 using Whalefleet.Core.Permissions;
-using Whalefleet.Core.Stacks;
+using Whalefleet.Core.Composes;
 
-namespace Whalefleet.Application.Stacks;
+namespace Whalefleet.Application.Composes;
 
 /// <summary>
-/// 编排 Stack 用例（列表 / 详情 / 部署 / 更新 / 停止 / 删除 / 任务查询）。
+/// 编排 Compose 项目用例（列表 / 详情 / 部署 / 更新 / 停止 / 删除 / 任务查询）。
 /// </summary>
 /// <remarks>
 /// <para><b>主机校验不在这里</b>：主机是否存在（<c>1300</c>）与可见性（<c>1501</c>）
@@ -20,14 +20,14 @@ namespace Whalefleet.Application.Stacks;
 /// <para><b>校验在请求期、执行在后台</b>：语法错、重名、非本平台部署、无权限
 /// 这些问题在 HTTP 响应里直接报出来——用户改一下 YAML 就能重来，
 /// 不必等一个后台任务跑完才发现「一开始就错了」。</para>
-/// <para><b>「发现」与「记忆」并存</b>：列表里的 Stack 有两个来源——
+/// <para><b>「发现」与「记忆」并存</b>：列表里的 Compose 项目有两个来源——
 /// 守护进程上的 compose 项目（靠标签发现，<b>managed=false</b> 的那些也包括在内）
 /// 与本平台数据库里记录的（<b>managed=true</b>）。
 /// 只看其中一个都会给出残缺的视图：只看标签会漏掉「YAML 存了但容器被手工删了」，
 /// 只看数据库会漏掉「用户自己在命令行部署的项目」。</para>
-/// <para><b>日志纪律</b>：只记 Stack 名与条数，<b>不</b>记 YAML 全文与环境变量的值。</para>
+/// <para><b>日志纪律</b>：只记 Compose 项目名与条数，<b>不</b>记 YAML 全文与环境变量的值。</para>
 /// </remarks>
-public sealed class StackService
+public sealed class ComposeProjectService
 {
     /// <summary>
     /// 列表默认每页条数。
@@ -52,20 +52,20 @@ public sealed class StackService
         };
 
     private readonly IDockerHostAccessor _accessor;
-    private readonly IStackRepository _repository;
-    private readonly StackTaskRegistry _tasks;
-    private readonly StackOperationQueue _queue;
+    private readonly IComposeProjectRepository _repository;
+    private readonly ComposeTaskRegistry _tasks;
+    private readonly ComposeOperationQueue _queue;
     private readonly IPermissionChecker _permissions;
     private readonly ICurrentUser _currentUser;
     private readonly ICurrentClientIp _clientIp;
     private readonly TimeProvider _timeProvider;
-    private readonly ILogger<StackService> _logger;
+    private readonly ILogger<ComposeProjectService> _logger;
 
     /// <summary>
     /// 初始化编排用例。
     /// </summary>
     /// <param name="accessor">主机访问器。</param>
-    /// <param name="repository">Stack 仓储。</param>
+    /// <param name="repository">Compose 项目仓储。</param>
     /// <param name="tasks">任务登记表。</param>
     /// <param name="queue">任务队列。</param>
     /// <param name="permissions">权限判定。</param>
@@ -74,16 +74,16 @@ public sealed class StackService
     /// <param name="timeProvider">时间源。</param>
     /// <param name="logger">日志。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
-    public StackService(
+    public ComposeProjectService(
         IDockerHostAccessor accessor,
-        IStackRepository repository,
-        StackTaskRegistry tasks,
-        StackOperationQueue queue,
+        IComposeProjectRepository repository,
+        ComposeTaskRegistry tasks,
+        ComposeOperationQueue queue,
         IPermissionChecker permissions,
         ICurrentUser currentUser,
         ICurrentClientIp clientIp,
         TimeProvider timeProvider,
-        ILogger<StackService> logger)
+        ILogger<ComposeProjectService> logger)
     {
         ArgumentNullException.ThrowIfNull(accessor);
         ArgumentNullException.ThrowIfNull(repository);
@@ -107,7 +107,7 @@ public sealed class StackService
     }
 
     /// <summary>
-    /// 列出主机上的编排 Stack。
+    /// 列出主机上的编排 Compose 项目。
     /// </summary>
     /// <param name="hostId">主机标识（主机名）。</param>
     /// <param name="request">查询请求（搜索与分页）。</param>
@@ -116,9 +116,9 @@ public sealed class StackService
     /// <exception cref="BusinessException">
     /// 主机不可达（<c>1301</c>）或 Docker 调用失败（<c>1402</c>）。
     /// </exception>
-    public async Task<StackListResult> ListAsync(
+    public async Task<ComposeProjectListResult> ListAsync(
         string hostId,
-        ListStacksRequest request,
+        ListComposeProjectsRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
@@ -149,7 +149,7 @@ public sealed class StackService
             pageIndex,
             pageSize);
 
-        return new StackListResult(
+        return new ComposeProjectListResult(
             [.. filtered.Skip(pageIndex * pageSize).Take(pageSize)],
             filtered.Count,
             pageIndex,
@@ -157,18 +157,18 @@ public sealed class StackService
     }
 
     /// <summary>
-    /// 查询编排 Stack 详情。
+    /// 查询编排 Compose 项目详情。
     /// </summary>
     /// <param name="hostId">主机标识（主机名）。</param>
     /// <param name="request">详情请求（名称）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>详情。</returns>
     /// <exception cref="BusinessException">
-    /// 名称为空（<c>1000</c>）、Stack 不存在（<c>1900</c>）或主机不可达（<c>1301</c>）。
+    /// 名称为空（<c>1000</c>）、Compose 项目不存在（<c>1900</c>）或主机不可达（<c>1301</c>）。
     /// </exception>
-    public async Task<StackDetail> InspectAsync(
+    public async Task<ComposeProjectDetail> InspectAsync(
         string hostId,
-        InspectStackRequest request,
+        InspectComposeProjectRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
@@ -183,7 +183,7 @@ public sealed class StackService
             .ConfigureAwait(false);
 
         var discovered = await DiscoverAsync(client, cancellationToken).ConfigureAwait(false);
-        var recordedList = new List<Stack>();
+        var recordedList = new List<ComposeProject>();
 
         if (recorded is not null)
         {
@@ -191,18 +191,22 @@ public sealed class StackService
         }
 
         var summaries = Merge(discovered, recordedList);
-        var summary = summaries.FirstOrDefault(item => String.Equals(item.Name, name, StringComparison.Ordinal)) ?? throw new BusinessException(ErrorCodes.StackNotFound, $"编排 Stack「{name}」不存在");
+        var summary = summaries.FirstOrDefault(item => String.Equals(item.Name, name, StringComparison.Ordinal)) ?? throw new BusinessException(ErrorCodes.ComposeNotFound, $"编排 Compose 项目「{name}」不存在");
 
         var services = await ListServicesAsync(client, name, recorded, cancellationToken)
             .ConfigureAwait(false);
 
         var warnings = new List<string>();
+        var declaredServiceNames = new List<string>();
 
         if (recorded is not null)
         {
             try
             {
-                warnings.AddRange(ComposeParser.Parse(recorded.ComposeContent).Warnings);
+                var document = ComposeParser.Parse(recorded.ComposeContent);
+
+                warnings.AddRange(document.Warnings);
+                declaredServiceNames.AddRange(document.Services.Select(service => service.Name));
             }
             catch (BusinessException)
             {
@@ -211,11 +215,25 @@ public sealed class StackService
             }
         }
 
-        return new StackDetail(summary, recorded?.ComposeContent, services, warnings);
+        // 声明了但还没有容器的服务：这是「哪个服务没起来」的直接答案。
+        // 判定口径是「服务名在声明列表里，但服务列表里没有对应的容器」。
+        var missingServices = declaredServiceNames
+            .Where(declared => !services.Any(service =>
+                String.Equals(service.Name, declared, StringComparison.Ordinal)
+                && service.ContainerId is not null))
+            .ToList();
+
+        return new ComposeProjectDetail(
+            summary,
+            recorded?.ComposeContent,
+            services,
+            warnings,
+            declaredServiceNames.Count,
+            missingServices);
     }
 
     /// <summary>
-    /// 部署编排 Stack（新建）。
+    /// 部署编排 Compose 项目（新建）。
     /// </summary>
     /// <param name="hostId">主机标识（主机名）。</param>
     /// <param name="request">部署请求。</param>
@@ -223,11 +241,11 @@ public sealed class StackService
     /// <returns>任务受理结果。</returns>
     /// <exception cref="BusinessException">
     /// 名称非法（<c>1000</c>）、YAML 非法（<c>1904</c>）、同名已存在（<c>1902</c>）、
-    /// 缺 <c>stack.write</c>（<c>1502</c>）或已有进行中的操作（<c>1905</c>）。
+    /// 缺 <c>compose.write</c>（<c>1502</c>）或已有进行中的操作（<c>1905</c>）。
     /// </exception>
-    public async Task<StackTaskAccepted> DeployAsync(
+    public async Task<ComposeTaskAccepted> DeployAsync(
         string hostId,
-        ApplyStackRequest request,
+        ApplyComposeProjectRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
@@ -251,18 +269,18 @@ public sealed class StackService
         if (existing is not null)
         {
             throw new BusinessException(
-                ErrorCodes.StackNameAlreadyExists,
-                $"编排 Stack「{name}」已存在——请改用「更新」而不是「部署」");
+                ErrorCodes.ComposeNameAlreadyExists,
+                $"编排 Compose 项目「{name}」已存在——请改用「更新」而不是「部署」");
         }
 
         await this.EnsureNotBusyAsync(host.Name, name).ConfigureAwait(false);
 
-        _tasks.TryRegister(taskId, host.Name, name, StackOperations.Deploy, _timeProvider.GetUtcNow().UtcDateTime);
+        _tasks.TryRegister(taskId, host.Name, name, ComposeOperations.Deploy, _timeProvider.GetUtcNow().UtcDateTime);
 
         // 先落库再入队：后台任务可能立刻开始，而它需要读到这份 YAML。
-        // 写库失败必须撤销登记——否则这个 Stack 会被「占住」到 TTL 结束，
+        // 写库失败必须撤销登记——否则这个 Compose 项目会被「占住」到 TTL 结束，
         // 用户看到的却是「已有进行中的操作」，而实际上什么任务都没跑起来。
-        var entity = Stack.Create(Guid.NewGuid(), host.Id, name, content);
+        var entity = ComposeProject.Create(Guid.NewGuid(), host.Id, name, content);
 
         try
         {
@@ -278,37 +296,37 @@ public sealed class StackService
             taskId,
             host.Name,
             name,
-            StackOperations.Deploy,
+            ComposeOperations.Deploy,
             content,
             request.PullAlways ?? false,
             request.PruneOrphans ?? false,
             false);
 
         _logger.LogInformation(
-            "主机 {HostId} 受理编排部署 {StackName}（任务 {TaskId}，服务 {ServiceCount} 个）",
+            "主机 {HostId} 受理编排部署 {ComposeName}（任务 {TaskId}，服务 {ServiceCount} 个）",
             hostId,
             name,
             taskId,
             document.Services.Count);
 
-        return new StackTaskAccepted(taskId, StackTaskStatusText.Queued, 1);
+        return new ComposeTaskAccepted(taskId, ComposeTaskStatusText.Queued, 1);
     }
 
     /// <summary>
-    /// 更新编排 Stack（重新应用 YAML）。
+    /// 更新编排 Compose 项目（重新应用 YAML）。
     /// </summary>
     /// <param name="hostId">主机标识（主机名）。</param>
     /// <param name="request">更新请求。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>任务受理结果。</returns>
     /// <exception cref="BusinessException">
-    /// 名称非法（<c>1000</c>）、YAML 非法（<c>1904</c>）、Stack 不存在（<c>1900</c>）、
-    /// 非本平台部署（<c>1903</c>）、缺 <c>stack.write</c>（<c>1502</c>）
+    /// 名称非法（<c>1000</c>）、YAML 非法（<c>1904</c>）、Compose 项目不存在（<c>1900</c>）、
+    /// 非本平台部署（<c>1903</c>）、缺 <c>compose.write</c>（<c>1502</c>）
     /// 或已有进行中的操作（<c>1905</c>）。
     /// </exception>
-    public async Task<StackTaskAccepted> UpdateAsync(
+    public async Task<ComposeTaskAccepted> UpdateAsync(
         string hostId,
-        ApplyStackRequest request,
+        ApplyComposeProjectRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
@@ -327,12 +345,12 @@ public sealed class StackService
         var existing = await _repository
             .FindByHostAndNameAsync(host.Id, name, cancellationToken)
             .ConfigureAwait(false) ?? throw new BusinessException(
-                ErrorCodes.StackNotFound,
-                $"编排 Stack「{name}」不存在——本平台没有它的 YAML，无法更新");
+                ErrorCodes.ComposeNotFound,
+                $"编排 Compose 项目「{name}」不存在——本平台没有它的 YAML，无法更新");
 
         await this.EnsureNotBusyAsync(host.Name, name).ConfigureAwait(false);
 
-        _tasks.TryRegister(taskId, host.Name, name, StackOperations.Update, _timeProvider.GetUtcNow().UtcDateTime);
+        _tasks.TryRegister(taskId, host.Name, name, ComposeOperations.Update, _timeProvider.GetUtcNow().UtcDateTime);
 
         existing.ReplaceContent(content);
 
@@ -342,7 +360,7 @@ public sealed class StackService
         }
         catch
         {
-            // 同部署：写库失败要撤销登记，否则 Stack 会被「占住」到 TTL 结束
+            // 同部署：写库失败要撤销登记，否则 Compose 项目会被「占住」到 TTL 结束
             _tasks.Abort(taskId);
             throw;
         }
@@ -351,32 +369,32 @@ public sealed class StackService
             taskId,
             host.Name,
             name,
-            StackOperations.Update,
+            ComposeOperations.Update,
             content,
             request.PullAlways ?? false,
             request.PruneOrphans ?? true,
             false);
 
         _logger.LogInformation(
-            "主机 {HostId} 受理编排更新 {StackName}（任务 {TaskId}，服务 {ServiceCount} 个）",
+            "主机 {HostId} 受理编排更新 {ComposeName}（任务 {TaskId}，服务 {ServiceCount} 个）",
             hostId,
             name,
             taskId,
             document.Services.Count);
 
-        return new StackTaskAccepted(taskId, StackTaskStatusText.Queued, 1);
+        return new ComposeTaskAccepted(taskId, ComposeTaskStatusText.Queued, 1);
     }
 
     /// <summary>
-    /// 停止编排 Stack（停掉全部服务，容器保留）。
+    /// 停止编排 Compose 项目（停掉全部服务，容器保留）。
     /// </summary>
     /// <param name="hostId">主机标识（主机名）。</param>
     /// <param name="request">停止请求。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>任务受理结果。</returns>
-    public async Task<StackTaskAccepted> StopAsync(
+    public async Task<ComposeTaskAccepted> StopAsync(
         string hostId,
-        StopStackRequest request,
+        StopComposeProjectRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
@@ -391,23 +409,23 @@ public sealed class StackService
 
         await this.EnsureNotBusyAsync(host.Name, name).ConfigureAwait(false);
 
-        _tasks.TryRegister(taskId, host.Name, name, StackOperations.Stop, _timeProvider.GetUtcNow().UtcDateTime);
+        _tasks.TryRegister(taskId, host.Name, name, ComposeOperations.Stop, _timeProvider.GetUtcNow().UtcDateTime);
 
-        this.Enqueue(taskId, host.Name, name, StackOperations.Stop, null, false, false, false);
+        this.Enqueue(taskId, host.Name, name, ComposeOperations.Stop, null, false, false, false);
 
-        return new StackTaskAccepted(taskId, StackTaskStatusText.Queued, 1);
+        return new ComposeTaskAccepted(taskId, ComposeTaskStatusText.Queued, 1);
     }
 
     /// <summary>
-    /// 删除编排 Stack（容器与网络一并清掉；卷按需）。
+    /// 删除编排 Compose 项目（容器与网络一并清掉；卷按需）。
     /// </summary>
     /// <param name="hostId">主机标识（主机名）。</param>
     /// <param name="request">删除请求。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>任务受理结果。</returns>
-    public async Task<StackTaskAccepted> RemoveAsync(
+    public async Task<ComposeTaskAccepted> RemoveAsync(
         string hostId,
-        RemoveStackRequest request,
+        RemoveComposeProjectRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
@@ -422,19 +440,19 @@ public sealed class StackService
 
         await this.EnsureNotBusyAsync(host.Name, name).ConfigureAwait(false);
 
-        _tasks.TryRegister(taskId, host.Name, name, StackOperations.Remove, _timeProvider.GetUtcNow().UtcDateTime);
+        _tasks.TryRegister(taskId, host.Name, name, ComposeOperations.Remove, _timeProvider.GetUtcNow().UtcDateTime);
 
         this.Enqueue(
             taskId,
             host.Name,
             name,
-            StackOperations.Remove,
+            ComposeOperations.Remove,
             null,
             false,
             false,
             request.RemoveVolumes ?? false);
 
-        return new StackTaskAccepted(taskId, StackTaskStatusText.Queued, 1);
+        return new ComposeTaskAccepted(taskId, ComposeTaskStatusText.Queued, 1);
     }
 
     /// <summary>
@@ -444,9 +462,9 @@ public sealed class StackService
     /// <param name="request">查询请求（任务标识）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>任务快照；任务不存在时为 <see langword="null"/>。</returns>
-    public async Task<StackTaskSnapshot?> GetTaskAsync(
+    public async Task<ComposeTaskSnapshot?> GetTaskAsync(
         string hostId,
-        GetStackTaskRequest request,
+        GetComposeTaskRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
@@ -579,21 +597,21 @@ public sealed class StackService
     /// 把「守护进程上发现的」与「数据库里记录的」合并成列表项。
     /// </summary>
     /// <param name="discovered">发现的项目。</param>
-    /// <param name="recorded">数据库里记录的 Stack。</param>
+    /// <param name="recorded">数据库里记录的 Compose 项目。</param>
     /// <returns>列表项。</returns>
-    private static List<StackSummary> Merge(
+    private static List<ComposeProjectSummary> Merge(
         IReadOnlyDictionary<string, DiscoveredProject> discovered,
-        IReadOnlyList<Stack> recorded)
+        IReadOnlyList<ComposeProject> recorded)
     {
-        var summaries = new List<StackSummary>();
+        var summaries = new List<ComposeProjectSummary>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var stack in recorded)
+        foreach (var compose in recorded)
         {
-            discovered.TryGetValue(stack.Name, out var project);
+            discovered.TryGetValue(compose.Name, out var project);
 
-            summaries.Add(BuildSummary(stack.Name, project, stack));
-            seen.Add(stack.Name);
+            summaries.Add(BuildSummary(compose.Name, project, compose));
+            seen.Add(compose.Name);
         }
 
         foreach (var (name, project) in discovered)
@@ -612,14 +630,14 @@ public sealed class StackService
     /// <summary>
     /// 构建单个列表项。
     /// </summary>
-    /// <param name="name">Stack 名称。</param>
+    /// <param name="name">Compose 项目名称。</param>
     /// <param name="project">发现到的项目信息（可能为 <see langword="null"/>）。</param>
-    /// <param name="stack">数据库记录（可能为 <see langword="null"/>）。</param>
+    /// <param name="compose">数据库记录（可能为 <see langword="null"/>）。</param>
     /// <returns>列表项。</returns>
-    private static StackSummary BuildSummary(
+    private static ComposeProjectSummary BuildSummary(
         string name,
         DiscoveredProject? project,
-        Stack? stack)
+        ComposeProject? compose)
     {
         var containers = project?.Containers ?? [];
         var running = containers.Count(container =>
@@ -633,20 +651,20 @@ public sealed class StackService
 
         var status = ResolveStatus(containers.Count, running);
 
-        return new StackSummary(
+        return new ComposeProjectSummary(
             name,
-            stack is not null,
+            compose is not null,
             status,
             services,
             containers.Count,
             running,
             project?.Networks ?? 0,
             project?.Volumes ?? 0,
-            stack is not null,
-            stack?.WebhookEnabled ?? false,
-            stack?.WebhookTokenHint,
-            stack?.WebhookLastUsedAt,
-            stack?.LastModificationTime);
+            compose is not null,
+            compose?.WebhookEnabled ?? false,
+            compose?.WebhookTokenHint,
+            compose?.WebhookLastUsedAt,
+            compose?.LastModificationTime);
     }
 
     /// <summary>
@@ -674,14 +692,14 @@ public sealed class StackService
     /// 列出编排项目的服务。
     /// </summary>
     /// <param name="client">Docker 客户端。</param>
-    /// <param name="stackName">Stack 名称。</param>
-    /// <param name="stack">数据库记录（可能为 <see langword="null"/>）。</param>
+    /// <param name="composeName">Compose 项目名称。</param>
+    /// <param name="compose">数据库记录（可能为 <see langword="null"/>）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>服务列表。</returns>
-    private static async Task<IReadOnlyList<StackServiceSummary>> ListServicesAsync(
+    private static async Task<IReadOnlyList<ComposeServiceSummary>> ListServicesAsync(
         IDockerClient client,
-        string stackName,
-        Stack? stack,
+        string composeName,
+        ComposeProject? compose,
         CancellationToken cancellationToken)
     {
         var containers = await DockerErrorTranslator.ExecuteAsync(
@@ -697,7 +715,7 @@ public sealed class StackService
         {
             if (!String.Equals(
                     LabelOf(container.Labels, ComposeLabels.Project),
-                    stackName,
+                    composeName,
                     StringComparison.Ordinal))
             {
                 continue;
@@ -713,14 +731,14 @@ public sealed class StackService
             byService[service] = container;
         }
 
-        var services = new List<StackServiceSummary>();
+        var services = new List<ComposeServiceSummary>();
 
         // YAML 里声明的服务是权威（它决定了镜像与配置）；容器只是「当前跑成了什么样」
-        if (stack is not null)
+        if (compose is not null)
         {
             try
             {
-                var document = ComposeParser.Parse(stack.ComposeContent);
+                var document = ComposeParser.Parse(compose.ComposeContent);
 
                 foreach (var service in document.Services)
                 {
@@ -742,7 +760,7 @@ public sealed class StackService
                 continue;
             }
 
-            services.Add(new StackServiceSummary(
+            services.Add(new ComposeServiceSummary(
                 serviceName,
                 container.Image,
                 container.ID,
@@ -763,17 +781,17 @@ public sealed class StackService
     /// <param name="service">服务定义。</param>
     /// <param name="container">对应容器（可能为 <see langword="null"/>）。</param>
     /// <returns>服务项。</returns>
-    private static StackServiceSummary MapService(ComposeService service, ContainerListResponse? container)
+    private static ComposeServiceSummary MapService(ComposeService service, ContainerListResponse? container)
     {
         var ports = service.Ports
-            .Select(port => new StackServicePort(
+            .Select(port => new ComposeServicePort(
                 port.ContainerPort,
                 port.Protocol,
                 port.HostPort,
                 port.HostIp))
             .ToList();
 
-        return new StackServiceSummary(
+        return new ComposeServiceSummary(
             service.Name,
             service.Image,
             container?.ID,
@@ -797,35 +815,35 @@ public sealed class StackService
             ?? throw BusinessException.Unauthenticated("编排操作需要已登录用户");
 
         await _permissions
-            .EnsurePermissionAsync(userId, hostId, Permission.StackWrite, cancellationToken)
+            .EnsurePermissionAsync(userId, hostId, Permission.ComposeWrite, cancellationToken)
             .ConfigureAwait(false);
     }
 
     /// <summary>
-    /// 校验该 Stack 没有进行中的操作。
+    /// 校验该 Compose 项目没有进行中的操作。
     /// </summary>
     /// <param name="hostName">主机名。</param>
-    /// <param name="stackName">Stack 名称。</param>
+    /// <param name="composeName">Compose 项目名称。</param>
     /// <returns>表示异步操作的任务。</returns>
     /// <exception cref="BusinessException">已有进行中的操作（<c>1905</c>）。</exception>
-    private Task EnsureNotBusyAsync(string hostName, string stackName)
+    private Task EnsureNotBusyAsync(string hostName, string composeName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(stackName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(composeName);
 
-        // 登记时的原子检查已经会挡住「同一 Stack 并发」；这里提前给出更友好的提示
+        // 登记时的原子检查已经会挡住「同一 Compose 项目并发」；这里提前给出更友好的提示
         var busy = _tasks
             .GetSnapshot()
             .Any(snapshot =>
                 !IsTerminal(snapshot.Status)
                 && String.Equals(snapshot.HostName, hostName, StringComparison.OrdinalIgnoreCase)
-                && String.Equals(snapshot.StackName, stackName, StringComparison.Ordinal));
+                && String.Equals(snapshot.ComposeName, composeName, StringComparison.Ordinal));
 
         if (busy)
         {
             throw new BusinessException(
-                ErrorCodes.StackOperationInProgress,
-                $"编排 Stack「{stackName}」已有进行中的操作，请等它结束");
+                ErrorCodes.ComposeOperationInProgress,
+                $"编排 Compose 项目「{composeName}」已有进行中的操作，请等它结束");
         }
 
         return Task.CompletedTask;
@@ -836,7 +854,7 @@ public sealed class StackService
     /// </summary>
     /// <param name="taskId">任务标识。</param>
     /// <param name="hostName">主机名。</param>
-    /// <param name="stackName">Stack 名称。</param>
+    /// <param name="composeName">Compose 项目名称。</param>
     /// <param name="operation">操作类型。</param>
     /// <param name="content">Compose 文件原文。</param>
     /// <param name="pullAlways">是否总是拉取最新镜像。</param>
@@ -845,17 +863,17 @@ public sealed class StackService
     private void Enqueue(
         string taskId,
         string hostName,
-        string stackName,
+        string composeName,
         string operation,
         string? content,
         bool pullAlways,
         bool pruneOrphans,
         bool removeVolumes)
     {
-        if (!_queue.TryEnqueue(new StackOperationRequest(
+        if (!_queue.TryEnqueue(new ComposeOperationRequest(
             taskId,
             hostName,
-            stackName,
+            composeName,
             operation,
             content,
             pullAlways,
@@ -867,12 +885,12 @@ public sealed class StackService
             null)))
         {
             _tasks.Abort(taskId);
-            throw new BusinessException(ErrorCodes.StackDeployFailed, "编排队列已关闭，本次操作未被受理。");
+            throw new BusinessException(ErrorCodes.ComposeDeployFailed, "编排队列已关闭，本次操作未被受理。");
         }
     }
 
     /// <summary>
-    /// 校验 Stack 名称。
+    /// 校验 Compose 项目名称。
     /// </summary>
     /// <param name="name">原始名称。</param>
     /// <returns>校验后的名称。</returns>
@@ -881,7 +899,7 @@ public sealed class StackService
     {
         if (String.IsNullOrWhiteSpace(name))
         {
-            throw BusinessException.Validation("Stack 名称不能为空");
+            throw BusinessException.Validation("Compose 项目名称不能为空");
         }
 
         var trimmed = name.Trim();
@@ -889,7 +907,7 @@ public sealed class StackService
         // 复用实体的校验规则（Compose 项目名规则），但错误码换成 1000（参数校验）
         try
         {
-            return Stack.Create(Guid.NewGuid(), Guid.Empty, trimmed, "x").Name;
+            return ComposeProject.Create(Guid.NewGuid(), Guid.Empty, trimmed, "x").Name;
         }
         catch (ArgumentException exception)
         {
@@ -1007,7 +1025,7 @@ public sealed class StackService
     /// <param name="status">状态文本。</param>
     /// <returns>已结束返回 <see langword="true"/>。</returns>
     private static bool IsTerminal(string status) =>
-        status is StackTaskStatusText.Succeeded or StackTaskStatusText.Failed;
+        status is ComposeTaskStatusText.Succeeded or ComposeTaskStatusText.Failed;
 
     /// <summary>
     /// 守护进程上发现的一个 compose 项目。

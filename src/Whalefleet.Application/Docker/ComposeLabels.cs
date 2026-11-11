@@ -1,12 +1,15 @@
-namespace Whalefleet.Application.Stacks;
+namespace Whalefleet.Application.Docker;
 
 /// <summary>
 /// Compose 标签常量：<c>com.docker.compose.*</c> 系列的键名。
 /// </summary>
 /// <remarks>
-/// <para><b>这些标签是「Stack 与容器之间唯一的联结</b>：本系统不额外维护
-/// 「哪个容器属于哪个 Stack」的表——那会与守护进程的事实产生第二份真相，
+/// <para><b>这些标签是「Compose 项目与容器之间唯一的联结」</b>：本系统不额外维护
+/// 「哪个容器属于哪个 Compose 项目」的表——那会与守护进程的事实产生第二份真相，
 /// 而容器随时可能被用户在命令行删掉或重建。</para>
+/// <para><b>为什么放在共享的 <c>Docker</c> 目录而不是 <c>Composes</c></b>：
+/// 容器列表按 compose 项目过滤（<c>ContainerService</c>）也要用同一套标签名，
+/// 而标签名是<b>守护进程侧的约定</b>，不属于编排这一个功能。</para>
 /// <para><b>与官方 <c>docker compose</c> 保持一致</b>：标签名与语义照抄 Compose，
 /// 因此用户在同一台机器上用 <c>docker compose ps</c> 也能认出本平台部署的项目，
 /// 反过来我们也能认出行命令部署的项目（那类标 <c>managed=false</c>）。</para>

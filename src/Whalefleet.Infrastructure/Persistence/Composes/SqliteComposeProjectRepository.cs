@@ -2,26 +2,26 @@ using Dapper;
 
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Persistence;
-using Whalefleet.Core.Stacks;
+using Whalefleet.Core.Composes;
 
-namespace Whalefleet.Infrastructure.Persistence.Stacks;
+namespace Whalefleet.Infrastructure.Persistence.Composes;
 
 /// <summary>
-/// 编排 Stack 仓储的 SQLite / Dapper 实现。
+/// 编排 Compose 项目仓储的 SQLite / Dapper 实现。
 /// </summary>
 /// <remarks>
-/// <para><b>排序</b>：全量列表按名称升序（区分大小写）。Stack 名称本身只允许小写字母与数字，
+/// <para><b>排序</b>：全量列表按名称升序（区分大小写）。Compose 项目名称本身只允许小写字母与数字，
 /// 因此「区分大小写」与「不区分」在这里没有实际差别——但 SQL 里写明 <c>ORDER BY name</c>
 /// 仍然必要：没有显式排序时 SQLite 的返回顺序是未定义的，
 /// 而列表接口要拿它跟「按项目名分组的守护进程容器」对齐。</para>
-/// <para><b>Webhook 令牌反查走唯一索引</b>：<c>ux_stacks_webhook_token</c> 是部分唯一索引
+/// <para><b>Webhook 令牌反查走唯一索引</b>：<c>ux_composes_webhook_token</c> 是部分唯一索引
 /// （<c>WHERE is_deleted = 0 AND webhook_enabled = 1</c>），因此反查必须带上同样的过滤条件——
 /// 否则会命中「已吊销但哈希未清」的历史行（虽然当前实现吊销即清哈希，
 /// 但索引的定义才是这条查询快的原因）。</para>
 /// <para><b>写入侧显式转文本</b>：Dapper 的参数绑定路径会绕过 <c>ITypeHandler</c>，
 /// 主键与审计人必须自己转成小写 36 位（见 <see cref="StorageTextExtensions"/>）。</para>
 /// </remarks>
-internal sealed class SqliteStackRepository : RepositoryBase<Stack, Guid>, IStackRepository
+internal sealed class SqliteComposeProjectRepository : RepositoryBase<ComposeProject, Guid>, IComposeProjectRepository
 {
     private const string _columns =
         "id, host_id, name, compose_content, "
@@ -31,27 +31,27 @@ internal sealed class SqliteStackRepository : RepositoryBase<Stack, Guid>, IStac
 
     private static readonly string _selectByIdSql = $"""
         SELECT {_columns}
-        FROM stacks
+        FROM composes
         WHERE id = @Id AND {SoftDeleteFilter}
         """;
 
     private static readonly string _selectByHostAndNameSql = $"""
         SELECT {_columns}
-        FROM stacks
+        FROM composes
         WHERE host_id = @HostId AND name = @Name AND {SoftDeleteFilter}
         """;
 
     private static readonly string _selectByHostSql = $"""
         SELECT {_columns}
-        FROM stacks
+        FROM composes
         WHERE host_id = @HostId AND {SoftDeleteFilter}
         ORDER BY name
         """;
 
-    // 令牌反查：过滤条件与 ux_stacks_webhook_token 部分索引的定义保持一致
+    // 令牌反查：过滤条件与 ux_composes_webhook_token 部分索引的定义保持一致
     private static readonly string _selectByWebhookTokenSql = $"""
         SELECT {_columns}
-        FROM stacks
+        FROM composes
         WHERE webhook_token_hash = @TokenHash
           AND webhook_enabled = 1
           AND {SoftDeleteFilter}
@@ -59,13 +59,13 @@ internal sealed class SqliteStackRepository : RepositoryBase<Stack, Guid>, IStac
 
     private static readonly string _queryAllSql = $"""
         SELECT {_columns}
-        FROM stacks
+        FROM composes
         WHERE {SoftDeleteFilter}
         ORDER BY name
         """;
 
     private static readonly string _insertSql = $"""
-        INSERT INTO stacks ({_columns})
+        INSERT INTO composes ({_columns})
         VALUES (@Id, @HostId, @Name, @ComposeContent,
                 @WebhookTokenHash, @WebhookTokenHint, @WebhookEnabled, @WebhookLastUsedAt,
                 @CreationTime, @CreatorId, @LastModificationTime, @LastModifierId,
@@ -73,7 +73,7 @@ internal sealed class SqliteStackRepository : RepositoryBase<Stack, Guid>, IStac
         """;
 
     private static readonly string _updateSql = $"""
-        UPDATE stacks
+        UPDATE composes
         SET host_id = @HostId,
             name = @Name,
             compose_content = @ComposeContent,
@@ -95,7 +95,7 @@ internal sealed class SqliteStackRepository : RepositoryBase<Stack, Guid>, IStac
     /// <param name="connections">连接工厂。</param>
     /// <param name="currentUser">当前用户。</param>
     /// <param name="timeProvider">时间源。</param>
-    public SqliteStackRepository(
+    public SqliteComposeProjectRepository(
         IDbConnectionFactory connections,
         ICurrentUser currentUser,
         TimeProvider timeProvider)
@@ -104,18 +104,18 @@ internal sealed class SqliteStackRepository : RepositoryBase<Stack, Guid>, IStac
     }
 
     /// <inheritdoc />
-    protected override Task<Stack?> QueryByIdAsync(
+    protected override Task<ComposeProject?> QueryByIdAsync(
         System.Data.Common.DbConnection connection,
         Guid id,
         CancellationToken cancellationToken) =>
-        connection.QuerySingleOrDefaultAsync<Stack>(
+        connection.QuerySingleOrDefaultAsync<ComposeProject>(
             new CommandDefinition(
                 _selectByIdSql,
                 new { Id = id.ToStorageText() },
                 cancellationToken: cancellationToken));
 
     /// <inheritdoc />
-    public async Task<Stack?> FindByHostAndNameAsync(
+    public async Task<ComposeProject?> FindByHostAndNameAsync(
         Guid hostId,
         string name,
         CancellationToken cancellationToken = default)
@@ -125,7 +125,7 @@ internal sealed class SqliteStackRepository : RepositoryBase<Stack, Guid>, IStac
         await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        return await connection.QuerySingleOrDefaultAsync<Stack>(
+        return await connection.QuerySingleOrDefaultAsync<ComposeProject>(
             new CommandDefinition(
                 _selectByHostAndNameSql,
                 new { HostId = hostId.ToStorageText(), Name = name.Trim() },
@@ -134,25 +134,25 @@ internal sealed class SqliteStackRepository : RepositoryBase<Stack, Guid>, IStac
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<Stack>> ListByHostAsync(
+    public async Task<IReadOnlyList<ComposeProject>> ListByHostAsync(
         Guid hostId,
         CancellationToken cancellationToken = default)
     {
         await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        var stacks = await connection.QueryAsync<Stack>(
+        var composes = await connection.QueryAsync<ComposeProject>(
             new CommandDefinition(
                 _selectByHostSql,
                 new { HostId = hostId.ToStorageText() },
                 cancellationToken: cancellationToken))
             .ConfigureAwait(false);
 
-        return stacks.AsList();
+        return composes.AsList();
     }
 
     /// <inheritdoc />
-    public async Task<Stack?> FindByWebhookTokenHashAsync(
+    public async Task<ComposeProject?> FindByWebhookTokenHashAsync(
         string tokenHash,
         CancellationToken cancellationToken = default)
     {
@@ -161,7 +161,7 @@ internal sealed class SqliteStackRepository : RepositoryBase<Stack, Guid>, IStac
         await using var connection = this.Connections.Create();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        return await connection.QuerySingleOrDefaultAsync<Stack>(
+        return await connection.QuerySingleOrDefaultAsync<ComposeProject>(
             new CommandDefinition(
                 _selectByWebhookTokenSql,
                 new { TokenHash = tokenHash.Trim().ToLowerInvariant() },
@@ -175,46 +175,46 @@ internal sealed class SqliteStackRepository : RepositoryBase<Stack, Guid>, IStac
     /// <inheritdoc />
     protected override Task<int> ExecuteInsertAsync(
         System.Data.Common.DbConnection connection,
-        Stack stack,
+        ComposeProject compose,
         CancellationToken cancellationToken) =>
         connection.ExecuteAsync(
-            new CommandDefinition(_insertSql, ToParameters(stack), cancellationToken: cancellationToken));
+            new CommandDefinition(_insertSql, ToParameters(compose), cancellationToken: cancellationToken));
 
     /// <inheritdoc />
     protected override async Task<bool> ExecuteUpdateAsync(
         System.Data.Common.DbConnection connection,
-        Stack stack,
+        ComposeProject compose,
         CancellationToken cancellationToken)
     {
         var affected = await connection.ExecuteAsync(
-            new CommandDefinition(_updateSql, ToParameters(stack), cancellationToken: cancellationToken))
+            new CommandDefinition(_updateSql, ToParameters(compose), cancellationToken: cancellationToken))
             .ConfigureAwait(false);
 
         return affected == 1;
     }
 
     /// <summary>
-    /// 把 Stack 实体转换为 Dapper 参数。
+    /// 把 Compose 项目实体转换为 Dapper 参数。
     /// </summary>
-    /// <param name="stack">Stack 实体。</param>
+    /// <param name="compose">Compose 项目实体。</param>
     /// <returns>Dapper 参数对象。</returns>
-    private static object ToParameters(Stack stack) => new
+    private static object ToParameters(ComposeProject compose) => new
     {
         // 写入侧显式转文本：Dapper 的参数绑定会绕过类型处理器，主键不转会按驱动默认的大写形态落库
-        Id = stack.Id.ToStorageText(),
-        HostId = stack.HostId.ToStorageText(),
-        stack.Name,
-        stack.ComposeContent,
-        stack.WebhookTokenHash,
-        stack.WebhookTokenHint,
-        stack.WebhookEnabled,
-        stack.WebhookLastUsedAt,
-        stack.CreationTime,
-        CreatorId = stack.CreatorId.ToStorageText(),
-        stack.LastModificationTime,
-        LastModifierId = stack.LastModifierId.ToStorageText(),
-        stack.IsDeleted,
-        stack.DeletionTime,
-        DeleterId = stack.DeleterId.ToStorageText(),
+        Id = compose.Id.ToStorageText(),
+        HostId = compose.HostId.ToStorageText(),
+        compose.Name,
+        compose.ComposeContent,
+        compose.WebhookTokenHash,
+        compose.WebhookTokenHint,
+        compose.WebhookEnabled,
+        compose.WebhookLastUsedAt,
+        compose.CreationTime,
+        CreatorId = compose.CreatorId.ToStorageText(),
+        compose.LastModificationTime,
+        LastModifierId = compose.LastModifierId.ToStorageText(),
+        compose.IsDeleted,
+        compose.DeletionTime,
+        DeleterId = compose.DeleterId.ToStorageText(),
     };
 }

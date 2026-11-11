@@ -184,47 +184,47 @@ public static class AuditActions
     public const string NetworkDisconnect = "network.disconnect";
     #endregion
 
-    #region 编排 Stack
+    #region 编排 ComposeProject
 
     /// <summary>
-    /// 部署 Stack。
+    /// 部署 Compose 项目。
     /// </summary>
-    public const string StackDeploy = "stack.deploy";
+    public const string ComposeDeploy = "compose.deploy";
 
     /// <summary>
-    /// 更新 Stack（重新应用 YAML）。
+    /// 更新 Compose 项目（重新应用 YAML）。
     /// </summary>
-    public const string StackUpdate = "stack.update";
+    public const string ComposeUpdate = "compose.update";
 
     /// <summary>
-    /// 停止 Stack（停掉全部服务，容器保留）。
+    /// 停止 Compose 项目（停掉全部服务，容器保留）。
     /// </summary>
-    public const string StackStop = "stack.stop";
+    public const string ComposeStop = "compose.stop";
 
     /// <summary>
-    /// 删除 Stack。
+    /// 删除 Compose 项目。
     /// </summary>
-    public const string StackRemove = "stack.remove";
+    public const string ComposeRemove = "compose.remove";
 
     /// <summary>
     /// 由 Webhook 触发重放已保存的 YAML。
     /// </summary>
     /// <remarks>
-    /// <b>与 <see cref="StackDeploy"/> / <see cref="StackUpdate"/> 分开</b>：
+    /// <b>与 <see cref="ComposeDeploy"/> / <see cref="ComposeUpdate"/> 分开</b>：
     /// 触发来源（人点按钮 vs CI 回调）在事后追责时是完全不同的两件事，
     /// 而审计的全部价值恰恰在于「半年后还能读懂当时发生了什么」。
     /// </remarks>
-    public const string StackWebhookReload = "stack.webhook.reload";
+    public const string ComposeWebhookReload = "compose.webhook.reload";
 
     /// <summary>
     /// 生成或轮换 Webhook 令牌。
     /// </summary>
-    public const string StackWebhookRotate = "stack.webhook.rotate";
+    public const string ComposeWebhookRotate = "compose.webhook.rotate";
 
     /// <summary>
     /// 吊销 Webhook 令牌。
     /// </summary>
-    public const string StackWebhookRevoke = "stack.webhook.revoke";
+    public const string ComposeWebhookRevoke = "compose.webhook.revoke";
     #endregion
 
     #region 主机
@@ -337,9 +337,9 @@ public static class AuditTargetTypes
     public const string Network = "network";
 
     /// <summary>
-    /// 编排 Stack。
+    /// 编排 Compose 项目。
     /// </summary>
-    public const string Stack = "stack";
+    public const string Compose = "compose";
 
     /// <summary>
     /// 主机。

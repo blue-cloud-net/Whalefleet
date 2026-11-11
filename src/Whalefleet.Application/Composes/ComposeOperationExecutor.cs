@@ -11,7 +11,7 @@ using Whalefleet.Application.Common;
 using Whalefleet.Application.Docker;
 using Whalefleet.Application.Images;
 
-namespace Whalefleet.Application.Stacks;
+namespace Whalefleet.Application.Composes;
 
 /// <summary>
 /// 编排操作执行器：把「要做的事」真正落到 Docker 上。
@@ -21,7 +21,7 @@ namespace Whalefleet.Application.Stacks;
 /// 而 HTTP 请求扛不住——中间的反代会把连接掐掉，
 /// 客户端拿到的是「504 网关超时」而不是「部署失败」。
 /// 改成「立刻返回任务标识 + 后台执行 + 实时进度」之后，长耗时不再需要特殊处理。</para>
-/// <para><b>标签是唯一的联结</b>：本执行器不维护「哪个容器属于哪个 Stack」的表——
+/// <para><b>标签是唯一的联结</b>：本执行器不维护「哪个容器属于哪个 Compose 项目」的表——
 /// 每次都靠 <c>com.docker.compose.project</c> 标签向守护进程问。
 /// 这样用户在命令行删掉一个容器后，下次「应用」会把它重新建出来，
 /// 而不会出现「库里说它存在、实际上不存在」的错位。</para>
@@ -31,7 +31,7 @@ namespace Whalefleet.Application.Stacks;
 /// <para><b>日志纪律</b>：只记资源名与条数，不记环境变量的值、不记 YAML 全文
 /// （里面常含口令）。</para>
 /// </remarks>
-public sealed class StackOperationExecutor
+public sealed class ComposeOperationExecutor
 {
     /// <summary>
     /// 标签过滤：只认 label 名，不带值。
@@ -53,7 +53,7 @@ public sealed class StackOperationExecutor
     private readonly IDockerHostAccessor _accessor;
     private readonly ImageService _images;
     private readonly IOperationProgressPublisher _progress;
-    private readonly ILogger<StackOperationExecutor> _logger;
+    private readonly ILogger<ComposeOperationExecutor> _logger;
 
     /// <summary>
     /// 初始化执行器。
@@ -63,11 +63,11 @@ public sealed class StackOperationExecutor
     /// <param name="progress">进度发布器。</param>
     /// <param name="logger">日志。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
-    public StackOperationExecutor(
+    public ComposeOperationExecutor(
         IDockerHostAccessor accessor,
         ImageService images,
         IOperationProgressPublisher progress,
-        ILogger<StackOperationExecutor> logger)
+        ILogger<ComposeOperationExecutor> logger)
     {
         ArgumentNullException.ThrowIfNull(accessor);
         ArgumentNullException.ThrowIfNull(images);
@@ -87,16 +87,16 @@ public sealed class StackOperationExecutor
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>结果摘要。</returns>
     /// <exception cref="BusinessException">操作失败。</exception>
-    public async Task<StackOperationResult> ExecuteAsync(
-        StackOperationRequest request,
+    public async Task<ComposeOperationResult> ExecuteAsync(
+        ComposeOperationRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
         return request.Operation switch
         {
-            StackOperations.Stop => await this.StopAsync(request, cancellationToken).ConfigureAwait(false),
-            StackOperations.Remove => await this.RemoveAsync(request, cancellationToken).ConfigureAwait(false),
+            ComposeOperations.Stop => await this.StopAsync(request, cancellationToken).ConfigureAwait(false),
+            ComposeOperations.Remove => await this.RemoveAsync(request, cancellationToken).ConfigureAwait(false),
             _ => await this.ApplyAsync(request, cancellationToken).ConfigureAwait(false),
         };
     }
@@ -107,8 +107,8 @@ public sealed class StackOperationExecutor
     /// <param name="request">操作请求。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>结果摘要。</returns>
-    private async Task<StackOperationResult> ApplyAsync(
-        StackOperationRequest request,
+    private async Task<ComposeOperationResult> ApplyAsync(
+        ComposeOperationRequest request,
         CancellationToken cancellationToken)
     {
         if (String.IsNullOrWhiteSpace(request.ComposeContent))
@@ -119,7 +119,7 @@ public sealed class StackOperationExecutor
         var client = await _accessor.GetClientAsync(request.HostName, cancellationToken).ConfigureAwait(false);
 
         var document = ComposeParser.Parse(request.ComposeContent);
-        var plan = ComposePlanner.Plan(request.StackName, document);
+        var plan = ComposePlanner.Plan(request.ComposeName, document);
 
         var created = 0;
         var recreated = 0;
@@ -144,7 +144,7 @@ public sealed class StackOperationExecutor
                     continue;
                 }
 
-                if (await EnsureNetworkAsync(client, request.StackName, network.ActualName, cancellationToken).ConfigureAwait(false))
+                if (await EnsureNetworkAsync(client, request.ComposeName, network.ActualName, cancellationToken).ConfigureAwait(false))
                 {
                     networksCreated++;
                     createdNetworkIds.Add(network.ActualName);
@@ -160,13 +160,13 @@ public sealed class StackOperationExecutor
                     continue;
                 }
 
-                if (await EnsureVolumeAsync(client, request.StackName, volume.ActualName, cancellationToken).ConfigureAwait(false))
+                if (await EnsureVolumeAsync(client, request.ComposeName, volume.ActualName, cancellationToken).ConfigureAwait(false))
                 {
                     volumesCreated++;
                 }
             }
 
-            var existing = await ListProjectContainersAsync(client, request.StackName, cancellationToken)
+            var existing = await ListProjectContainersAsync(client, request.ComposeName, cancellationToken)
                 .ConfigureAwait(false);
 
             var total = Math.Max(plan.Services.Count, 1);
@@ -212,14 +212,14 @@ public sealed class StackOperationExecutor
             skippedOrphans += Skipped;
 
             _logger.LogInformation(
-                "主机 {HostId} 应用编排 {Stack}：新建 {Created} 个服务、重建 {Recreated} 个、清理 {Removed} 个孤儿",
+                "主机 {HostId} 应用编排 {ComposeProject}：新建 {Created} 个服务、重建 {Recreated} 个、清理 {Removed} 个孤儿",
                 request.HostName,
-                request.StackName,
+                request.ComposeName,
                 created,
                 recreated,
                 removed);
 
-            return new StackOperationResult(
+            return new ComposeOperationResult(
                 created,
                 recreated,
                 removed,
@@ -257,7 +257,7 @@ public sealed class StackOperationExecutor
     /// </remarks>
     private async Task<(int Created, int Recreated, int Started)> ApplyServiceAsync(
         IDockerClient client,
-        StackOperationRequest request,
+        ComposeOperationRequest request,
         ComposePlan plan,
         ComposeServicePlan servicePlan,
         IReadOnlyList<ContainerListResponse> existing,
@@ -352,7 +352,7 @@ public sealed class StackOperationExecutor
     /// <returns>删除数与保留数。</returns>
     private async Task<(int Removed, int Skipped)> PruneOrphansAsync(
         IDockerClient client,
-        StackOperationRequest request,
+        ComposeOperationRequest request,
         ComposePlan plan,
         IReadOnlyList<ContainerListResponse> existing,
         CancellationToken cancellationToken)
@@ -390,12 +390,12 @@ public sealed class StackOperationExecutor
     /// <param name="request">操作请求。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>结果摘要。</returns>
-    private async Task<StackOperationResult> StopAsync(
-        StackOperationRequest request,
+    private async Task<ComposeOperationResult> StopAsync(
+        ComposeOperationRequest request,
         CancellationToken cancellationToken)
     {
         var client = await _accessor.GetClientAsync(request.HostName, cancellationToken).ConfigureAwait(false);
-        var containers = await ListProjectContainersAsync(client, request.StackName, cancellationToken)
+        var containers = await ListProjectContainersAsync(client, request.ComposeName, cancellationToken)
             .ConfigureAwait(false);
 
         var stopped = 0;
@@ -418,9 +418,9 @@ public sealed class StackOperationExecutor
             stopped++;
         }
 
-        _logger.LogInformation("主机 {HostId} 停止编排 {Stack}：停了 {Stopped} 个容器", request.HostName, request.StackName, stopped);
+        _logger.LogInformation("主机 {HostId} 停止编排 {ComposeProject}：停了 {Stopped} 个容器", request.HostName, request.ComposeName, stopped);
 
-        return new StackOperationResult(0, 0, 0, 0, 0, stopped, 0, 0, 0);
+        return new ComposeOperationResult(0, 0, 0, 0, 0, stopped, 0, 0, 0);
     }
 
     /// <summary>
@@ -429,12 +429,12 @@ public sealed class StackOperationExecutor
     /// <param name="request">操作请求。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>结果摘要。</returns>
-    private async Task<StackOperationResult> RemoveAsync(
-        StackOperationRequest request,
+    private async Task<ComposeOperationResult> RemoveAsync(
+        ComposeOperationRequest request,
         CancellationToken cancellationToken)
     {
         var client = await _accessor.GetClientAsync(request.HostName, cancellationToken).ConfigureAwait(false);
-        var containers = await ListProjectContainersAsync(client, request.StackName, cancellationToken)
+        var containers = await ListProjectContainersAsync(client, request.ComposeName, cancellationToken)
             .ConfigureAwait(false);
 
         var stopped = 0;
@@ -470,7 +470,7 @@ public sealed class StackOperationExecutor
         {
             if (!String.Equals(
                     LabelOf(network, ComposeLabels.Project),
-                    request.StackName,
+                    request.ComposeName,
                     StringComparison.Ordinal))
             {
                 continue;
@@ -489,9 +489,9 @@ public sealed class StackOperationExecutor
             {
                 // 网络上还有端点（多半是本项目之外的容器接入了）：留着，不当失败
                 _logger.LogWarning(
-                    "主机 {HostId} 删除编排 {Stack} 时网络 {Network} 未被删除：{Reason}",
+                    "主机 {HostId} 删除编排 {ComposeProject} 时网络 {Network} 未被删除：{Reason}",
                     request.HostName,
-                    request.StackName,
+                    request.ComposeName,
                     network.Name,
                     exception.Message);
             }
@@ -512,7 +512,7 @@ public sealed class StackOperationExecutor
             {
                 if (!String.Equals(
                         LabelOf(volume, ComposeLabels.Project),
-                        request.StackName,
+                        request.ComposeName,
                         StringComparison.Ordinal))
                 {
                     continue;
@@ -535,14 +535,14 @@ public sealed class StackOperationExecutor
         }
 
         _logger.LogInformation(
-            "主机 {HostId} 删除编排 {Stack}：移除 {Containers} 个容器、{Networks} 个网络、{Volumes} 个卷",
+            "主机 {HostId} 删除编排 {ComposeProject}：移除 {Containers} 个容器、{Networks} 个网络、{Volumes} 个卷",
             request.HostName,
-            request.StackName,
+            request.ComposeName,
             containers.Count,
             removedNetworks,
             removedVolumes);
 
-        return new StackOperationResult(
+        return new ComposeOperationResult(
             0,
             0,
             containers.Count,
@@ -568,7 +568,7 @@ public sealed class StackOperationExecutor
     /// </remarks>
     private async Task EnsureImageAsync(
         IDockerClient client,
-        StackOperationRequest request,
+        ComposeOperationRequest request,
         string image,
         CancellationToken cancellationToken)
     {
@@ -582,9 +582,9 @@ public sealed class StackOperationExecutor
         var (repository, tag) = ImageReference.Split(image);
 
         _logger.LogInformation(
-            "主机 {HostId} 编排 {Stack} 拉取镜像 {Image}（策略={Policy}）",
+            "主机 {HostId} 编排 {ComposeProject} 拉取镜像 {Image}（策略={Policy}）",
             request.HostName,
-            request.StackName,
+            request.ComposeName,
             image,
             request.PullAlways ? "always" : "missing");
 
@@ -723,12 +723,12 @@ public sealed class StackOperationExecutor
     /// 列出项目下的全部容器（含已停止的）。
     /// </summary>
     /// <param name="client">Docker 客户端。</param>
-    /// <param name="stackName">Stack 名称。</param>
+    /// <param name="composeName">Compose 项目名称。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>容器列表。</returns>
     private static async Task<IReadOnlyList<ContainerListResponse>> ListProjectContainersAsync(
         IDockerClient client,
-        string stackName,
+        string composeName,
         CancellationToken cancellationToken)
     {
         var containers = await DockerErrorTranslator.ExecuteAsync(
@@ -741,7 +741,7 @@ public sealed class StackOperationExecutor
         return [.. (containers ?? [])
             .Where(container => String.Equals(
                 LabelOf(container, ComposeLabels.Project),
-                stackName,
+                composeName,
                 StringComparison.Ordinal))];
     }
 
@@ -752,14 +752,14 @@ public sealed class StackOperationExecutor
     /// <param name="servicePlan">服务计划。</param>
     /// <returns>创建参数。</returns>
     private static CreateContainerParameters BuildCreateParameters(
-        StackOperationRequest request,
+        ComposeOperationRequest request,
         ComposeServicePlan servicePlan)
     {
         var service = servicePlan.Service;
 
         var labels = new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            [ComposeLabels.Project] = request.StackName,
+            [ComposeLabels.Project] = request.ComposeName,
             [ComposeLabels.Service] = service.Name,
             [ComposeLabels.ContainerNumber] = "1",
             [ComposeLabels.ConfigHash] = servicePlan.ConfigHash,
@@ -971,7 +971,7 @@ public sealed class StackOperationExecutor
     /// <param name="step">当前步骤。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     private async Task PublishAsync(
-        StackOperationRequest request,
+        ComposeOperationRequest request,
         double? percent,
         string step,
         CancellationToken cancellationToken)

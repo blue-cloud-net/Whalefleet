@@ -1,9 +1,9 @@
-namespace Whalefleet.Application.Stacks;
+namespace Whalefleet.Application.Composes;
 
 /// <summary>
 /// 编排计划：项目要建哪些资源、按什么顺序建。
 /// </summary>
-/// <param name="ProjectName">项目名（= Stack 名称）。</param>
+/// <param name="ProjectName">项目名（= Compose 项目名称）。</param>
 /// <param name="Networks">网络计划。</param>
 /// <param name="Volumes">具名卷计划。</param>
 /// <param name="Services">服务计划。</param>

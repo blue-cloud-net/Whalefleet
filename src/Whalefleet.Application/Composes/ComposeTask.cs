@@ -1,4 +1,4 @@
-namespace Whalefleet.Application.Stacks;
+namespace Whalefleet.Application.Composes;
 
 /// <summary>
 /// 编排任务的状态。
@@ -6,9 +6,9 @@ namespace Whalefleet.Application.Stacks;
 /// <remarks>
 /// <b>为什么是枚举而不是字符串</b>：状态是<b>封闭集合</b>（就这四种），
 /// 不像审计动作那样会随功能增加——因此用枚举能在编译期穷举检查。
-/// 对外序列化时转小写文本（见 <see cref="StackTaskStatusText"/>）。
+/// 对外序列化时转小写文本（见 <see cref="ComposeTaskStatusText"/>）。
 /// </remarks>
-public enum StackTaskStatus
+public enum ComposeTaskStatus
 {
     /// <summary>
     /// 已入队，尚未开始执行。
@@ -26,7 +26,7 @@ public enum StackTaskStatus
     Succeeded,
 
     /// <summary>
-    /// 已失败（<see cref="StackTaskSnapshot.ErrorCode"/> 给出原因码）。
+    /// 已失败（<see cref="ComposeTaskSnapshot.ErrorCode"/> 给出原因码）。
     /// </summary>
     Failed,
 }
@@ -38,7 +38,7 @@ public enum StackTaskStatus
 /// <b>不用 <c>Enum.ToString()</c> 直接产出</b>：那会得到 <c>Queued</c> 这类 PascalCase，
 /// 与本项目其它文本约定（错误码、权限名一律小写）不一致。
 /// </remarks>
-public static class StackTaskStatusText
+public static class ComposeTaskStatusText
 {
     /// <summary>
     /// 已入队。
@@ -65,12 +65,12 @@ public static class StackTaskStatusText
     /// </summary>
     /// <param name="status">状态。</param>
     /// <returns>小写文本。</returns>
-    public static string From(StackTaskStatus status) => status switch
+    public static string From(ComposeTaskStatus status) => status switch
     {
-        StackTaskStatus.Queued => Queued,
-        StackTaskStatus.Running => Running,
-        StackTaskStatus.Succeeded => Succeeded,
-        StackTaskStatus.Failed => Failed,
+        ComposeTaskStatus.Queued => Queued,
+        ComposeTaskStatus.Running => Running,
+        ComposeTaskStatus.Succeeded => Succeeded,
+        ComposeTaskStatus.Failed => Failed,
         _ => Queued,
     };
 }
@@ -87,7 +87,7 @@ public static class StackTaskStatusText
 /// <param name="NetworksCreated">新建的网络数。</param>
 /// <param name="VolumesCreated">新建的卷数。</param>
 /// <param name="VolumesRemoved">删除的卷数（只有显式要求时才非零）。</param>
-public sealed record StackOperationResult(
+public sealed record ComposeOperationResult(
     int Created,
     int Recreated,
     int Removed,
@@ -103,7 +103,7 @@ public sealed record StackOperationResult(
 /// </summary>
 /// <param name="TaskId">任务标识（客户端生成的进度令牌）。</param>
 /// <param name="HostName">所属主机名。</param>
-/// <param name="StackName">Stack 名称。</param>
+/// <param name="ComposeName">Compose 项目名称。</param>
 /// <param name="Operation">操作类型（<c>deploy</c> / <c>update</c> / <c>stop</c> / <c>remove</c>）。</param>
 /// <param name="Status">状态。</param>
 /// <param name="Percent">总体进度百分比（0–100）；无法确定时为 <see langword="null"/>（不是 0）。</param>
@@ -114,10 +114,10 @@ public sealed record StackOperationResult(
 /// <param name="Result">成功时的结果摘要。</param>
 /// <param name="CreatedAt">创建时刻（UTC）。</param>
 /// <param name="UpdatedAt">最后更新时刻（UTC）。</param>
-public sealed record StackTaskSnapshot(
+public sealed record ComposeTaskSnapshot(
     string TaskId,
     string HostName,
-    string StackName,
+    string ComposeName,
     string Operation,
     string Status,
     double? Percent,
@@ -125,6 +125,6 @@ public sealed record StackTaskSnapshot(
     int? ErrorCode,
     string? ErrorMessage,
     IReadOnlyList<string> Warnings,
-    StackOperationResult? Result,
+    ComposeOperationResult? Result,
     DateTime CreatedAt,
     DateTime UpdatedAt);

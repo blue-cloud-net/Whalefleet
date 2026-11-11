@@ -10,7 +10,7 @@ using Whalefleet.Core.Auth;
 using Whalefleet.Core.Hosts;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Repositories;
-using Whalefleet.Core.Stacks;
+using Whalefleet.Core.Composes;
 using Whalefleet.Core.Users;
 using Whalefleet.Infrastructure.Persistence;
 using Whalefleet.Infrastructure.Persistence.Auditing;
@@ -18,7 +18,7 @@ using Whalefleet.Infrastructure.Persistence.Auth;
 using Whalefleet.Infrastructure.Persistence.Hosts;
 using Whalefleet.Infrastructure.Persistence.Permissions;
 using Whalefleet.Infrastructure.Persistence.Repositories;
-using Whalefleet.Infrastructure.Persistence.Stacks;
+using Whalefleet.Infrastructure.Persistence.Composes;
 using Whalefleet.Infrastructure.Persistence.Users;
 
 namespace Whalefleet.Infrastructure.DependencyInjection;
@@ -94,8 +94,8 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<IUserRoleAssignmentRepository, SqliteUserRoleAssignmentRepository>();
         services.AddScoped<IRepositoryCredentialRepository, SqliteRepositoryCredentialRepository>();
 
-        // 编排 Stack（0.10.0）：存 Compose YAML 原文与 Webhook 令牌哈希。
-        services.AddScoped<IStackRepository, SqliteStackRepository>();
+        // 编排 Compose 项目（0.10.0）：存 Compose YAML 原文与 Webhook 令牌哈希。
+        services.AddScoped<IComposeProjectRepository, SqliteComposeProjectRepository>();
 
         // 审计日志（0.9.0）：只追加 + 只查，因此不派生 RepositoryBase（那个基类带更新与软删除）。
         services.AddScoped<IAuditLogRepository, AuditLogRepository>();

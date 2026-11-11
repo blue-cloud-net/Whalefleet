@@ -1,4 +1,4 @@
-namespace Whalefleet.Application.Stacks;
+namespace Whalefleet.Application.Composes;
 
 /// <summary>
 /// Shell 风格的单词拆分：把 <c>command: "nginx -g 'daemon off;'"</c> 拆成 argv。

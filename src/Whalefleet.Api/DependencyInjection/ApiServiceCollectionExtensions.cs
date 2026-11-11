@@ -8,7 +8,7 @@ using Whalefleet.Api.Realtime;
 using Whalefleet.Api.Security;
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Realtime;
-using Whalefleet.Application.Stacks;
+using Whalefleet.Application.Composes;
 
 using AspNetCorsOptions = Microsoft.AspNetCore.Cors.Infrastructure.CorsOptions;
 
@@ -86,14 +86,14 @@ public static class ApiServiceCollectionExtensions
     }
 
     /// <summary>
-    /// 注册编排 Stack 的后台执行与失败通知（0.10.0）。
+    /// 注册编排 Compose 项目的后台执行与失败通知（0.10.0）。
     /// </summary>
     /// <remarks>
     /// <para><b>为什么放在 Api 层而不是应用层</b>：后台工作器是<b>宿主外壳</b>的一部分
     /// （它随宿主启动、随宿主停止），而应用层只负责「做什么」，
     /// 不负责「什么时候跑」。</para>
     /// <para><b>失败通知的实现也在这一层</b>：「推给浏览器」是入站适配器的事，
-    /// 应用层只表达「该通知」这一意图（<see cref="IStackTaskNotifier"/>）。</para>
+    /// 应用层只表达「该通知」这一意图（<see cref="IComposeTaskNotifier"/>）。</para>
     /// <para><b>为什么必须在这里注册通知器</b>：工作器依赖它，
     /// 而工作器一旦注册就一定会在运行时解析它——缺注册的表现是
     /// 「后台任务一启动就崩」，而不是「通知不推送」。</para>
@@ -101,15 +101,15 @@ public static class ApiServiceCollectionExtensions
     /// <param name="services">服务集合。</param>
     /// <returns>同一 <see cref="IServiceCollection"/> 实例，便于链式调用。</returns>
     /// <exception cref="ArgumentNullException"><paramref name="services"/> 为 <see langword="null"/>。</exception>
-    public static IServiceCollection AddApiStacks(this IServiceCollection services)
+    public static IServiceCollection AddApiComposes(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
 
         // 失败通知：Singleton——它只持有一份 Hub 上下文与连接注册表。
-        services.AddSingleton<IStackTaskNotifier, HubStackTaskNotifier>();
+        services.AddSingleton<IComposeTaskNotifier, HubComposeTaskNotifier>();
 
         // 后台工作器：HostedService 天然是单例，且它自己按任务建作用域。
-        services.AddHostedService<StackOperationWorker>();
+        services.AddHostedService<ComposeOperationWorker>();
 
         return services;
     }

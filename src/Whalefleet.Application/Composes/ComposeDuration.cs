@@ -2,7 +2,7 @@ using System.Globalization;
 
 using Whalefleet.Application.Common;
 
-namespace Whalefleet.Application.Stacks;
+namespace Whalefleet.Application.Composes;
 
 /// <summary>
 /// Compose 时长解析：把 <c>500ms</c> / <c>30s</c> / <c>1m30s</c> / <c>1h</c> 这类写法换成秒。

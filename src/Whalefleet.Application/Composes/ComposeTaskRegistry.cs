@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 
 using Whalefleet.Application.Common;
 
-namespace Whalefleet.Application.Stacks;
+namespace Whalefleet.Application.Composes;
 
 /// <summary>
 /// 编排任务登记表：记住「有哪些任务在跑、跑到哪一步了」。
@@ -16,13 +16,13 @@ namespace Whalefleet.Application.Stacks;
 /// <para><b>重启丢任务的后果可接受</b>：进程重启时正在跑的编排本来就断了，
 /// 容器停在「建了一半」的状态；下次打开列表页，界面会按标签把实际情况显示出来
 /// （哪些服务在跑、哪些没起来），用户据此重新「应用」即可。</para>
-/// <para><b>为什么限制「同一 Stack 同时只有一个任务」</b>：部署 / 更新 / 停止 / 删除
+/// <para><b>为什么限制「同一 Compose 项目同时只有一个任务」</b>：部署 / 更新 / 停止 / 删除
 /// 都是「先停后建」的整套动作，两个重叠执行会互相踩——
 /// 一个在删容器，另一个在建同名容器。因此登记时就要挡住。</para>
 /// <para><b>线程安全</b>：读多写少，但读写来自不同线程（HTTP 请求线程写、后台工作线程改），
 /// 因此用 <see cref="ConcurrentDictionary{TKey, TValue}"/> + 锁保护「检查并登记」这一原子步骤。</para>
 /// </remarks>
-public sealed class StackTaskRegistry
+public sealed class ComposeTaskRegistry
 {
     /// <summary>
     /// 登记表里最多保留的任务数。
@@ -38,7 +38,7 @@ public sealed class StackTaskRegistry
     /// </summary>
     public static readonly TimeSpan TaskTtl = TimeSpan.FromHours(1);
 
-    private readonly ConcurrentDictionary<string, StackTask> _tasks = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, ComposeTask> _tasks = new(StringComparer.Ordinal);
     private readonly object _gate = new();
 
     /// <summary>
@@ -46,23 +46,23 @@ public sealed class StackTaskRegistry
     /// </summary>
     /// <param name="taskId">任务标识（客户端生成的进度令牌）。</param>
     /// <param name="hostName">所属主机名。</param>
-    /// <param name="stackName">Stack 名称。</param>
+    /// <param name="composeName">Compose 项目名称。</param>
     /// <param name="operation">操作类型。</param>
     /// <param name="now">当前时刻（UTC）。</param>
     /// <returns>登记成功返回 <see langword="true"/>。</returns>
     /// <exception cref="BusinessException">
-    /// 同一 Stack 已有进行中的任务（<c>1905</c>），或任务标识已被占用（<c>1000</c>）。
+    /// 同一 Compose 项目已有进行中的任务（<c>1905</c>），或任务标识已被占用（<c>1000</c>）。
     /// </exception>
     public bool TryRegister(
         string taskId,
         string hostName,
-        string stackName,
+        string composeName,
         string operation,
         DateTime now)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(taskId);
         ArgumentException.ThrowIfNullOrWhiteSpace(hostName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(stackName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(composeName);
         ArgumentException.ThrowIfNullOrWhiteSpace(operation);
 
         lock (_gate)
@@ -78,16 +78,16 @@ public sealed class StackTaskRegistry
 
             var busy = _tasks.Values.Any(task =>
                 !task.IsTerminal && String.Equals(task.HostName, hostName, StringComparison.OrdinalIgnoreCase)
-                        && String.Equals(task.StackName, stackName, StringComparison.Ordinal));
+                        && String.Equals(task.ComposeName, composeName, StringComparison.Ordinal));
 
             if (busy)
             {
                 throw new BusinessException(
-                    ErrorCodes.StackOperationInProgress,
-                    $"Stack「{stackName}」已有进行中的操作，请等它结束");
+                    ErrorCodes.ComposeOperationInProgress,
+                    $"Compose 项目「{composeName}」已有进行中的操作，请等它结束");
             }
 
-            _tasks[taskId] = new StackTask(taskId, hostName, stackName, operation, now);
+            _tasks[taskId] = new ComposeTask(taskId, hostName, composeName, operation, now);
 
             return true;
         }
@@ -98,7 +98,7 @@ public sealed class StackTaskRegistry
     /// </summary>
     /// <param name="taskId">任务标识。</param>
     /// <returns>快照；不存在返回 <see langword="null"/>。</returns>
-    public StackTaskSnapshot? Get(string taskId)
+    public ComposeTaskSnapshot? Get(string taskId)
     {
         if (String.IsNullOrWhiteSpace(taskId))
         {
@@ -122,9 +122,9 @@ public sealed class StackTaskRegistry
     /// <param name="taskId">任务标识。</param>
     /// <returns>撤销成功返回 <see langword="true"/>。</returns>
     /// <remarks>
-    /// <para><b>为什么需要它</b>：登记是「这个 Stack 已被占住」的原子声明，
+    /// <para><b>为什么需要它</b>：登记是「这个 Compose 项目已被占住」的原子声明，
     /// 而登记之后还有几步可能失败（写库、参数校验）。
-    /// 若失败后不撤销，这个 Stack 会被「占住」到 TTL 结束
+    /// 若失败后不撤销，这个 Compose 项目会被「占住」到 TTL 结束
     /// （默认 1 小时），用户看着「已有进行中的操作」却根本没有任何任务在跑——
     /// 而真正的原因（写库失败）早就被回滚掉了。</para>
     /// <para><b>只撤销未开始的任务</b>：已经开始执行的任务不能撤销，
@@ -144,7 +144,7 @@ public sealed class StackTaskRegistry
                 return false;
             }
 
-            if (task.IsTerminal || task.Status != StackTaskStatus.Queued)
+            if (task.IsTerminal || task.Status != ComposeTaskStatus.Queued)
             {
                 return false;
             }
@@ -158,10 +158,10 @@ public sealed class StackTaskRegistry
     /// </summary>
     /// <returns>快照列表（按创建时间升序）。</returns>
     /// <remarks>
-    /// 供「这个 Stack 是不是还有任务在跑」的判定使用——
+    /// 供「这个 Compose 项目是不是还有任务在跑」的判定使用——
     /// 那种判定需要看到全部任务，而不只是某一个。
     /// </remarks>
-    public IReadOnlyList<StackTaskSnapshot> GetSnapshot()
+    public IReadOnlyList<ComposeTaskSnapshot> GetSnapshot()
     {
         lock (_gate)
         {
@@ -209,7 +209,7 @@ public sealed class StackTaskRegistry
     /// <param name="now">当前时刻（UTC）。</param>
     public void MarkSucceeded(
         string taskId,
-        StackOperationResult result,
+        ComposeOperationResult result,
         IReadOnlyList<string> warnings,
         DateTime now)
     {
@@ -282,7 +282,7 @@ public sealed class StackTaskRegistry
 /// 用锁而不是 volatile，是因为「状态 + 百分比 + 步骤」要一起被读到，
 /// 分开读会拿到互相矛盾的组合（如「已成功」但百分比还是 50）。
 /// </remarks>
-internal sealed class StackTask
+internal sealed class ComposeTask
 {
     private readonly object _gate = new();
 
@@ -291,16 +291,16 @@ internal sealed class StackTask
     /// </summary>
     /// <param name="taskId">任务标识。</param>
     /// <param name="hostName">所属主机名。</param>
-    /// <param name="stackName">Stack 名称。</param>
+    /// <param name="composeName">Compose 项目名称。</param>
     /// <param name="operation">操作类型。</param>
     /// <param name="now">当前时刻（UTC）。</param>
-    internal StackTask(string taskId, string hostName, string stackName, string operation, DateTime now)
+    internal ComposeTask(string taskId, string hostName, string composeName, string operation, DateTime now)
     {
         this.TaskId = taskId;
         this.HostName = hostName;
-        this.StackName = stackName;
+        this.ComposeName = composeName;
         this.Operation = operation;
-        this.Status = StackTaskStatus.Queued;
+        this.Status = ComposeTaskStatus.Queued;
         this.CreatedAt = now;
         this.UpdatedAt = now;
     }
@@ -316,9 +316,9 @@ internal sealed class StackTask
     internal string HostName { get; }
 
     /// <summary>
-    /// Stack 名称。
+    /// Compose 项目名称。
     /// </summary>
-    internal string StackName { get; }
+    internal string ComposeName { get; }
 
     /// <summary>
     /// 操作类型。
@@ -328,7 +328,7 @@ internal sealed class StackTask
     /// <summary>
     /// 状态。
     /// </summary>
-    internal StackTaskStatus Status { get; private set; }
+    internal ComposeTaskStatus Status { get; private set; }
 
     /// <summary>
     /// 总体进度百分比；无法确定时为 <see langword="null"/>。
@@ -358,7 +358,7 @@ internal sealed class StackTask
     /// <summary>
     /// 成功时的结果摘要。
     /// </summary>
-    internal StackOperationResult? Result { get; private set; }
+    internal ComposeOperationResult? Result { get; private set; }
 
     /// <summary>
     /// 创建时刻（UTC）。
@@ -373,7 +373,7 @@ internal sealed class StackTask
     /// <summary>
     /// 任务是否已结束。
     /// </summary>
-    internal bool IsTerminal => this.Status is StackTaskStatus.Succeeded or StackTaskStatus.Failed;
+    internal bool IsTerminal => this.Status is ComposeTaskStatus.Succeeded or ComposeTaskStatus.Failed;
 
     /// <summary>
     /// 标记开始执行。
@@ -384,7 +384,7 @@ internal sealed class StackTask
     {
         lock (_gate)
         {
-            this.Status = StackTaskStatus.Running;
+            this.Status = ComposeTaskStatus.Running;
             this.Step = step;
             this.UpdatedAt = now;
         }
@@ -413,13 +413,13 @@ internal sealed class StackTask
     /// <param name="warnings">警告。</param>
     /// <param name="now">当前时刻（UTC）。</param>
     internal void MarkSucceeded(
-        StackOperationResult result,
+        ComposeOperationResult result,
         IReadOnlyList<string> warnings,
         DateTime now)
     {
         lock (_gate)
         {
-            this.Status = StackTaskStatus.Succeeded;
+            this.Status = ComposeTaskStatus.Succeeded;
             this.Result = result;
             this.Warnings = warnings;
             this.Percent = 100;
@@ -440,7 +440,7 @@ internal sealed class StackTask
     {
         lock (_gate)
         {
-            this.Status = StackTaskStatus.Failed;
+            this.Status = ComposeTaskStatus.Failed;
             this.ErrorCode = errorCode;
             this.ErrorMessage = errorMessage;
             this.UpdatedAt = now;
@@ -451,16 +451,16 @@ internal sealed class StackTask
     /// 取快照。
     /// </summary>
     /// <returns>任务的不可变快照。</returns>
-    internal StackTaskSnapshot Snapshot()
+    internal ComposeTaskSnapshot Snapshot()
     {
         lock (_gate)
         {
-            return new StackTaskSnapshot(
+            return new ComposeTaskSnapshot(
                 this.TaskId,
                 this.HostName,
-                this.StackName,
+                this.ComposeName,
                 this.Operation,
-                StackTaskStatusText.From(this.Status),
+                ComposeTaskStatusText.From(this.Status),
                 this.Percent,
                 this.Step,
                 this.ErrorCode,

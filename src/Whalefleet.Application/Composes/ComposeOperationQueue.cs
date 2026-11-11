@@ -1,7 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Threading.Channels;
 
-namespace Whalefleet.Application.Stacks;
+namespace Whalefleet.Application.Composes;
 
 /// <summary>
 /// 编排操作类型。
@@ -10,7 +10,7 @@ namespace Whalefleet.Application.Stacks;
 /// 用字符串常量而不是枚举：它会进审计动作、任务快照与前端 i18n，
 /// 需要与「操作类型」这一外部可见的概念保持一致。
 /// </remarks>
-public static class StackOperations
+public static class ComposeOperations
 {
     /// <summary>
     /// 部署（新项目）。
@@ -48,7 +48,7 @@ public static class StackOperations
 /// </remarks>
 /// <param name="TaskId">任务标识（客户端生成的进度令牌）。</param>
 /// <param name="HostName">所属主机名。</param>
-/// <param name="StackName">Stack 名称。</param>
+/// <param name="ComposeName">Compose 项目名称。</param>
 /// <param name="Operation">操作类型。</param>
 /// <param name="ComposeContent">Compose 文件原文（部署 / 更新时有效）。</param>
 /// <param name="PullAlways">是否总是拉取最新镜像（<c>false</c> 表示只在本地缺失时拉）。</param>
@@ -58,10 +58,10 @@ public static class StackOperations
 /// <param name="ActorName">操作者名（快照）。</param>
 /// <param name="ClientIp">来源 IP。</param>
 /// <param name="WebhookTokenHint">触发来源的 Webhook 令牌提示；<see langword="null"/> 表示用户手动触发。</param>
-public sealed record StackOperationRequest(
+public sealed record ComposeOperationRequest(
     string TaskId,
     string HostName,
-    string StackName,
+    string ComposeName,
     string Operation,
     string? ComposeContent,
     bool PullAlways,
@@ -89,11 +89,11 @@ public sealed record StackOperationRequest(
 [SuppressMessage(
     "Naming",
     "CA1711:Identifiers should not have incorrect suffix",
-    Justification = "StackOperationQueue 是本项目的领域名词（编排操作队列），非 CA1711 所针对的系统命名空间后缀。")]
-public sealed class StackOperationQueue
+    Justification = "ComposeOperationQueue 是本项目的领域名词（编排操作队列），非 CA1711 所针对的系统命名空间后缀。")]
+public sealed class ComposeOperationQueue
 {
-    private readonly Channel<StackOperationRequest> _channel =
-        Channel.CreateUnbounded<StackOperationRequest>(new UnboundedChannelOptions
+    private readonly Channel<ComposeOperationRequest> _channel =
+        Channel.CreateUnbounded<ComposeOperationRequest>(new UnboundedChannelOptions
         {
             // 单读者：不需要多播；关闭时把排队里的都放出去
             SingleReader = true,
@@ -105,7 +105,7 @@ public sealed class StackOperationQueue
     /// </summary>
     /// <param name="request">操作请求。</param>
     /// <returns>入队成功返回 <see langword="true"/>。</returns>
-    public bool TryEnqueue(StackOperationRequest request)
+    public bool TryEnqueue(ComposeOperationRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -117,7 +117,7 @@ public sealed class StackOperationQueue
     /// </summary>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>操作请求的异步序列。</returns>
-    public IAsyncEnumerable<StackOperationRequest> ReadAllAsync(CancellationToken cancellationToken = default) =>
+    public IAsyncEnumerable<ComposeOperationRequest> ReadAllAsync(CancellationToken cancellationToken = default) =>
         _channel.Reader.ReadAllAsync(cancellationToken);
 
     /// <summary>

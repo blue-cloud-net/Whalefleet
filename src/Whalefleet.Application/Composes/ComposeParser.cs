@@ -4,7 +4,7 @@ using Whalefleet.Application.Common;
 
 using YamlDotNet.RepresentationModel;
 
-namespace Whalefleet.Application.Stacks;
+namespace Whalefleet.Application.Composes;
 
 /// <summary>
 /// Compose 文件解析器：把 YAML 文本解析成 <see cref="ComposeDocument"/>。
@@ -145,7 +145,7 @@ internal static class ComposeParser
         var warnings = new List<string>();
         RejectUnknownKeys(rootMapping, String.Empty, _topLevelKeys);
 
-        // version 已被 Compose 规范废弃；name 会被本平台的 Stack 名称取代。
+        // version 已被 Compose 规范废弃；name 会被本平台的 Compose 项目名称取代。
         // 两者都忽略，但**给提示**——静默忽略会让人以为顶层 name 生效了。
         if (TryGetChild(rootMapping, "version", out var versionNode))
         {
@@ -154,7 +154,7 @@ internal static class ComposeParser
 
         if (TryGetChild(rootMapping, "name", out var nameNode))
         {
-            warnings.Add($"顶层「name」字段不生效——项目名以 Stack 名称为准（当前值：{nameNode}）");
+            warnings.Add($"顶层「name」字段不生效——项目名以 Compose 项目名称为准（当前值：{nameNode}）");
         }
 
         var services = ParseServices(rootMapping);

@@ -2,10 +2,10 @@ using System.Diagnostics.CodeAnalysis;
 
 using Whalefleet.Core.Common.Auditing;
 
-namespace Whalefleet.Core.Stacks;
+namespace Whalefleet.Core.Composes;
 
 /// <summary>
-/// 编排 Stack（一个 Docker Compose 项目在本平台里的记录）。
+/// 编排 Compose 项目（一个 Docker Compose 项目在本平台里的记录）。
 /// </summary>
 /// <remarks>
 /// <para><b>本表存的是「YAML 原文」，不是「容器的当前状态」</b>：
@@ -29,16 +29,16 @@ namespace Whalefleet.Core.Stacks;
 [SuppressMessage(
     "Naming",
     "CA1711:Identifiers should not have incorrect suffix",
-    Justification = "Stack 是本项目的领域名词（Docker Compose 编排项目），非 CA1711 所针对的系统命名空间后缀。")]
-public sealed class Stack : FullAuditedEntity<Guid, Guid>
+    Justification = "Compose 项目是本项目的领域名词（Docker Compose 编排项目），非 CA1711 所针对的系统命名空间后缀。")]
+public sealed class ComposeProject : FullAuditedEntity<Guid, Guid>
 {
     /// <summary>
-    /// Stack 名称最小长度。
+    /// Compose 项目名称最小长度。
     /// </summary>
     public const int MinNameLength = 1;
 
     /// <summary>
-    /// Stack 名称最大长度。
+    /// Compose 项目名称最大长度。
     /// </summary>
     /// <remarks>与 Docker Compose 项目名的实际上限一致（63 字符，留给前缀拼接）。</remarks>
     public const int MaxNameLength = 63;
@@ -72,7 +72,7 @@ public sealed class Stack : FullAuditedEntity<Guid, Guid>
     public Guid HostId { get; private set; }
 
     /// <summary>
-    /// Stack 名称（= Compose 项目名）。
+    /// Compose 项目名称（= Compose 项目名）。
     /// </summary>
     public string Name { get; private set; } = default!;
 
@@ -104,20 +104,20 @@ public sealed class Stack : FullAuditedEntity<Guid, Guid>
     /// <summary>
     /// 供 Dapper 物化使用的非公开无参构造。业务代码请改用 <see cref="Create"/>。
     /// </summary>
-    private Stack()
+    private ComposeProject()
     {
     }
 
     /// <summary>
-    /// 新建 Stack。
+    /// 新建 Compose 项目。
     /// </summary>
-    /// <param name="id">Stack 主键。</param>
+    /// <param name="id">Compose 项目主键。</param>
     /// <param name="hostId">所属主机主键（<c>hosts.id</c>）。</param>
-    /// <param name="name">Stack 名称（Compose 项目名）。</param>
+    /// <param name="name">Compose 项目名称（Compose 项目名）。</param>
     /// <param name="composeContent">Compose 文件原文。</param>
-    /// <returns>新建的 Stack 实体。</returns>
+    /// <returns>新建的 Compose 项目实体。</returns>
     /// <exception cref="ArgumentException">任一字段非法。</exception>
-    public static Stack Create(Guid id, Guid hostId, string name, string composeContent) => new()
+    public static ComposeProject Create(Guid id, Guid hostId, string name, string composeContent) => new()
     {
         Id = id,
         HostId = hostId,
@@ -172,7 +172,7 @@ public sealed class Stack : FullAuditedEntity<Guid, Guid>
     public void MarkWebhookUsed(DateTime usedAt) => this.WebhookLastUsedAt = usedAt;
 
     /// <summary>
-    /// 规范化并校验 Stack 名称。
+    /// 规范化并校验 Compose 项目名称。
     /// </summary>
     /// <param name="name">原始名称。</param>
     /// <returns>规范化后的名称。</returns>
@@ -188,18 +188,54 @@ public sealed class Stack : FullAuditedEntity<Guid, Guid>
 
         var trimmed = name.Trim();
 
+        var error = ValidateName(trimmed);
+
+        if (error is not null)
+        {
+            throw new ArgumentException(error, nameof(name));
+        }
+
+        return trimmed;
+    }
+
+    /// <summary>
+    /// 判断一个字符串是否是合法的 Compose 项目名。
+    /// </summary>
+    /// <param name="name">待判断的名称；可为空。</param>
+    /// <returns>合法返回 <see langword="true"/>。</returns>
+    /// <remarks>
+    /// <para><b>为什么要有这个公开入口</b>：Compose 项目名不只出现在「建 Compose 项目」这条路上——
+    /// 「按项目名过滤容器」也要用同一套规则校验入参。两处各写一份规则，
+    /// 迟早会漂移（一边放行了 <c>-</c> 开头，另一边不放行），而症状是
+    /// 「过滤条件传进去，返回空列表」，极难联想到是校验不一致。</para>
+    /// <para><b>它只判断、不规范化</b>：调用方拿到的是自己传进来的字符串，
+    /// 不该被悄悄改写（改写会让「我筛的是 A，回来的却是 B」）。</para>
+    /// </remarks>
+    public static bool IsValidName(string? name)
+    {
+        if (String.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
+
+        return ValidateName(name.Trim()) is null;
+    }
+
+    /// <summary>
+    /// 校验 Compose 项目名。
+    /// </summary>
+    /// <param name="trimmed">已去首尾空白的名称。</param>
+    /// <returns>合法返回 <see langword="null"/>；非法返回错误说明。</returns>
+    private static string? ValidateName(string trimmed)
+    {
         if (trimmed.Length is < MinNameLength or > MaxNameLength)
         {
-            throw new ArgumentException(
-                $"Stack 名称长度须在 {MinNameLength}-{MaxNameLength} 之间",
-                nameof(name));
+            return $"Compose 项目名称长度须在 {MinNameLength}-{MaxNameLength} 之间";
         }
 
         if (!IsAsciiLetterOrDigit(trimmed[0]))
         {
-            throw new ArgumentException(
-                "Stack 名称须以字母或数字开头（这是 Compose 项目名的规则）",
-                nameof(name));
+            return "Compose 项目名称须以字母或数字开头（这是 Compose 项目名的规则）";
         }
 
         foreach (var character in trimmed)
@@ -208,13 +244,11 @@ public sealed class Stack : FullAuditedEntity<Guid, Guid>
 
             if (!allowed)
             {
-                throw new ArgumentException(
-                    "Stack 名称只能包含小写字母、数字、连字符与下划线（这是 Compose 项目名的规则）",
-                    nameof(name));
+                return "Compose 项目名称只能包含小写字母、数字、连字符与下划线（这是 Compose 项目名的规则）";
             }
         }
 
-        return trimmed;
+        return null;
     }
 
     /// <summary>

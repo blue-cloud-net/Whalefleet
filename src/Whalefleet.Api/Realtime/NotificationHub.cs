@@ -29,7 +29,7 @@ public sealed class NotificationHub : Hub
     /// 操作进度的订阅类别名。
     /// </summary>
     /// <remarks>
-    /// <b>0.10.0 起从 <c>pull</c> 改成 <c>operation</c></b>：编排 Stack 的部署 / 更新
+    /// <b>0.10.0 起从 <c>pull</c> 改成 <c>operation</c></b>：编排 Compose 项目的部署 / 更新
     /// 也走这条通道，而「订阅一个叫 Pull 的频道看部署进度」会长期误导后来者。
     /// </remarks>
     public const string OperationSubscriptionKind = "operation";

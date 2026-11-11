@@ -1,9 +1,9 @@
-namespace Whalefleet.Application.Stacks;
+namespace Whalefleet.Application.Composes;
 
 /// <summary>
-/// 编排 Stack 列表项。
+/// 编排 Compose 项目列表项。
 /// </summary>
-/// <param name="Name">Stack 名称（= Compose 项目名）。</param>
+/// <param name="Name">Compose 项目名称（= Compose 项目名）。</param>
 /// <param name="Managed">是否由本平台部署。</param>
 /// <param name="Status">整体状态（<c>running</c> / <c>partial</c> / <c>stopped</c> / <c>unknown</c>）。</param>
 /// <param name="ServiceCount">服务数。</param>
@@ -26,10 +26,10 @@ namespace Whalefleet.Application.Stacks;
 /// <c>partial</c>（部分在跑）、<c>stopped</c>（全停）、
 /// <c>unknown</c>（连不上或没有容器）。之所以要有 <c>partial</c> 这一档：
 /// 「部分服务没起来」是编排最常见的问题，而只有 running / stopped 两档时它会被误报成 stopped。</para>
-/// <para><b>没有 <c>Id</c></b>：Stack 用<b>名称</b>标识（它就是 Compose 项目名），
+/// <para><b>没有 <c>Id</c></b>：Compose 项目用<b>名称</b>标识（它就是 Compose 项目名），
 /// 与主机名、卷名一样。数据库里的 Guid 只是内部主键，不对外暴露。</para>
 /// </remarks>
-public sealed record StackSummary(
+public sealed record ComposeProjectSummary(
     string Name,
     bool Managed,
     string Status,
@@ -45,17 +45,33 @@ public sealed record StackSummary(
     DateTime? UpdatedAt);
 
 /// <summary>
-/// 编排 Stack 详情。
+/// 编排 Compose 项目详情。
 /// </summary>
 /// <param name="Summary">列表项（同样的字段，便于前端复用）。</param>
 /// <param name="ComposeContent">Compose 文件原文；本平台没保存时为 <see langword="null"/>。</param>
 /// <param name="Services">服务列表。</param>
 /// <param name="Warnings">解析期的提示。</param>
-public sealed record StackDetail(
-    StackSummary Summary,
+/// <param name="DeclaredServiceCount">YAML 里声明的服务数；本平台没保存 YAML 时为 <c>0</c>。</param>
+/// <param name="MissingServices">声明了但当前还没有容器的服务名（按声明顺序）。</param>
+/// <remarks>
+/// <para><b><see cref="MissingServices"/> 是「服务视角」的最后一块拼图</b>：
+/// 详情页的主体是**按 compose 项目过滤出来的容器列表**，而容器列表只能回答
+/// 「现在有哪些容器在跑」——回答不了「<b>哪个服务还没起来</b>」。
+/// 而这个问题恰恰是用户打开编排详情页最想问的。</para>
+/// <para><b>为什么不在前端算</b>：前端看的是容器列表，而「声明了哪些服务」是 YAML 里的信息——
+/// 前端要自己解析 YAML 才知道缺了谁，而 YAML 解析规则必须与后端一致（否则两边说的「缺」不是一回事）。
+/// 这个判断只能由后端做一次，前端直接取结果。</para>
+/// <para><b>不受管的项目（没有 YAML）两个字段都是空的</b>：
+/// 没有声明就没有「缺失」，此时界面不该显示「缺少 N 个服务」这种话——
+/// 那会让用户以为项目坏了。</para>
+/// </remarks>
+public sealed record ComposeProjectDetail(
+    ComposeProjectSummary Summary,
     string? ComposeContent,
-    IReadOnlyList<StackServiceSummary> Services,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<ComposeServiceSummary> Services,
+    IReadOnlyList<string> Warnings,
+    int DeclaredServiceCount,
+    IReadOnlyList<string> MissingServices);
 
 /// <summary>
 /// 编排项目里的一个服务。
@@ -69,7 +85,7 @@ public sealed record StackDetail(
 /// <param name="Health">健康状态（<c>none</c> / <c>starting</c> / <c>healthy</c> / <c>unhealthy</c>）。</param>
 /// <param name="Ports">端口映射。</param>
 /// <param name="RestartPolicy">重启策略。</param>
-public sealed record StackServiceSummary(
+public sealed record ComposeServiceSummary(
     string Name,
     string Image,
     string? ContainerId,
@@ -77,7 +93,7 @@ public sealed record StackServiceSummary(
     string? State,
     string? Status,
     string? Health,
-    IReadOnlyList<StackServicePort> Ports,
+    IReadOnlyList<ComposeServicePort> Ports,
     string? RestartPolicy);
 
 /// <summary>
@@ -87,21 +103,21 @@ public sealed record StackServiceSummary(
 /// <param name="Protocol">协议。</param>
 /// <param name="HostPort">宿主端口；未绑定时为 <see langword="null"/>。</param>
 /// <param name="HostIp">绑定的宿主地址。</param>
-public sealed record StackServicePort(
+public sealed record ComposeServicePort(
     int ContainerPort,
     string Protocol,
     int? HostPort,
     string? HostIp);
 
 /// <summary>
-/// 编排 Stack 列表结果。
+/// 编排 Compose 项目列表结果。
 /// </summary>
-/// <param name="Items">当前页的 Stack。</param>
+/// <param name="Items">当前页的 Compose 项目。</param>
 /// <param name="Total">分页前的总条数。</param>
 /// <param name="PageIndex">服务端实际使用的页码。</param>
 /// <param name="PageSize">服务端实际使用的每页条数（已夹紧）。</param>
-public sealed record StackListResult(
-    IReadOnlyList<StackSummary> Items,
+public sealed record ComposeProjectListResult(
+    IReadOnlyList<ComposeProjectSummary> Items,
     int Total,
     int PageIndex,
     int PageSize);
@@ -117,7 +133,7 @@ public sealed record StackListResult(
 /// HTTP 请求扛不住——反代会把连接掐掉，客户端拿到的是「504 网关超时」
 /// 而不是「部署失败」。返回任务标识后，长耗时不再需要特殊处理。
 /// </remarks>
-public sealed record StackTaskAccepted(
+public sealed record ComposeTaskAccepted(
     string TaskId,
     string Status,
     int QueuePosition);
@@ -134,7 +150,7 @@ public sealed record StackTaskAccepted(
 /// 之后界面只能看到「令牌提示」（前几位）。
 /// 界面上必须提示用户「请立刻保存，之后无法再查看」。</para>
 /// </remarks>
-public sealed record StackWebhookInfo(
+public sealed record ComposeWebhookInfo(
     bool Enabled,
     string? TokenHint,
     string? Token,

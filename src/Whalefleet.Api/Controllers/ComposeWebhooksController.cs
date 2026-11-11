@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 using Whalefleet.Application.Common;
-using Whalefleet.Application.Stacks;
+using Whalefleet.Application.Composes;
 
 namespace Whalefleet.Api.Controllers;
 
@@ -22,18 +22,18 @@ namespace Whalefleet.Api.Controllers;
 /// 超时后返回 202 + 任务标识，CI 可改用轮询。</para>
 /// </remarks>
 [ApiController]
-[Route("api/v1/webhooks/stacks")]
+[Route("api/v1/webhooks/composes")]
 [AllowAnonymous]
-public sealed class StackWebhooksController : ControllerBase
+public sealed class ComposeWebhooksController : ControllerBase
 {
-    private readonly StackWebhookService _webhooks;
+    private readonly ComposeWebhookService _webhooks;
 
     /// <summary>
     /// 初始化 Webhook 控制器。
     /// </summary>
     /// <param name="webhooks">Webhook 用例。</param>
     /// <exception cref="ArgumentNullException"><paramref name="webhooks"/> 为 <see langword="null"/>。</exception>
-    public StackWebhooksController(StackWebhookService webhooks)
+    public ComposeWebhooksController(ComposeWebhookService webhooks)
     {
         ArgumentNullException.ThrowIfNull(webhooks);
 
@@ -49,20 +49,20 @@ public sealed class StackWebhooksController : ControllerBase
     /// <returns>统一响应，<c>data</c> 为任务标识与初始状态。</returns>
     /// <response code="202">已受理，后台执行中。</response>
     /// <response code="404">令牌无效 / 已吊销（<c>1906</c>）。</response>
-    /// <response code="409">该 Stack 已有进行中的操作（<c>1905</c>）。</response>
+    /// <response code="409">该 Compose 项目已有进行中的操作（<c>1905</c>）。</response>
     /// <response code="429">触发过于频繁（<c>1907</c>）。</response>
     [HttpPost("{token}")]
-    [ProducesResponseType(typeof(ApiResult<StackTaskAccepted>), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(ApiResult<ComposeTaskAccepted>), StatusCodes.Status202Accepted)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status409Conflict)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status429TooManyRequests)]
     public async Task<IActionResult> TriggerAsync(
         string token,
-        [FromBody] StackWebhookReloadRequest? request,
+        [FromBody] ComposeWebhookReloadRequest? request,
         CancellationToken cancellationToken)
     {
         var accepted = await _webhooks
-            .TriggerAsync(token, request ?? new StackWebhookReloadRequest(), cancellationToken)
+            .TriggerAsync(token, request ?? new ComposeWebhookReloadRequest(), cancellationToken)
             .ConfigureAwait(false);
 
         return this.Accepted(ApiResults.Ok(accepted));
@@ -79,12 +79,12 @@ public sealed class StackWebhooksController : ControllerBase
     /// <response code="400">任务标识为空（<c>1000</c>）。</response>
     /// <response code="404">令牌无效 / 已吊销（<c>1906</c>）。</response>
     [HttpPost("{token}/task")]
-    [ProducesResponseType(typeof(ApiResult<StackTaskSnapshot>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult<ComposeTaskSnapshot>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> TaskAsync(
         string token,
-        [FromBody] StackWebhookTaskRequest request,
+        [FromBody] ComposeWebhookTaskRequest request,
         CancellationToken cancellationToken)
     {
         var snapshot = await _webhooks.GetTaskAsync(token, request, cancellationToken).ConfigureAwait(false);

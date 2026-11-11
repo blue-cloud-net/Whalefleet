@@ -6,9 +6,9 @@ using Microsoft.Extensions.Logging;
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Hosts;
-using Whalefleet.Core.Stacks;
+using Whalefleet.Core.Composes;
 
-namespace Whalefleet.Application.Stacks;
+namespace Whalefleet.Application.Composes;
 
 /// <summary>
 /// 编排 Webhook 用例：令牌的生成 / 轮换 / 吊销，以及「由令牌触发的重放」。
@@ -26,7 +26,7 @@ namespace Whalefleet.Application.Stacks;
 /// <para><b>限流是必需的</b>：一次触发就是一次完整部署（含拉镜像）。
 /// 没有限流，一个写错的 CI 循环会把守护进程打满。</para>
 /// </remarks>
-public sealed class StackWebhookService
+public sealed class ComposeWebhookService
 {
     /// <summary>
     /// 令牌明文的字节数（32 字节 → Base64url 43 字符）。
@@ -52,19 +52,19 @@ public sealed class StackWebhookService
     /// </summary>
     private const int _waitPollIntervalMs = 250;
 
-    private readonly IStackRepository _repository;
+    private readonly IComposeProjectRepository _repository;
     private readonly IHostRepository _hosts;
-    private readonly StackTaskRegistry _tasks;
-    private readonly StackOperationQueue _queue;
+    private readonly ComposeTaskRegistry _tasks;
+    private readonly ComposeOperationQueue _queue;
     private readonly TimeProvider _timeProvider;
-    private readonly ILogger<StackWebhookService> _logger;
+    private readonly ILogger<ComposeWebhookService> _logger;
 
-    private readonly StackWebhookRateLimiter _rateLimiter;
+    private readonly ComposeWebhookRateLimiter _rateLimiter;
 
     /// <summary>
     /// 初始化 Webhook 用例。
     /// </summary>
-    /// <param name="repository">Stack 仓储。</param>
+    /// <param name="repository">Compose 项目仓储。</param>
     /// <param name="hosts">主机仓储（由主键反查主机名）。</param>
     /// <param name="tasks">任务登记表。</param>
     /// <param name="queue">任务队列。</param>
@@ -72,14 +72,14 @@ public sealed class StackWebhookService
     /// <param name="logger">日志。</param>
     /// <param name="rateLimiter">跨请求共享的限流器。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
-    public StackWebhookService(
-        IStackRepository repository,
+    public ComposeWebhookService(
+        IComposeProjectRepository repository,
         IHostRepository hosts,
-        StackTaskRegistry tasks,
-        StackOperationQueue queue,
+        ComposeTaskRegistry tasks,
+        ComposeOperationQueue queue,
         TimeProvider timeProvider,
-        ILogger<StackWebhookService> logger,
-        StackWebhookRateLimiter rateLimiter)
+        ILogger<ComposeWebhookService> logger,
+        ComposeWebhookRateLimiter rateLimiter)
     {
         ArgumentNullException.ThrowIfNull(repository);
         ArgumentNullException.ThrowIfNull(hosts);
@@ -102,65 +102,65 @@ public sealed class StackWebhookService
     /// 生成（或轮换）Webhook 令牌。
     /// </summary>
     /// <param name="hostId">主机标识（主机名）。</param>
-    /// <param name="request">请求（Stack 名称）。</param>
+    /// <param name="request">请求（Compose 项目名称）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>令牌信息；<see cref="StackWebhookInfo.Token"/> 是<b>明文，只此一次</b>。</returns>
+    /// <returns>令牌信息；<see cref="ComposeWebhookInfo.Token"/> 是<b>明文，只此一次</b>。</returns>
     /// <exception cref="BusinessException">
-    /// 名称为空（<c>1000</c>）、Stack 不存在（<c>1900</c>）、主机不可达（<c>1301</c>）。
+    /// 名称为空（<c>1000</c>）、Compose 项目不存在（<c>1900</c>）、主机不可达（<c>1301</c>）。
     /// </exception>
-    public async Task<StackWebhookInfo> RotateAsync(
+    public async Task<ComposeWebhookInfo> RotateAsync(
         string hostId,
-        StackWebhookRequest request,
+        ComposeWebhookRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
         ArgumentNullException.ThrowIfNull(request);
 
-        var stack = await this.RequireStackAsync(hostId, request.Name, cancellationToken)
+        var compose = await this.RequireComposeAsync(hostId, request.Name, cancellationToken)
             .ConfigureAwait(false);
 
         var token = GenerateToken();
         var hash = HashToken(token);
 
-        stack.SetWebhook(hash, token[.._tokenHintLength]);
-        await _repository.UpdateAsync(stack, cancellationToken).ConfigureAwait(false);
+        compose.SetWebhook(hash, token[.._tokenHintLength]);
+        await _repository.UpdateAsync(compose, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation(
-            "主机 {HostId} 的编排 {StackName} 轮换了 Webhook 令牌（提示 {TokenHint}）",
+            "主机 {HostId} 的编排 {ComposeName} 轮换了 Webhook 令牌（提示 {TokenHint}）",
             hostId,
-            stack.Name,
-            stack.WebhookTokenHint);
+            compose.Name,
+            compose.WebhookTokenHint);
 
-        return new StackWebhookInfo(true, stack.WebhookTokenHint, token, stack.WebhookLastUsedAt);
+        return new ComposeWebhookInfo(true, compose.WebhookTokenHint, token, compose.WebhookLastUsedAt);
     }
 
     /// <summary>
     /// 吊销 Webhook 令牌。
     /// </summary>
     /// <param name="hostId">主机标识（主机名）。</param>
-    /// <param name="request">请求（Stack 名称）。</param>
+    /// <param name="request">请求（Compose 项目名称）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>吊销后的令牌信息。</returns>
     /// <exception cref="BusinessException">
-    /// 名称为空（<c>1000</c>）、Stack 不存在（<c>1900</c>）。
+    /// 名称为空（<c>1000</c>）、Compose 项目不存在（<c>1900</c>）。
     /// </exception>
-    public async Task<StackWebhookInfo> RevokeAsync(
+    public async Task<ComposeWebhookInfo> RevokeAsync(
         string hostId,
-        StackWebhookRequest request,
+        ComposeWebhookRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
         ArgumentNullException.ThrowIfNull(request);
 
-        var stack = await this.RequireStackAsync(hostId, request.Name, cancellationToken)
+        var compose = await this.RequireComposeAsync(hostId, request.Name, cancellationToken)
             .ConfigureAwait(false);
 
-        stack.RevokeWebhook();
-        await _repository.UpdateAsync(stack, cancellationToken).ConfigureAwait(false);
+        compose.RevokeWebhook();
+        await _repository.UpdateAsync(compose, cancellationToken).ConfigureAwait(false);
 
-        _logger.LogInformation("主机 {HostId} 的编排 {StackName} 吊销了 Webhook 令牌", hostId, stack.Name);
+        _logger.LogInformation("主机 {HostId} 的编排 {ComposeName} 吊销了 Webhook 令牌", hostId, compose.Name);
 
-        return new StackWebhookInfo(false, null, null, stack.WebhookLastUsedAt);
+        return new ComposeWebhookInfo(false, null, null, compose.WebhookLastUsedAt);
     }
 
     /// <summary>
@@ -177,46 +177,46 @@ public sealed class StackWebhookService
     /// 令牌无效 / 已吊销（<c>1906</c>）、触发过于频繁（<c>1907</c>）
     /// 或已有进行中的操作（<c>1905</c>）。
     /// </exception>
-    public async Task<StackTaskAccepted> TriggerAsync(
+    public async Task<ComposeTaskAccepted> TriggerAsync(
         string token,
-        StackWebhookReloadRequest request,
+        ComposeWebhookReloadRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var stack = await this.RequireStackByTokenAsync(token, cancellationToken).ConfigureAwait(false);
+        var compose = await this.RequireComposeByTokenAsync(token, cancellationToken).ConfigureAwait(false);
 
-        this.EnsureWithinRateLimit(stack.Id);
+        this.EnsureWithinRateLimit(compose.Id);
 
-        var hostName = await this.ResolveHostNameAsync(stack, cancellationToken).ConfigureAwait(false);
+        var hostName = await this.ResolveHostNameAsync(compose, cancellationToken).ConfigureAwait(false);
 
         var taskId = GenerateTaskId();
 
-        _tasks.TryRegister(taskId, hostName, stack.Name, StackOperations.Update, _timeProvider.GetUtcNow().UtcDateTime);
+        _tasks.TryRegister(taskId, hostName, compose.Name, ComposeOperations.Update, _timeProvider.GetUtcNow().UtcDateTime);
 
         try
         {
-            stack.MarkWebhookUsed(_timeProvider.GetUtcNow().UtcDateTime);
-            if (!await _repository.UpdateAsync(stack, cancellationToken).ConfigureAwait(false))
+            compose.MarkWebhookUsed(_timeProvider.GetUtcNow().UtcDateTime);
+            if (!await _repository.UpdateAsync(compose, cancellationToken).ConfigureAwait(false))
             {
-                throw new BusinessException(ErrorCodes.StackNotFound, "编排 Stack 已不存在。");
+                throw new BusinessException(ErrorCodes.ComposeNotFound, "编排 Compose 项目已不存在。");
             }
 
-            if (!_queue.TryEnqueue(new StackOperationRequest(
+            if (!_queue.TryEnqueue(new ComposeOperationRequest(
             taskId,
             hostName,
-            stack.Name,
-            StackOperations.Update,
-            stack.ComposeContent,
+            compose.Name,
+            ComposeOperations.Update,
+            compose.ComposeContent,
             request.PullAlways ?? false,
             request.PruneOrphans ?? true,
             RemoveVolumes: false,
             ActorId: null,
             ActorName: null,
             ClientIp: null,
-            WebhookTokenHint: stack.WebhookTokenHint)))
+            WebhookTokenHint: compose.WebhookTokenHint)))
             {
-                throw new BusinessException(ErrorCodes.StackDeployFailed, "编排队列已关闭，本次触发未被受理。");
+                throw new BusinessException(ErrorCodes.ComposeDeployFailed, "编排队列已关闭，本次触发未被受理。");
             }
         }
         catch
@@ -226,12 +226,12 @@ public sealed class StackWebhookService
         }
 
         _logger.LogInformation(
-            "编排 {StackName}（主机 {HostName}）被 Webhook 触发重放（任务 {TaskId}）",
-            stack.Name,
+            "编排 {ComposeName}（主机 {HostName}）被 Webhook 触发重放（任务 {TaskId}）",
+            compose.Name,
             hostName,
             taskId);
 
-        var accepted = new StackTaskAccepted(taskId, StackTaskStatusText.Queued, 1);
+        var accepted = new ComposeTaskAccepted(taskId, ComposeTaskStatusText.Queued, 1);
 
         if (request.Wait == true)
         {
@@ -247,16 +247,16 @@ public sealed class StackWebhookService
     /// <param name="token">令牌明文。</param>
     /// <param name="request">请求（任务标识）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>任务快照；任务不存在或不属于该 Stack 时返回 <see langword="null"/>。</returns>
+    /// <returns>任务快照；任务不存在或不属于该 Compose 项目时返回 <see langword="null"/>。</returns>
     /// <exception cref="BusinessException">令牌无效（<c>1906</c>）。</exception>
-    public async Task<StackTaskSnapshot?> GetTaskAsync(
+    public async Task<ComposeTaskSnapshot?> GetTaskAsync(
         string token,
-        StackWebhookTaskRequest request,
+        ComposeWebhookTaskRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var stack = await this.RequireStackByTokenAsync(token, cancellationToken).ConfigureAwait(false);
+        var compose = await this.RequireComposeByTokenAsync(token, cancellationToken).ConfigureAwait(false);
 
         var taskId = request.TaskId?.Trim();
 
@@ -268,7 +268,7 @@ public sealed class StackWebhookService
         var snapshot = _tasks.Get(taskId);
 
         if (snapshot is null
-            || !String.Equals(snapshot.StackName, stack.Name, StringComparison.Ordinal))
+            || !String.Equals(snapshot.ComposeName, compose.Name, StringComparison.Ordinal))
         {
             return null;
         }
@@ -291,7 +291,7 @@ public sealed class StackWebhookService
             var snapshot = _tasks.Get(taskId);
 
             if (snapshot is not null
-                && snapshot.Status is StackTaskStatusText.Succeeded or StackTaskStatusText.Failed)
+                && snapshot.Status is ComposeTaskStatusText.Succeeded or ComposeTaskStatusText.Failed)
             {
                 return;
             }
@@ -301,66 +301,66 @@ public sealed class StackWebhookService
     }
 
     /// <summary>
-    /// 按「主机 + 名称」取 Stack。
+    /// 按「主机 + 名称」取 Compose 项目。
     /// </summary>
     /// <param name="hostId">主机标识（主机名）。</param>
-    /// <param name="name">Stack 名称。</param>
+    /// <param name="name">Compose 项目名称。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>Stack 实体。</returns>
-    private async Task<Stack> RequireStackAsync(
+    /// <returns>Compose 项目实体。</returns>
+    private async Task<ComposeProject> RequireComposeAsync(
         string hostId,
         string? name,
         CancellationToken cancellationToken)
     {
         if (String.IsNullOrWhiteSpace(name))
         {
-            throw BusinessException.Validation("Stack 名称不能为空");
+            throw BusinessException.Validation("Compose 项目名称不能为空");
         }
 
         var host = await _hosts.FindByNameAsync(hostId, cancellationToken).ConfigureAwait(false)
             ?? throw new BusinessException(ErrorCodes.HostNotFound, $"主机「{hostId}」不存在");
 
-        var stack = await _repository
+        var compose = await _repository
             .FindByHostAndNameAsync(host.Id, name.Trim(), cancellationToken)
             .ConfigureAwait(false);
 
-        return stack
-            ?? throw new BusinessException(ErrorCodes.StackNotFound, $"编排 Stack「{name.Trim()}」不存在");
+        return compose
+            ?? throw new BusinessException(ErrorCodes.ComposeNotFound, $"编排 Compose 项目「{name.Trim()}」不存在");
     }
 
     /// <summary>
-    /// 按令牌取 Stack。
+    /// 按令牌取 Compose 项目。
     /// </summary>
     /// <param name="token">令牌明文。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>Stack 实体。</returns>
+    /// <returns>Compose 项目实体。</returns>
     /// <exception cref="BusinessException">令牌无效（<c>1906</c>）。</exception>
-    private async Task<Stack> RequireStackByTokenAsync(string? token, CancellationToken cancellationToken)
+    private async Task<ComposeProject> RequireComposeByTokenAsync(string? token, CancellationToken cancellationToken)
     {
         if (String.IsNullOrWhiteSpace(token))
         {
-            throw new BusinessException(ErrorCodes.StackWebhookTokenInvalid, "Webhook 令牌无效");
+            throw new BusinessException(ErrorCodes.ComposeWebhookTokenInvalid, "Webhook 令牌无效");
         }
 
         var hash = HashToken(token.Trim());
 
-        var stack = await _repository.FindByWebhookTokenHashAsync(hash, cancellationToken).ConfigureAwait(false);
+        var compose = await _repository.FindByWebhookTokenHashAsync(hash, cancellationToken).ConfigureAwait(false);
 
         // 未启用 / 已吊销 / 不存在 —— 一律 1906，不区分
-        return stack
-            ?? throw new BusinessException(ErrorCodes.StackWebhookTokenInvalid, "Webhook 令牌无效");
+        return compose
+            ?? throw new BusinessException(ErrorCodes.ComposeWebhookTokenInvalid, "Webhook 令牌无效");
     }
 
     /// <summary>
     /// 由主机主键反查主机名。
     /// </summary>
-    /// <param name="stack">Stack 实体。</param>
+    /// <param name="compose">Compose 项目实体。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>主机名。</returns>
-    private async Task<string> ResolveHostNameAsync(Stack stack, CancellationToken cancellationToken)
+    private async Task<string> ResolveHostNameAsync(ComposeProject compose, CancellationToken cancellationToken)
     {
-        var host = await _hosts.QueryByIdAsync(stack.HostId, cancellationToken).ConfigureAwait(false)
-            ?? throw new BusinessException(ErrorCodes.HostNotFound, "该 Stack 所属的主机已不存在");
+        var host = await _hosts.QueryByIdAsync(compose.HostId, cancellationToken).ConfigureAwait(false)
+            ?? throw new BusinessException(ErrorCodes.HostNotFound, "该 Compose 项目所属的主机已不存在");
 
         return host.Name;
     }
@@ -368,13 +368,13 @@ public sealed class StackWebhookService
     /// <summary>
     /// 限流判定。
     /// </summary>
-    /// <param name="stackId">Stack 主键。</param>
+    /// <param name="composeId">Compose 项目主键。</param>
     /// <exception cref="BusinessException">触发过于频繁（<c>1907</c>）。</exception>
-    private void EnsureWithinRateLimit(Guid stackId)
+    private void EnsureWithinRateLimit(Guid composeId)
     {
-        if (!_rateLimiter.TryAcquire(stackId))
+        if (!_rateLimiter.TryAcquire(composeId))
         {
-            throw new BusinessException(ErrorCodes.StackWebhookRateLimited,
+            throw new BusinessException(ErrorCodes.ComposeWebhookRateLimited,
                 "Webhook 触发过于频繁（60 秒内最多 10 次）。");
         }
     }

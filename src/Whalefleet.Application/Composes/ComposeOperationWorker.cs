@@ -7,9 +7,9 @@ using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Auditing;
 using Whalefleet.Core.Hosts;
-using Whalefleet.Core.Stacks;
+using Whalefleet.Core.Composes;
 
-namespace Whalefleet.Application.Stacks;
+namespace Whalefleet.Application.Composes;
 
 /// <summary>
 /// 编排任务后台工作器：从队列里取出操作并执行。
@@ -27,13 +27,13 @@ namespace Whalefleet.Application.Stacks;
 /// <para><b>单个任务失败不终止循环</b>：失败只标记该任务，
 /// 循环继续处理下一个——一个坏 YAML 不该让整个编排功能从此罢工。</para>
 /// </remarks>
-public sealed class StackOperationWorker : BackgroundService
+public sealed class ComposeOperationWorker : BackgroundService
 {
-    private readonly StackOperationQueue _queue;
-    private readonly StackTaskRegistry _registry;
+    private readonly ComposeOperationQueue _queue;
+    private readonly ComposeTaskRegistry _registry;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly TimeProvider _timeProvider;
-    private readonly ILogger<StackOperationWorker> _logger;
+    private readonly ILogger<ComposeOperationWorker> _logger;
 
     /// <summary>
     /// 初始化工作器。
@@ -44,12 +44,12 @@ public sealed class StackOperationWorker : BackgroundService
     /// <param name="timeProvider">时间源。</param>
     /// <param name="logger">日志。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
-    public StackOperationWorker(
-        StackOperationQueue queue,
-        StackTaskRegistry registry,
+    public ComposeOperationWorker(
+        ComposeOperationQueue queue,
+        ComposeTaskRegistry registry,
         IServiceScopeFactory scopeFactory,
         TimeProvider timeProvider,
-        ILogger<StackOperationWorker> logger)
+        ILogger<ComposeOperationWorker> logger)
     {
         ArgumentNullException.ThrowIfNull(queue);
         ArgumentNullException.ThrowIfNull(registry);
@@ -90,7 +90,7 @@ public sealed class StackOperationWorker : BackgroundService
     /// </summary>
     /// <param name="request">操作请求。</param>
     /// <returns>表示异步操作的任务。</returns>
-    private async Task ProcessAsync(StackOperationRequest request)
+    private async Task ProcessAsync(ComposeOperationRequest request)
     {
         var now = _timeProvider.GetUtcNow().UtcDateTime;
 
@@ -101,7 +101,7 @@ public sealed class StackOperationWorker : BackgroundService
 
         try
         {
-            var executor = scope.ServiceProvider.GetRequiredService<StackOperationExecutor>();
+            var executor = scope.ServiceProvider.GetRequiredService<ComposeOperationExecutor>();
             var result = await executor.ExecuteAsync(request, CancellationToken.None).ConfigureAwait(false);
 
             var finished = _timeProvider.GetUtcNow().UtcDateTime;
@@ -114,10 +114,10 @@ public sealed class StackOperationWorker : BackgroundService
                 .ConfigureAwait(false);
 
             _logger.LogInformation(
-                "编排任务 {TaskId} 完成：主机 {HostName}，编排 {StackName}，操作 {Operation}",
+                "编排任务 {TaskId} 完成：主机 {HostName}，编排 {ComposeName}，操作 {Operation}",
                 request.TaskId,
                 request.HostName,
-                request.StackName,
+                request.ComposeName,
                 request.Operation);
         }
         catch (BusinessException exception)
@@ -138,10 +138,10 @@ public sealed class StackOperationWorker : BackgroundService
                 .ConfigureAwait(false);
 
             _logger.LogWarning(
-                "编排任务 {TaskId} 失败：主机 {HostName}，编排 {StackName}，操作 {Operation}，原因 {Reason}",
+                "编排任务 {TaskId} 失败：主机 {HostName}，编排 {ComposeName}，操作 {Operation}，原因 {Reason}",
                 request.TaskId,
                 request.HostName,
-                request.StackName,
+                request.ComposeName,
                 request.Operation,
                 exception.Message);
         }
@@ -150,8 +150,8 @@ public sealed class StackOperationWorker : BackgroundService
             var failed = _timeProvider.GetUtcNow().UtcDateTime;
 
             var failure = new BusinessException(
-                ErrorCodes.StackDeployFailed,
-                ErrorCodeCatalog.GetDefaultMessage(ErrorCodes.StackDeployFailed));
+                ErrorCodes.ComposeDeployFailed,
+                ErrorCodeCatalog.GetDefaultMessage(ErrorCodes.ComposeDeployFailed));
             _registry.MarkFailed(request.TaskId, failure.Code, failure.Message, failed);
 
             await this.RecordAuditAsync(scope.ServiceProvider, request, false, failure, null, failed)
@@ -161,15 +161,15 @@ public sealed class StackOperationWorker : BackgroundService
 
             _logger.LogError(
                 exception,
-                "编排任务 {TaskId} 异常退出：主机 {HostName}，编排 {StackName}",
+                "编排任务 {TaskId} 异常退出：主机 {HostName}，编排 {ComposeName}",
                 request.TaskId,
                 request.HostName,
-                request.StackName);
+                request.ComposeName);
         }
     }
 
     /// <summary>
-    /// 删除操作成功后清掉数据库里的 Stack 记录。
+    /// 删除操作成功后清掉数据库里的 Compose 项目记录。
     /// </summary>
     /// <param name="services">作用域的服务提供器。</param>
     /// <param name="request">操作请求。</param>
@@ -184,16 +184,16 @@ public sealed class StackOperationWorker : BackgroundService
     /// 只是列表里多一条「受管但空」的条目——那是可以事后修的，
     /// 而把整个任务标成失败会让用户以为删除没成功（而它其实成功了）。</para>
     /// </remarks>
-    private async Task RemoveRecordAsync(IServiceProvider services, StackOperationRequest request)
+    private async Task RemoveRecordAsync(IServiceProvider services, ComposeOperationRequest request)
     {
-        if (request.Operation != StackOperations.Remove)
+        if (request.Operation != ComposeOperations.Remove)
         {
             return;
         }
 
         try
         {
-            var repository = services.GetRequiredService<IStackRepository>();
+            var repository = services.GetRequiredService<IComposeProjectRepository>();
             var hosts = services.GetRequiredService<IHostRepository>();
 
             var host = await hosts.FindByNameAsync(request.HostName).ConfigureAwait(false);
@@ -204,7 +204,7 @@ public sealed class StackOperationWorker : BackgroundService
             }
 
             var entity = await repository
-                .FindByHostAndNameAsync(host.Id, request.StackName)
+                .FindByHostAndNameAsync(host.Id, request.ComposeName)
                 .ConfigureAwait(false);
 
             if (entity is null)
@@ -218,9 +218,9 @@ public sealed class StackOperationWorker : BackgroundService
         {
             _logger.LogWarning(
                 exception,
-                "删除编排记录失败（主机={HostName}，编排={StackName}）",
+                "删除编排记录失败（主机={HostName}，编排={ComposeName}）",
                 request.HostName,
-                request.StackName);
+                request.ComposeName);
         }
     }
 
@@ -240,10 +240,10 @@ public sealed class StackOperationWorker : BackgroundService
     /// </remarks>
     private async Task RecordAuditAsync(
         IServiceProvider services,
-        StackOperationRequest request,
+        ComposeOperationRequest request,
         bool succeeded,
         BusinessException? exception,
-        StackOperationResult? result,
+        ComposeOperationResult? result,
         DateTime occurredAt)
     {
         try
@@ -259,9 +259,9 @@ public sealed class StackOperationWorker : BackgroundService
                     OccurredAt = occurredAt,
                     ActorId = request.ActorId,
                     ActorName = request.ActorName ?? String.Empty,
-                    TargetType = AuditTargetTypes.Stack,
-                    TargetId = request.StackName,
-                    TargetName = request.StackName,
+                    TargetType = AuditTargetTypes.Compose,
+                    TargetId = request.ComposeName,
+                    TargetName = request.ComposeName,
                     HostName = request.HostName,
                     ErrorCode = exception?.Code,
                     ClientIp = request.ClientIp,
@@ -288,13 +288,13 @@ public sealed class StackOperationWorker : BackgroundService
     /// 用的就是 <c>update</c> 操作，若按操作类型先判，
     /// 审计里记的就是普通更新——「谁触发的这次部署」这条线索就丢了。
     /// </remarks>
-    private static string ResolveAuditAction(StackOperationRequest request) => request.Operation switch
+    private static string ResolveAuditAction(ComposeOperationRequest request) => request.Operation switch
     {
-        _ when request.WebhookTokenHint is not null => AuditActions.StackWebhookReload,
-        StackOperations.Update => AuditActions.StackUpdate,
-        StackOperations.Stop => AuditActions.StackStop,
-        StackOperations.Remove => AuditActions.StackRemove,
-        _ => AuditActions.StackDeploy,
+        _ when request.WebhookTokenHint is not null => AuditActions.ComposeWebhookReload,
+        ComposeOperations.Update => AuditActions.ComposeUpdate,
+        ComposeOperations.Stop => AuditActions.ComposeStop,
+        ComposeOperations.Remove => AuditActions.ComposeRemove,
+        _ => AuditActions.ComposeDeploy,
     };
 
     /// <summary>
@@ -307,7 +307,7 @@ public sealed class StackOperationWorker : BackgroundService
     /// <b>不写环境变量的值、不写 YAML 全文</b>：那里面常含口令，
     /// 而审计日志会被采集器上报到集中式系统。
     /// </remarks>
-    private static string BuildDetail(StackOperationRequest request, StackOperationResult? result)
+    private static string BuildDetail(ComposeOperationRequest request, ComposeOperationResult? result)
     {
         var parts = new List<string>
         {
@@ -344,7 +344,7 @@ public sealed class StackOperationWorker : BackgroundService
     /// <param name="occurredAt">发生时刻（UTC）。</param>
     /// <returns>表示异步操作的任务。</returns>
     private async Task NotifyFailureAsync(
-        StackOperationRequest request,
+        ComposeOperationRequest request,
         int errorCode,
         string message,
         DateTime occurredAt)
@@ -353,12 +353,12 @@ public sealed class StackOperationWorker : BackgroundService
         {
             using var scope = _scopeFactory.CreateScope();
 
-            var notifier = scope.ServiceProvider.GetRequiredService<IStackTaskNotifier>();
+            var notifier = scope.ServiceProvider.GetRequiredService<IComposeTaskNotifier>();
 
             await notifier.NotifyFailedAsync(
-                new StackTaskFailureNotification(
+                new ComposeTaskFailureNotification(
                     request.HostName,
-                    request.StackName,
+                    request.ComposeName,
                     request.Operation,
                     errorCode,
                     message,

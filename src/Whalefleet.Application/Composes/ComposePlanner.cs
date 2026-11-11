@@ -4,7 +4,7 @@ using System.Text;
 
 using Whalefleet.Application.Common;
 
-namespace Whalefleet.Application.Stacks;
+namespace Whalefleet.Application.Composes;
 
 /// <summary>
 /// 编排计划：把解析后的 Compose 文档变成「要建哪些网络、哪些卷、哪些容器」。
@@ -16,7 +16,7 @@ namespace Whalefleet.Application.Stacks;
 /// <para><b>命名规则照抄 Compose</b>：网络叫 <c>&lt;项目名&gt;_&lt;网络名&gt;</c>、
 /// 具名卷叫 <c>&lt;项目名&gt;_&lt;卷名&gt;</c>、容器叫 <c>&lt;项目名&gt;-&lt;服务名&gt;-1</c>。
 /// 与 Compose 保持一致意味着两套工具能认出彼此的项目——
-/// 用户在命令行 <c>docker compose ls</c> 里也能看到本平台部署的 Stack。</para>
+/// 用户在命令行 <c>docker compose ls</c> 里也能看到本平台部署的 Compose 项目。</para>
 /// <para><b>配置哈希决定「要不要重建」</b>：与 Compose 同一套语义——
 /// 哈希变了才重建，没变就保留。哈希取「服务的完整定义」的 SHA-256，
 /// 因此改了端口、改了环境变量、改了健康检查都会导致重建，而改��无关服务不会。</para>
@@ -31,7 +31,7 @@ internal static class ComposePlanner
     /// <summary>
     /// 规划一个编排项目。
     /// </summary>
-    /// <param name="projectName">项目名（= Stack 名称）。</param>
+    /// <param name="projectName">项目名（= Compose 项目名称）。</param>
     /// <param name="document">解析后的 Compose 文档。</param>
     /// <returns>编排计划。</returns>
     /// <exception cref="BusinessException">
@@ -335,14 +335,14 @@ internal static class ComposePlanner
     /// <param name="byName">服务名 → 计划。</param>
     /// <param name="visited">访问状态（0 = 未访问，1 = 在栈中，2 = 已完成）。</param>
     /// <param name="order">输出顺序。</param>
-    /// <param name="stack">当前路径（用于报告环）。</param>
+    /// <param name="compose">当前路径（用于报告环）。</param>
     /// <exception cref="BusinessException">存在环（<c>1904</c>）。</exception>
     private static void Visit(
         string name,
         Dictionary<string, ComposeServicePlan> byName,
         Dictionary<string, int> visited,
         List<string> order,
-        List<string> stack)
+        List<string> compose)
     {
         if (visited.TryGetValue(name, out var state))
         {
@@ -351,8 +351,8 @@ internal static class ComposePlanner
                 return;
             }
 
-            var cycleStart = stack.IndexOf(name);
-            var cycle = String.Join(" → ", stack.Skip(cycleStart < 0 ? 0 : cycleStart).Append(name));
+            var cycleStart = compose.IndexOf(name);
+            var cycle = String.Join(" → ", compose.Skip(cycleStart < 0 ? 0 : cycleStart).Append(name));
 
             throw new BusinessException(
                 ErrorCodes.ComposeInvalid,
@@ -360,17 +360,17 @@ internal static class ComposePlanner
         }
 
         visited[name] = 1;
-        stack.Add(name);
+        compose.Add(name);
 
         if (byName.TryGetValue(name, out var plan))
         {
             foreach (var dependency in plan.Service.DependsOn)
             {
-                Visit(dependency, byName, visited, order, stack);
+                Visit(dependency, byName, visited, order, compose);
             }
         }
 
-        stack.RemoveAt(stack.Count - 1);
+        compose.RemoveAt(compose.Count - 1);
         visited[name] = 2;
         order.Add(name);
     }

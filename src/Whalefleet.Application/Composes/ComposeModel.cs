@@ -1,4 +1,4 @@
-namespace Whalefleet.Application.Stacks;
+namespace Whalefleet.Application.Composes;
 
 /// <summary>
 /// 解析后的 Compose 服务定义。
