@@ -89,6 +89,13 @@ public static class ErrorCodeCatalog
             [ErrorCodes.StackWebhookTokenInvalid] = (ErrorCategory.NotFound, "Webhook 令牌无效或已吊销"),
             [ErrorCodes.StackWebhookRateLimited] = (ErrorCategory.RateLimited, "Webhook 触发过于频繁"),
 
+            [ErrorCodes.AlertRuleNotFound] = (ErrorCategory.NotFound, "告警规则不存在"),
+            [ErrorCodes.AlertRuleInvalid] = (ErrorCategory.Validation, "告警规则参数非法"),
+            [ErrorCodes.NotificationChannelNotFound] = (ErrorCategory.NotFound, "通知渠道不存在"),
+            [ErrorCodes.NotificationChannelTestFailed] = (ErrorCategory.UpstreamFailure, "通知渠道测试失败"),
+            [ErrorCodes.NotificationNotFound] = (ErrorCategory.NotFound, "通知不存在"),
+            [ErrorCodes.NotificationChannelNameAlreadyExists] = (ErrorCategory.Validation, "通知渠道名已被占用"),
+
             [ErrorCodes.InternalError] = (ErrorCategory.Internal, "服务器内部错误"),
         }.ToFrozenDictionary();
 

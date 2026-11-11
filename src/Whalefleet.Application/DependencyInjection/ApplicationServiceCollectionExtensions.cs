@@ -5,6 +5,7 @@ using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Auditing;
 using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Abstractions.Terminal;
+using Whalefleet.Application.Alerting;
 using Whalefleet.Application.Auditing;
 using Whalefleet.Application.Auth;
 using Whalefleet.Application.Common;
@@ -164,7 +165,25 @@ public static class ApplicationServiceCollectionExtensions
         // 与「当前用户 / 当前 IP」这两个请求级状态。
         services.AddScoped<IAuditLogger, AuditLogger>();
         services.AddScoped<AuditLogService>();
+// 告警与通知（0.11.0）。
+        // 选项形状在应用层，绑定与校验在 Api / Infrastructure（与 RealtimeOptions 同口径）。
+        services.AddOptions<AlertsOptions>();
+        services.AddOptions<NotificationsOptions>();
 
+        // 通知总线：Singleton——它是进程内的广播通道，订阅方列表必须共享。
+        services.AddSingleton<INotificationBus, InProcessNotificationBus>();
+
+        services.AddScoped<AlertRuleService>();
+        services.AddScoped<NotificationChannelService>();
+        services.AddScoped<NotificationService>();
+        services.AddScoped<INotificationWriter>(static provider =>
+            provider.GetRequiredService<NotificationService>());
+        services.AddScoped<NotificationDeliveryService>();
+
+        // 告警评估器：后台服务，Singleton；内部自建作用域访问 Scoped 仓储与服务。
+        services.AddHostedService<AlertEvaluationWorker>();
+
+        
         return services;
     }
 }

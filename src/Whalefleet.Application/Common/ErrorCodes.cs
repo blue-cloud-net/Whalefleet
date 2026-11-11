@@ -391,6 +391,42 @@ public static class ErrorCodes
     public const int StackWebhookRateLimited = 1907;
     #endregion
 
+    #region 1700-1799 告警与通知
+
+    /// <summary>
+    /// 告警规则不存在（HTTP 404）。
+    /// </summary>
+    public const int AlertRuleNotFound = 1700;
+
+    /// <summary>
+    /// 告警规则参数非法（阈值顺序 / 取值 / 窗口）（HTTP 400）。
+    /// </summary>
+    public const int AlertRuleInvalid = 1701;
+
+    /// <summary>
+    /// 通知渠道不存在（HTTP 404）。
+    /// </summary>
+    public const int NotificationChannelNotFound = 1702;
+
+    /// <summary>
+    /// 通知渠道测试失败（HTTP 502）。
+    /// </summary>
+    /// <remarks>
+    /// 归 502 而不是 400：请求本身合法，失败发生在与外部系统（Webhook / SMTP）交互时。
+    /// </remarks>
+    public const int NotificationChannelTestFailed = 1703;
+
+    /// <summary>
+    /// 通知不存在（HTTP 404）。
+    /// </summary>
+    public const int NotificationNotFound = 1704;
+
+    /// <summary>
+    /// 通知渠道名已被占用（HTTP 400）。
+    /// </summary>
+    public const int NotificationChannelNameAlreadyExists = 1705;
+    #endregion
+
     #region 9000-9999 服务器内部错误
 
     /// <summary>
