@@ -33,7 +33,9 @@ public sealed record RoleAssignmentSummary(
     string? RoleDisplayName,
     Guid? HostId,
     string? HostName,
-    DateTime? LastModificationTime);
+    DateTime? LastModificationTime,
+    string? ContainerId = null,
+    string ContainerPermissionMode = "inheritHost");
 
 /// <summary>
 /// 一个角色的完整投影（角色列表 / 详情端点）。

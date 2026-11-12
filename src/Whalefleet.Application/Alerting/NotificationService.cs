@@ -4,6 +4,7 @@ using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Alerting;
 using Whalefleet.Core.Hosts;
+using Whalefleet.Core.Permissions;
 
 namespace Whalefleet.Application.Alerting;
 
@@ -29,6 +30,9 @@ public sealed class NotificationService : INotificationWriter
     private readonly IHostRepository _hosts;
     private readonly ICurrentUser _currentUser;
     private readonly TimeProvider _clock;
+    private readonly IContainerPermissionChecker _containerPermissions;
+    private readonly IUserRoleAssignmentRepository _assignments;
+    private readonly IAuthorizationSettingsStore _settings;
 
     /// <summary>
     /// 初始化用例服务。
@@ -39,7 +43,7 @@ public sealed class NotificationService : INotificationWriter
         IPermissionChecker permissions,
         IHostRepository hosts,
         ICurrentUser currentUser,
-        TimeProvider clock)
+        TimeProvider clock, IContainerPermissionChecker containerPermissions, IUserRoleAssignmentRepository assignments, IAuthorizationSettingsStore settings)
     {
         ArgumentNullException.ThrowIfNull(notifications);
         ArgumentNullException.ThrowIfNull(bus);
@@ -54,6 +58,9 @@ public sealed class NotificationService : INotificationWriter
         _hosts = hosts;
         _currentUser = currentUser;
         _clock = clock;
+        _containerPermissions = containerPermissions;
+        _assignments = assignments;
+        _settings = settings;
     }
 
     /// <summary>
@@ -194,8 +201,27 @@ public sealed class NotificationService : INotificationWriter
             visibleHostIds = [.. visible.Select(host => host.Id)];
         }
 
+        var containerAccess = new Dictionary<Guid, ContainerNotificationAccess>();
+        if (!includeAllHosts)
+        {
+            var rows = await _assignments.ListByUserAsync(userId, cancellationToken).ConfigureAwait(false);
+            var strict = await _settings.GetModeAsync(cancellationToken).ConfigureAwait(false) == "requireAssignment";
+            foreach (var hostId in visibleHostIds)
+            {
+                var selected = new List<string>();
+                foreach (var id in rows.Where(a => a.HostId == hostId && a.ContainerId is not null).Select(a => a.ContainerId!).Distinct(StringComparer.Ordinal))
+                {
+                    var effective = await _containerPermissions.GetPermissionsAsync(userId, hostId, id, cancellationToken).ConfigureAwait(false);
+                    if (effective.Contains(Permission.ContainerRead) == strict) selected.Add(id);
+                }
+                var canReadContainers = await _permissions.HasPermissionAsync(userId, hostId, Permission.ContainerRead, cancellationToken).ConfigureAwait(false);
+                if (!canReadContainers) { containerAccess[hostId] = new ContainerNotificationAccess(true, []); continue; }
+                if (strict || selected.Count > 0) containerAccess[hostId] = new ContainerNotificationAccess(strict, selected);
+            }
+        }
         return new NotificationFilter
         {
+            ContainerAccess = containerAccess,
             IncludeAllHosts = includeAllHosts,
             VisibleHostIds = visibleHostIds,
             UnreadOnly = unreadOnly,

@@ -1,3 +1,4 @@
+using Whalefleet.Application.Containers;
 using Docker.DotNet;
 using Docker.DotNet.Models;
 
@@ -52,6 +53,7 @@ public sealed class ComposeProjectService
         };
 
     private readonly IDockerHostAccessor _accessor;
+    private readonly ContainerAuthorizationService _authorization;
     private readonly IComposeProjectRepository _repository;
     private readonly ComposeTaskRegistry _tasks;
     private readonly ComposeOperationQueue _queue;
@@ -75,7 +77,7 @@ public sealed class ComposeProjectService
     /// <param name="logger">日志。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
     public ComposeProjectService(
-        IDockerHostAccessor accessor,
+        IDockerHostAccessor accessor, ContainerAuthorizationService authorization,
         IComposeProjectRepository repository,
         ComposeTaskRegistry tasks,
         ComposeOperationQueue queue,
@@ -96,6 +98,7 @@ public sealed class ComposeProjectService
         ArgumentNullException.ThrowIfNull(logger);
 
         _accessor = accessor;
+        _authorization = authorization;
         _repository = repository;
         _tasks = tasks;
         _queue = queue;
@@ -128,6 +131,17 @@ public sealed class ComposeProjectService
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
 
         var discovered = await DiscoverAsync(client, cancellationToken).ConfigureAwait(false);
+        foreach (var project in discovered.Values)
+        {
+            var visible = new List<ContainerListResponse>();
+            foreach (var container in project.Containers)
+            {
+                var effective = await _authorization.GetPermissionsAsync(hostId, container.ID, cancellationToken).ConfigureAwait(false);
+                if (effective.Contains(Permission.ContainerRead)) visible.Add(container);
+            }
+            project.Containers.Clear();
+            project.Containers.AddRange(visible);
+        }
         var recorded = await _repository.ListByHostAsync(host.Id, cancellationToken).ConfigureAwait(false);
 
         var summaries = Merge(discovered, recorded);
@@ -183,6 +197,17 @@ public sealed class ComposeProjectService
             .ConfigureAwait(false);
 
         var discovered = await DiscoverAsync(client, cancellationToken).ConfigureAwait(false);
+        foreach (var project in discovered.Values)
+        {
+            var visible = new List<ContainerListResponse>();
+            foreach (var container in project.Containers)
+            {
+                var effective = await _authorization.GetPermissionsAsync(hostId, container.ID, cancellationToken).ConfigureAwait(false);
+                if (effective.Contains(Permission.ContainerRead)) visible.Add(container);
+            }
+            project.Containers.Clear();
+            project.Containers.AddRange(visible);
+        }
         var recordedList = new List<ComposeProject>();
 
         if (recorded is not null)
@@ -195,6 +220,18 @@ public sealed class ComposeProjectService
 
         var services = await ListServicesAsync(client, name, recorded, cancellationToken)
             .ConfigureAwait(false);
+        var visibleServices = new List<ComposeServiceSummary>();
+        foreach (var service in services)
+        {
+            if (service.ContainerId is null)
+            {
+                visibleServices.Add(service);
+                continue;
+            }
+            var effective = await _authorization.GetPermissionsAsync(hostId, service.ContainerId, cancellationToken).ConfigureAwait(false);
+            if (effective.Contains(Permission.ContainerRead)) visibleServices.Add(service);
+        }
+        services = visibleServices;
 
         var warnings = new List<string>();
         var declaredServiceNames = new List<string>();
@@ -250,6 +287,7 @@ public sealed class ComposeProjectService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
         ArgumentNullException.ThrowIfNull(request);
+        await _authorization.EnsureUnrestrictedAsync(hostId, "compose.write", cancellationToken).ConfigureAwait(false);
 
         var name = RequireName(request.Name);
         var content = RequireComposeContent(request.ComposeContent);
@@ -331,6 +369,7 @@ public sealed class ComposeProjectService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
         ArgumentNullException.ThrowIfNull(request);
+        await _authorization.EnsureUnrestrictedAsync(hostId, "compose.write", cancellationToken).ConfigureAwait(false);
 
         var name = RequireName(request.Name);
         var content = RequireComposeContent(request.ComposeContent);
@@ -399,6 +438,7 @@ public sealed class ComposeProjectService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
         ArgumentNullException.ThrowIfNull(request);
+        await _authorization.EnsureUnrestrictedAsync(hostId, "compose.write", cancellationToken).ConfigureAwait(false);
 
         var name = RequireName(request.Name);
         var taskId = RequireTaskId(request.TaskId);
@@ -430,6 +470,7 @@ public sealed class ComposeProjectService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
         ArgumentNullException.ThrowIfNull(request);
+        await _authorization.EnsureUnrestrictedAsync(hostId, "compose.write", cancellationToken).ConfigureAwait(false);
 
         var name = RequireName(request.Name);
         var taskId = RequireTaskId(request.TaskId);

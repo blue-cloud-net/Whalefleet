@@ -1,3 +1,4 @@
+using Whalefleet.Application.Containers;
 using System.Globalization;
 using System.Net.Sockets;
 
@@ -50,6 +51,7 @@ public sealed class VolumeService
         new Dictionary<string, UsageData>(0, StringComparer.Ordinal);
 
     private readonly IDockerHostAccessor _accessor;
+    private readonly ContainerAuthorizationService _authorization;
     private readonly VolumeUsageCache _usageCache;
     private readonly ILogger<VolumeService> _logger;
 
@@ -61,7 +63,7 @@ public sealed class VolumeService
     /// <param name="logger">日志。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
     public VolumeService(
-        IDockerHostAccessor accessor,
+        IDockerHostAccessor accessor, ContainerAuthorizationService authorization,
         VolumeUsageCache usageCache,
         ILogger<VolumeService> logger)
     {
@@ -70,6 +72,7 @@ public sealed class VolumeService
         ArgumentNullException.ThrowIfNull(logger);
 
         _accessor = accessor;
+        _authorization = authorization;
         _usageCache = usageCache;
         _logger = logger;
     }
@@ -375,6 +378,7 @@ public sealed class VolumeService
         ArgumentNullException.ThrowIfNull(request);
 
         var name = DockerResourceName.Require(request.Name, "name", "数据卷");
+        await _authorization.EnsureRelatedAsync(hostId, "volume", request.Name ?? String.Empty, cancellationToken).ConfigureAwait(false);
         var force = request.Force ?? false;
 
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
@@ -420,6 +424,7 @@ public sealed class VolumeService
 
             try
             {
+                await _authorization.EnsureRelatedAsync(hostId, "volume", name, cancellationToken).ConfigureAwait(false);
                 await this.RemoveAsync(client, name, force, hostId, cancellationToken).ConfigureAwait(false);
             }
             catch (BusinessException exception)
@@ -478,6 +483,7 @@ public sealed class VolumeService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
         ArgumentNullException.ThrowIfNull(request);
+        await _authorization.EnsureUnrestrictedAsync(hostId, "volume.write", cancellationToken).ConfigureAwait(false);
 
         var label = PruneFilter.NormalizeLabel(request.Label);
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);

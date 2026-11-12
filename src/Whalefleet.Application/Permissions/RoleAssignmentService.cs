@@ -1,6 +1,9 @@
 using Microsoft.Extensions.Logging;
 
 using Whalefleet.Application.Abstractions.Auditing;
+using Whalefleet.Application.Abstractions;
+using Whalefleet.Application.Docker;
+using Whalefleet.Application.Containers;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Auditing;
 using Whalefleet.Core.Hosts;
@@ -31,6 +34,9 @@ public sealed class RoleAssignmentService
     private readonly IUserRepository _users;
     private readonly IHostRepository _hosts;
     private readonly IAuditLogger _audit;
+    private readonly IDockerHostAccessor _accessor;
+    private readonly ContainerAssignmentCoordinator _coordinator;
+    private readonly IAuthorizationSettingsStore _settings;
     private readonly ILogger<RoleAssignmentService> _logger;
 
     /// <summary>
@@ -49,7 +55,8 @@ public sealed class RoleAssignmentService
         IUserRepository users,
         IHostRepository hosts,
         IAuditLogger audit,
-        ILogger<RoleAssignmentService> logger)
+        ILogger<RoleAssignmentService> logger,
+        IDockerHostAccessor accessor, ContainerAssignmentCoordinator coordinator, IAuthorizationSettingsStore settings)
     {
         ArgumentNullException.ThrowIfNull(assignments);
         ArgumentNullException.ThrowIfNull(roles);
@@ -58,6 +65,9 @@ public sealed class RoleAssignmentService
         ArgumentNullException.ThrowIfNull(audit);
         ArgumentNullException.ThrowIfNull(logger);
 
+        _accessor = accessor;
+        _coordinator = coordinator;
+        _settings = settings;
         _assignments = assignments;
         _roles = roles;
         _users = users;
@@ -129,6 +139,7 @@ public sealed class RoleAssignmentService
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        using var lease = await _coordinator.AcquireAsync(request.Host?.Trim() ?? "global", cancellationToken).ConfigureAwait(false);
 
         var userId = RequireUserId(request.UserId);
         var user = await this.RequireUserAsync(userId, cancellationToken).ConfigureAwait(false);
@@ -141,17 +152,28 @@ public sealed class RoleAssignmentService
         }
 
         var hostId = host?.Id;
+        string? containerId = request.ContainerId;
+        if (containerId is not null)
+        {
+            if (host is null || String.IsNullOrWhiteSpace(containerId))
+                throw BusinessException.Validation("容器分配必须提供 host 与 containerId");
+            var client = await _accessor.GetClientAsync(host.Name, cancellationToken).ConfigureAwait(false);
+            var inspected = await DockerErrorTranslator.ExecuteAsync(
+                () => client.Containers.InspectContainerAsync(containerId, cancellationToken),
+                "容器授权", cancellationToken).ConfigureAwait(false);
+            containerId = inspected.ID;
+        }
 
         // 先查再决定是插入还是复用：分配是幂等的 upsert，
         // 重复分配不该换一个主键——否则界面刷新后会看到一条 id 不同的"新"记录
         var existing = await _assignments
-            .GetAsync(userId, role.Id, hostId, cancellationToken)
+            .GetContainerAsync(userId, role.Id, hostId, containerId, cancellationToken)
             .ConfigureAwait(false);
 
         UserRoleAssignment assignment;
         if (existing is null)
         {
-            assignment = UserRoleAssignment.Assign(Guid.NewGuid(), userId, role.Id, hostId);
+            assignment = UserRoleAssignment.Assign(Guid.NewGuid(), userId, role.Id, hostId, containerId);
             await _assignments.AddAsync(assignment, cancellationToken).ConfigureAwait(false);
         }
         else
@@ -177,7 +199,7 @@ public sealed class RoleAssignmentService
                 TargetType = AuditTargetTypes.RoleAssignment,
                 TargetId = assignment.Id.ToString("D"),
                 TargetName = $"{user.Username} → {role.Name}",
-                Detail = $"作用域={host?.Name ?? "全局"}",
+                Detail = $"作用域={host?.Name ?? "全局"};容器={containerId}",
             },
             cancellationToken).ConfigureAwait(false);
 
@@ -190,7 +212,7 @@ public sealed class RoleAssignmentService
             role.DisplayName,
             hostId,
             host?.Name,
-            assignment.LastModificationTime);
+            assignment.LastModificationTime, assignment.ContainerId, await _settings.GetModeAsync(cancellationToken).ConfigureAwait(false));
     }
 
     /// <summary>
@@ -207,6 +229,7 @@ public sealed class RoleAssignmentService
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        using var lease = await _coordinator.AcquireAsync(request.Host?.Trim() ?? "global", cancellationToken).ConfigureAwait(false);
 
         var userId = RequireUserId(request.UserId);
         var role = await this.ResolveRoleAsync(request, cancellationToken).ConfigureAwait(false);
@@ -218,9 +241,12 @@ public sealed class RoleAssignmentService
             hostId = host.Id;
         }
 
+        if (request.ContainerId is not null && (hostId is null || String.IsNullOrWhiteSpace(request.ContainerId)))
+            throw BusinessException.Validation("撤销容器分配必须提供 host 与完整 containerId");
+
         // 撤销走软删除而不是物理删除：保留「谁在什么时候撤的」这条事实
         var existing = await _assignments
-            .GetAsync(userId, role.Id, hostId, cancellationToken)
+            .GetContainerAsync(userId, role.Id, hostId, request.ContainerId, cancellationToken)
             .ConfigureAwait(false)
             ?? throw new BusinessException(
                 ErrorCodes.RoleAssignmentNotFound,
@@ -248,7 +274,7 @@ public sealed class RoleAssignmentService
                 TargetType = AuditTargetTypes.RoleAssignment,
                 TargetId = existing.Id.ToString("D"),
                 TargetName = $"{userId:D} → {role.Name}",
-                Detail = $"作用域={request.Host?.Trim() ?? "全局"}",
+                Detail = $"作用域={request.Host?.Trim() ?? "全局"};容器={request.ContainerId}",
             },
             cancellationToken).ConfigureAwait(false);
     }
@@ -346,6 +372,7 @@ public sealed class RoleAssignmentService
                 .ToDictionary(host => host.Id);
 
         var summaries = new List<RoleAssignmentSummary>(rows.Count);
+        var mode = await _settings.GetModeAsync(cancellationToken).ConfigureAwait(false);
 
         foreach (var row in rows)
         {
@@ -361,7 +388,7 @@ public sealed class RoleAssignmentService
                 role?.DisplayName,
                 row.HostId,
                 host?.Name,
-                row.LastModificationTime));
+                row.LastModificationTime, row.ContainerId, mode));
         }
 
         return summaries;

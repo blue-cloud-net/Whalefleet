@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Docker;
+using Whalefleet.Core.Permissions;
 
 using SdkState = Docker.DotNet.Models.State;
 
@@ -86,6 +87,7 @@ public sealed partial class ContainerService
         var newName = RequireContainerName(request.Name)
             ?? throw BusinessException.Validation("name 不能为空");
 
+        containerId = await _authorization.EnsureAsync(hostId, containerId, Permission.ContainerWrite, cancellationToken).ConfigureAwait(false);
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
 
         await DockerErrorTranslator.ExecuteAsync(
@@ -146,6 +148,7 @@ public sealed partial class ContainerService
                 "restartPolicy / memoryLimitBytes / nanoCpus 至少要给一个（全省略等同于什么都不改）");
         }
 
+        containerId = await _authorization.EnsureAsync(hostId, containerId, Permission.ContainerWrite, cancellationToken).ConfigureAwait(false);
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
 
         var current = await DockerErrorTranslator.ExecuteAsync(
@@ -236,6 +239,7 @@ public sealed partial class ContainerService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
         ArgumentNullException.ThrowIfNull(request);
+        await _authorization.EnsureUnrestrictedAsync(hostId, cancellationToken).ConfigureAwait(false);
 
         var sourceId = RequireContainerId(request.ContainerId);
 
@@ -318,8 +322,10 @@ public sealed partial class ContainerService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
         ArgumentNullException.ThrowIfNull(request);
+        using var lease = await _coordinator.AcquireAsync(hostId, cancellationToken).ConfigureAwait(false);
 
         var containerId = RequireContainerId(request.ContainerId);
+        containerId = await _authorization.EnsureAsync(hostId, containerId, Permission.ContainerWrite, cancellationToken).ConfigureAwait(false);
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
 
         var source = await DockerErrorTranslator.ExecuteAsync(
@@ -327,6 +333,7 @@ public sealed partial class ContainerService
             $"容器 {containerId}",
             cancellationToken).ConfigureAwait(false);
 
+        containerId = source.ID;
         var name = source.Name?.TrimStart('/')
             ?? throw BusinessException.Validation($"容器 {containerId} 没有名称，无法按原名重建");
 
@@ -554,11 +561,13 @@ public sealed partial class ContainerService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
         ArgumentNullException.ThrowIfNull(request);
+        using var lease = await _coordinator.AcquireAsync(hostId, cancellationToken).ConfigureAwait(false);
 
         var containerId = RequireContainerId(request.ContainerId);
         var addedBinds = RequireVolumes(request.Volumes)
             ?? throw BusinessException.Validation("volumes 不能为空（要追加的挂载不能为空列表）");
 
+        containerId = await _authorization.EnsureAsync(hostId, containerId, Permission.ContainerWrite, cancellationToken).ConfigureAwait(false);
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
 
         var source = await DockerErrorTranslator.ExecuteAsync(
@@ -566,6 +575,7 @@ public sealed partial class ContainerService
             $"容器 {containerId}",
             cancellationToken).ConfigureAwait(false);
 
+        containerId = source.ID;
         var name = source.Name?.TrimStart('/')
             ?? throw BusinessException.Validation($"容器 {containerId} 没有名称，无法按原名重建");
 
@@ -678,15 +688,32 @@ public sealed partial class ContainerService
             throw;
         }
 
-        // start 为 null 时沿用原状态：对一个本来就没运行的容器擅自启动它是用户没要求的副作用
         var start = requestedStart ?? wasRunning;
-
-        if (start)
+        try
         {
-            await DockerErrorTranslator.ExecuteAsync(
-                () => client.Containers.StartContainerAsync(created.ID, new ContainerStartParameters(), cancellationToken),
-                $"容器 {created.ID}",
-                cancellationToken).ConfigureAwait(false);
+            if (start)
+            {
+                await DockerErrorTranslator.ExecuteAsync(
+                    () => client.Containers.StartContainerAsync(created.ID, new ContainerStartParameters(), cancellationToken),
+                    $"容器 {created.ID}", cancellationToken).ConfigureAwait(false);
+            }
+            var host = await _accessor.ResolveAsync(hostId, cancellationToken).ConfigureAwait(false);
+            await _assignmentStore.MoveAsync(host.Id, containerId, created.ID, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch
+        {
+            try
+            {
+                await DockerErrorTranslator.ExecuteAsync(
+                    () => client.Containers.RemoveContainerAsync(created.ID, new ContainerRemoveParameters { Force = true }, CancellationToken.None),
+                    "回滚新容器", CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception rollbackError)
+            {
+                _logger.LogError(rollbackError, "重建失败后清理新容器 {ContainerId} 失败", created.ID);
+            }
+            await this.RestoreParkedContainerAsync(client, containerId, name, parkedName, wasRunning, CancellationToken.None).ConfigureAwait(false);
+            throw;
         }
 
         var warnings = created.Warnings is null ? [] : (IReadOnlyList<string>)[.. created.Warnings];

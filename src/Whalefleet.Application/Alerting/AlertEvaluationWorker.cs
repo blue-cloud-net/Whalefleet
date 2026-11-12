@@ -571,6 +571,7 @@ public sealed class AlertEvaluationWorker : BackgroundService
             metricValue,
             thresholdValue);
 
+        if (containerId is not null) parameters = new Dictionary<string, object?>(parameters) { ["containerId"] = containerId };
         var notifications = services.GetRequiredService<INotificationWriter>();
 
         await notifications.CreateAsync(
