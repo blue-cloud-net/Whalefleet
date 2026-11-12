@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 0.12.0 — Container-level RBAC (internal draft)
+
+- Add container role assignments bounded by host permissions, with persistent inheritance and assignment-required policies.
+- Enforce container permissions across lists, operations, logs, metrics, terminal sessions, notifications, and related resource operations.
+- Migrate assignments during platform rebuilds and add container authorization management and policy settings.
+
 Work in progress. The next milestone is `0.1.0` — authorization baseline and MVP consolidation
 (its per-version notes accumulate here as internal drafts and are rewritten into the `1.0.0` entry
 before the first public release).
