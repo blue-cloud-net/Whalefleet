@@ -235,6 +235,9 @@ internal static class ContainerTerminalEndpoint
                 var toClient = PumpToClientAsync(session, socket, linked.Token);
                 var fromClient = PumpFromClientAsync(socket, session, linked.Token);
 
+                var monitor = Whalefleet.Api.Realtime.ContainerPermissionMonitor.RunAsync(
+                    context.RequestServices.GetRequiredService<IServiceScopeFactory>(), grant.UserId,
+                    hostId, grant.ContainerId, Whalefleet.Core.Permissions.Permission.ContainerWrite, linked);
                 var finished = await Task.WhenAny(toClient, fromClient).ConfigureAwait(false);
                 reason = await finished.ConfigureAwait(false);
 
@@ -242,7 +245,7 @@ internal static class ContainerTerminalEndpoint
                 // 只关一半会留下一个「还在往容器里写、但没人读输出」的连接。
                 await linked.CancelAsync().ConfigureAwait(false);
 
-                await AwaitQuietlyAsync(toClient, fromClient).ConfigureAwait(false);
+                await AwaitQuietlyAsync(toClient, fromClient, monitor).ConfigureAwait(false);
 
                 await CloseSocketAsync(socket).ConfigureAwait(false);
             }
