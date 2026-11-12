@@ -525,6 +525,7 @@ export interface ContainerPort {
 
 /** 容器列表项 */
 export interface ContainerSummary {
+  effectivePermissions: string[]
   /** 完整容器 ID */
   id: string
   /** 容器名；后端已去掉 Docker 内部的前导斜杠 */
@@ -607,6 +608,7 @@ export interface ContainerNetworkDetail {
 
 /** 容器详情（对应后端 inspect 的精选投影） */
 export interface ContainerDetail {
+  effectivePermissions: string[]
   id: string
   name: string
   created: string
@@ -1242,6 +1244,8 @@ export interface RoleSummary {
  * 三个名字比三个 GUID 有用得多。
  */
 export interface RoleAssignmentSummary {
+  containerPermissionMode: 'inheritHost' | 'requireAssignment'
+  containerId: string | null
   id: string
   userId: string
   username: string
@@ -1275,12 +1279,14 @@ export interface RoleSelectorRequest {
  * 主机视角的作用域固定在 URL 上，请求体里带 host 只会多一层可能写错的表达。
  */
 export interface AssignRoleRequest extends RoleSelectorRequest {
+  containerId?: string | null
   userId?: string
   host?: string | null
 }
 
 /** 撤销角色分配的请求体（对应后端 `RevokeRoleAssignmentRequest`）。 */
 export interface RevokeRoleAssignmentRequest extends RoleSelectorRequest {
+  containerId?: string | null
   userId?: string
   host?: string | null
 }
@@ -1431,7 +1437,6 @@ export interface PruneResult {
   /** 实际回收的字节数；由守护进程给出，不是本地估算 */
   reclaimedBytes: number
 }
-
 
 // ==================== 操作审计（0.9.0） ====================
 

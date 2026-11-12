@@ -279,7 +279,7 @@ export function listUserRoleAssignments(userId: string): Promise<RoleAssignmentS
  */
 export function assignUserRole(
   userId: string,
-  payload: Pick<AssignRoleRequest, 'roleId' | 'role' | 'host'>
+  payload: Pick<AssignRoleRequest, 'roleId' | 'role' | 'host' | 'containerId'>
 ): Promise<RoleAssignmentSummary> {
   return request<RoleAssignmentSummary>({
     url: `${userRoleBase(userId)}/assign`,
@@ -295,7 +295,7 @@ export function assignUserRole(
  */
 export function revokeUserRole(
   userId: string,
-  payload: Pick<RevokeRoleAssignmentRequest, 'roleId' | 'role' | 'host'>
+  payload: Pick<RevokeRoleAssignmentRequest, 'roleId' | 'role' | 'host' | 'containerId'>
 ): Promise<void> {
   return request<void>({
     url: `${userRoleBase(userId)}/revoke`,

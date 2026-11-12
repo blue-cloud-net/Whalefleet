@@ -818,7 +818,7 @@ interface RowAction {
  * ⚠️ 新加图标必须同步写进 `uno.config.ts` 的 safelist（那里会校验图标在 Carbon 中真实存在）。
  */
 function rowActions(container: ContainerSummary): RowAction[] {
-  const busy = busyIds.value.has(container.id)
+  const busy = busyIds.value.has(container.id) || !container.effectivePermissions.includes('container.write')
   const active = isActiveContainer(container)
   const paused = isPaused(container)
 
@@ -892,7 +892,7 @@ interface MoreAction {
 }
 
 function moreActions(container: ContainerSummary): MoreAction[] {
-  const busy = busyIds.value.has(container.id)
+  const busy = busyIds.value.has(container.id) || !container.effectivePermissions.includes('container.write')
 
   return [
     {
