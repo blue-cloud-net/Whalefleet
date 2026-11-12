@@ -91,6 +91,56 @@ public class ContainerEndpointsTests : IAsyncLifetime
     /// <inheritdoc />
     public async Task DisposeAsync() => await _factory.DisposeAsync();
 
+    [DockerImageFact]
+    public async Task 容器角色收窄_分页过滤且写操作不能越权()
+    {
+        using var admin = await this.CreateAuthenticatedClientAsync(_adminName);
+        var name = $"rbac-{Guid.NewGuid():N}";
+        string? containerId = null;
+        try
+        {
+            var created = await PostDataAsync<CreatedPayload>(admin, "create", new { image = DockerAvailability.ImageReference!, name, cmd = _sleepCommand });
+            containerId = created.ContainerId;
+            using var scope = _factory.Services.CreateScope();
+            var user = await scope.ServiceProvider.GetRequiredService<IUserRepository>().FindByUsernameAsync(_operatorName);
+            var viewer = await scope.ServiceProvider.GetRequiredService<IRoleRepository>().FindByNameAsync("viewer");
+            using var grant = await admin.PostAsJsonAsync($"/api/v1/admin/users/{user!.Id}/roles/assign", new { host = _localHost, containerId = name, roleId = viewer!.Id });
+            grant.StatusCode.Should().Be(HttpStatusCode.OK);
+            var grantBody = await ReadAsync(grant);
+            grantBody.GetProperty("data").GetProperty("containerId").GetString().Should().Be(containerId);
+            using var operatorClient = await this.CreateAuthenticatedClientAsync(_operatorName);
+            using var denied = await operatorClient.PostAsJsonAsync($"/api/v1/hosts/{_localHost}/containers/start", new { containerId = containerId[..12] });
+            denied.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+            (await ReadCodeAsync(denied)).Should().Be(ErrorCodes.OperationForbidden);
+            await scope.ServiceProvider.GetRequiredService<IAuthorizationSettingsStore>().SetModeAsync("requireAssignment");
+            var page = await PostDataAsync<ListPayload>(operatorClient, "list", new { all = true, pageSize = 1 });
+            page.Total.Should().Be(1);
+            page.Items.Should().ContainSingle().Which.Id.Should().Be(containerId);
+            using var forbiddenCreate = await operatorClient.PostAsJsonAsync($"/api/v1/hosts/{_localHost}/containers/create", new { image = DockerAvailability.ImageReference! });
+            forbiddenCreate.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+            using var lifetime = new CancellationTokenSource();
+            var monitor = Whalefleet.Api.Realtime.ContainerPermissionMonitor.RunAsync(
+                _factory.Services.GetRequiredService<IServiceScopeFactory>(), user.Id, _localHost, containerId,
+                Permission.ContainerRead, lifetime);
+            using var revokeLive = await admin.PostAsJsonAsync($"/api/v1/admin/users/{user.Id}/roles/revoke", new { host = _localHost, containerId, roleId = viewer.Id });
+            revokeLive.StatusCode.Should().Be(HttpStatusCode.OK);
+            await monitor.WaitAsync(TimeSpan.FromSeconds(8));
+            lifetime.IsCancellationRequested.Should().BeTrue("实时通道必须在五秒复核后停止");
+            using var restoreGrant = await admin.PostAsJsonAsync($"/api/v1/admin/users/{user.Id}/roles/assign", new { host = _localHost, containerId, roleId = viewer.Id });
+            restoreGrant.StatusCode.Should().Be(HttpStatusCode.OK);
+            await PostOkAsync(admin, "remove", new { containerId, force = true });
+            using var revoke = await admin.PostAsJsonAsync($"/api/v1/admin/users/{user.Id}/roles/revoke", new { host = _localHost, containerId, roleId = viewer.Id });
+            revoke.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            if (containerId is not null)
+            {
+                using var cleanup = await admin.PostAsJsonAsync($"/api/v1/hosts/{_localHost}/containers/remove", new { containerId, force = true });
+            }
+        }
+    }
+
     [Fact]
     public async Task 未认证_返回401()
     {

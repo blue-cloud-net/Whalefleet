@@ -348,6 +348,76 @@ public class PermissionCheckerTests
     }
     #endregion
 
+    [Theory]
+    [InlineData("inheritHost", true)]
+    [InlineData("requireAssignment", false)]
+    public async Task 容器授权按目标回退且不能扩大主机权限(string mode, bool unassignedWritable)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var operatorRole = await fixture.FindRoleAsync("operator");
+        var viewerRole = await fixture.FindRoleAsync("viewer");
+        await fixture.AssignAsync(operatorRole, fixture.HostAId);
+        await fixture.AssignAsync(viewerRole, fixture.HostBId);
+        await fixture.AssignContainerAsync(viewerRole, fixture.HostAId, "container-a");
+        await fixture.AssignContainerAsync(operatorRole, fixture.HostBId, "container-a");
+        await fixture.SetModeAsync(mode);
+        var checker = fixture.CreateContainerChecker();
+        var onA = await checker.GetPermissionsAsync(fixture.UserId, fixture.HostAId, "container-a");
+        onA.Should().Contain(Permission.ContainerRead).And.NotContain(Permission.ContainerWrite);
+        var onB = await checker.GetPermissionsAsync(fixture.UserId, fixture.HostBId, "container-a");
+        onB.Should().Contain(Permission.ContainerRead).And.NotContain(Permission.ContainerWrite);
+        var unassigned = await checker.GetPermissionsAsync(fixture.UserId, fixture.HostAId, "container-b");
+        unassigned.Contains(Permission.ContainerWrite).Should().Be(unassignedWritable);
+        (await fixture.CreateChecker().HasPermissionAsync(fixture.UserId, fixture.HostBId, Permission.ContainerWrite)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task 容器角色并集后取交集且撤销后恢复继承()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var op = await fixture.FindRoleAsync("operator");
+        var viewer = await fixture.FindRoleAsync("viewer");
+        await fixture.AssignAsync(op, fixture.HostAId);
+        var read = await fixture.AssignContainerAsync(viewer, fixture.HostAId, "a");
+        var write = await fixture.AssignContainerAsync(op, fixture.HostAId, "a");
+        (await fixture.CreateContainerChecker().GetPermissionsAsync(fixture.UserId, fixture.HostAId, "a"))
+            .Should().Contain(Permission.ContainerWrite);
+        await fixture.RemoveAssignmentAsync(write);
+        (await fixture.CreateContainerChecker().GetPermissionsAsync(fixture.UserId, fixture.HostAId, "a"))
+            .Should().NotContain(Permission.ContainerWrite);
+        await fixture.RemoveAssignmentAsync(read);
+        (await fixture.CreateContainerChecker().GetPermissionsAsync(fixture.UserId, fixture.HostAId, "a"))
+            .Should().Contain(Permission.ContainerWrite);
+    }
+
+    [Fact]
+    public async Task 容器分配迁移后旧ID不再生效且新ID保留权限()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var role = await fixture.FindRoleAsync("operator");
+        await fixture.AssignAsync(role, fixture.HostAId);
+        await fixture.AssignContainerAsync(await fixture.FindRoleAsync("viewer"), fixture.HostAId, "old");
+        await fixture.SetModeAsync("requireAssignment");
+        await fixture.MoveContainerAsync("old", "new");
+        var checker = fixture.CreateContainerChecker();
+        (await checker.GetPermissionsAsync(fixture.UserId, fixture.HostAId, "old")).Should().BeEmpty();
+        (await checker.GetPermissionsAsync(fixture.UserId, fixture.HostAId, "new"))
+            .Should().Contain(Permission.ContainerRead).And.NotContain(Permission.ContainerWrite);
+    }
+
+    [Fact]
+    public async Task 全局管理员在严格模式下仍可操作_主机管理员不能短路()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var admin = await fixture.FindRoleAsync(Role.AdminName);
+        await fixture.AssignAsync(admin, fixture.HostAId);
+        await fixture.SetModeAsync("requireAssignment");
+        (await fixture.CreateContainerChecker().GetPermissionsAsync(fixture.UserId, fixture.HostAId, "a")).Should().BeEmpty();
+        await fixture.AssignAsync(admin, null);
+        (await fixture.CreateContainerChecker().GetPermissionsAsync(fixture.UserId, fixture.HostAId, "a"))
+            .Should().Contain(Permission.ContainerWrite);
+    }
+
     #region 夹具
 
     /// <summary>
@@ -486,6 +556,19 @@ public class PermissionCheckerTests
                 this.Get<IUserRoleAssignmentRepository>(),
                 this.Get<IRoleRepository>(),
                 NullLogger<PermissionChecker>.Instance);
+
+        internal async Task<UserRoleAssignment> AssignContainerAsync(Role role, Guid hostId, string id)
+        {
+            var assignment = UserRoleAssignment.Assign(Guid.NewGuid(), this.UserId, role.Id, hostId, id);
+            await this.Get<IUserRoleAssignmentRepository>().AddAsync(assignment);
+            return assignment;
+        }
+        internal Task SetModeAsync(string mode) => new SqliteAuthorizationSettingsStore(this.Get<Whalefleet.Application.Abstractions.Persistence.IDbConnectionFactory>()).SetModeAsync(mode);
+        internal ContainerPermissionChecker CreateContainerChecker() => new(
+            this.CreateChecker(), this.Get<IUserRoleAssignmentRepository>(), this.Get<IRoleRepository>(), new SqliteAuthorizationSettingsStore(this.Get<Whalefleet.Application.Abstractions.Persistence.IDbConnectionFactory>()));
+
+        internal Task MoveContainerAsync(string oldId, string newId) =>
+            new SqliteContainerAssignmentStore(this.Get<Whalefleet.Application.Abstractions.Persistence.IDbConnectionFactory>()).MoveAsync(this.HostAId, oldId, newId);
 
         private T Get<T>()
             where T : notnull =>
