@@ -36,7 +36,9 @@ public class ContainerProjectFilterTests
         new(
             new StubDockerHostAccessor(daemon.Endpoint),
             new NoopAuditLogger(),
-            NullLogger<ContainerService>.Instance);
+            NullLogger<ContainerService>.Instance,
+            TestContainerAuthorization.Create(new StubDockerHostAccessor(daemon.Endpoint)),
+            new ContainerAssignmentCoordinator(), new TestContainerAuthorization());
 
     /// <summary>
     /// 两个 compose 项目的容器 + 一个不属于任何项目的容器。

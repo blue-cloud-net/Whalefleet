@@ -35,7 +35,9 @@ public class ContainerListQueryTests
         new(
             new StubDockerHostAccessor(daemon.Endpoint),
             new NoopAuditLogger(),
-            NullLogger<ContainerService>.Instance);
+            NullLogger<ContainerService>.Instance,
+            TestContainerAuthorization.Create(new StubDockerHostAccessor(daemon.Endpoint)),
+            new ContainerAssignmentCoordinator(), new TestContainerAuthorization());
 
     [Fact]
     public async Task 端口顺序_守护进程返回的顺序随机时_对外结果始终一致()
