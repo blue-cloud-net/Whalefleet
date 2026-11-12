@@ -1,4 +1,5 @@
 import { http, HttpResponse, delay } from 'msw'
+let authorizationMode: 'inheritHost' | 'requireAssignment' = 'inheritHost'
 import { ErrorCode, fail, httpStatusOf, ok } from '../envelope'
 import { delayFor, hostsFor, type MockScenario } from '../scenarios'
 import {
@@ -9,6 +10,7 @@ import {
   MOCK_ROLES_DEFAULT
 } from '../data/permissions'
 import { sessionUsers } from './users'
+import { resolveMockContainerId } from './containers'
 import type { RoleAssignmentSummary, RoleSummary } from '@/types/api'
 
 /**
@@ -60,6 +62,7 @@ const revokedAssignmentIds = new Set<string>()
 
 /** 清空会话内的角色与分配改动（供测试隔离用）。 */
 export function resetSessionRoles(): void {
+  authorizationMode = 'inheritHost'
   createdRoles.length = 0
   roleOverrides.clear()
   removedRoleIds.clear()
@@ -85,7 +88,7 @@ export function roleHandlers(scenario: () => MockScenario) {
   function assignmentsFor(): RoleAssignmentSummary[] {
     return [...MOCK_ROLE_ASSIGNMENTS_DEFAULT, ...createdAssignments].filter(
       (assignment) => !revokedAssignmentIds.has(assignment.id)
-    )
+    ).map(assignment => ({ ...assignment, containerPermissionMode: authorizationMode }))
   }
 
   /**
@@ -157,6 +160,22 @@ export function roleHandlers(scenario: () => MockScenario) {
     })
 
   return [
+    http.post('*/api/v1/admin/settings/authorization/get', () =>
+      HttpResponse.json(ok({ containerPermissionMode: authorizationMode }))
+    ),
+    http.post('*/api/v1/admin/settings/authorization/update', async ({ request }) => {
+      const body = await readBody(request)
+      if (
+        body.containerPermissionMode !== 'inheritHost' &&
+        body.containerPermissionMode !== 'requireAssignment'
+      )
+        return HttpResponse.json(fail(ErrorCode.ValidationFailed), {
+          status: 400
+        })
+      authorizationMode = body.containerPermissionMode
+      return HttpResponse.json(ok({ containerPermissionMode: authorizationMode }))
+    }),
+
     /* ================= 角色本身 ================= */
 
     http.post('*/api/v1/admin/roles/list', async ({ request }) => {
@@ -414,8 +433,19 @@ export function roleHandlers(scenario: () => MockScenario) {
       if (role === undefined) return notFound()
 
       // 幂等：同一 (用户, 角色, 本主机) 再次分配返回**同一条**记录
+      if (body.containerId !== undefined && body.containerId !== null) {
+        if (hostName === null || typeof body.containerId !== 'string' || !body.containerId.trim()) return HttpResponse.json(fail(ErrorCode.ValidationFailed), { status: 400 })
+        const canonicalId = resolveMockContainerId(body.containerId.trim())
+        if (!canonicalId) return HttpResponse.json(fail(ErrorCode.DockerResourceNotFound), { status: 404 })
+        body.containerId = canonicalId
+      }
+
       const existing = assignmentsFor().find(
-        (item) => item.userId === user.id && item.roleId === role.id && item.hostName === hostName
+        (item) =>
+          item.userId === user.id &&
+          item.roleId === role.id &&
+          item.hostName === hostName &&
+          (item.containerId ?? null) === (body.containerId ?? null)
       )
       if (existing !== undefined) return HttpResponse.json(ok(existing))
 
@@ -428,6 +458,8 @@ export function roleHandlers(scenario: () => MockScenario) {
         roleDisplayName: role.displayName,
         hostId: hostGuidOf(hostName),
         hostName,
+        containerId: typeof body.containerId === 'string' ? body.containerId : null,
+        containerPermissionMode: authorizationMode as 'inheritHost' | 'requireAssignment',
         lastModificationTime: null
       }
 
@@ -453,7 +485,11 @@ export function roleHandlers(scenario: () => MockScenario) {
       if (role === undefined) return notFound()
 
       const existing = assignmentsFor().find(
-        (item) => item.userId === userId && item.roleId === role.id && item.hostName === hostName
+        (item) =>
+          item.userId === userId &&
+          item.roleId === role.id &&
+          item.hostName === hostName &&
+          (item.containerId ?? null) === (body.containerId ?? null)
       )
 
       // 撤销一条本就不存在的分配 → 1515（与「重复分配幂等」相对）
@@ -510,9 +546,19 @@ export function roleHandlers(scenario: () => MockScenario) {
         })
       }
 
+      if (body.containerId !== undefined && body.containerId !== null) {
+        if (hostName === null || typeof body.containerId !== 'string' || !body.containerId.trim()) return HttpResponse.json(fail(ErrorCode.ValidationFailed), { status: 400 })
+        const canonicalId = resolveMockContainerId(body.containerId.trim())
+        if (!canonicalId) return HttpResponse.json(fail(ErrorCode.DockerResourceNotFound), { status: 404 })
+        body.containerId = canonicalId
+      }
+
       const existing = assignmentsFor().find(
         (item) =>
-          item.userId === user.id && item.roleId === role.id && item.hostName === hostName
+          item.userId === user.id &&
+          item.roleId === role.id &&
+          item.hostName === hostName &&
+          (item.containerId ?? null) === (body.containerId ?? null)
       )
       if (existing !== undefined) return HttpResponse.json(ok(existing))
 
@@ -525,6 +571,8 @@ export function roleHandlers(scenario: () => MockScenario) {
         roleDisplayName: role.displayName,
         hostId: hostName === null ? null : hostGuidOf(hostName),
         hostName,
+        containerId: typeof body.containerId === 'string' ? body.containerId : null,
+        containerPermissionMode: authorizationMode as 'inheritHost' | 'requireAssignment',
         lastModificationTime: null
       }
 
@@ -546,7 +594,11 @@ export function roleHandlers(scenario: () => MockScenario) {
       const hostName = rawHost.length > 0 ? rawHost : null
 
       const existing = assignmentsFor().find(
-        (item) => item.userId === userId && item.roleId === role.id && item.hostName === hostName
+        (item) =>
+          item.userId === userId &&
+          item.roleId === role.id &&
+          item.hostName === hostName &&
+          (item.containerId ?? null) === (body.containerId ?? null)
       )
 
       if (existing === undefined) {

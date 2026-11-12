@@ -152,6 +152,16 @@ interface CreatedContainer {
   ports: ContainerSummary['ports']
 }
 
+/** 授权 mock 复用容器真实会话态，授予统一保存完整 ID。 */
+export function resolveMockContainerId(value: string): string | null {
+  const candidates = [
+    ...MOCK_CONTAINER_DETAILS,
+    ...[...createdInSession.values()].map(item => item.detail)
+  ].filter(item => !removedInSession.has(item.id))
+  const matches = candidates.filter(item => item.id === value || item.id.startsWith(value) || currentName(item.id, item.name) === value)
+  return matches.length === 1 ? matches[0]!.id : null
+}
+
 /** 清空会话内创建的容器（供测试隔离用）。 */
 export function resetSessionContainers(): void {
   createdInSession.clear()
@@ -1258,6 +1268,7 @@ function createFixture(id: string, body: Record<string, unknown>): CreatedContai
     : []
 
   const detail: ContainerDetail = {
+  effectivePermissions: ['container.read', 'container.write'],
     id,
     name: String(body.name ?? 'generated-name'),
     created: new Date().toISOString(),
@@ -1320,6 +1331,7 @@ function toSummary(item: CreatedContainer): ContainerSummary {
   const { detail, ports } = item
 
   return {
+    effectivePermissions: detail.effectivePermissions,
     id: detail.id,
     name: detail.name,
     image: detail.image,

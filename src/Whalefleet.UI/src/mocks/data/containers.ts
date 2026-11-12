@@ -25,6 +25,7 @@ import type {
 
 /** 运行中、有端口映射、有健康检查。 */
 const RUNNING: ContainerDetail = {
+  effectivePermissions: ['container.read', 'container.write'],
   id: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2',
   name: 'web-frontend',
   created: '2026-10-01T08:12:33Z',
@@ -87,6 +88,7 @@ const RUNNING: ContainerDetail = {
 
 /** 已停止、退出码非 0（验证「退出码小于 0 时染红」）。 */
 const CRASHED: ContainerDetail = {
+  effectivePermissions: ['container.read', 'container.write'],
   id: 'b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3',
   name: 'batch-worker',
   created: '2026-10-10T03:00:00Z',
@@ -130,6 +132,7 @@ const CRASHED: ContainerDetail = {
 
 /** 已暂停：过渡态，验证琥珀色与「启动/停止」按钮的互斥表现。 */
 const PAUSED: ContainerDetail = {
+  effectivePermissions: ['container.read', 'container.write'],
   id: 'c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4',
   name: 'diagnostics',
   created: '2026-10-11T12:00:00Z',
@@ -917,6 +920,7 @@ function buildDetail(seed: ContainerSeed, index: number): ContainerDetail {
   const command = seed.cmd ?? ['/entrypoint.sh']
 
   return {
+    effectivePermissions: ['container.read', 'container.write'],
     id,
     name: seed.name,
     created: created.toISOString(),
@@ -1047,6 +1051,7 @@ function toSummary(detail: ContainerDetail): ContainerSummary {
   const seed = CONTAINER_SEEDS.find((item) => item.name === detail.name)
 
   return {
+    effectivePermissions: detail.effectivePermissions,
     id: detail.id,
     name: detail.name,
     image: detail.image,

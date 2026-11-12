@@ -242,7 +242,9 @@ const GENERATED_ROLE_ASSIGNMENTS: RoleAssignmentSummary[] = EXTRA_ASSIGNMENT_SEE
       roleDisplayName: role.displayName,
       hostId: seed.host === undefined ? null : hostGuidOf(seed.host),
       hostName: seed.host ?? null,
-      lastModificationTime: null
+      containerId: null,
+    containerPermissionMode: 'inheritHost',
+        lastModificationTime: null
     }
   }
 )
@@ -258,7 +260,9 @@ const SEMANTIC_ROLE_ASSIGNMENTS: RoleAssignmentSummary[] = [
     roleDisplayName: '管理员',
     hostId: null,
     hostName: null,
-    lastModificationTime: null
+    containerId: null,
+    containerPermissionMode: 'inheritHost',
+        lastModificationTime: null
   },
   {
     id: '00000000-0000-0000-0000-0000000000d2',
@@ -269,7 +273,9 @@ const SEMANTIC_ROLE_ASSIGNMENTS: RoleAssignmentSummary[] = [
     roleDisplayName: '运维',
     hostId: null,
     hostName: null,
-    lastModificationTime: null
+    containerId: null,
+    containerPermissionMode: 'inheritHost',
+        lastModificationTime: null
   },
   {
     // 同一用户既有全局分配，又在某台主机上多一个只读角色：
@@ -282,7 +288,9 @@ const SEMANTIC_ROLE_ASSIGNMENTS: RoleAssignmentSummary[] = [
     roleDisplayName: '只读',
     hostId: '00000000-0000-0000-0000-000000000003',
     hostName: 'staging-01',
-    lastModificationTime: null
+    containerId: null,
+    containerPermissionMode: 'inheritHost',
+        lastModificationTime: null
   },
   {
     // 只有主机分配、没有全局分配：全局权限集应当为空（`auth/me` 的 permissions）。
@@ -294,7 +302,9 @@ const SEMANTIC_ROLE_ASSIGNMENTS: RoleAssignmentSummary[] = [
     roleDisplayName: '只读',
     hostId: '00000000-0000-0000-0000-000000000002',
     hostName: 'prod-01',
-    lastModificationTime: null
+    containerId: null,
+    containerPermissionMode: 'inheritHost',
+        lastModificationTime: null
   },
   {
     id: '00000000-0000-0000-0000-0000000000d5',
@@ -305,7 +315,9 @@ const SEMANTIC_ROLE_ASSIGNMENTS: RoleAssignmentSummary[] = [
     roleDisplayName: '发布机器人',
     hostId: null,
     hostName: null,
-    lastModificationTime: null
+    containerId: null,
+    containerPermissionMode: 'inheritHost',
+        lastModificationTime: null
   }
 ]
 
