@@ -39,6 +39,7 @@ public sealed class ContainerTerminalService
 
     private readonly IDockerHostAccessor _accessor;
     private readonly IPermissionChecker _permissions;
+    private readonly ContainerAuthorizationService _authorization;
     private readonly TerminalOptions _options;
     private readonly ILogger<ContainerTerminalService> _logger;
 
@@ -53,6 +54,7 @@ public sealed class ContainerTerminalService
     public ContainerTerminalService(
         IDockerHostAccessor accessor,
         IPermissionChecker permissions,
+        ContainerAuthorizationService authorization,
         IOptions<TerminalOptions> options,
         ILogger<ContainerTerminalService> logger)
     {
@@ -63,6 +65,7 @@ public sealed class ContainerTerminalService
 
         _accessor = accessor;
         _permissions = permissions;
+        _authorization = authorization;
         _options = options.Value;
         _logger = logger;
     }
@@ -92,6 +95,7 @@ public sealed class ContainerTerminalService
         var containerId = RequireContainerId(request.ContainerId);
         var shell = TerminalCommandValidator.NormalizeShell(request.Shell, _options);
         var command = TerminalCommandValidator.NormalizeCommand(request.Command, _options);
+        containerId = await _authorization.EnsureForUserAsync(userId, hostId, containerId, Permission.ContainerWrite, cancellationToken).ConfigureAwait(false);
 
         // 先解析主机（主机不存在 → 1300），再判权限（→ 1501 / 1502），最后才碰守护进程。
         // 顺序不能反：对一台自己看不见的主机，连「容器在不在」都不该被告知。

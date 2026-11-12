@@ -1564,6 +1564,20 @@ describe('角色与权限目录端点（0.1.0）', () => {
 })
 
 describe('角色分配端点（0.1.0）', () => {
+  it('容器名称授予保存完整 ID，撤销不依赖容器仍存在', async () => {
+    const userId = '00000000-0000-0000-0000-0000000000b3'
+    const roleId = '00000000-0000-0000-0000-0000000000a3'
+    const container = MOCK_CONTAINERS_DEFAULT[0]!
+    const grant = await post(`/api/v1/admin/users/${userId}/roles/assign`, { host: 'local', roleId, containerId: container.name })
+    expect(grant.status).toBe(200)
+    expect((grant.json.data as { containerId: string }).containerId).toBe(container.id)
+    const repeated = await post(`/api/v1/admin/users/${userId}/roles/assign`, { host: 'local', roleId, containerId: container.id.slice(0, 12) })
+    expect((repeated.json.data as { id: string }).id).toBe((grant.json.data as { id: string }).id)
+    await post('/api/v1/hosts/local/containers/remove', { containerId: container.id, force: true })
+    const revoke = await post(`/api/v1/admin/users/${userId}/roles/revoke`, { host: 'local', roleId, containerId: container.id })
+    expect(revoke.status).toBe(200)
+  })
+
   const OPERATOR_ROLE = '00000000-0000-0000-0000-0000000000a2'
   const VIEWER_ROLE = '00000000-0000-0000-0000-0000000000a3'
   const OPS = '00000000-0000-0000-0000-0000000000b2'

@@ -58,6 +58,8 @@ public static class ApplicationServiceCollectionExtensions
         // 容器查询用例（0.0.9）。Scoped 是因为主机访问器与仓储都是 Scoped，
         // Docker 客户端本身的复用由 Singleton 的客户端池负责，不靠本服务的生命周期。
         services.AddScoped<ContainerService>();
+        services.AddScoped<ContainerAuthorizationService>();
+        services.AddSingleton<ContainerAssignmentCoordinator>();
 
         // 容器健康与退出原因的批量查询（0.6.0 列表健康列的数据源）。Scoped：同上。
         services.AddScoped<ContainerHealthService>();

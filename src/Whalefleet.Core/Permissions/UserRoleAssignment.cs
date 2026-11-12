@@ -48,7 +48,10 @@ public sealed class UserRoleAssignment : FullAuditedEntity<Guid, Guid>
     /// <summary>
     /// 是否为全局分配（<see cref="HostId"/> 为 <see langword="null"/>）。
     /// </summary>
-    public bool IsGlobal => this.HostId is null;
+    public bool IsGlobal => this.HostId is null && this.ContainerId is null;
+
+    /// <summary>容器完整 ID；空值表示全局或主机分配。</summary>
+    public string? ContainerId { get; private set; }
 
     /// <summary>
     /// 供 Dapper 物化使用的非公开无参构造。业务代码请改用 <see cref="Assign"/>。
@@ -66,7 +69,7 @@ public sealed class UserRoleAssignment : FullAuditedEntity<Guid, Guid>
     /// <param name="hostId">作用域主机主键；传 <see langword="null"/> 表示全局分配。</param>
     /// <returns>新建的分配记录。</returns>
     /// <exception cref="ArgumentException">用户或角色主键为空。</exception>
-    public static UserRoleAssignment Assign(Guid id, Guid userId, Guid roleId, Guid? hostId = null)
+    public static UserRoleAssignment Assign(Guid id, Guid userId, Guid roleId, Guid? hostId = null, string? containerId = null)
     {
         if (userId == Guid.Empty)
         {
@@ -78,12 +81,19 @@ public sealed class UserRoleAssignment : FullAuditedEntity<Guid, Guid>
             throw new ArgumentException("角色分配必须指定角色", nameof(roleId));
         }
 
+        if (hostId == Guid.Empty) throw new ArgumentException("主机主键不得为空", nameof(hostId));
+        if (containerId is not null && (hostId is null || String.IsNullOrWhiteSpace(containerId)))
+        {
+            throw new ArgumentException("容器分配必须指定主机与容器 ID", nameof(containerId));
+        }
+
         return new UserRoleAssignment
         {
             Id = id,
             UserId = userId,
             RoleId = roleId,
             HostId = hostId,
+            ContainerId = containerId,
         };
     }
 
@@ -105,6 +115,6 @@ public sealed class UserRoleAssignment : FullAuditedEntity<Guid, Guid>
             throw new ArgumentException("主机主键不得为空", nameof(hostId));
         }
 
-        return this.HostId is null || this.HostId.Value == hostId;
+        return this.ContainerId is null && (this.HostId is null || this.HostId.Value == hostId);
     }
 }

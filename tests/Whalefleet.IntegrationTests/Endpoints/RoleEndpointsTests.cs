@@ -84,6 +84,30 @@ public class RoleEndpointsTests : IAsyncLifetime
     /// <inheritdoc />
     public async Task DisposeAsync() => await _factory.DisposeAsync();
 
+    [Fact]
+    public async Task 授权设置_默认继承且保存后新请求立即生效()
+    {
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
+        using var initial = await client.PostAsJsonAsync("/api/v1/admin/settings/authorization/get", new { });
+        (await ReadAsync(initial)).GetProperty("data").GetProperty("containerPermissionMode").GetString().Should().Be("inheritHost");
+        using var update = await client.PostAsJsonAsync("/api/v1/admin/settings/authorization/update", new { containerPermissionMode = "requireAssignment" });
+        update.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var current = await client.PostAsJsonAsync("/api/v1/admin/settings/authorization/get", new { });
+        (await ReadAsync(current)).GetProperty("data").GetProperty("containerPermissionMode").GetString().Should().Be("requireAssignment");
+        using var invalid = await client.PostAsJsonAsync("/api/v1/admin/settings/authorization/update", new { containerPermissionMode = "invalid" });
+        invalid.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task 授权设置_非全局管理员不能读取或更新()
+    {
+        using var client = await this.CreateAuthenticatedClientAsync(_operatorName);
+        using var get = await client.PostAsJsonAsync("/api/v1/admin/settings/authorization/get", new { });
+        get.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        using var update = await client.PostAsJsonAsync("/api/v1/admin/settings/authorization/update", new { containerPermissionMode = "requireAssignment" });
+        update.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
     #region 权限目录
 
     [Fact]

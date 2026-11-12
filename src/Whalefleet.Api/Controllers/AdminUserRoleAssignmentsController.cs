@@ -95,6 +95,7 @@ public sealed class AdminUserRoleAssignmentsController : ControllerBase
                 new AssignRoleRequest
                 {
                     UserId = userId,
+                    ContainerId = request.ContainerId,
                     RoleId = request.RoleId,
                     Role = request.Role,
                     Host = request.Host,
@@ -139,6 +140,7 @@ public sealed class AdminUserRoleAssignmentsController : ControllerBase
                 new RevokeRoleAssignmentRequest
                 {
                     UserId = userId,
+                    ContainerId = request.ContainerId,
                     RoleId = request.RoleId,
                     Role = request.Role,
                     Host = request.Host,

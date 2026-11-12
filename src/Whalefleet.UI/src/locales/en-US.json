@@ -1,4 +1,27 @@
 {
+  "containerRbac": {
+    "hostUpper": "Host container permission ceiling",
+    "effective": "Current effective container permissions",
+    "revokeStrictTitle": "Revoke container access",
+    "revokeInheritedTitle": "Remove container restriction",
+    "revokeStrict": "Assignment is required. Revoking the last assignment removes this user’s access to this container.",
+    "revokeInherited": "Host inheritance is enabled. Revoking the last assignment restores this user’s host-level container permissions.",
+    "title": "Container role assignments",
+    "settings": "Container authorization policy",
+    "explanation": "Container roles are combined, then intersected with host permissions. Unassigned containers inherit host permissions or deny access according to the instance policy.",
+    "inheritHost": "Inherit host permissions for unassigned containers (default)",
+    "requireAssignment": "Deny access to unassigned containers",
+    "user": "User ID",
+    "host": "Host name",
+    "container": "Container ID or name",
+    "role": "Role",
+    "load": "Load assignments and roles",
+    "assign": "Assign role",
+    "revoke": "Revoke",
+    "revokeTitle": "Revoke container role",
+    "revokeNotice": "Revoking the last assignment restores host permissions in inheritance mode, or removes container access in assignment-required mode. Confirm the instance policy before continuing.",
+    "saved": "Authorization policy saved"
+  },
   "app": {
     "tagline": "A lightweight Docker management platform, like Portainer",
     "title": "Whalefleet"

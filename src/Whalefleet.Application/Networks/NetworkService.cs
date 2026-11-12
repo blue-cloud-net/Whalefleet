@@ -1,3 +1,4 @@
+using Whalefleet.Application.Containers;
 using System.Net;
 using System.Net.Sockets;
 
@@ -35,6 +36,7 @@ public sealed class NetworkService
     private const int _maxPageSize = 100;
 
     private readonly IDockerHostAccessor _accessor;
+    private readonly ContainerAuthorizationService _authorization;
     private readonly ILogger<NetworkService> _logger;
 
     /// <summary>
@@ -43,12 +45,13 @@ public sealed class NetworkService
     /// <param name="accessor">主机访问器（解析主机并取得 Docker 客户端）。</param>
     /// <param name="logger">日志。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
-    public NetworkService(IDockerHostAccessor accessor, ILogger<NetworkService> logger)
+    public NetworkService(IDockerHostAccessor accessor, ContainerAuthorizationService authorization, ILogger<NetworkService> logger)
     {
         ArgumentNullException.ThrowIfNull(accessor);
         ArgumentNullException.ThrowIfNull(logger);
 
         _accessor = accessor;
+        _authorization = authorization;
         _logger = logger;
     }
 
@@ -171,7 +174,14 @@ public sealed class NetworkService
 
         _logger.LogDebug("主机 {HostId} 查询网络 {NetworkId} 详情", hostId, networkId);
 
-        return MapDetail(network);
+        var result = MapDetail(network);
+        var visible = new List<NetworkContainerEndpoint>();
+        foreach (var container in result.Containers)
+        {
+            var effective = await _authorization.GetPermissionsAsync(hostId, container.Id, cancellationToken).ConfigureAwait(false);
+            if (effective.Contains(Whalefleet.Core.Permissions.Permission.ContainerRead)) visible.Add(container);
+        }
+        return result with { Containers = visible };
     }
 
     /// <summary>
@@ -304,6 +314,8 @@ public sealed class NetworkService
 
         var attached = network.Containers?.Keys.ToArray() ?? [];
 
+        foreach (var id in attached)
+            await _authorization.EnsureAsync(hostId, id, Whalefleet.Core.Permissions.Permission.ContainerWrite, cancellationToken).ConfigureAwait(false);
         if (attached.Length > 0)
         {
             throw new BusinessException(
@@ -348,6 +360,7 @@ public sealed class NetworkService
         ArgumentNullException.ThrowIfNull(request);
 
         var containerId = RequireContainerId(request.ContainerId);
+        containerId = await _authorization.EnsureAsync(hostId, containerId, Whalefleet.Core.Permissions.Permission.ContainerWrite, cancellationToken).ConfigureAwait(false);
         var networkId = DockerResourceName.Require(request.NetworkId, nameof(request.NetworkId), "网络");
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
 
@@ -413,6 +426,7 @@ public sealed class NetworkService
         ArgumentNullException.ThrowIfNull(request);
 
         var containerId = RequireContainerId(request.ContainerId);
+        containerId = await _authorization.EnsureAsync(hostId, containerId, Whalefleet.Core.Permissions.Permission.ContainerWrite, cancellationToken).ConfigureAwait(false);
         var networkId = DockerResourceName.Require(request.NetworkId, nameof(request.NetworkId), "网络");
         var force = request.Force ?? false;
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);

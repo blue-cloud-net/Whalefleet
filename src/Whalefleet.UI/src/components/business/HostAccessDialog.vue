@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContainerRoleAssignments from '@/components/business/ContainerRoleAssignments.vue'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
@@ -125,7 +126,7 @@ async function load(): Promise<void> {
     const byHost: Record<string, string[]> = {}
     for (const host of hostList) {
       byHost[host.name] = assignmentList
-        .filter((assignment) => assignment.hostName === host.name)
+        .filter((assignment) => assignment.hostName === host.name && !assignment.containerId)
         .map((assignment) => assignment.roleId)
     }
 
@@ -324,6 +325,7 @@ function roleLabel(roleId: string): string {
 
     <p class="mt-3 text-xs text-content-faint">{{ t('roleAssign.footnote') }}</p>
 
+    <ContainerRoleAssignments v-if="user" :user-id="user.id" />
     <template #footer>
       <el-button :disabled="submitting" @click="visible = false">{{ t('common.cancel') }}</el-button>
       <el-button

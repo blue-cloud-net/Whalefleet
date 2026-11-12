@@ -39,7 +39,7 @@ public sealed class IssueDockerRegressionTests
             return (200, "{\"Id\":\"sha256:test\",\"Size\":42,\"RepoTags\":[\"private.example/app:v1\"]}");
         });
         var credentials = new Credentials(authenticated);
-        var images = new ImageService(new StubDockerHostAccessor(daemon.Endpoint),
+        var images = new ImageService(new StubDockerHostAccessor(daemon.Endpoint), TestContainerAuthorization.Create(new StubDockerHostAccessor(daemon.Endpoint)),
             NullLogger<ImageService>.Instance, credentials);
         var result = await images.PullAsync("local", new PullImageRequest { Image = "private.example/app", Tag = "v1" });
         result.Reference.Should().Be("private.example/app:v1");
@@ -83,7 +83,7 @@ public sealed class IssueDockerRegressionTests
                 : (200, "[]");
         });
         var accessor = new StubDockerHostAccessor(daemon.Endpoint);
-        var images = new ImageService(accessor, NullLogger<ImageService>.Instance, new Credentials(false));
+        var images = new ImageService(accessor, TestContainerAuthorization.Create(accessor), NullLogger<ImageService>.Instance, new Credentials(false));
         var executor = new ComposeOperationExecutor(accessor, images, new NoopProgress(),
             NullLogger<ComposeOperationExecutor>.Instance);
         var request = new ComposeOperationRequest("task", "local", "demo", ComposeOperations.Remove,
@@ -128,7 +128,7 @@ public sealed class IssueDockerRegressionTests
                 Name = name
             }));
         });
-        var service = new NetworkService(new StubDockerHostAccessor(daemon.Endpoint), NullLogger<NetworkService>.Instance);
+        var service = new NetworkService(new StubDockerHostAccessor(daemon.Endpoint), TestContainerAuthorization.Create(new StubDockerHostAccessor(daemon.Endpoint)), NullLogger<NetworkService>.Instance);
         var act = () => service.RemoveAsync("local", new RemoveNetworkRequest { NetworkId = "network-id" });
         (await act.Should().ThrowAsync<BusinessException>()).Which.Code.Should().Be(ErrorCodes.DockerResourceConflict);
         deletes.Should().Be(0);

@@ -299,6 +299,7 @@ public sealed class ContainersController : ControllerBase
             throw new ArgumentException("容器标识不能为空。", nameof(request));
         }
 
+        containerId = await _containers.AuthorizeReadAsync(hostId, containerId, cancellationToken).ConfigureAwait(false);
         this.Response.ContentType = "text/plain; charset=utf-8";
         this.Response.Headers.ContentDisposition = BuildContentDisposition(containerId);
 

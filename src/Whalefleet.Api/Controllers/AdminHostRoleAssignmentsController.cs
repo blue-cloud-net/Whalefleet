@@ -113,7 +113,8 @@ public sealed class AdminHostRoleAssignmentsController : ControllerBase
         var scoped = new AssignRoleRequest
         {
             UserId = request.UserId,
-            RoleId = request.RoleId,
+            ContainerId = request.ContainerId,
+                    RoleId = request.RoleId,
             Role = request.Role,
             Host = hostId,
         };
@@ -150,7 +151,8 @@ public sealed class AdminHostRoleAssignmentsController : ControllerBase
         var scoped = new RevokeRoleAssignmentRequest
         {
             UserId = request.UserId,
-            RoleId = request.RoleId,
+            ContainerId = request.ContainerId,
+                    RoleId = request.RoleId,
             Role = request.Role,
             Host = hostId,
         };

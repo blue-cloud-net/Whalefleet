@@ -13,6 +13,7 @@ using Whalefleet.Application.Common;
 using Whalefleet.Application.Docker;
 using Whalefleet.Core.Auditing;
 using Whalefleet.Core.Composes;
+using Whalefleet.Core.Permissions;
 
 using SdkState = Docker.DotNet.Models.State;
 
@@ -75,6 +76,9 @@ public sealed partial class ContainerService
     private const int _maxSignalLength = 32;
 
     private readonly IDockerHostAccessor _accessor;
+    private readonly ContainerAuthorizationService _authorization;
+    private readonly ContainerAssignmentCoordinator _coordinator;
+    private readonly IContainerAssignmentStore _assignmentStore;
     private readonly IAuditLogger _audit;
     private readonly ILogger<ContainerService> _logger;
 
@@ -88,16 +92,24 @@ public sealed partial class ContainerService
     public ContainerService(
         IDockerHostAccessor accessor,
         IAuditLogger audit,
-        ILogger<ContainerService> logger)
+        ILogger<ContainerService> logger,
+        ContainerAuthorizationService authorization, ContainerAssignmentCoordinator coordinator, IContainerAssignmentStore assignmentStore)
     {
         ArgumentNullException.ThrowIfNull(accessor);
         ArgumentNullException.ThrowIfNull(audit);
         ArgumentNullException.ThrowIfNull(logger);
 
+        _authorization = authorization;
+        _coordinator = coordinator;
+        _assignmentStore = assignmentStore;
         _accessor = accessor;
         _audit = audit;
         _logger = logger;
     }
+
+    /// <summary>在开始下载前验证容器 read 权限。</summary>
+    public Task<string> AuthorizeReadAsync(string hostId, string containerId, CancellationToken cancellationToken = default) =>
+        _authorization.EnsureAsync(hostId, containerId, Permission.ContainerRead, cancellationToken);
 
     /// <summary>
     /// 列出主机上的容器。
@@ -137,7 +149,15 @@ public sealed partial class ContainerService
 
         // 过滤 → 排序 → 分页，顺序不能换：
         // 先分页再过滤会让 total 与实际命中数不一致（页脚说 100 个、翻过去只有 3 个）。
-        var filtered = Filter(containers, request.Search, filter, project);
+        var visible = new List<ContainerListResponse>();
+        var effectivePermissions = new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal);
+        foreach (var container in containers)
+        {
+            var effective = await _authorization.GetPermissionsAsync(hostId, container.ID, cancellationToken).ConfigureAwait(false);
+            effectivePermissions[container.ID] = effective;
+            if (effective.Contains(Permission.ContainerRead)) visible.Add(container);
+        }
+        var filtered = Filter(visible, request.Search, filter, project);
 
         // 客户端**显式**指定排序字段时才重排：那时顺序是用户要的；没指定就保持守护进程
         // 返回的顺序（创建时间降序），它本来就是稳定的，额外重排只会让「翻页时看到的东西变了」
@@ -160,7 +180,7 @@ public sealed partial class ContainerService
             pageSize);
 
         return new ContainerListResult(
-            [.. ordered.Skip(pageIndex * pageSize).Take(pageSize).Select(MapSummary)],
+            [.. ordered.Skip(pageIndex * pageSize).Take(pageSize).Select(item => MapSummary(item) with { EffectivePermissions = [.. effectivePermissions[item.ID]] })],
             ordered.Count,
             pageIndex,
             pageSize);
@@ -485,6 +505,7 @@ public sealed partial class ContainerService
         ArgumentNullException.ThrowIfNull(request);
 
         var containerId = RequireContainerId(request.ContainerId);
+        containerId = await _authorization.EnsureAsync(hostId, containerId, Permission.ContainerRead, cancellationToken).ConfigureAwait(false);
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
 
         var container = await DockerErrorTranslator.ExecuteAsync(
@@ -509,7 +530,7 @@ public sealed partial class ContainerService
             },
             cancellationToken).ConfigureAwait(false);
 
-        return MapDetail(container);
+        return MapDetail(container) with { EffectivePermissions = [.. await _authorization.GetPermissionsAsync(hostId, container.ID ?? containerId, cancellationToken).ConfigureAwait(false)] };
     }
 
     /// <summary>
@@ -542,6 +563,7 @@ public sealed partial class ContainerService
 
         var containerId = RequireContainerId(request.ContainerId);
         var tail = RequireTail(request.Tail);
+        containerId = await _authorization.EnsureAsync(hostId, containerId, Permission.ContainerRead, cancellationToken).ConfigureAwait(false);
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
 
         var parameters = new ContainerLogsParameters
@@ -616,6 +638,7 @@ public sealed partial class ContainerService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
         ArgumentNullException.ThrowIfNull(request);
+        await _authorization.EnsureUnrestrictedAsync(hostId, cancellationToken).ConfigureAwait(false);
 
         var parameters = BuildCreateParameters(request);
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
@@ -660,6 +683,7 @@ public sealed partial class ContainerService
         ArgumentNullException.ThrowIfNull(request);
 
         var containerId = RequireContainerId(request.ContainerId);
+        containerId = await _authorization.EnsureAsync(hostId, containerId, Permission.ContainerWrite, cancellationToken).ConfigureAwait(false);
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
 
         await this.ExecuteStateChangeAsync(
@@ -697,6 +721,7 @@ public sealed partial class ContainerService
 
         var containerId = RequireContainerId(request.ContainerId);
         var waitSeconds = RequireWaitSeconds(request.WaitSeconds);
+        containerId = await _authorization.EnsureAsync(hostId, containerId, Permission.ContainerWrite, cancellationToken).ConfigureAwait(false);
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
 
         // 省略等待秒数时不传值：由守护进程用它自己的默认值（10 秒），
@@ -741,6 +766,7 @@ public sealed partial class ContainerService
         ArgumentNullException.ThrowIfNull(request);
 
         var containerId = RequireContainerId(request.ContainerId);
+        containerId = await _authorization.EnsureAsync(hostId, containerId, Permission.ContainerWrite, cancellationToken).ConfigureAwait(false);
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
 
         await this.ExecuteStateChangeAsync(
@@ -792,6 +818,7 @@ public sealed partial class ContainerService
 
         var containerId = RequireContainerId(request.ContainerId);
         var signal = RequireSignal(request.Signal);
+        containerId = await _authorization.EnsureAsync(hostId, containerId, Permission.ContainerWrite, cancellationToken).ConfigureAwait(false);
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
 
         var parameters = new ContainerKillParameters();
@@ -849,6 +876,7 @@ public sealed partial class ContainerService
         ArgumentNullException.ThrowIfNull(request);
 
         var containerId = RequireContainerId(request.ContainerId);
+        containerId = await _authorization.EnsureAsync(hostId, containerId, Permission.ContainerWrite, cancellationToken).ConfigureAwait(false);
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
 
         var state = await InspectStateAsync(client, containerId, cancellationToken).ConfigureAwait(false);
@@ -908,6 +936,7 @@ public sealed partial class ContainerService
         ArgumentNullException.ThrowIfNull(request);
 
         var containerId = RequireContainerId(request.ContainerId);
+        containerId = await _authorization.EnsureAsync(hostId, containerId, Permission.ContainerWrite, cancellationToken).ConfigureAwait(false);
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
 
         var state = await InspectStateAsync(client, containerId, cancellationToken).ConfigureAwait(false);
@@ -965,6 +994,7 @@ public sealed partial class ContainerService
 
         var containerId = RequireContainerId(request.ContainerId);
         var force = request.Force ?? false;
+        containerId = await _authorization.EnsureAsync(hostId, containerId, Permission.ContainerWrite, cancellationToken).ConfigureAwait(false);
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
 
         // 审计要的是「删除时的名字」：删完之后守护进程再也查不到它，

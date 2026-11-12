@@ -99,6 +99,7 @@ internal sealed class ContainerNotificationDispatcher : BackgroundService
 
         var (messageKey, parameters, severity) = BuildNotification(notification, name);
         var occurredAt = notification.OccurredAt.UtcDateTime;
+        parameters = new Dictionary<string, object?>(parameters) { ["containerId"] = notification.ContainerId };
 
         await notifications.CreateAsync(
             new NotificationDraft(

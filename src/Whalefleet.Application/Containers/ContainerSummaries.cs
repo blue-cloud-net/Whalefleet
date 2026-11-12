@@ -38,7 +38,11 @@ public sealed record ContainerSummary(
     string State,
     string Status,
     IReadOnlyList<ContainerPort> Ports,
-    string? ComposeService);
+    string? ComposeService)
+{
+    /// <summary>当前用户在该容器上的有效权限。</summary>
+    public IReadOnlyList<string> EffectivePermissions { get; init; } = [];
+}
 
 /// <summary>
 /// 端口映射。
@@ -94,7 +98,11 @@ public sealed record ContainerDetail(
     ContainerHostConfigDetail HostConfig,
     IReadOnlyList<ContainerMountDetail> Mounts,
     IReadOnlyList<ContainerNetworkDetail> Networks,
-    IReadOnlyList<ContainerPort> Ports);
+    IReadOnlyList<ContainerPort> Ports)
+{
+    /// <summary>当前用户在该容器上的有效权限。</summary>
+    public IReadOnlyList<string> EffectivePermissions { get; init; } = [];
+}
 
 /// <summary>
 /// 容器的运行状态。

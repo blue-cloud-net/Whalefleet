@@ -3,10 +3,13 @@ import { useI18n } from 'vue-i18n'
 import { useThemeStore, type ThemeColor, type ThemeMode } from '@/stores/theme'
 import { usePreferencesStore, PAGE_SIZE_ALL, PAGE_SIZE_OPTIONS } from '@/stores/preferences'
 import { setLocale, type AppLocale } from '@/locales'
+import AuthorizationSettingsCard from '@/components/business/AuthorizationSettingsCard.vue'
+import { useAuthStore } from '@/stores/auth'
 import PageHeader from '@/components/common/PageHeader.vue'
 import SectionCard from '@/components/common/SectionCard.vue'
 
 const { t, locale } = useI18n()
+const auth = useAuthStore()
 const theme = useThemeStore()
 const prefs = usePreferencesStore()
 
@@ -43,6 +46,7 @@ function onLocaleChange(next: AppLocale) {
     <PageHeader icon="i-carbon-settings-adjust" :title="t('settings.title')" :subtitle="t('settings.subtitle')" narrow />
 
     <div class="max-w-3xl space-y-4">
+      <AuthorizationSettingsCard v-if="auth.isAdmin" />
       <!-- 外观 -->
       <SectionCard :title="t('settings.appearance')">
         <div class="space-y-5">

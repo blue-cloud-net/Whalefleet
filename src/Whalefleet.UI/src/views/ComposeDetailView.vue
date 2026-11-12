@@ -465,7 +465,7 @@ interface RowAction {
 }
 
 function rowActions(container: ContainerSummary): RowAction[] {
-  const busy = busyIds.value.has(container.id)
+  const busy = busyIds.value.has(container.id) || !container.effectivePermissions.includes('container.write')
   const active = isActiveContainer(container)
   const paused = isPaused(container)
 

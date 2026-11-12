@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 
 using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Common;
+using Whalefleet.Application.Containers;
 using Whalefleet.Core.Hosts;
 using Whalefleet.Core.Permissions;
 
@@ -31,6 +32,7 @@ public sealed class ContainerStatsHub : Hub
     public const string SubscriptionKind = "stats";
 
     private readonly RealtimeHostResolver _resolver;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly RealtimeSubscriptionRegistry _subscriptions;
     private readonly IHubContext<ContainerStatsHub> _hubContext;
     private readonly IContainerStatsSampler _sampler;
@@ -49,6 +51,7 @@ public sealed class ContainerStatsHub : Hub
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
     public ContainerStatsHub(
         RealtimeHostResolver resolver,
+        IServiceScopeFactory scopeFactory,
         RealtimeSubscriptionRegistry subscriptions,
         IHubContext<ContainerStatsHub> hubContext,
         IContainerStatsSampler sampler,
@@ -63,6 +66,7 @@ public sealed class ContainerStatsHub : Hub
         ArgumentNullException.ThrowIfNull(logger);
 
         _resolver = resolver;
+        _scopeFactory = scopeFactory;
         _subscriptions = subscriptions;
         _hubContext = hubContext;
         _sampler = sampler;
@@ -88,6 +92,10 @@ public sealed class ContainerStatsHub : Hub
         {
             host = await _resolver
                 .ResolveAsync(this.Context, Permission.ContainerRead, this.Context.ConnectionAborted)
+                .ConfigureAwait(false);
+            using var authorizationScope = _scopeFactory.CreateScope();
+            await authorizationScope.ServiceProvider.GetRequiredService<ContainerAuthorizationService>()
+                .EnsureForUserAsync(RealtimeHostResolver.ResolveUserId(this.Context), host.Name, containerId, Permission.ContainerRead, this.Context.ConnectionAborted)
                 .ConfigureAwait(false);
         }
         catch (BusinessException exception)
@@ -168,6 +176,8 @@ public sealed class ContainerStatsHub : Hub
     /// <returns>推送任务。</returns>
     private Task StartPump(RealtimeSubscription subscription, string hostId, string containerId)
     {
+        var userId = RealtimeHostResolver.ResolveUserId(this.Context);
+        var scopes = _scopeFactory;
         var connectionId = this.Context.ConnectionId;
         var logger = _logger;
         var hubContext = _hubContext;
@@ -175,6 +185,8 @@ public sealed class ContainerStatsHub : Hub
 
         return Task.Run(async () =>
         {
+            var monitor = ContainerPermissionMonitor.RunAsync(scopes, userId, hostId, containerId, Permission.ContainerRead, subscription.Cancellation);
+
             // 采样器是进程内共享的：同一个容器无论多少订阅者，只占一条到 Docker 的流。
             // 订阅时它会先给一段历史快照（环形缓冲），因此新打开的页面不必等一分钟才有图。
             try
@@ -231,6 +243,11 @@ public sealed class ContainerStatsHub : Hub
                     ErrorCodes.DockerApiFailed,
                     "读取容器采样失败，请查看服务端日志。",
                     logger).ConfigureAwait(false);
+            }
+            finally
+            {
+                await subscription.Cancellation.CancelAsync().ConfigureAwait(false);
+                await monitor.ConfigureAwait(false);
             }
         });
     }

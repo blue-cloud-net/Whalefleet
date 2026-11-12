@@ -1,4 +1,27 @@
 {
+  "containerRbac": {
+    "hostUpper": "主机容器权限上限",
+    "effective": "目标容器当前有效权限",
+    "revokeStrictTitle": "撤销容器访问分配",
+    "revokeInheritedTitle": "撤销容器权限限制",
+    "revokeStrict": "当前为必须分配模式。撤销最后一条分配后，该用户将失去对此容器的访问权限。",
+    "revokeInherited": "当前为继承模式。撤销最后一条分配后，该用户将恢复主机范围的容器权限。",
+    "title": "容器角色分配",
+    "settings": "容器授权策略",
+    "explanation": "容器权限受主机权限上限约束；多个容器角色先合并，再与主机权限取交集。未分配时按实例策略继承主机权限或拒绝访问。",
+    "inheritHost": "未分配的容器继承主机权限（默认）",
+    "requireAssignment": "未分配的容器禁止访问",
+    "user": "用户 ID",
+    "host": "主机名",
+    "container": "容器 ID 或名称",
+    "role": "角色",
+    "load": "查询分配与角色",
+    "assign": "分配角色",
+    "revoke": "撤销",
+    "revokeTitle": "撤销容器角色",
+    "revokeNotice": "撤销最后一条分配后：继承模式会恢复主机权限；必须分配模式会失去该容器访问权限。请确认当前实例策略。",
+    "saved": "授权策略已保存"
+  },
   "app": {
     "tagline": "类 Portainer 的轻量化 Docker 管理平台",
     "title": "Whalefleet"

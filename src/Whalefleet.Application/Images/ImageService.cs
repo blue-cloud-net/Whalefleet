@@ -1,3 +1,4 @@
+using Whalefleet.Application.Containers;
 using Docker.DotNet;
 using Docker.DotNet.Models;
 
@@ -54,6 +55,7 @@ public sealed class ImageService
     private const string _untaggedKey = "Untagged";
 
     private readonly IDockerHostAccessor _accessor;
+    private readonly ContainerAuthorizationService _authorization;
     private readonly IRepositoryCredentialResolver _credentials;
     private readonly ILogger<ImageService> _logger;
     private readonly IOperationProgressPublisher? _progressPublisher;
@@ -67,7 +69,7 @@ public sealed class ImageService
     /// <param name="progressPublisher">进度发布器（0.5.0）；为 <see langword="null"/> 时不推实时进度。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
     public ImageService(
-        IDockerHostAccessor accessor,
+        IDockerHostAccessor accessor, ContainerAuthorizationService authorization,
         ILogger<ImageService> logger,
         IRepositoryCredentialResolver credentials,
         IOperationProgressPublisher? progressPublisher = null)
@@ -77,6 +79,7 @@ public sealed class ImageService
 
         ArgumentNullException.ThrowIfNull(credentials);
         _accessor = accessor;
+        _authorization = authorization;
         _credentials = credentials;
         _logger = logger;
         _progressPublisher = progressPublisher;
@@ -322,6 +325,7 @@ public sealed class ImageService
         ArgumentNullException.ThrowIfNull(request);
 
         var imageId = RequireImageId(request.ImageId);
+        await _authorization.EnsureRelatedAsync(hostId, "image", request.ImageId ?? String.Empty, cancellationToken).ConfigureAwait(false);
         var force = request.Force ?? false;
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
 
@@ -367,6 +371,7 @@ public sealed class ImageService
 
             try
             {
+                await _authorization.EnsureRelatedAsync(hostId, "image", imageId, cancellationToken).ConfigureAwait(false);
                 await this.RemoveAsync(client, imageId, force, hostId, cancellationToken).ConfigureAwait(false);
             }
             catch (BusinessException exception)
@@ -426,6 +431,7 @@ public sealed class ImageService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
         ArgumentNullException.ThrowIfNull(request);
+        await _authorization.EnsureUnrestrictedAsync(hostId, "image.write", cancellationToken).ConfigureAwait(false);
 
         var label = PruneFilter.NormalizeLabel(request.Label);
         var danglingOnly = request.DanglingOnly ?? true;

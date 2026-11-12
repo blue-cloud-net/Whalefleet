@@ -192,8 +192,9 @@ dotnet list src/Whalefleet.Application/Whalefleet.Application.csproj package
 > 与角色 / 分配管理端点）。权限目录是**静态封闭集**（`Core/Permissions/Permission.cs` 里的 `Permission` 常量与
 > `PermissionScope` 枚举），刻意不建表——「本版本有没有这个功能」是**编译期**事实，放进表里只会让运行时可配的
 > 角色逐渐偏离代码真正能强制的范围。目录分 **Global**（与具体主机无关）与 **Host**（在单台主机内有效）两种作用域；
-> `PermissionScope.Container` 为 0.12.0 预留（目录里尚无任何权限落在该作用域），本迭代只开放
-> **Global** 与 **Host** 两条分配路径。
+> `PermissionScope.Container` 保留；0.12.0 的容器粒度是**角色分配作用域**，不改动目录中 `container.read/write` 的 Host 分类。
+> 分配表以 `host_id + container_id` 表达目标，容器权限取主机上限与容器角色并集的交集；未分配时由实例策略决定继承或拒绝。
+> 容器分配不参与主机权限及主机可见性计算。详见 [0.12.0 实施记录](v0.12.0-implementation.md)。
 >
 > 角色携带的权限子集存于 `role_permissions`（`(role_id, permission)` 复合主键），
 > 「谁在哪个范围内拥有这个角色」由 `user_role_assignments`（`host_id` 可空，`NULL` = 全局）承担。

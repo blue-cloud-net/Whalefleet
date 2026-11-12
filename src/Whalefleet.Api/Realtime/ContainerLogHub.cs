@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 
 using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Common;
+using Whalefleet.Application.Containers;
 using Whalefleet.Core.Hosts;
 using Whalefleet.Core.Permissions;
 
@@ -104,6 +105,10 @@ public sealed class ContainerLogHub : Hub
             host = await _resolver
                 .ResolveAsync(this.Context, Permission.ContainerRead, this.Context.ConnectionAborted)
                 .ConfigureAwait(false);
+            using var authorizationScope = _scopeFactory.CreateScope();
+            await authorizationScope.ServiceProvider.GetRequiredService<ContainerAuthorizationService>()
+                .EnsureForUserAsync(RealtimeHostResolver.ResolveUserId(this.Context), host.Name, containerId, Permission.ContainerRead, this.Context.ConnectionAborted)
+                .ConfigureAwait(false);
         }
         catch (BusinessException exception)
         {
@@ -194,6 +199,8 @@ public sealed class ContainerLogHub : Hub
         int startSeq,
         long? since)
     {
+        var userId = RealtimeHostResolver.ResolveUserId(this.Context);
+        var scopes = _scopeFactory;
         var connectionId = this.Context.ConnectionId;
         var batchSize = _options.Value.LogBatchLines;
         var flushInterval = TimeSpan.FromMilliseconds(_options.Value.LogFlushIntervalMs);
@@ -204,6 +211,8 @@ public sealed class ContainerLogHub : Hub
 
         return Task.Run(async () =>
         {
+            var monitor = ContainerPermissionMonitor.RunAsync(scopes, userId, hostId, containerId, Permission.ContainerRead, subscription.Cancellation);
+
             // 自己的作用域：Hub 实例在方法返回后就被释放了，
             // 注入进来的 Scoped 服务（主机访问器、权限判定）不能带进后台任务。
             using var scope = _scopeFactory.CreateScope();
@@ -281,6 +290,11 @@ public sealed class ContainerLogHub : Hub
                     ErrorCodes.DockerApiFailed,
                     $"读取容器日志失败：{exception.Message}",
                     logger).ConfigureAwait(false);
+            }
+            finally
+            {
+                await subscription.Cancellation.CancelAsync().ConfigureAwait(false);
+                await monitor.ConfigureAwait(false);
             }
         });
     }

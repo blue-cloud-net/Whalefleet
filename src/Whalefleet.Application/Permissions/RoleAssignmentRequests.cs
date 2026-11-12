@@ -27,6 +27,9 @@ public sealed record ListHostRoleAssignmentsRequest
 /// </remarks>
 public sealed record AssignRoleRequest
 {
+    /// <summary>可选容器标识；必须同时提供 host。</summary>
+    public string? ContainerId { get; init; }
+
     /// <summary>
     /// 目标用户主键；必填。
     /// </summary>
@@ -58,6 +61,9 @@ public sealed record AssignRoleRequest
 /// </remarks>
 public sealed record RevokeRoleAssignmentRequest
 {
+    /// <summary>已保存的完整容器 ID；撤销不访问 Docker。</summary>
+    public string? ContainerId { get; init; }
+
     /// <summary>
     /// 目标用户主键；必填。
     /// </summary>

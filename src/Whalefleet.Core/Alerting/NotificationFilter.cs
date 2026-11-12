@@ -11,6 +11,8 @@ namespace Whalefleet.Core.Alerting;
 /// </remarks>
 public sealed record NotificationFilter
 {
+    /// <summary>每台主机的容器通知访问约束。</summary>
+    public IReadOnlyDictionary<Guid, ContainerNotificationAccess> ContainerAccess { get; init; } = new Dictionary<Guid, ContainerNotificationAccess>();
     /// <summary>
     /// 是否不限制主机（管理员）。
     /// </summary>
@@ -51,3 +53,8 @@ public sealed record NotificationFilter
     /// </summary>
     public DateTime? To { get; init; }
 }
+
+/// <summary>容器通知白名单或黑名单。</summary>
+/// <param name="RequireAssignment">是否只允许列表内的容器。</param>
+/// <param name="ContainerIds">完整容器 ID 列表。</param>
+public sealed record ContainerNotificationAccess(bool RequireAssignment, IReadOnlyCollection<string> ContainerIds);

@@ -36,6 +36,7 @@ public sealed class HostQueryService
     private readonly IDockerHostAccessor _accessor;
     private readonly IPermissionChecker _permissions;
     private readonly ICurrentUser _currentUser;
+    private readonly ContainerAuthorizationService _authorization;
     private readonly ILogger<HostQueryService> _logger;
 
     /// <summary>
@@ -54,7 +55,7 @@ public sealed class HostQueryService
         IDockerHostAccessor accessor,
         IPermissionChecker permissions,
         ICurrentUser currentUser,
-        ILogger<HostQueryService> logger)
+        ILogger<HostQueryService> logger, ContainerAuthorizationService authorization)
     {
         ArgumentNullException.ThrowIfNull(hosts);
         ArgumentNullException.ThrowIfNull(tags);
@@ -68,6 +69,7 @@ public sealed class HostQueryService
         _accessor = accessor;
         _permissions = permissions;
         _currentUser = currentUser;
+        _authorization = authorization;
         _logger = logger;
     }
 
@@ -203,17 +205,24 @@ public sealed class HostQueryService
                 $"主机 {host.Name} 的网络列表",
                 cancellationToken).ConfigureAwait(false);
 
+            var visibleContainers = new List<ContainerListResponse>();
+            foreach (var container in containers)
+            {
+                var effective = await _authorization.GetPermissionsAsync(host.Name, container.ID, cancellationToken).ConfigureAwait(false);
+                if (effective.Contains(Whalefleet.Core.Permissions.Permission.ContainerRead)) visibleContainers.Add(container);
+            }
+            containers = visibleContainers;
             var (healthy, unhealthy) = CountHealth(containers);
             var imagesSize = await this.TryGetImagesSizeAsync(client, host.Name, cancellationToken)
                 .ConfigureAwait(false);
 
             var counts = new HostResourceCounts(
-                Containers: info.Containers,
+                Containers: containers.Count,
                 Images: info.Images,
                 Volumes: volumes.Volumes?.Count ?? 0,
                 Networks: networks.Count,
-                ContainersRunning: info.ContainersRunning,
-                ContainersStopped: info.ContainersStopped,
+                ContainersRunning: containers.Count(c => c.State == "running"),
+                ContainersStopped: containers.Count(c => c.State != "running"),
                 ContainersHealthy: healthy,
                 ContainersUnhealthy: unhealthy,
                 ImagesSizeBytes: imagesSize);

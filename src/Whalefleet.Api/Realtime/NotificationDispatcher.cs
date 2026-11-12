@@ -123,6 +123,20 @@ internal sealed class NotificationDispatcher : BackgroundService
 
             if (allowed)
             {
+                using var document = System.Text.Json.JsonDocument.Parse(notification.ParamsJson);
+                var checker = scope.ServiceProvider.GetRequiredService<IContainerPermissionChecker>();
+                if (document.RootElement.TryGetProperty("containerId", out var id) && id.ValueKind == System.Text.Json.JsonValueKind.String)
+                {
+                    var effective = await checker.GetPermissionsAsync(userId, hostId, id.GetString()!, cancellationToken).ConfigureAwait(false);
+                    allowed = effective.Contains(Permission.ContainerRead);
+                }
+                else if (notification.SourceKind == NotificationSourceKind.ContainerDied || notification.MessageKey.StartsWith("notification.alert.container", StringComparison.Ordinal))
+                {
+                    allowed = !await checker.IsRestrictedAsync(userId, hostId, cancellationToken).ConfigureAwait(false);
+                }
+            }
+            if (allowed)
+            {
                 await this.SendAsync(connectionId, payload, cancellationToken).ConfigureAwait(false);
             }
         }

@@ -3,6 +3,8 @@ import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
+import ContainerRoleAssignments from '@/components/business/ContainerRoleAssignments.vue'
+import { useAuthStore } from '@/stores/auth'
 import PageHeader from '@/components/common/PageHeader.vue'
 import SectionCard from '@/components/common/SectionCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -55,6 +57,7 @@ const route = useRoute()
 const router = useRouter()
 const preferences = usePreferencesStore()
 
+const auth = useAuthStore()
 const hostId = computed(() => String(route.params.hostId ?? ''))
 const containerId = computed(() => String(route.params.id ?? ''))
 
@@ -377,7 +380,7 @@ watch(
           状态不满足时置灰（暂停中的容器同样打不开：exec 会挂住）。
         -->
         <el-button
-          :disabled="!detail || !canPerform('terminal', detail.state.status)"
+          :disabled="!detail?.effectivePermissions.includes('container.write') || !detail || !canPerform('terminal', detail.state.status)"
           @click="openTerminal"
         >
           {{ t('container.action.terminal') }}
@@ -395,7 +398,7 @@ watch(
         <el-button
           v-if="detail"
           :loading="acting"
-          :disabled="!canPerform(primaryAction, detail.state.status)"
+          :disabled="!detail?.effectivePermissions.includes('container.write') || !canPerform(primaryAction, detail.state.status)"
           @click="onPrimary"
         >
           {{ t(primaryLabelKey) }}
@@ -404,7 +407,7 @@ watch(
         <el-button
           v-if="detail && !isPaused"
           :loading="acting"
-          :disabled="!canPerform('restart', detail.state.status)"
+          :disabled="!detail?.effectivePermissions.includes('container.write') || !canPerform('restart', detail.state.status)"
           @click="onRestart"
         >
           {{ t('container.action.restart') }}
@@ -417,11 +420,11 @@ watch(
           而下拉菜单里没有二次确认对话框的停留时间，必须一眼看出它不一样。
         -->
         <el-dropdown v-if="detail" trigger="click">
-          <el-button :disabled="acting">{{ t('container.action.more') }}</el-button>
+          <el-button :disabled="acting || !detail?.effectivePermissions.includes('container.write')">{{ t('container.action.more') }}</el-button>
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item
-                :disabled="acting || !canPerform('kill', detail.state.status)"
+                :disabled="acting || !detail?.effectivePermissions.includes('container.write') || !canPerform('kill', detail.state.status)"
                 @click="onKill"
               >
                 <span class="i-carbon-warning" aria-hidden="true" />
@@ -429,7 +432,7 @@ watch(
               </el-dropdown-item>
 
               <el-dropdown-item
-                :disabled="acting || !canPerform('pause', detail.state.status)"
+                :disabled="acting || !detail?.effectivePermissions.includes('container.write') || !canPerform('pause', detail.state.status)"
                 @click="onPause"
               >
                 <span class="i-carbon-pause" aria-hidden="true" />
@@ -437,25 +440,25 @@ watch(
               </el-dropdown-item>
 
               <el-dropdown-item
-                :disabled="acting || !canPerform('resume', detail.state.status)"
+                :disabled="acting || !detail?.effectivePermissions.includes('container.write') || !canPerform('resume', detail.state.status)"
                 @click="onPrimary"
               >
                 <span class="i-carbon-play" aria-hidden="true" />
                 <span class="ml-2">{{ t('container.action.resume') }}</span>
               </el-dropdown-item>
 
-              <el-dropdown-item :disabled="acting" @click="operationDialogs?.openDuplicate()">
+              <el-dropdown-item :disabled="acting || !detail?.effectivePermissions.includes('container.write')" @click="operationDialogs?.openDuplicate()">
                 <span class="i-carbon-copy" aria-hidden="true" />
                 <span class="ml-2">{{ t('container.action.duplicate') }}</span>
               </el-dropdown-item>
 
-              <el-dropdown-item :disabled="acting" @click="operationDialogs?.openRecreate()">
+              <el-dropdown-item :disabled="acting || !detail?.effectivePermissions.includes('container.write')" @click="operationDialogs?.openRecreate()">
                 <span class="i-carbon-renew" aria-hidden="true" />
                 <span class="ml-2">{{ t('container.action.recreate') }}</span>
                 <span class="ml-2 text-xs text-status-warn">{{ t('container.recreate.warning') }}</span>
               </el-dropdown-item>
 
-              <el-dropdown-item :disabled="acting" @click="operationDialogs?.openEdit()">
+              <el-dropdown-item :disabled="acting || !detail?.effectivePermissions.includes('container.write')" @click="operationDialogs?.openEdit()">
                 <span class="i-carbon-edit" aria-hidden="true" />
                 <span class="ml-2">{{ t('container.action.edit') }}</span>
                 <span class="ml-2 text-xs text-status-warn">{{ t('container.recreate.warning') }}</span>
@@ -463,7 +466,7 @@ watch(
 
               <el-dropdown-item
                 divided
-                :disabled="acting"
+                :disabled="acting || !detail?.effectivePermissions.includes('container.write')"
                 class="text-status-down"
                 @click="onRemove"
               >
@@ -483,6 +486,7 @@ watch(
         <ContainerStatusBadge :status="detail.state.status" class="ml-2 align-middle" />
       </template>
     </PageHeader>
+    <ContainerRoleAssignments v-if="auth.hasPermission('role.read')" :host="hostId" :container-id="containerId" />
 
     <div v-if="error" class="app-section">
       <EmptyState

@@ -12,6 +12,13 @@ namespace Whalefleet.Core.Permissions;
 /// </remarks>
 public interface IUserRoleAssignmentRepository : IRepository<UserRoleAssignment, Guid>
 {
+    /// <summary>读取指定容器的角色分配，空容器 ID 读取原有主机或全局分配。</summary>
+    async Task<UserRoleAssignment?> GetContainerAsync(Guid userId, Guid roleId, Guid? hostId, string? containerId, CancellationToken cancellationToken = default)
+    {
+        var rows = await this.ListByUserAsync(userId, cancellationToken).ConfigureAwait(false);
+        return rows.SingleOrDefault(row => row.RoleId == roleId && row.HostId == hostId && row.ContainerId == containerId);
+    }
+
     /// <summary>
     /// 查询某用户在某主机上（<paramref name="hostId"/> 为 <see langword="null"/> 时查全局分配）
     /// 持有的某个角色的分配。

@@ -320,7 +320,7 @@ internal sealed class StubDockerHostAccessor(Uri endpoint) : IDockerHostAccessor
     public Task<DockerHost> ResolveAsync(
         string hostId,
         CancellationToken cancellationToken = default)
-        => throw new NotSupportedException("测试不走主机解析路径");
+        => Task.FromResult(Whalefleet.Core.Hosts.DockerHost.Register(Guid.Parse("10000000-0000-0000-0000-000000000002"), hostId, Whalefleet.Core.Hosts.DockerHostType.Socket, new Whalefleet.Core.Hosts.HostEndpoint("/var/run/docker.sock")));
 
     /// <inheritdoc />
     public Task<bool> TestConnectionAsync(

@@ -34,6 +34,7 @@ public sealed class ContainerHealthService
     private const int _maxConcurrency = 8;
 
     private readonly IDockerHostAccessor _accessor;
+    private readonly ContainerAuthorizationService _authorization;
     private readonly ILogger<ContainerHealthService> _logger;
 
     /// <summary>
@@ -44,11 +45,12 @@ public sealed class ContainerHealthService
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
     public ContainerHealthService(
         IDockerHostAccessor accessor,
-        ILogger<ContainerHealthService> logger)
+        ILogger<ContainerHealthService> logger, ContainerAuthorizationService authorization)
     {
         ArgumentNullException.ThrowIfNull(accessor);
         ArgumentNullException.ThrowIfNull(logger);
 
+        _authorization = authorization;
         _accessor = accessor;
         _logger = logger;
     }
@@ -74,7 +76,6 @@ public sealed class ContainerHealthService
         var ids = Normalize(request.ContainerIds);
 
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
-
         using var gate = new SemaphoreSlim(_maxConcurrency);
 
         var tasks = ids.Select(async id =>
@@ -123,7 +124,13 @@ public sealed class ContainerHealthService
 
         var results = await Task.WhenAll(tasks).ConfigureAwait(false);
 
-        return new ContainerHealthResult([.. results.OfType<ContainerHealthSummary>()]);
+        var visible = new List<ContainerHealthSummary>();
+        foreach (var result in results.OfType<ContainerHealthSummary>())
+        {
+            var effective = await _authorization.GetPermissionsAsync(hostId, result.ContainerId, cancellationToken).ConfigureAwait(false);
+            if (effective.Contains(Whalefleet.Core.Permissions.Permission.ContainerRead)) visible.Add(result);
+        }
+        return new ContainerHealthResult(visible);
     }
 
     /// <summary>

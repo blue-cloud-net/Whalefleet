@@ -318,6 +318,20 @@ internal sealed class SqliteNotificationRepository : INotificationRepository
             }
         }
 
+        var accessIndex = 0;
+        foreach (var (hostId, access) in filter.ContainerAccess)
+        {
+            var hostKey = $"ContainerHost{accessIndex}";
+            var idsKey = $"ContainerIds{accessIndex}";
+            var target = "json_extract(n.params_json, '$.containerId')";
+            var match = access.ContainerIds.Count == 0 ? (access.RequireAssignment ? "0" : "1")
+                : $"{target} {(access.RequireAssignment ? "IN" : "NOT IN")} @{idsKey}";
+            clauses.Add($"(n.host_id IS NULL OR n.host_id <> @{hostKey} OR ({target} IS NULL AND n.source_kind <> 'container-died' AND n.message_key NOT LIKE 'notification.alert.container%') OR ({target} IS NOT NULL AND {match}))");
+            parameters.Add(hostKey, hostId.ToStorageText());
+            if (access.ContainerIds.Count > 0) parameters.Add(idsKey, access.ContainerIds);
+            accessIndex++;
+        }
+
         if (!includeDismissed)
         {
             clauses.Add("s.dismissed_at IS NULL");
