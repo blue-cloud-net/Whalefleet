@@ -87,6 +87,9 @@ public static class InfrastructureServiceCollectionExtensions
         // 资源级权限校验：Scoped（角色判定来自当前请求）。当前只做 host 可见性且默认拒绝，
         // 逐资源授权表在 0.1.0 落地后本实现改为查表。
         services.AddScoped<IPermissionChecker, PermissionChecker>();
+        services.AddScoped<IContainerPermissionChecker, ContainerPermissionChecker>();
+        services.AddScoped<IContainerAssignmentStore, SqliteContainerAssignmentStore>();
+        services.AddScoped<IAuthorizationSettingsStore, SqliteAuthorizationSettingsStore>();
 
         // 密码哈希（Argon2id）：参数越界在启动时即失败（ValidateOnStart），
         // 而不是拖到第一次登录。哈希器无状态，故为 Singleton。

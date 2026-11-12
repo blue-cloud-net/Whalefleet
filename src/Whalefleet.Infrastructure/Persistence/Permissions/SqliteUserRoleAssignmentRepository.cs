@@ -23,7 +23,7 @@ internal sealed class SqliteUserRoleAssignmentRepository
     : RepositoryBase<UserRoleAssignment, Guid>, IUserRoleAssignmentRepository
 {
     private const string _columns =
-        "id, user_id, role_id, host_id, creation_time, creator_id, "
+        "id, user_id, role_id, host_id, container_id, creation_time, creator_id, "
         + "last_modification_time, last_modifier_id, is_deleted, deletion_time, deleter_id";
 
     private static readonly string _selectByIdSql = $"""
@@ -41,7 +41,7 @@ internal sealed class SqliteUserRoleAssignmentRepository
     private static readonly string _selectByUserRoleHostSql = $"""
         SELECT {_columns}
         FROM user_role_assignments
-        WHERE user_id = @UserId AND role_id = @RoleId AND host_id = @HostId AND {SoftDeleteFilter}
+        WHERE user_id = @UserId AND role_id = @RoleId AND host_id = @HostId AND container_id IS NULL AND {SoftDeleteFilter}
         """;
 
     private static readonly string _selectByUserSql = $"""
@@ -94,7 +94,7 @@ internal sealed class SqliteUserRoleAssignmentRepository
 
     private static readonly string _insertSql = $"""
         INSERT INTO user_role_assignments ({_columns})
-        VALUES (@Id, @UserId, @RoleId, @HostId, @CreationTime, @CreatorId,
+        VALUES (@Id, @UserId, @RoleId, @HostId, @ContainerId, @CreationTime, @CreatorId,
                 @LastModificationTime, @LastModifierId, @IsDeleted, @DeletionTime, @DeleterId)
         """;
 
@@ -291,6 +291,7 @@ internal sealed class SqliteUserRoleAssignmentRepository
                     // 否则 ux_user_role_assignments 的 COALESCE(host_id, '') 会把它
                     // 与"作用域是空串"这种非法状态混为一谈
                     HostId = assignment.HostId?.ToStorageText(),
+                    assignment.ContainerId,
 
                     assignment.CreationTime,
                     CreatorId = assignment.CreatorId.ToStorageText(),

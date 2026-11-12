@@ -194,7 +194,7 @@ internal sealed class PermissionChecker : IPermissionChecker
 
         var visibleHostIds = new HashSet<Guid>();
 
-        foreach (var assignment in assignments)
+        foreach (var assignment in assignments.Where(item => item.ContainerId is null))
         {
             var role = await _roles.QueryByIdAsync(assignment.RoleId, cancellationToken).ConfigureAwait(false);
             if (role is null)
@@ -244,9 +244,8 @@ internal sealed class PermissionChecker : IPermissionChecker
         var adminRole = await _roles.FindByNameAsync(Role.AdminName, cancellationToken).ConfigureAwait(false);
 
         // 只认全局分配：主机分配里的 admin 只带来该主机的 Host 域权限，不是系统管理员。
-        // 令牌里的 role claim 只做一次快速否决——claim 说不是，就不必再查库。
-        if (adminRole is null ||
-            !_currentUser.Roles.Contains(Role.AdminName, StringComparer.OrdinalIgnoreCase))
+        // 授权事实只查库，不能让旧令牌的角色快照延迟管理员授予生效。
+        if (adminRole is null)
         {
             _isAdministrator = false;
             return false;
