@@ -9,6 +9,7 @@ using Whalefleet.Core.Alerting;
 using Whalefleet.Core.Auditing;
 using Whalefleet.Core.Auth;
 using Whalefleet.Core.Hosts;
+using Whalefleet.Core.Images;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Repositories;
 using Whalefleet.Core.Composes;
@@ -17,6 +18,7 @@ using Whalefleet.Core.Variables;
 using Whalefleet.Core.Webhooks;
 using Whalefleet.Core.Users;
 using Whalefleet.Infrastructure.Persistence.Teams;
+using Whalefleet.Infrastructure.Persistence.Images;
 using Whalefleet.Infrastructure.Persistence.Variables;
 using Whalefleet.Infrastructure.Persistence.Webhooks;
 using Whalefleet.Infrastructure.Persistence;
@@ -110,6 +112,7 @@ public static class PersistenceServiceCollectionExtensions
 
         // 容器重建 Webhook（0.15.0）：令牌只存 SHA-256 哈希，绑「主机 + 容器名」。
         services.AddScoped<IContainerWebhookRepository, SqliteContainerWebhookRepository>();
+        services.AddScoped<IImageUpdatePolicyRepository, SqliteImageUpdatePolicyRepository>();
 
         // 审计日志（0.9.0）：只追加 + 只查，因此不派生 RepositoryBase（那个基类带更新与软删除）。
         services.AddScoped<IAuditLogRepository, AuditLogRepository>();

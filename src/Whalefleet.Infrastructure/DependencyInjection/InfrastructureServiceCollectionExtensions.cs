@@ -12,6 +12,7 @@ using Whalefleet.Application.Abstractions.Notify;
 using Whalefleet.Application.Abstractions.Persistence;
 using Whalefleet.Application.Abstractions.Terminal;
 using Whalefleet.Application.Alerting;
+using Whalefleet.Application.Images;
 using Whalefleet.Core.Auth;
 using Whalefleet.Infrastructure.Docker;
 using Whalefleet.Infrastructure.Permissions;
@@ -186,6 +187,15 @@ public static class InfrastructureServiceCollectionExtensions
                 "Notifications 配置非法：Webhook 超时须为正、SMTP 端口须在 1-65535 之间")
             .ValidateOnStart();
 
+        // 镜像自动更新（0.15.0）：绑定与校验同样放在基础设施层（与 Alerts 同口径）。
+        services
+            .AddOptions<ImageUpdatesOptions>()
+            .Bind(configuration.GetSection(ImageUpdatesOptions.SectionName))
+            .Validate(
+                static options => options.IsValid(),
+                "ImageUpdates 配置非法：扫描周期须为正、抖动不得为负、单轮上限须为正")
+            .ValidateOnStart();
+
         services.AddHttpClient("notify");
         services.AddSingleton<IWebhookSender, WebhookSender>();
         services.AddSingleton<IEmailSender, SmtpEmailSender>();
@@ -194,6 +204,9 @@ public static class InfrastructureServiceCollectionExtensions
         // 不手写 new HttpClient()——那会让 DNS 变更在长时间运行的实例上失效。
         services.AddHttpClient();
         services.AddSingleton<IRepositoryConnectivityProbe, RepositoryConnectivityProbe>();
+
+        // 仓库清单探测（0.15.0）：同样只发 HTTP 请求，因此同样走 HttpClient 工厂。
+        services.AddSingleton<IRegistryManifestProbe, RegistryManifestProbe>();
 
         // 登录失败计数：内存缓存（AddMemoryCache 重复调用安全，返回同一实例）。
         services.AddMemoryCache();
