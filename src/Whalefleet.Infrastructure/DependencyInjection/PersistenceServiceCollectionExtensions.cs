@@ -14,9 +14,11 @@ using Whalefleet.Core.Repositories;
 using Whalefleet.Core.Composes;
 using Whalefleet.Core.Teams;
 using Whalefleet.Core.Variables;
+using Whalefleet.Core.Webhooks;
 using Whalefleet.Core.Users;
 using Whalefleet.Infrastructure.Persistence.Teams;
 using Whalefleet.Infrastructure.Persistence.Variables;
+using Whalefleet.Infrastructure.Persistence.Webhooks;
 using Whalefleet.Infrastructure.Persistence;
 using Whalefleet.Infrastructure.Persistence.Alerting;
 using Whalefleet.Infrastructure.Persistence.Auditing;
@@ -105,6 +107,9 @@ public static class PersistenceServiceCollectionExtensions
 
         // 环境变量（0.15.0）：全局变量与 Compose 项目级变量；值只存密文。
         services.AddScoped<IEnvVariableRepository, SqliteEnvVariableRepository>();
+
+        // 容器重建 Webhook（0.15.0）：令牌只存 SHA-256 哈希，绑「主机 + 容器名」。
+        services.AddScoped<IContainerWebhookRepository, SqliteContainerWebhookRepository>();
 
         // 审计日志（0.9.0）：只追加 + 只查，因此不派生 RepositoryBase（那个基类带更新与软删除）。
         services.AddScoped<IAuditLogRepository, AuditLogRepository>();
