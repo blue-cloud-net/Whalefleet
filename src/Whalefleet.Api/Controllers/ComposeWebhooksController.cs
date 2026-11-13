@@ -55,7 +55,7 @@ public sealed class ComposeWebhooksController : ControllerBase
     /// <response code="409">该 Compose 项目已有进行中的操作（<c>1905</c>）。</response>
     /// <response code="429">触发过于频繁（<c>1907</c>）。</response>
     [HttpPost("{token}")]
-    [ProducesResponseType(typeof(ApiResult<ComposeTaskAccepted>), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(ApiResult<ResourceTaskAccepted>), StatusCodes.Status202Accepted)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status409Conflict)]
