@@ -62,6 +62,12 @@ public static class ErrorCodeCatalog
             [ErrorCodes.DockerApiFailed] = (ErrorCategory.Internal, "Docker API 调用失败"),
             [ErrorCodes.DockerTimeout] = (ErrorCategory.Timeout, "Docker 操作超时"),
             [ErrorCodes.DockerResourceConflict] = (ErrorCategory.Conflict, "资源当前状态不允许该操作"),
+            [ErrorCodes.InvalidFilePath] = (ErrorCategory.Validation, "文件路径非法"),
+            [ErrorCodes.FilePathNotFound] = (ErrorCategory.NotFound, "文件或目录不存在"),
+            [ErrorCodes.UploadTooLarge] = (ErrorCategory.PayloadTooLarge, "上传体积超过上限"),
+            [ErrorCodes.DownloadTicketInvalid] = (ErrorCategory.Gone, "下载票据无效或已过期"),
+            [ErrorCodes.FileWriteDisabled] = (ErrorCategory.Forbidden, "文件写入已被禁用"),
+            [ErrorCodes.TransferJobNotFound] = (ErrorCategory.NotFound, "导出任务不存在"),
 
             [ErrorCodes.ResourceForbidden] = (ErrorCategory.Forbidden, "无权限访问此资源"),
             [ErrorCodes.HostForbidden] = (ErrorCategory.Forbidden, "无权限访问此主机"),

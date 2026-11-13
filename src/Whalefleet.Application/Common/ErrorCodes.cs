@@ -215,6 +215,63 @@ public static class ErrorCodes
     /// 守护进程用 409 表达这些情况，归成 <c>1402</c>/500 会让「先停容器再重试」变成「服务端炸了」。
     /// </remarks>
     public const int DockerResourceConflict = 1404;
+
+    /// <summary>
+    /// 文件路径非法（HTTP 400）。
+    /// </summary>
+    /// <remarks>
+    /// 0.14.0 起。指「路径本身不合法」：含 <c>..</c> 上跳、绝对路径、
+    /// NUL 字符或超长路径段。路径<b>不存在</b>是另一个码（<see cref="FilePathNotFound"/>）——
+    /// 前者是「你写错了」，后者是「它真的没有」，两者的后续动作不同。
+    /// </remarks>
+    public const int InvalidFilePath = 1405;
+
+    /// <summary>
+    /// 文件或目录不存在（HTTP 404）。
+    /// </summary>
+    /// <remarks>
+    /// 0.14.0 起。文件浏览时访问了不存在的路径。
+    /// </remarks>
+    public const int FilePathNotFound = 1406;
+
+    /// <summary>
+    /// 上传体积超过上限（HTTP 413）。
+    /// </summary>
+    /// <remarks>
+    /// 0.14.0 起。上限由 <c>Files:MaxUploadBytes</c> 配置（默认 20 GiB），
+    /// 管理员可调。服务端在读流的过程中逐字节计数，超限即中止——
+    /// 不能读完整份再判大小，那样超限的请求已经把磁盘写满了。
+    /// </remarks>
+    public const int UploadTooLarge = 1407;
+
+    /// <summary>
+    /// 下载票据无效或已过期（HTTP 410）。
+    /// </summary>
+    /// <remarks>
+    /// 0.14.0 起。用 <c>410 Gone</c> 而非 404：票据「有过」——
+    /// 调用方重新发起一次导出就能拿到新票据，因此这不是「找不到资源」，
+    /// 而是「这个资源已经失效，请重来」。
+    /// </remarks>
+    public const int DownloadTicketInvalid = 1408;
+
+    /// <summary>
+    /// 文件写入已被管理员禁用（HTTP 403）。
+    /// </summary>
+    /// <remarks>
+    /// 0.14.0 起。文件浏览的<b>写入</b>（上传到容器 / 卷）由
+    /// <c>Files:AllowWrite</c> 控制。关掉它时只读浏览仍然可用，
+    /// 因此这是 403（无权执行）而不是 400（参数不对）。
+    /// </remarks>
+    public const int FileWriteDisabled = 1409;
+
+    /// <summary>
+    /// 导出任务不存在（HTTP 404）。
+    /// </summary>
+    /// <remarks>
+    /// 0.14.0 起。导出是后台任务，客户端凭任务标识查询进度；
+    /// 标识不存在（拼错、已过期清理、或进程重启后丢失）时用它。
+    /// </remarks>
+    public const int TransferJobNotFound = 1410;
     #endregion
 
     #region 1500-1599 资源权限
