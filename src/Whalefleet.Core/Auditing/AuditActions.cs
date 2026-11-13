@@ -454,6 +454,14 @@ public static class AuditActions
     /// </remarks>
     public const string VariableUpdate = "variable.update";
     #endregion
+
+    #region 容器重建 Webhook
+
+    /// <summary>
+    /// 由 Webhook 触发的容器重建。
+    /// </summary>
+    public const string ContainerWebhookRecreate = "container.webhook.recreate";
+    #endregion
 }
     #endregion
 
