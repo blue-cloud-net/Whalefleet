@@ -7,6 +7,7 @@ using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Core.Hosts;
 using Whalefleet.Core.Permissions;
+using Whalefleet.Core.Teams;
 using Whalefleet.Core.Users;
 using Whalefleet.Infrastructure.Permissions;
 using Whalefleet.IntegrationTests.Persistence;
@@ -555,7 +556,23 @@ public class PermissionCheckerTests
                 currentUser,
                 this.Get<IUserRoleAssignmentRepository>(),
                 this.Get<IRoleRepository>(),
+                this.CreateTeamResolver(),
                 NullLogger<PermissionChecker>.Instance);
+
+        /// <summary>
+        /// 建一个团队权限上限解析器。
+        /// </summary>
+        /// <remarks>
+        /// 手动构造而不是从容器取：本夹具只注册了 <c>AddPersistence</c>，
+        /// 而解析器属于 <c>AddInfrastructure</c> 的注册范围。
+        /// </remarks>
+        private TeamPermissionResolver CreateTeamResolver() =>
+            new(
+                this.Get<ITeamMemberRepository>(),
+                this.Get<ITeamRoleAssignmentRepository>(),
+                this.Get<IRoleRepository>(),
+                this.Get<IUserRoleAssignmentRepository>(),
+                NullLogger<TeamPermissionResolver>.Instance);
 
         internal async Task<UserRoleAssignment> AssignContainerAsync(Role role, Guid hostId, string id)
         {
@@ -565,7 +582,11 @@ public class PermissionCheckerTests
         }
         internal Task SetModeAsync(string mode) => new SqliteAuthorizationSettingsStore(this.Get<Whalefleet.Application.Abstractions.Persistence.IDbConnectionFactory>()).SetModeAsync(mode);
         internal ContainerPermissionChecker CreateContainerChecker() => new(
-            this.CreateChecker(), this.Get<IUserRoleAssignmentRepository>(), this.Get<IRoleRepository>(), new SqliteAuthorizationSettingsStore(this.Get<Whalefleet.Application.Abstractions.Persistence.IDbConnectionFactory>()));
+            this.CreateChecker(),
+            this.Get<IUserRoleAssignmentRepository>(),
+            this.Get<IRoleRepository>(),
+            new SqliteAuthorizationSettingsStore(this.Get<Whalefleet.Application.Abstractions.Persistence.IDbConnectionFactory>()),
+            this.CreateTeamResolver());
 
         internal Task MoveContainerAsync(string oldId, string newId) =>
             new SqliteContainerAssignmentStore(this.Get<Whalefleet.Application.Abstractions.Persistence.IDbConnectionFactory>()).MoveAsync(this.HostAId, oldId, newId);

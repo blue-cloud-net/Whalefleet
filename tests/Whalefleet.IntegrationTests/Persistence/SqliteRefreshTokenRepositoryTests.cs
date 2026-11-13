@@ -115,7 +115,7 @@ public class SqliteRefreshTokenRepositoryTests
     }
 
     [Fact]
-    public async Task UpdateAsync_持久化撤销与轮换字段()
+    public async Task UpdateAsync_持久化撤销字段()
     {
         await using var host = new PersistenceTestHost(_operatorId);
         await host.InitializeAsync();
@@ -124,13 +124,12 @@ public class SqliteRefreshTokenRepositoryTests
         var token = IssueToken("hash-a", PersistenceTestHost._now.UtcDateTime.AddDays(7));
         await tokens.AddAsync(token);
 
-        token.Revoke(PersistenceTestHost._now.UtcDateTime.AddMinutes(5), "hash-b");
+        token.Revoke(PersistenceTestHost._now.UtcDateTime.AddMinutes(5));
         (await tokens.UpdateAsync(token)).Should().BeTrue();
 
         var loaded = (await tokens.FindByHashAsync("hash-a"))!;
         loaded.IsActiveAt(PersistenceTestHost._now.UtcDateTime.AddMinutes(6)).Should().BeFalse();
         loaded.RevokedAt.Should().Be(PersistenceTestHost._now.UtcDateTime.AddMinutes(5));
-        loaded.ReplacedByTokenHash.Should().Be("hash-b");
 
         (await host.QueryScalarAsync("SELECT revoked_at FROM refresh_tokens")).Should().StartWith("2026-10-10 08:05:00");
     }

@@ -204,7 +204,9 @@ public class SqliteUserRepositoryTests
         await users.AddAsync(user);
 
         host.TimeProvider.Advance(TimeSpan.FromHours(2));
-        user.ChangePassword("$argon2id$v=19$m=65536,t=3,p=1$bmV3$aGFzaA");
+        user.ChangePassword(
+            "$argon2id$v=19$m=65536,t=3,p=1$bmV3$aGFzaA",
+            PersistenceTestHost._now.AddHours(2).UtcDateTime);
 
         var updated = await users.UpdateAsync(user);
 

@@ -36,12 +36,17 @@ public class JwtTokenServiceTests
     private static readonly DateTime _utcNow = new(2026, 10, 13, 8, 0, 0, DateTimeKind.Utc);
     private static readonly Guid _userId = new("11111111-1111-1111-1111-111111111111");
 
+    /// <summary>
+    /// 会话 id（0.13.0）：access token 的 <c>sid</c> 声明指向它。
+    /// </summary>
+    private static readonly Guid _sessionId = new("22222222-2222-2222-2222-222222222222");
+
     [Fact]
     public void CreateAccessToken_携带全部约定声明且可被同密钥验签()
     {
         var (tokens, options) = Resolve();
 
-        var accessToken = tokens.CreateAccessToken(_userId, "admin", ["admin"], _utcNow);
+        var accessToken = tokens.CreateAccessToken(_userId, "admin", ["admin"], _utcNow, _sessionId);
 
         var principal = Validate(accessToken.Value, options);
 
@@ -56,7 +61,7 @@ public class JwtTokenServiceTests
     {
         var (tokens, options) = Resolve();
 
-        var accessToken = tokens.CreateAccessToken(_userId, "admin", ["admin"], _utcNow);
+        var accessToken = tokens.CreateAccessToken(_userId, "admin", ["admin"], _utcNow, _sessionId);
 
         accessToken.ExpiresAt.Should().Be(_utcNow.Add(options.AccessTokenLifetime));
         accessToken.ExpiresAt.Should().Be(_utcNow.AddMinutes(15));
@@ -74,9 +79,9 @@ public class JwtTokenServiceTests
     {
         var (tokens, options) = Resolve();
 
-        var first = Validate(tokens.CreateAccessToken(_userId, "admin", ["admin"], _utcNow).Value, options)
+        var first = Validate(tokens.CreateAccessToken(_userId, "admin", ["admin"], _utcNow, _sessionId).Value, options)
             .FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
-        var second = Validate(tokens.CreateAccessToken(_userId, "admin", ["admin"], _utcNow).Value, options)
+        var second = Validate(tokens.CreateAccessToken(_userId, "admin", ["admin"], _utcNow, _sessionId).Value, options)
             .FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
 
         first.Should().NotBeNullOrEmpty();
@@ -90,7 +95,7 @@ public class JwtTokenServiceTests
     {
         var (tokens, _) = Resolve();
 
-        var act = () => tokens.CreateAccessToken(_userId, username, ["admin"], _utcNow);
+        var act = () => tokens.CreateAccessToken(_userId, username, ["admin"], _utcNow, _sessionId);
 
         act.Should().Throw<ArgumentException>();
     }
@@ -108,7 +113,7 @@ public class JwtTokenServiceTests
         // 只影响界面展示，不影响他实际能做什么。
         var (tokens, options) = Resolve();
 
-        var token = tokens.CreateAccessToken(_userId, "admin", [roleName], _utcNow);
+        var token = tokens.CreateAccessToken(_userId, "admin", [roleName], _utcNow, _sessionId);
         var principal = Validate(token.Value, options);
 
         principal.FindFirst(JwtClaimNames.UniqueName)?.Value.Should().Be("admin");
@@ -129,7 +134,7 @@ public class JwtTokenServiceTests
     {
         var (tokens, options) = Resolve();
 
-        var token = tokens.CreateAccessToken(_userId, "admin", ["admin", "operator"], _utcNow);
+        var token = tokens.CreateAccessToken(_userId, "admin", ["admin", "operator"], _utcNow, _sessionId);
         var principal = Validate(token.Value, options);
 
         // 多角色必须是**多个同名 claim**而不是一个数组 claim：
@@ -199,7 +204,7 @@ public class JwtTokenServiceTests
     {
         var (tokens, _) = Resolve();
 
-        var accessToken = tokens.CreateAccessToken(_userId, "admin", ["admin"], _utcNow);
+        var accessToken = tokens.CreateAccessToken(_userId, "admin", ["admin"], _utcNow, _sessionId);
 
         var otherKey = new SymmetricSecurityKey(
             Encoding.UTF8.GetBytes("another-completely-different-signing-key-0123"));
@@ -267,7 +272,7 @@ public class JwtTokenServiceTests
             (await File.ReadAllTextAsync(keyFile)).Trim().Should().Be(first.Options.Secret);
 
             // 用它签发的令牌能通过同一份配置验签。
-            var accessToken = first.Tokens.CreateAccessToken(_userId, "admin", ["admin"], _utcNow);
+            var accessToken = first.Tokens.CreateAccessToken(_userId, "admin", ["admin"], _utcNow, _sessionId);
             Validate(accessToken.Value, first.Options)
                 .FindFirst(JwtClaimNames.Subject)!.Value
                 .Should().Be(_userId.ToString("D"));

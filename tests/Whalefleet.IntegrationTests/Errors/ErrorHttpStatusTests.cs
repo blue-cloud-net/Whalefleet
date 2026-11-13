@@ -37,10 +37,14 @@ public class ErrorHttpStatusTests
         [ErrorCodes.RefreshTokenRevoked] = 401,
         [ErrorCodes.LoginRateLimited] = 429,
         [ErrorCodes.TerminalTokenInvalid] = 401,
+        [ErrorCodes.AccountDisabled] = 401,
 
         [ErrorCodes.UsernameAlreadyExists] = 400,
         [ErrorCodes.UserNotFound] = 404,
         [ErrorCodes.WeakPassword] = 400,
+        [ErrorCodes.TeamNameAlreadyExists] = 400,
+        [ErrorCodes.TeamNotFound] = 404,
+        [ErrorCodes.PasswordChangeRequired] = 403,
 
         [ErrorCodes.HostNotFound] = 404,
         [ErrorCodes.HostUnreachable] = 502,
@@ -67,6 +71,7 @@ public class ErrorHttpStatusTests
         [ErrorCodes.RoleProtected] = 400,
         [ErrorCodes.PermissionUnknown] = 400,
         [ErrorCodes.RoleAssignmentNotFound] = 404,
+        [ErrorCodes.TeamRoleAssignmentNotFound] = 404,
 
         [ErrorCodes.RepositoryNotFound] = 404,
         [ErrorCodes.RepositoryNameAlreadyExists] = 400,
