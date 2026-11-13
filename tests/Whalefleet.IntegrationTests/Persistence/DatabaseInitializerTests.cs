@@ -27,9 +27,9 @@ public class DatabaseInitializerTests
     /// 0.6.0 新增 <c>0008_host_tags.sql</c>；0.9.0 新增 <c>0009_audit_logs.sql</c>；
     /// 0.10.0 新增 <c>0010_composes.sql</c>；0.11.0 新增 <c>0011_alerts.sql</c>；
     /// 0.12.0 新增 <c>0012_container_rbac.sql</c>；0.13.0 新增 <c>0013_accounts_teams_security.sql</c>；
-    /// 0.15.0 新增 <c>0014_env_variables.sql</c>。
+    /// 0.15.0 新增 <c>0014_env_variables.sql</c> 与 <c>0015_container_webhooks.sql</c>。
     /// </remarks>
-    private const int _expectedSchemaVersion = 14;
+    private const int _expectedSchemaVersion = 15;
 
     [Fact]
     public async Task 初始化_建出业务表并推进架构版本()
@@ -45,15 +45,15 @@ public class DatabaseInitializerTests
         // 0.6.0 再新增 host_tags / host_tag_assignments（标签与关联）。
         // 0.10.0 再新增 composes（编排 Compose 项目）。
         // 0.13.0 再新增 teams / team_members / team_role_assignments / security_settings。
-        // 0.15.0 再新增 env_variables（环境变量）。
+        // 0.15.0 再新增 env_variables（环境变量）与 container_webhooks（容器重建 Webhook）。
         var tableCount = await host.QueryScalarAsync(
             "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' "
             + "AND name IN ('users', 'roles', 'hosts', 'refresh_tokens', 'user_role_assignments', "
             + "'host_tags', 'host_tag_assignments', 'composes', "
             + "'teams', 'team_members', 'team_role_assignments', 'security_settings', "
-            + "'env_variables')");
+            + "'env_variables', 'container_webhooks')");
 
-        tableCount.Should().Be("13");
+        tableCount.Should().Be("14");
     }
 
     [Fact]

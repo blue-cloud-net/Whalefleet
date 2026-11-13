@@ -7,6 +7,9 @@ using Whalefleet.Application.Abstractions.Auditing;
 using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Composes;
+using Whalefleet.Application.Webhooks;
+using Whalefleet.IntegrationTests.Infrastructure;
+using Whalefleet.Application.Operations;
 using Whalefleet.Core.Auditing;
 using Whalefleet.Core.Hosts;
 using Whalefleet.Core.Composes;
@@ -33,22 +36,23 @@ public sealed class ComposeFailureRegressionTests
         var local = (await hosts.FindByNameAsync("local"))!;
         var compose = ComposeProjectEntity.Create(Guid.NewGuid(), local.Id, "demo", "services: { app: { image: nginx } }");
         var repository = new ComposeProjectRepository(compose) { FailUpdate = writeFails };
-        var registry = new ComposeTaskRegistry();
-        var queue = new ComposeOperationQueue();
+        var registry = new ResourceTaskRegistry<ComposeOperationResult>();
+        var queue = new ResourceOperationQueue();
         if (!writeFails)
         {
             queue.Complete();
         }
 
-        var limiter = new ComposeWebhookRateLimiter(TimeProvider.System);
-        var service = new ComposeWebhookService(repository, hosts, registry, queue, TimeProvider.System,
+        var limiter = new WebhookRateLimiter(TimeProvider.System);
+        var variables = TestEnvVariables.Create();
+        var service = new ComposeWebhookService(repository, hosts, variables, registry, queue, TimeProvider.System,
             NullLogger<ComposeWebhookService>.Instance, limiter);
         var act = () => service.TriggerAsync("test-token", new ComposeWebhookReloadRequest());
         await act.Should().ThrowAsync<Exception>();
         registry.GetSnapshot().Should().BeEmpty();
 
         repository.FailUpdate = false;
-        var retry = new ComposeWebhookService(repository, hosts, registry, new ComposeOperationQueue(),
+        var retry = new ComposeWebhookService(repository, hosts, variables, registry, new ResourceOperationQueue(),
             TimeProvider.System, NullLogger<ComposeWebhookService>.Instance, limiter);
         var accepted = await retry.TriggerAsync("test-token", new ComposeWebhookReloadRequest());
         registry.Get(accepted.TaskId).Should().NotBeNull();
@@ -64,25 +68,26 @@ public sealed class ComposeFailureRegressionTests
         services.AddSingleton<IComposeTaskNotifier>(notifier);
         services.AddScoped<ComposeOperationExecutor>(_ => throw new IOException("secret-path-password"));
         using var provider = services.BuildServiceProvider();
-        var queue = new ComposeOperationQueue();
-        var registry = new ComposeTaskRegistry();
+        var queue = new ResourceOperationQueue();
+        var registry = new ResourceTaskRegistry<ComposeOperationResult>();
         foreach (var id in new[] { "first", "second" })
         {
-            registry.TryRegister(id, "local", id, ComposeOperations.Deploy, DateTime.UtcNow);
-            queue.TryEnqueue(new ComposeOperationRequest(id, "local", id, ComposeOperations.Deploy,
+            registry.TryRegister(id, "local", ResourceKinds.Compose, id, ComposeOperations.Deploy, DateTime.UtcNow);
+            queue.TryEnqueue(new ResourceOperationRequest(id, "local", ResourceKinds.Compose, id, ComposeOperations.Deploy,
                 null, false, false, false, null, null, null, null)).Should().BeTrue();
         }
 
         queue.Complete();
-        using var worker = new ComposeOperationWorker(queue, registry,
+        using var worker = new ResourceOperationWorker(queue, registry,
+            new ResourceTaskRegistry<ContainerRecreateResult>(),
             provider.GetRequiredService<IServiceScopeFactory>(), TimeProvider.System,
-            NullLogger<ComposeOperationWorker>.Instance);
+            NullLogger<ResourceOperationWorker>.Instance);
         await worker.StartAsync(CancellationToken.None);
         await worker.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(10));
         foreach (var id in new[] { "first", "second" })
         {
             var snapshot = registry.Get(id)!;
-            snapshot.Status.Should().Be(ComposeTaskStatusText.Failed);
+            snapshot.Status.Should().Be(ResourceTaskStatusText.Failed);
             snapshot.ErrorMessage.Should().NotContain("secret-path-password");
         }
 
