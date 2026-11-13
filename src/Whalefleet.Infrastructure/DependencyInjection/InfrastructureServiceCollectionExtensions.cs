@@ -206,7 +206,11 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IRepositoryConnectivityProbe, RepositoryConnectivityProbe>();
 
         // 仓库清单探测（0.15.0）：同样只发 HTTP 请求，因此同样走 HttpClient 工厂。
-        services.AddSingleton<IRegistryManifestProbe, RegistryManifestProbe>();
+        // ⚠️ **必须是 Scoped**：它要按地址解出仓库凭据，而凭据解析（含解密）是
+        // Scoped 的。注册成 Singleton 会在宿主启动的作用域校验阶段直接报
+        // 「Cannot consume scoped service from singleton」——而且报得很晚
+        // （首个请求之前），症状是「所有集成测试一起挂」。
+        services.AddScoped<IRegistryManifestProbe, RegistryManifestProbe>();
 
         // 登录失败计数：内存缓存（AddMemoryCache 重复调用安全，返回同一实例）。
         services.AddMemoryCache();
