@@ -171,6 +171,27 @@ public static class Permission
     public const string AuditRead = "audit.read";
 
     /// <summary>
+    /// 查看团队花名册、成员与团队角色分配。
+    /// </summary>
+    /// <remarks>
+    /// <b>为什么不复用 <see cref="UserRead"/></b>：团队是一类<b>独立的管理对象</b>，
+    /// 而用户是「人」。把它归到用户域下会让「能看用户」的人自动获得「能看团队」，
+    /// 而这两者的敏感度并不相同（团队结构直接映射到授权边界）。
+    /// </remarks>
+    public const string TeamRead = "team.read";
+
+    /// <summary>
+    /// 增删改团队、调整成员与团队角色分配。
+    /// </summary>
+    /// <remarks>
+    /// <b>团队权限只收窄、不扩权</b>：给团队授角色不会让成员凭空获得权限，
+    /// 它只限定成员在已授权作用域内的权限上限。真正的个人授权仍由
+    /// <see cref="UserWrite"/> 管理的角色分配写入。
+    /// 因此本权限的危险性小于 <see cref="UserWrite"/>。
+    /// </remarks>
+    public const string TeamWrite = "team.write";
+
+    /// <summary>
     /// 查看告警规则与通知渠道配置（不含发送测试）。
     /// </summary>
     public const string AlertRead = "alert.read";
@@ -199,6 +220,8 @@ public static class Permission
         AuditRead,
         AlertRead,
         AlertWrite,
+        TeamRead,
+        TeamWrite,
     ];
 
     /// <summary>
