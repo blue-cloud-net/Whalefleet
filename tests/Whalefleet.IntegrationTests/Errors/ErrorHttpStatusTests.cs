@@ -96,6 +96,11 @@ public class ErrorHttpStatusTests
         [ErrorCodes.ComposeOperationInProgress] = 409,
         [ErrorCodes.ComposeWebhookTokenInvalid] = 404,
         [ErrorCodes.ComposeWebhookRateLimited] = 429,
+        [ErrorCodes.VariableNotDefined] = 400,
+        [ErrorCodes.InvalidVariableName] = 400,
+        [ErrorCodes.VariableNotOverridable] = 400,
+        [ErrorCodes.VariableNotFound] = 404,
+        [ErrorCodes.VariableNameAlreadyExists] = 400,
 
         [ErrorCodes.AlertRuleNotFound] = 404,
         [ErrorCodes.AlertRuleInvalid] = 400,
