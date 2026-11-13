@@ -77,6 +77,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `client_max_body_size` raised past `Files:MaxUploadBytes`, and Traefik must not buffer the
   response (buffering turns a multi-GB stream into memory pressure).
 
+### 0.15.0 — Deployment automation (internal draft)
+
+#### Added
+
+- **Environment variables (backend)**: global variables plus per-Compose-project variables, both
+  stored encrypted (`env_variables` table, AES-GCM with the existing `repository.key`).
+  The stored Compose YAML keeps its `${VAR}` placeholders — interpolating into the stored text
+  would leave secrets in plaintext inside `compose_content`.
+- **Interpolation in Compose files**: `${VAR}`, `${VAR:-default}` and `$$` are supported.
+  An undefined variable is a hard error (`1908`) — never an empty string, which would look like
+  "misconfigured" instead of "you forgot to define this".
+- **Values never leave the service**: responses carry a fixed mask and a `hasValue` flag, never
+  the value itself. Editing with an empty value means "leave unchanged"; clearing is explicit.
+- **New global permissions**: `variable.read` / `variable.write`; a project-scoped variable is
+  bound to `(host, project name)` rather than to `composes.id`, so deleting and re-deploying a
+  project does not silently drop its secrets.
+
 ### 0.13.0 — Accounts, teams and security (internal draft)
 
 #### Added
