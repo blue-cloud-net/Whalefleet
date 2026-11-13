@@ -462,6 +462,24 @@ public static class AuditActions
     /// </summary>
     public const string ContainerWebhookRecreate = "container.webhook.recreate";
     #endregion
+
+    #region 镜像自动更新
+
+    /// <summary>
+    /// 镜像自动更新：拉取新版本并按策略重建容器。
+    /// </summary>
+    /// <remarks>
+    /// <b>由后台扫描触发，不在任何请求作用域里</b>。它仍然要写审计——
+    /// 「谁在什么时候换了生产环境跑的镜像」是必须能回答的问题，
+    /// 而自动更新恰恰是唯一没有操作人的一次变更。
+    /// </remarks>
+    public const string ImageUpdateApply = "image.update.apply";
+
+    /// <summary>
+    /// 镜像自动更新策略的新增 / 修改 / 删除。
+    /// </summary>
+    public const string ImageUpdatePolicyChange = "image.update.policy";
+    #endregion
 }
     #endregion
 
