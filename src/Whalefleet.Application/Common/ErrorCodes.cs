@@ -83,6 +83,17 @@ public static class ErrorCodes
     /// Terminal token 无效或已过期（HTTP 401）。
     /// </summary>
     public const int TerminalTokenInvalid = 1104;
+
+    /// <summary>
+    /// 账号已停用（HTTP 401）。
+    /// </summary>
+    /// <remarks>
+    /// <b>不复用 <see cref="Unauthenticated"/>（1100）</b>：1100 的语义是「没登录或凭据无效」，
+    /// 前端据此触发静默刷新；而「账号被管理员停用」是<b>刷新也解决不了</b>的状态——
+    /// 复用 1100 会让前端反复尝试刷新并最终把用户丢回登录页，
+    /// 却始终不告诉他「是账号被停了」。独立成码后界面才能明确提示。
+    /// </remarks>
+    public const int AccountDisabled = 1108;
     #endregion
 
     #region 1200-1299 用户管理
@@ -101,6 +112,31 @@ public static class ErrorCodes
     /// 密码强度不满足要求（HTTP 400）。
     /// </summary>
     public const int WeakPassword = 1202;
+
+    /// <summary>
+    /// 团队名已被占用（HTTP 400）。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="UsernameAlreadyExists"/>（1200）、<see cref="RoleNameAlreadyExists"/>（1511）
+    /// 分开而非复用：三者都是「名字冲突」，但界面需要把提示精确落在对应字段上，
+    /// 错误码一旦合并就再也分不开了。
+    /// </remarks>
+    public const int TeamNameAlreadyExists = 1203;
+
+    /// <summary>
+    /// 团队不存在（HTTP 404）。
+    /// </summary>
+    public const int TeamNotFound = 1204;
+
+    /// <summary>
+    /// 必须先修改密码才能继续（HTTP 403）。
+    /// </summary>
+    /// <remarks>
+    /// <b>为什么是 403 而不是 401</b>：请求本身是<b>已认证且合法</b>的，
+    /// 只是被强制改密流程拦住了。返回 401 会让前端把它当成「登录态失效」而清会话——
+    /// 而实际上重新登录也绕不过去（首次登录同样要求改密）。
+    /// </remarks>
+    public const int PasswordChangeRequired = 1205;
     #endregion
 
     #region 1300-1399 主机管理
@@ -255,6 +291,16 @@ public static class ErrorCodes
     /// 角色分配不存在（HTTP 404）。
     /// </summary>
     public const int RoleAssignmentNotFound = 1515;
+
+    /// <summary>
+    /// 团队角色分配不存在（HTTP 404）。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="RoleAssignmentNotFound"/>（1515）分开：前者是「用户 ↔ 角色」的分配，
+    /// 本码是「团队 ↔ 角色」的分配。两者被撤销时界面要提示不同的对象，
+    /// 合并之后管理员无法判断自己撤错了哪一条。
+    /// </remarks>
+    public const int TeamRoleAssignmentNotFound = 1516;
     #endregion
 
     #region 1800-1899 仓库与镜像构建 / 推送

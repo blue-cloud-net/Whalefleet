@@ -3,6 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Auditing;
+using Whalefleet.Application.Sessions;
+using Whalefleet.Application.Teams;
 using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Abstractions.Terminal;
 using Whalefleet.Application.Alerting;
@@ -49,6 +51,9 @@ public static class ApplicationServiceCollectionExtensions
         // 认证用例（0.0.4）。Scoped：依赖 Scoped 的仓储（其取值来自当前请求）。
         services.AddScoped<AuthService>();
 
+        // 会话校验（0.13.0）。Scoped：依赖 Scoped 的仓储与进程内缓存。
+        services.AddScoped<ISessionValidator, SessionValidator>();
+
         // 主机管理用例（0.0.8）。同样 Scoped：依赖 Scoped 的仓储与主机访问器。
         services.AddScoped<HostService>();
 
@@ -88,6 +93,9 @@ public static class ApplicationServiceCollectionExtensions
 
         // 角色分配用例（0.1.0）。Scoped：依赖 Scoped 的分配 / 角色 / 用户 / 主机仓储。
         services.AddScoped<RoleAssignmentService>();
+
+        // 团队用例（0.13.0）：花名册 / 成员 / 权限上限 / 显式同步。Scoped：依赖 Scoped 的仓储。
+        services.AddScoped<TeamService>();
 
         // 数据卷用例（0.2.0）。Scoped：与镜像同构，只依赖 Scoped 的主机访问器，
         // Docker 客户端本身的复用由 Singleton 的客户端池负责。

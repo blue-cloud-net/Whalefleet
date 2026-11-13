@@ -10,6 +10,11 @@ namespace Whalefleet.Application.Auth;
 /// <b>全局</b>有效权限集（<c>domain.level</c> 字符串数组，按目录顺序）。
 /// 主机级的权限不在这里——它随主机而变，由主机列表接口按需带回。
 /// </param>
+/// <param name="MustChangePassword">
+/// 是否必须先修改密码（0.13.0）。为 <see langword="true"/> 时，登录与刷新<b>照常成功</b>，
+/// 但服务端只放行白名单端点（<c>auth/me</c> / <c>auth/refresh</c> / <c>auth/logout</c> /
+/// <c>users/update-password</c>），其余返回 <c>1205</c>。
+/// </param>
 /// <remarks>
 /// <para>前端用它渲染顶栏用户信息并决定菜单与操作按钮的可见性。
 /// <b>不得</b>包含密码哈希、令牌或凭据。</para>
@@ -21,4 +26,5 @@ public sealed record AuthenticatedUser(
     Guid Id,
     string Username,
     IReadOnlyList<string> Roles,
-    IReadOnlyList<string> Permissions);
+    IReadOnlyList<string> Permissions,
+    bool MustChangePassword = false);

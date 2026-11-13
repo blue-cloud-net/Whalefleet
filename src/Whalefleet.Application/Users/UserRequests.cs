@@ -86,3 +86,56 @@ public sealed record UpdatePasswordRequest
     /// </summary>
     public string? NewPassword { get; init; }
 }
+
+/// <summary>
+/// 列出用户会话的请求契约（0.13.0）。
+/// </summary>
+public sealed record ListUserSessionsRequest
+{
+    /// <summary>
+    /// 目标用户主键；<b>必填</b>。
+    /// </summary>
+    /// <remarks>
+    /// 刻意不提供「省略即当前用户」的默认值：会话列表是<b>管理动作</b>，
+    /// 省略字段就操作了别人的账号显然不是想要的行为。
+    /// </remarks>
+    public Guid? UserId { get; init; }
+}
+
+/// <summary>
+/// 吊销单个会话的请求契约（0.13.0）。
+/// </summary>
+public sealed record RevokeUserSessionRequest
+{
+    /// <summary>
+    /// 目标用户主键；<b>必填</b>。
+    /// </summary>
+    public Guid? UserId { get; init; }
+
+    /// <summary>
+    /// 要吊销的会话 id（= <c>refresh_tokens.id</c>）；<b>必填</b>。
+    /// </summary>
+    public Guid? SessionId { get; init; }
+}
+
+/// <summary>
+/// 启用 / 停用账号的请求契约（0.13.0）。
+/// </summary>
+public sealed record SetUserEnabledRequest
+{
+    /// <summary>
+    /// 目标用户主键；<b>必填</b>。
+    /// </summary>
+    public Guid? UserId { get; init; }
+
+    /// <summary>
+    /// 是否启用。
+    /// </summary>
+    /// <remarks>
+    /// 刻意用<b>显式布尔</b>而不是「两个端点」：启用与停用走的是同一段逻辑
+    /// （改状态 → 停用时额外撤销会话 → 写审计），拆成两个端点会让那段逻辑出现两份。
+    /// <c>false</c> 与「省略」的区分靠<b>可空</b>：省略时校验失败（1000），
+    /// 而不是默认为“不启用”——那会变成一个误调用就锁号的接口。
+    /// </remarks>
+    public bool? Enabled { get; init; }
+}

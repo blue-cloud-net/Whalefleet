@@ -40,10 +40,14 @@ public static class ErrorCodeCatalog
             [ErrorCodes.RefreshTokenRevoked] = (ErrorCategory.Unauthorized, "Refresh token 已撤销或无效"),
             [ErrorCodes.LoginRateLimited] = (ErrorCategory.RateLimited, "登录尝试过于频繁"),
             [ErrorCodes.TerminalTokenInvalid] = (ErrorCategory.Unauthorized, "Terminal token 无效或已过期"),
+            [ErrorCodes.AccountDisabled] = (ErrorCategory.Unauthorized, "账号已停用"),
 
             [ErrorCodes.UsernameAlreadyExists] = (ErrorCategory.Validation, "用户名已存在"),
             [ErrorCodes.UserNotFound] = (ErrorCategory.NotFound, "用户不存在"),
             [ErrorCodes.WeakPassword] = (ErrorCategory.Validation, "密码强度不满足要求"),
+            [ErrorCodes.TeamNameAlreadyExists] = (ErrorCategory.Validation, "团队名已存在"),
+            [ErrorCodes.TeamNotFound] = (ErrorCategory.NotFound, "团队不存在"),
+            [ErrorCodes.PasswordChangeRequired] = (ErrorCategory.Forbidden, "必须先修改密码"),
 
             [ErrorCodes.HostNotFound] = (ErrorCategory.NotFound, "主机不存在"),
             [ErrorCodes.HostUnreachable] = (ErrorCategory.UpstreamFailure, "主机连通性失败"),
@@ -70,6 +74,7 @@ public static class ErrorCodeCatalog
             [ErrorCodes.RoleProtected] = (ErrorCategory.Validation, "内置角色不可修改或删除"),
             [ErrorCodes.PermissionUnknown] = (ErrorCategory.Validation, "未知的权限标识"),
             [ErrorCodes.RoleAssignmentNotFound] = (ErrorCategory.NotFound, "角色分配不存在"),
+            [ErrorCodes.TeamRoleAssignmentNotFound] = (ErrorCategory.NotFound, "团队角色分配不存在"),
 
             [ErrorCodes.RepositoryNotFound] = (ErrorCategory.NotFound, "仓库配置不存在"),
             [ErrorCodes.RepositoryNameAlreadyExists] = (ErrorCategory.Validation, "仓库别名已被占用"),
