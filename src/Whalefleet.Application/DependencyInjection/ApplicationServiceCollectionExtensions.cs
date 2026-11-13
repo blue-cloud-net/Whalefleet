@@ -168,6 +168,13 @@ public static class ApplicationServiceCollectionExtensions
         // 传输编排（0.14.0）。Scoped：它要读「当前用户 / 来源 IP」来填审计里的操作者。
         services.AddScoped<TransferService>();
 
+        // 镜像自动更新（0.15.0）。选项里的加速器列表由宿主绑定配置节。
+        services.AddOptions<ImageUpdatesOptions>();
+        services.AddScoped<ImageUpdateService>();
+
+        // 扫描工作器：后台服务，Singleton；内部自建作用域访问 Scoped 用例。
+        services.AddHostedService<ImageUpdateScanWorker>();
+
         // 仓库配置用例（0.4.0）。Scoped：依赖 Scoped 的仓储与口令保护器。
         // 同时以 IRepositoryCredentialResolver 的身份暴露**同一实例**——
         // 镜像推送去拿凭据时必须走同一套解密逻辑，不能另起一份实现。

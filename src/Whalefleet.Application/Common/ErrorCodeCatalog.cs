@@ -68,6 +68,8 @@ public static class ErrorCodeCatalog
             [ErrorCodes.DownloadTicketInvalid] = (ErrorCategory.Gone, "下载票据无效或已过期"),
             [ErrorCodes.FileWriteDisabled] = (ErrorCategory.Forbidden, "文件写入已被禁用"),
             [ErrorCodes.TransferJobNotFound] = (ErrorCategory.NotFound, "导出任务不存在"),
+            [ErrorCodes.ImageUpdatePolicyNotFound] = (ErrorCategory.NotFound, "镜像更新策略不存在"),
+            [ErrorCodes.ImageUpdatePolicyAlreadyExists] = (ErrorCategory.Validation, "该镜像已有更新策略"),
 
             [ErrorCodes.ResourceForbidden] = (ErrorCategory.Forbidden, "无权限访问此资源"),
             [ErrorCodes.HostForbidden] = (ErrorCategory.Forbidden, "无权限访问此主机"),

@@ -272,6 +272,20 @@ public static class ErrorCodes
     /// 标识不存在（拼错、已过期清理、或进程重启后丢失）时用它。
     /// </remarks>
     public const int TransferJobNotFound = 1410;
+
+    /// <summary>
+    /// 镜像自动更新策略不存在（HTTP 404）。
+    /// </summary>
+    /// <remarks>
+    /// <b>「属于别的主机」也报这个码</b>：报「策略属于另一台主机」等于告诉调用方
+    /// 「这个 ID 确实存在」，而那是一条不该泄露的信息。
+    /// </remarks>
+    public const int ImageUpdatePolicyNotFound = 1411;
+
+    /// <summary>
+    /// 同一主机上已有同一镜像的更新策略（HTTP 400）。
+    /// </summary>
+    public const int ImageUpdatePolicyAlreadyExists = 1412;
     #endregion
 
     #region 1500-1599 资源权限
