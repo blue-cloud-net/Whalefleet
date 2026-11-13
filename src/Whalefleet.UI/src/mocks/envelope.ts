@@ -41,6 +41,8 @@ export const ErrorCode = {
   LoginRateLimited: 1103,
   /** Terminal token 无效或已过期 → 401 */
   TerminalTokenInvalid: 1104,
+  /** 账号已停用 → 401 */
+  AccountDisabled: 1108,
 
   /** 用户名已存在 → 400 */
   UsernameAlreadyExists: 1200,
@@ -48,6 +50,12 @@ export const ErrorCode = {
   UserNotFound: 1201,
   /** 密码强度不满足要求 → 400 */
   WeakPassword: 1202,
+  /** 团队名已占用 → 400 */
+  TeamNameAlreadyExists: 1203,
+  /** 团队不存在 → 404 */
+  TeamNotFound: 1204,
+  /** 必须先修改密码 → 403 */
+  PasswordChangeRequired: 1205,
 
   /** 主机不存在 → 404 */
   HostNotFound: 1300,
@@ -93,6 +101,8 @@ export const ErrorCode = {
   PermissionUnknown: 1514,
   /** 角色分配不存在 → 404 */
   RoleAssignmentNotFound: 1515,
+  /** 团队角色分配不存在 → 404 */
+  TeamRoleAssignmentNotFound: 1516,
 
   /** 仓库配置不存在 → 404 */
   RepositoryNotFound: 1800,
@@ -167,10 +177,14 @@ export const ERROR_HTTP_STATUS: Record<number, number> = {
   [ErrorCode.RefreshTokenRevoked]: 401,
   [ErrorCode.LoginRateLimited]: 429,
   [ErrorCode.TerminalTokenInvalid]: 401,
+  [ErrorCode.AccountDisabled]: 401,
 
   [ErrorCode.UsernameAlreadyExists]: 400,
   [ErrorCode.UserNotFound]: 404,
   [ErrorCode.WeakPassword]: 400,
+  [ErrorCode.TeamNameAlreadyExists]: 400,
+  [ErrorCode.TeamNotFound]: 404,
+  [ErrorCode.PasswordChangeRequired]: 403,
 
   [ErrorCode.HostNotFound]: 404,
   [ErrorCode.HostUnreachable]: 502,
@@ -197,6 +211,7 @@ export const ERROR_HTTP_STATUS: Record<number, number> = {
   [ErrorCode.RoleProtected]: 400,
   [ErrorCode.PermissionUnknown]: 400,
   [ErrorCode.RoleAssignmentNotFound]: 404,
+  [ErrorCode.TeamRoleAssignmentNotFound]: 404,
 
   [ErrorCode.RepositoryNotFound]: 404,
   [ErrorCode.RepositoryNameAlreadyExists]: 400,
@@ -240,10 +255,14 @@ export const ERROR_MESSAGES: Record<number, string> = {
   [ErrorCode.RefreshTokenRevoked]: 'Refresh token 已撤销或无效',
   [ErrorCode.LoginRateLimited]: '登录尝试过于频繁',
   [ErrorCode.TerminalTokenInvalid]: 'Terminal token 无效或已过期',
+  [ErrorCode.AccountDisabled]: '账号已停用',
 
   [ErrorCode.UsernameAlreadyExists]: '用户名已存在',
   [ErrorCode.UserNotFound]: '用户不存在',
   [ErrorCode.WeakPassword]: '密码强度不满足要求',
+  [ErrorCode.TeamNameAlreadyExists]: '团队名已存在',
+  [ErrorCode.TeamNotFound]: '团队不存在',
+  [ErrorCode.PasswordChangeRequired]: '必须先修改密码',
 
   [ErrorCode.HostNotFound]: '主机不存在',
   [ErrorCode.HostUnreachable]: '主机连通性失败',
@@ -270,6 +289,7 @@ export const ERROR_MESSAGES: Record<number, string> = {
   [ErrorCode.RoleProtected]: '内置角色不可修改或删除',
   [ErrorCode.PermissionUnknown]: '未知的权限标识',
   [ErrorCode.RoleAssignmentNotFound]: '角色分配不存在',
+  [ErrorCode.TeamRoleAssignmentNotFound]: '团队角色分配不存在',
 
   [ErrorCode.RepositoryNotFound]: '仓库配置不存在',
   [ErrorCode.RepositoryNameAlreadyExists]: '仓库别名已被占用',

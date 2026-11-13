@@ -9,7 +9,8 @@ import IconActionButton from '@/components/common/IconActionButton.vue'
 import UserFormDialog from '@/components/business/UserFormDialog.vue'
 import ResetPasswordDialog from '@/components/business/ResetPasswordDialog.vue'
 import HostAccessDialog from '@/components/business/HostAccessDialog.vue'
-import { deleteUser, listUsers } from '@/api/user'
+import UserSessionsDialog from '@/components/business/UserSessionsDialog.vue'
+import { deleteUser, listUsers, setUserEnabled } from '@/api/user'
 import { ApiRequestError } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { roleLabelKey } from '@/utils/roles'
@@ -47,6 +48,9 @@ const resetTarget = ref<AdminUserSummary | null>(null)
 /** 待分配角色的目标用户 */
 const accessTarget = ref<AdminUserSummary | null>(null)
 const accessDialogVisible = ref(false)
+/** 待查看会话的目标用户 */
+const sessionsTarget = ref<AdminUserSummary | null>(null)
+const sessionsDialogVisible = ref(false)
 
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const isEmpty = computed(() => !loading.value && error.value === null && users.value.length === 0)
@@ -127,6 +131,42 @@ async function onDelete(user: AdminUserSummary): Promise<void> {
 function openReset(user: AdminUserSummary): void {
   resetTarget.value = user
   resetDialogVisible.value = true
+}
+
+function openSessions(user: AdminUserSummary): void {
+  sessionsTarget.value = user
+  sessionsDialogVisible.value = true
+}
+
+/**
+ * 启用 / 停用账号（0.13.0）。
+ *
+ * 停用前必须二次确认：它会**立即**把对方全部会话踢下线，
+ * 一次误点就会让正在干活的人突然掉线。启用则无需确认（它是恢复动作）。
+ */
+async function toggleEnabled(user: AdminUserSummary): Promise<void> {
+  const enabling = user.isDisabled
+
+  if (!enabling) {
+    try {
+      await ElMessageBox.confirm(
+        t('user.action.disableHint'),
+        t('user.action.disable'),
+        { confirmButtonText: t('user.action.disable'), cancelButtonText: t('common.cancel'), type: 'warning' }
+      )
+    } catch {
+      return
+    }
+  }
+
+  markBusy(user.id, true)
+  try {
+    await setUserEnabled(user.id, enabling)
+    ElMessage.success(t('common.saved'))
+  } finally {
+    await load()
+    markBusy(user.id, false)
+  }
 }
 
 /**
@@ -229,6 +269,28 @@ watch(() => auth.user?.username, load, { immediate: true })
           </template>
         </el-table-column>
 
+        <el-table-column :label="t('user.col.status')" width="130">
+          <template #default="{ row }">
+            <el-tag
+              v-if="row.isDisabled"
+              size="small"
+              type="danger"
+            >
+              {{ t('user.status.disabled') }}
+            </el-tag>
+            <el-tag
+              v-else-if="row.mustChangePassword"
+              size="small"
+              type="warning"
+            >
+              {{ t('user.status.mustChange') }}
+            </el-tag>
+            <el-tag v-else size="small" type="success">
+              {{ t('user.status.enabled') }}
+            </el-tag>
+          </template>
+        </el-table-column>
+
         <el-table-column :label="t('user.col.created')" width="180">
           <template #default="{ row }">
             <span class="text-xs text-content-muted">{{ formatDateTime(row.creationTime) }}</span>
@@ -243,6 +305,20 @@ watch(() => auth.user?.username, load, { immediate: true })
                 :label="t('user.action.roles')"
                 :hint="t('user.action.rolesHint')"
                 @click="openAccess(row)"
+              />
+              <IconActionButton
+                icon="i-carbon-screen"
+                :label="t('user.action.sessions')"
+                :hint="t('user.action.sessionsHint')"
+                @click="openSessions(row)"
+              />
+              <IconActionButton
+                :icon="row.isDisabled ? 'i-carbon-toggle-on' : 'i-carbon-toggle-off'"
+                :label="row.isDisabled ? t('user.action.enable') : t('user.action.disable')"
+                :hint="row.isDisabled ? t('user.action.enableHint') : t('user.action.disableHint')"
+                :disabled="isSelf(row) && !row.isDisabled"
+                :loading="busyIds.has(row.id)"
+                @click="toggleEnabled(row)"
               />
               <IconActionButton
                 icon="i-carbon-password"
@@ -291,5 +367,6 @@ watch(() => auth.user?.username, load, { immediate: true })
     <UserFormDialog v-model="createDialogVisible" @created="onCreate" />
     <ResetPasswordDialog v-model="resetDialogVisible" :user="resetTarget" @updated="load" />
     <HostAccessDialog v-model="accessDialogVisible" :user="accessTarget" @saved="emitSaved" />
+    <UserSessionsDialog v-model="sessionsDialogVisible" :user="sessionsTarget" @changed="load" />
   </div>
 </template>

@@ -6,9 +6,13 @@ import type { PermissionDefinition, RoleAssignmentSummary, RoleSummary } from '@
  *
  * ## 为什么权限目录要在这里再写一份
  * 后端的 `/admin/roles/permissions` 返回的是**编译期目录**（`Permission.Hosts`
- * + `Permission.Globals`，共 18 项，0.4.0 新增 repository.read / repository.write）。mock 必须能返回同一份，
+ * + `Permission.Globals`，共 24 项）。mock 必须能返回同一份，
  * 否则权限矩阵在没有后端时无法渲染。**顺序与后端一致**（Host 域在前、Global 在后），
  * 因为界面的分组顺序就来自它。
+ *
+ * ⚠️ **这份列表曾经漏过**（0.11.0 加了 `alert.read` / `alert.write` 却没同步这里，
+ * 0.13.0 又加了 `team.read` / `team.write`）。它与后端的差异**不会报错**，
+ * 只表现为「mock 模式的权限矩阵少了两列」——所以下面的契约测试会钉住条数。
  *
  * 权限矩阵**不许**在前端另写一份列表——界面的列必须遍历这个响应。
  *
@@ -59,7 +63,13 @@ export const MOCK_PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   // 因此不用 host.manage 把它挤进主机域：那样会变成「管得了主机才配得了仓库」
   { name: 'repository.read', domain: 'repository', level: 'read', scope: 'global' },
   { name: 'repository.write', domain: 'repository', level: 'write', scope: 'global' },
-  { name: 'audit.read', domain: 'audit', level: 'read', scope: 'global' }
+  { name: 'audit.read', domain: 'audit', level: 'read', scope: 'global' },
+  // 告警规则与通知渠道是全局配置（0.11.0）
+  { name: 'alert.read', domain: 'alert', level: 'read', scope: 'global' },
+  { name: 'alert.write', domain: 'alert', level: 'write', scope: 'global' },
+  // 团队（0.13.0）：团队只收窄权限、不扩权，因此危险性低于 user.write
+  { name: 'team.read', domain: 'team', level: 'read', scope: 'global' },
+  { name: 'team.write', domain: 'team', level: 'write', scope: 'global' }
 ]
 
 /** 全部权限名（顺序同目录）；仅用于夹具与 handler 的白名单校验。 */

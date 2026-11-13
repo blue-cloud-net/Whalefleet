@@ -1,5 +1,5 @@
 import { request } from '@/api'
-import type { AdminUserSummary, UserListResult } from '@/types/api'
+import type { AdminUserSummary, UserListResult, UserSessionSummary } from '@/types/api'
 
 /**
  * 用户管理端点（**全局作用域**，路径不含 `hostId`）。
@@ -79,5 +79,57 @@ export function updatePassword(payload: {
     url: '/api/v1/admin/users/update-password',
     method: 'post',
     data: payload
+  })
+}
+
+/**
+ * 列出某用户的**活跃会话**（0.13.0）。
+ *
+ * 只返回未撤销且未过期的会话；设备指纹**只用于展示**，不参与任何校验。
+ */
+export function listUserSessions(userId: string): Promise<UserSessionSummary[]> {
+  return request<UserSessionSummary[]>({
+    url: `/api/v1/admin/users/${encodeURIComponent(userId)}/sessions/list`,
+    method: 'post'
+  })
+}
+
+/**
+ * 吊销单个会话（0.13.0）。
+ *
+ * 吊销后该会话签发的 access token 在**下一次请求**即失效，
+ * 不必等 15 分钟过期。**幂等**：会话已不存在时同样成功。
+ */
+export function revokeUserSession(userId: string, sessionId: string): Promise<void> {
+  return request<void>({
+    url: `/api/v1/admin/users/${encodeURIComponent(userId)}/sessions/revoke`,
+    method: 'post',
+    data: { sessionId }
+  })
+}
+
+/**
+ * 吊销某用户的**全部**会话（0.13.0）。
+ *
+ * 返回被吊销的会话数。
+ */
+export function revokeAllUserSessions(userId: string): Promise<number> {
+  return request<number>({
+    url: `/api/v1/admin/users/${encodeURIComponent(userId)}/sessions/revoke-all`,
+    method: 'post'
+  })
+}
+
+/**
+ * 启用 / 停用账号（0.13.0）。
+ *
+ * **停用会立即让该用户的全部会话失效**（撤销 + 每请求校验）。
+ * 启用**不恢复**已撤销的会话——用户需要重新登录。
+ */
+export function setUserEnabled(userId: string, enabled: boolean): Promise<void> {
+  return request<void>({
+    url: `/api/v1/admin/users/${encodeURIComponent(userId)}/set-enabled`,
+    method: 'post',
+    data: { enabled }
   })
 }

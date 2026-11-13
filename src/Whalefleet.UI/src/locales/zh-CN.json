@@ -154,6 +154,7 @@
     "enabled": "启用",
     "key": "键",
     "loading": "加载中…",
+    "logout": "退出登录",
     "menu": "菜单",
     "next": "下一页",
     "pageSize": "每页条数",
@@ -942,6 +943,7 @@
     "roles": "角色与权限",
     "settings": "全局设置",
     "status": "状态",
+    "teams": "团队",
     "users": "用户管理",
     "volumes": "数据卷",
     "composes": "Compose"
@@ -1196,18 +1198,28 @@
     "audit": {
       "read": "查看操作审计"
     },
+    "alert": {
+      "read": "查看告警规则",
+      "write": "管理告警规则"
+    },
+    "team": {
+      "read": "查看团队",
+      "write": "管理团队"
+    },
     "container": {
       "read": "查看容器",
       "write": "操作容器"
     },
     "domain": {
       "audit": "审计",
+      "alert": "告警",
       "container": "容器",
       "host": "主机",
       "image": "镜像",
       "network": "网络",
       "repository": "仓库",
       "role": "角色",
+      "team": "团队",
       "user": "用户",
       "volume": "数据卷",
       "compose": "Compose"
@@ -1444,6 +1456,16 @@
     "realtimeHint": "三项互相独立，默认全部开启",
     "realtimeNotifications": "容器异常退出通知",
     "realtimeStats": "容器详情页运行指标",
+    "security": {
+      "description": "密码策略只影响之后发生的操作，不会追溯校验已有账号的密码。",
+      "expiry": "密码有效期（天）",
+      "expiryHint": "0 表示永不过期",
+      "minLength": "最小长度",
+      "mustChangeOnFirstLogin": "新建用户首次登录强制改密",
+      "requireDigitOrSymbol": "必须包含数字或符号",
+      "requireLetter": "必须包含字母",
+      "title": "密码策略"
+    },
     "subtitle": "偏好设置保存在本地浏览器，不影响服务器上的 Docker 配置。",
     "title": "全局设置"
   },
@@ -1513,11 +1535,19 @@
   "user": {
     "action": {
       "create": "新建用户",
+      "disable": "停用账号",
+      "disableHint": "停用后立即踢下线，且无法再登录",
+      "enable": "启用账号",
+      "enableHint": "启用后仍需重新登录（旧会话不会恢复）",
       "resetPassword": "重置密码",
       "roles": "角色分配",
-      "rolesHint": "在这个人身上分配角色，并按主机限定作用域"
+      "rolesHint": "在这个人身上分配角色，并按主机限定作用域",
+      "sessions": "会话",
+      "sessionsHint": "查看当前有效会话并强制登出"
     },
     "badge": {
+      "disabled": "已停用",
+      "mustChange": "待改密",
       "self": "当前账号"
     },
     "change": {
@@ -1529,6 +1559,7 @@
     "col": {
       "created": "创建时间",
       "roles": "角色",
+      "status": "状态",
       "username": "用户名"
     },
     "confirm": {
@@ -1577,7 +1608,85 @@
     "role": {
       "none": "无角色"
     },
+    "session": {
+      "col": {
+        "created": "登录时间",
+        "expires": "过期时间",
+        "fingerprint": "设备指纹",
+        "ip": "来源 IP",
+        "userAgent": "浏览器"
+      },
+      "empty": "没有活跃会话。",
+      "revoke": "强制登出",
+      "revokeAll": "全部登出",
+      "revokeAllConfirm": "将吊销该用户的全部会话，所有设备都需要重新登录。",
+      "revokeConfirm": "将吊销这个会话，该设备下一次请求即失效。",
+      "revoked": "会话已吊销",
+      "revokedAll": "已吊销 {count} 个会话",
+      "title": "会话管理"
+    },
+    "status": {
+      "disabled": "已停用",
+      "enabled": "正常",
+      "mustChange": "待改密"
+    },
     "total": "共 {total} 人"
+  },
+  "team": {
+    "action": {
+      "addMembers": "添加成员",
+      "assignRole": "授予角色",
+      "create": "新建团队",
+      "remove": "删除团队",
+      "removeMembers": "移除成员",
+      "sync": "同步到成员"
+    },
+    "col": {
+      "members": "成员",
+      "name": "团队名",
+      "roles": "角色数"
+    },
+    "create": {
+      "done": "团队「{name}」已创建",
+      "submit": "创建",
+      "title": "新建团队"
+    },
+    "deleteConfirm": "确定删除团队「{name}」吗？已发放的个人授权不会被回收。",
+    "empty": "还没有团队。",
+    "form": {
+      "description": "备注",
+      "displayName": "可读名称",
+      "name": "团队标识"
+    },
+    "hint": "团队只收窄权限、不自动授予。加入团队不会获得任何权限；需要点「同步到成员」才会把团队角色写入成员的个人授权。",
+    "member": {
+      "addHint": "只能选择已存在的用户",
+      "empty": "还没有成员",
+      "join": "加入",
+      "removeHint": "移除成员不会回收其个人授权"
+    },
+    "role": {
+      "assignHint": "给团队定权限上限；host 留空表示全局",
+      "container": "容器",
+      "empty": "还没有团队角色授权",
+      "global": "全局"
+    },
+    "sync": {
+      "done": "已同步：新增 {assigned} 条，跳过 {skipped} 条（{members} 名成员）"
+    },
+    "title": "团队"
+  },
+  "password": {
+    "change": {
+      "confirmPassword": "确认新密码",
+      "description": "当前账号需要先修改密码才能继续使用。修改后全部会话会被撤销，请用新密码重新登录。",
+      "done": "密码已修改，请重新登录",
+      "mismatch": "两次输入的密码不一致",
+      "newPassword": "新密码",
+      "oldPassword": "原密码",
+      "submit": "修改密码",
+      "title": "必须先修改密码"
+    }
   },
   "volume": {
     "action": {

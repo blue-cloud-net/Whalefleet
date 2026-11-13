@@ -69,6 +69,27 @@ const routes: RouteRecordRaw[] = [
         }
       },
       {
+        // 团队（0.13.0）：团队是**权限边界**，管的是「一群人一次配」。
+        //
+        // ⚠️ 用 `requiresPermission` 而不是 `requiresAdmin`：后端这道门是
+        // `team.read` / `team.write`，自定义角色可能只带它们。
+        // 团队只收窄权限、不扩权，因此它比 `user.write` 弱——用 requiresAdmin
+        // 会把「只能管团队」的管理员挡在自己的页外。
+        //
+        // 位置紧跟在「用户管理」之后、角色之前：动线是「先有人 → 再成队 →
+        // 最后给队定权限上限」。排在角色之后会让人以为团队是角色的子项。
+        path: 'teams',
+        name: 'teams',
+        component: () => import('@/views/TeamsView.vue'),
+        meta: {
+          scope: 'global',
+          requiresPermission: 'team.read',
+          group: 'manage',
+          icon: 'i-carbon-group',
+          title: 'nav.teams'
+        }
+      },
+      {
         // 角色与权限矩阵。排在「用户管理」之后而不是之前：日常动线是
         // 「看人 → 发现缺一个角色 → 来这里建」，把角色摆在用户前面会让
         // 每次进管理区都先掠过一张平时不动的表。
@@ -297,6 +318,18 @@ const routes: RouteRecordRaw[] = [
     ]
   },
   {
+    // 强制改密（0.13.0）：**不进主布局**（无侧边栏、无顶栏）。
+    //
+    // 账号被要求改密时，服务端只放行白名单端点（auth/me / auth/refresh /
+    // auth/logout / users/update-password），其余一律 1205。
+    // 因此这个页面是**唯一**能正常工作的界面，把它做成独立布局是诚实的：
+    // 侧边栏里的每个入口此刻都点不动。
+    path: '/change-password',
+    name: 'change-password',
+    component: () => import('@/views/ForcePasswordChangeView.vue'),
+    meta: { requiresAuth: true, showInSidebar: false, title: 'password.change.title' }
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('@/views/NotFoundView.vue'),
@@ -361,6 +394,15 @@ router.beforeEach(async (to) => {
   // 已登录用户访问 /login → 跳总览
   if (to.name === 'login' && auth.isAuthenticated) {
     return { name: 'overview' }
+  }
+
+  // 强制改密（0.13.0）：账号被要求改密时，**除改密页外一律拦下**。
+  //
+  // 为什么不只靠服务端返回 1205：那样用户会点一个按钮 → 报错 → 再点，
+  // 而真正的出路在另一个页面。直接拦住并跳过去，是唯一说得通的交互。
+  // 改密页本身不受这条约束（否则用户永远出不来）。
+  if (auth.mustChangePassword && to.name !== 'change-password') {
+    return { name: 'change-password' }
   }
 
   return true

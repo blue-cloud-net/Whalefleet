@@ -3,7 +3,7 @@ import { ErrorCode, fail, httpStatusOf, ok } from '../envelope'
 import { delayFor, type MockScenario } from '../scenarios'
 import { MOCK_CURRENT_PASSWORD, MOCK_CURRENT_USERNAME, MOCK_USERS_DEFAULT } from '../data/users'
 import { MOCK_ROLES_DEFAULT } from '../data/permissions'
-import type { AdminUserSummary } from '@/types/api'
+import type { AdminUserSummary, UserSessionSummary } from '@/types/api'
 
 /**
  * 本次会话里新建 / 删除的用户。
@@ -14,10 +14,18 @@ import type { AdminUserSummary } from '@/types/api'
 const createdInSession: AdminUserSummary[] = []
 const removedInSession = new Set<string>()
 
+/** 本次会话里被停用/启用过的账号（userId → isDisabled）。 */
+const disabledOverrides = new Map<string, boolean>()
+
+/** 本次会话里被吊销过的会话 id。 */
+const revokedSessions = new Set<string>()
+
 /** 清空会话内的用户改动（供测试隔离用）。 */
 export function resetSessionUsers(): void {
   createdInSession.length = 0
   removedInSession.clear()
+  disabledOverrides.clear()
+  revokedSessions.clear()
 }
 
 /**
@@ -27,9 +35,12 @@ export function resetSessionUsers(): void {
  * 否则走查「新建用户 → 给他分配角色」会在第二步得到 1201。
  */
 export function sessionUsers(): AdminUserSummary[] {
-  return [...MOCK_USERS_DEFAULT, ...createdInSession].filter(
-    (user) => !removedInSession.has(user.id)
-  )
+  return [...MOCK_USERS_DEFAULT, ...createdInSession]
+    .filter((user) => !removedInSession.has(user.id))
+    .map((user) => {
+      const override = disabledOverrides.get(user.id)
+      return override === undefined ? user : { ...user, isDisabled: override }
+    })
 }
 
 /**
@@ -61,6 +72,40 @@ export function userHandlers(scenario: () => MockScenario) {
     if (current === 'empty') return []
 
     return sessionUsers()
+  }
+
+  /**
+   * 造两个稳定的会话（同一用户每次请求结果一致，除非被吊销）。
+   *
+   * **为什么要造两条**：会话列表的价值在于「多条里认出该踢哪一条」，
+   * 只有一条时这个界面看不出任何东西。
+   */
+  function sessionsFor(user: AdminUserSummary): UserSessionSummary[] {
+    const now = Date.now()
+    const all: UserSessionSummary[] = [
+      {
+        sessionId: `${user.id}-s1`,
+        username: user.username,
+        createdAt: new Date(now - 2 * 3600 * 1000).toISOString(),
+        expiresAt: new Date(now + 7 * 24 * 3600 * 1000).toISOString(),
+        rotatedAt: new Date(now - 3600 * 1000).toISOString(),
+        createdIp: '10.0.0.7',
+        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/131.0 Safari/537.36',
+        deviceFingerprint: '3f9a1c2b7d4e5f60'
+      },
+      {
+        sessionId: `${user.id}-s2`,
+        username: user.username,
+        createdAt: new Date(now - 26 * 3600 * 1000).toISOString(),
+        expiresAt: new Date(now + 6 * 24 * 3600 * 1000).toISOString(),
+        rotatedAt: null,
+        createdIp: '192.168.1.24',
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Edg/131.0',
+        deviceFingerprint: '8c1d2e3f4a5b6c7d'
+      }
+    ]
+
+    return all.filter((session) => !revokedSessions.has(session.sessionId))
   }
 
   /** 密码强度：与后端 `PasswordPolicy` 一致（≥10 字符，且含字母与数字/符号）。 */
@@ -152,7 +197,10 @@ export function userHandlers(scenario: () => MockScenario) {
         username,
         // ⚠️ 是**数组**：一个用户可以同时持多个角色
         roles: [roleName],
-        creationTime: new Date().toISOString()
+        creationTime: new Date().toISOString(),
+        isDisabled: false,
+        // 新建账号默认要求首次登录改密（对应安全设置的默认值）
+        mustChangePassword: true
       }
 
       createdInSession.push(created)
@@ -194,6 +242,88 @@ export function userHandlers(scenario: () => MockScenario) {
       const createdIndex = createdInSession.findIndex((user) => user.id === userId)
       if (createdIndex >= 0) createdInSession.splice(createdIndex, 1)
       removedInSession.add(userId)
+
+      return HttpResponse.json(ok(null))
+    }),
+
+    // ===== 会话管理（0.13.0）=====
+    http.post('*/api/v1/admin/users/:userId/sessions/list', async ({ params }) => {
+      await delay(delayFor(scenario()))
+      const userId = String(params.userId ?? '')
+      const target = usersFor(scenario()).find((user) => user.id === userId)
+
+      if (target === undefined) {
+        return HttpResponse.json(fail(ErrorCode.UserNotFound), {
+          status: httpStatusOf(ErrorCode.UserNotFound)
+        })
+      }
+
+      return HttpResponse.json(ok(sessionsFor(target)))
+    }),
+
+    http.post('*/api/v1/admin/users/:userId/sessions/revoke', async ({ request, params }) => {
+      await delay(delayFor(scenario()))
+      const userId = String(params.userId ?? '')
+      const target = usersFor(scenario()).find((user) => user.id === userId)
+
+      if (target === undefined) {
+        return HttpResponse.json(fail(ErrorCode.UserNotFound), {
+          status: httpStatusOf(ErrorCode.UserNotFound)
+        })
+      }
+
+      const body = await readBody(request)
+      const sessionId = String(body.sessionId ?? '')
+      if (sessionId.length > 0) revokedSessions.add(sessionId)
+
+      // 幂等：会话不存在时后端同样返回成功
+      return HttpResponse.json(ok(null))
+    }),
+
+    http.post('*/api/v1/admin/users/:userId/sessions/revoke-all', async ({ params }) => {
+      await delay(delayFor(scenario()))
+      const userId = String(params.userId ?? '')
+      const target = usersFor(scenario()).find((user) => user.id === userId)
+
+      if (target === undefined) {
+        return HttpResponse.json(fail(ErrorCode.UserNotFound), {
+          status: httpStatusOf(ErrorCode.UserNotFound)
+        })
+      }
+
+      const sessions = sessionsFor(target)
+      for (const session of sessions) revokedSessions.add(session.sessionId)
+
+      return HttpResponse.json(ok(sessions.length))
+    }),
+
+    // ===== 启用 / 停用（0.13.0）=====
+    http.post('*/api/v1/admin/users/:userId/set-enabled', async ({ request, params }) => {
+      await delay(delayFor(scenario()))
+      const userId = String(params.userId ?? '')
+      const target = usersFor(scenario()).find((user) => user.id === userId)
+
+      if (target === undefined) {
+        return HttpResponse.json(fail(ErrorCode.UserNotFound), {
+          status: httpStatusOf(ErrorCode.UserNotFound)
+        })
+      }
+
+      const body = await readBody(request)
+      const enabled = Boolean(body.enabled)
+
+      if (!enabled && target.username === MOCK_CURRENT_USERNAME) {
+        return HttpResponse.json(fail(ErrorCode.ValidationFailed, '不能停用当前登录的账号'), {
+          status: httpStatusOf(ErrorCode.ValidationFailed)
+        })
+      }
+
+      disabledOverrides.set(userId, !enabled)
+
+      // 停用要立即踢下线：把该用户的活跃会话全部标记为已吊销
+      if (!enabled) {
+        for (const session of sessionsFor(target)) revokedSessions.add(session.sessionId)
+      }
 
       return HttpResponse.json(ok(null))
     }),

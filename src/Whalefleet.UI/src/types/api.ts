@@ -50,6 +50,8 @@ export const ErrorCode = {
   LoginRateLimited: 1103,
   /** Terminal token 无效或已过期（0.8.0） */
   TerminalTokenInvalid: 1104,
+  /** 账号已停用（0.13.0） */
+  AccountDisabled: 1108,
 
   // ===== 1200-1299 用户管理 =====
   /** 用户名已存在 */
@@ -58,6 +60,12 @@ export const ErrorCode = {
   UserNotFound: 1201,
   /** 密码强度不满足要求 */
   WeakPassword: 1202,
+  /** 团队名已占用（0.13.0） */
+  TeamNameAlreadyExists: 1203,
+  /** 团队不存在（0.13.0） */
+  TeamNotFound: 1204,
+  /** 必须先修改密码（0.13.0） */
+  PasswordChangeRequired: 1205,
 
   // ===== 1300-1399 主机管理 =====
   /** 主机不存在 */
@@ -108,6 +116,8 @@ export const ErrorCode = {
   PermissionUnknown: 1514,
   /** 角色分配不存在 */
   RoleAssignmentNotFound: 1515,
+  /** 团队角色分配不存在（0.13.0） */
+  TeamRoleAssignmentNotFound: 1516,
 
   // ===== 1800-1899 仓库与镜像构建 / 推送 =====
   /** 仓库配置不存在 */
@@ -434,6 +444,15 @@ export interface CurrentUser {
    * 那需要一个用户的所有主机权限联表。
    */
   permissions: string[]
+  /**
+   * 是否必须先修改密码才能继续使用（0.13.0）。
+   *
+   * 为 `true` 时服务端只放行白名单端点（`auth/me` / `auth/refresh` /
+   * `auth/logout` / `users/update-password`），其余返回 `1205`。
+   *
+   * 前端据此**主动跳转**到改密页，而不是等某个请求失败才发现。
+   */
+  mustChangePassword: boolean
 }
 
 /**
@@ -1383,6 +1402,54 @@ export interface AdminUserSummary {
   roles: string[]
   /** 创建时间（ISO 8601） */
   creationTime: string
+  /** 账号是否已停用（0.13.0）：停用后该用户已签发的会话立即失效 */
+  isDisabled: boolean
+  /** 账号是否必须先改密（0.13.0） */
+  mustChangePassword: boolean
+}
+
+/**
+ * 一个活跃会话的摘要（0.13.0）。
+ *
+ * **不含任何可冒用会话的秘密**：令牌哈希不在这里。
+ * 它只是给人看的「谁在哪登录」的清单。
+ */
+export interface UserSessionSummary {
+  /** 会话 id（吊销时回传它） */
+  sessionId: string
+  /** 会话所属用户名 */
+  username: string
+  /** 会话创建时间（ISO 8601） */
+  createdAt: string
+  /** 会话过期时间（ISO 8601） */
+  expiresAt: string
+  /** 最近一次轮换时间（ISO 8601）；从未轮换为 null */
+  rotatedAt: string | null
+  /** 登录来源 IP */
+  createdIp: string | null
+  /** 登录时的 User-Agent */
+  userAgent: string | null
+  /** 设备指纹（**只记录、不校验**，仅供展示） */
+  deviceFingerprint: string | null
+}
+
+/**
+ * 实例级安全策略（0.13.0）。
+ *
+ * **只影响之后发生的动作**：已有账号的密码不会被追溯校验，
+ * 已有账号的「必须改密」标记也不会被批量置位。
+ */
+export interface SecurityPolicyOptions {
+  /** 密码最小长度 */
+  minLength: number
+  /** 是否要求包含字母 */
+  requireLetter: boolean
+  /** 是否要求包含数字或符号 */
+  requireDigitOrSymbol: boolean
+  /** 密码有效期（天）；0 = 永不过期 */
+  passwordExpiryDays: number
+  /** 新建用户首次登录是否强制改密 */
+  mustChangeOnFirstLogin: boolean
 }
 
 export interface UserListResult {
@@ -1862,4 +1929,80 @@ export interface NotificationPayload {
   hostId: string | null
   hostName: string | null
   occurredAt: string
+}
+
+/* ==================================================================
+ * 团队（0.13.0）
+ *
+ * **团队只收窄、不扩权**：给团队授角色只是设定成员在已授权作用域内的权限上限；
+ * 成员的个人授权仍写在用户侧的角色分配里（或由「同步到成员」显式写入）。
+ * 加入团队**不会**自动获得权限。
+ * ================================================================== */
+
+/** 团队列表项。 */
+export interface TeamSummary {
+  id: string
+  /** 团队标识（唯一，不区分大小写） */
+  name: string
+  /** 可读名称；可为空 */
+  displayName: string | null
+  /** 备注；可为空 */
+  description: string | null
+  /** 当前成员数 */
+  memberCount: number
+  /** 当前团队角色授权数（权限上限的条数） */
+  roleAssignmentCount: number
+  /** 创建时间（ISO 8601） */
+  creationTime: string
+}
+
+/** 团队成员摘要。 */
+export interface TeamMemberSummary {
+  userId: string
+  username: string
+  /** 加入时间（ISO 8601） */
+  joinedAt: string
+  /** 账号是否已停用 */
+  isDisabled: boolean
+  /** 账号是否必须先改密 */
+  mustChangePassword: boolean
+}
+
+/** 团队角色授权摘要（**权限上限**，不是授权来源）。 */
+export interface TeamRoleAssignmentSummary {
+  id: string
+  roleId: string
+  role: string
+  roleDisplayName: string | null
+  /** 作用域主机 id；null = 全局 */
+  hostId: string | null
+  /** 作用域主机名；null = 全局 */
+  hostName: string | null
+  /** 容器完整 id；null = 非容器级 */
+  containerId: string | null
+}
+
+/** 团队详情（成员 + 角色授权）。 */
+export interface TeamDetail {
+  summary: TeamSummary
+  members: TeamMemberSummary[]
+  roleAssignments: TeamRoleAssignmentSummary[]
+}
+
+/** 团队分页结果。 */
+export interface TeamListResult {
+  items: TeamSummary[]
+  total: number
+  pageIndex: number
+  pageSize: number
+}
+
+/** 团队权限同步到成员的结果。 */
+export interface TeamSyncResult {
+  /** 实际写入（新建）的分配条数 */
+  assigned: number
+  /** 已存在而跳过的分配条数 */
+  skipped: number
+  /** 被同步的成员数 */
+  members: number
 }
