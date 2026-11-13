@@ -35,11 +35,15 @@ public class ErrorCodesTests
         [nameof(ErrorCodes.RefreshTokenRevoked)] = 1102,
         [nameof(ErrorCodes.LoginRateLimited)] = 1103,
         [nameof(ErrorCodes.TerminalTokenInvalid)] = 1104,
+        [nameof(ErrorCodes.AccountDisabled)] = 1108,
 
         // 用户管理
         [nameof(ErrorCodes.UsernameAlreadyExists)] = 1200,
         [nameof(ErrorCodes.UserNotFound)] = 1201,
         [nameof(ErrorCodes.WeakPassword)] = 1202,
+        [nameof(ErrorCodes.TeamNameAlreadyExists)] = 1203,
+        [nameof(ErrorCodes.TeamNotFound)] = 1204,
+        [nameof(ErrorCodes.PasswordChangeRequired)] = 1205,
 
         // 主机管理
         [nameof(ErrorCodes.HostNotFound)] = 1300,
@@ -69,6 +73,7 @@ public class ErrorCodesTests
         [nameof(ErrorCodes.RoleProtected)] = 1513,
         [nameof(ErrorCodes.PermissionUnknown)] = 1514,
         [nameof(ErrorCodes.RoleAssignmentNotFound)] = 1515,
+        [nameof(ErrorCodes.TeamRoleAssignmentNotFound)] = 1516,
 
         // 仓库与镜像构建 / 推送
         [nameof(ErrorCodes.RepositoryNotFound)] = 1800,

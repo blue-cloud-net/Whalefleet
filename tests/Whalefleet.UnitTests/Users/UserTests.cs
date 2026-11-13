@@ -101,13 +101,41 @@ public class UserTests
     }
 
     [Fact]
-    public void ChangePassword_覆盖旧哈希()
+    public void ChangePassword_覆盖旧哈希并记录变更时间()
     {
         var user = User.Create(Guid.NewGuid(), "admin", _validHash);
+        var changedAt = new DateTime(2026, 11, 12, 8, 0, 0, DateTimeKind.Utc);
 
-        user.ChangePassword("$argon2id$v=19$m=65536,t=3,p=1$bmV3$aGFzaA");
+        user.ChangePassword("$argon2id$v=19$m=65536,t=3,p=1$bmV3$aGFzaA", changedAt);
 
         user.PasswordHash.Should().Be("$argon2id$v=19$m=65536,t=3,p=1$bmV3$aGFzaA");
+        user.PasswordChangedAt.Should().Be(changedAt);
+    }
+
+    [Fact]
+    public void ChangePassword_清除必须改密标记()
+    {
+        var user = User.Create(Guid.NewGuid(), "admin", _validHash);
+        user.MarkPasswordChangeRequired();
+        user.MustChangePassword.Should().BeTrue();
+
+        user.ChangePassword("$argon2id$v=19$m=65536,t=3,p=1$bmV3$aGFzaA", DateTime.UtcNow);
+
+        // 不清除就会把用户永远锁在「必须改密」里——而改密正是解除它的动作。
+        user.MustChangePassword.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Disable与Enable_切换停用状态()
+    {
+        var user = User.Create(Guid.NewGuid(), "admin", _validHash);
+        user.IsDisabled.Should().BeFalse();
+
+        user.Disable();
+        user.IsDisabled.Should().BeTrue();
+
+        user.Enable();
+        user.IsDisabled.Should().BeFalse();
     }
 
     [Fact]
@@ -115,7 +143,7 @@ public class UserTests
     {
         var user = User.Create(Guid.NewGuid(), "admin", _validHash);
 
-        var act = () => user.ChangePassword("  ");
+        var act = () => user.ChangePassword("  ", DateTime.UtcNow);
 
         act.Should().Throw<ArgumentException>();
         user.PasswordHash.Should().Be(_validHash);
