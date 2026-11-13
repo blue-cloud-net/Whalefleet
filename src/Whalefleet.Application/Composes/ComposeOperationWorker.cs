@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Whalefleet.Application.Abstractions.Auditing;
 using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Common;
+using Whalefleet.Application.Operations;
 using Whalefleet.Core.Auditing;
 using Whalefleet.Core.Hosts;
 using Whalefleet.Core.Composes;
@@ -30,7 +31,7 @@ namespace Whalefleet.Application.Composes;
 public sealed class ComposeOperationWorker : BackgroundService
 {
     private readonly ComposeOperationQueue _queue;
-    private readonly ComposeTaskRegistry _registry;
+    private readonly ResourceTaskRegistry<ComposeOperationResult> _registry;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<ComposeOperationWorker> _logger;
@@ -46,7 +47,7 @@ public sealed class ComposeOperationWorker : BackgroundService
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
     public ComposeOperationWorker(
         ComposeOperationQueue queue,
-        ComposeTaskRegistry registry,
+        ResourceTaskRegistry<ComposeOperationResult> registry,
         IServiceScopeFactory scopeFactory,
         TimeProvider timeProvider,
         ILogger<ComposeOperationWorker> logger)

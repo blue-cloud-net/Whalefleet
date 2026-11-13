@@ -204,7 +204,7 @@ internal static class ComposeParser
     /// </summary>
     /// <param name="root">YAML 树根（**插值前**）。</param>
     /// <returns>变量名列表（去重，按首次出现顺序）。</returns>
-    private static IReadOnlyList<string> CollectReferences(YamlNode root)
+    private static List<string> CollectReferences(YamlNode root)
     {
         var names = new List<string>();
         var seen = new HashSet<string>(StringComparer.Ordinal);

@@ -3,7 +3,7 @@ import type {
   ComposeProjectDetail,
   ComposeProjectListResult,
   ComposeTaskAccepted,
-  ComposeTaskSnapshot,
+  ResourceTaskSnapshot,
   ComposeWebhookInfo
 } from '@/types/api'
 
@@ -129,8 +129,8 @@ export function removeComposeProject(
  * 任务不存在时**返回 `null` 而不是报错**——任务登记表只保留有限时长，
  * 查不到是正常情况（例如已经过了保留期）。
  */
-export function getComposeTask(hostId: string, taskId: string): Promise<ComposeTaskSnapshot | null> {
-  return request<ComposeTaskSnapshot | null>({
+export function getComposeTask(hostId: string, taskId: string): Promise<ResourceTaskSnapshot | null> {
+  return request<ResourceTaskSnapshot | null>({
     url: `/api/v1/hosts/${encodeURIComponent(hostId)}/composes/task`,
     method: 'post',
     data: { taskId }

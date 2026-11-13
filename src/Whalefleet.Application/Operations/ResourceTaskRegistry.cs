@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 
 using Whalefleet.Application.Common;
 
-namespace Whalefleet.Application.Composes;
+namespace Whalefleet.Application.Operations;
 
 /// <summary>
 /// 编排任务登记表：记住「有哪些任务在跑、跑到哪一步了」。
@@ -22,7 +22,7 @@ namespace Whalefleet.Application.Composes;
 /// <para><b>线程安全</b>：读多写少，但读写来自不同线程（HTTP 请求线程写、后台工作线程改），
 /// 因此用 <see cref="ConcurrentDictionary{TKey, TValue}"/> + 锁保护「检查并登记」这一原子步骤。</para>
 /// </remarks>
-public sealed class ComposeTaskRegistry
+public sealed class ResourceTaskRegistry<TResult>
 {
     /// <summary>
     /// 登记表里最多保留的任务数。
@@ -38,7 +38,7 @@ public sealed class ComposeTaskRegistry
     /// </summary>
     public static readonly TimeSpan TaskTtl = TimeSpan.FromHours(1);
 
-    private readonly ConcurrentDictionary<string, ComposeTask> _tasks = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, ResourceTask<TResult>> _tasks = new(StringComparer.Ordinal);
     private readonly object _gate = new();
 
     /// <summary>
@@ -46,7 +46,8 @@ public sealed class ComposeTaskRegistry
     /// </summary>
     /// <param name="taskId">任务标识（客户端生成的进度令牌）。</param>
     /// <param name="hostName">所属主机名。</param>
-    /// <param name="composeName">Compose 项目名称。</param>
+    /// <param name="resourceKind">资源类型（<c>compose</c> / <c>container</c>）。</param>
+    /// <param name="resourceName">资源名称（Compose 项目名或容器名）。</param>
     /// <param name="operation">操作类型。</param>
     /// <param name="now">当前时刻（UTC）。</param>
     /// <returns>登记成功返回 <see langword="true"/>。</returns>
@@ -56,13 +57,15 @@ public sealed class ComposeTaskRegistry
     public bool TryRegister(
         string taskId,
         string hostName,
-        string composeName,
+        string resourceKind,
+        string resourceName,
         string operation,
         DateTime now)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(taskId);
         ArgumentException.ThrowIfNullOrWhiteSpace(hostName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(composeName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(resourceKind);
+        ArgumentException.ThrowIfNullOrWhiteSpace(resourceName);
         ArgumentException.ThrowIfNullOrWhiteSpace(operation);
 
         lock (_gate)
@@ -76,18 +79,22 @@ public sealed class ComposeTaskRegistry
                     $"任务标识「{taskId}」已被占用，请换一个");
             }
 
+            // 忙判定的粒度是「同一台主机上的同一个资源」：
+            // 不同类型的资源（编排项目 vs 容器）互不阻塞——
+            // 它们动的是不同的对象，而同一台机器上的两个编排项目仍然互斥。
             var busy = _tasks.Values.Any(task =>
                 !task.IsTerminal && String.Equals(task.HostName, hostName, StringComparison.OrdinalIgnoreCase)
-                        && String.Equals(task.ComposeName, composeName, StringComparison.Ordinal));
+                        && String.Equals(task.ResourceKind, resourceKind, StringComparison.Ordinal)
+                        && String.Equals(task.ResourceName, resourceName, StringComparison.Ordinal));
 
             if (busy)
             {
                 throw new BusinessException(
                     ErrorCodes.ComposeOperationInProgress,
-                    $"Compose 项目「{composeName}」已有进行中的操作，请等它结束");
+                    $"资源「{resourceName}」已有进行中的操作，请等它结束");
             }
 
-            _tasks[taskId] = new ComposeTask(taskId, hostName, composeName, operation, now);
+            _tasks[taskId] = new ResourceTask<TResult>(taskId, hostName, resourceKind, resourceName, operation, now);
 
             return true;
         }
@@ -98,7 +105,7 @@ public sealed class ComposeTaskRegistry
     /// </summary>
     /// <param name="taskId">任务标识。</param>
     /// <returns>快照；不存在返回 <see langword="null"/>。</returns>
-    public ComposeTaskSnapshot? Get(string taskId)
+    public ResourceTaskSnapshot<TResult>? Get(string taskId)
     {
         if (String.IsNullOrWhiteSpace(taskId))
         {
@@ -144,7 +151,7 @@ public sealed class ComposeTaskRegistry
                 return false;
             }
 
-            if (task.IsTerminal || task.Status != ComposeTaskStatus.Queued)
+            if (task.IsTerminal || task.Status != ResourceTaskStatus.Queued)
             {
                 return false;
             }
@@ -161,7 +168,7 @@ public sealed class ComposeTaskRegistry
     /// 供「这个 Compose 项目是不是还有任务在跑」的判定使用——
     /// 那种判定需要看到全部任务，而不只是某一个。
     /// </remarks>
-    public IReadOnlyList<ComposeTaskSnapshot> GetSnapshot()
+    public IReadOnlyList<ResourceTaskSnapshot<TResult>> GetSnapshot()
     {
         lock (_gate)
         {
@@ -209,7 +216,7 @@ public sealed class ComposeTaskRegistry
     /// <param name="now">当前时刻（UTC）。</param>
     public void MarkSucceeded(
         string taskId,
-        ComposeOperationResult result,
+        TResult result,
         IReadOnlyList<string> warnings,
         DateTime now)
     {
@@ -282,7 +289,7 @@ public sealed class ComposeTaskRegistry
 /// 用锁而不是 volatile，是因为「状态 + 百分比 + 步骤」要一起被读到，
 /// 分开读会拿到互相矛盾的组合（如「已成功」但百分比还是 50）。
 /// </remarks>
-internal sealed class ComposeTask
+internal sealed class ResourceTask<TResult>
 {
     private readonly object _gate = new();
 
@@ -291,16 +298,24 @@ internal sealed class ComposeTask
     /// </summary>
     /// <param name="taskId">任务标识。</param>
     /// <param name="hostName">所属主机名。</param>
-    /// <param name="composeName">Compose 项目名称。</param>
+    /// <param name="resourceKind">资源类型（<c>compose</c> / <c>container</c>）。</param>
+    /// <param name="resourceName">资源名称（Compose 项目名或容器名）。</param>
     /// <param name="operation">操作类型。</param>
     /// <param name="now">当前时刻（UTC）。</param>
-    internal ComposeTask(string taskId, string hostName, string composeName, string operation, DateTime now)
+    internal ResourceTask(
+        string taskId,
+        string hostName,
+        string resourceKind,
+        string resourceName,
+        string operation,
+        DateTime now)
     {
         this.TaskId = taskId;
         this.HostName = hostName;
-        this.ComposeName = composeName;
+        this.ResourceKind = resourceKind;
+        this.ResourceName = resourceName;
         this.Operation = operation;
-        this.Status = ComposeTaskStatus.Queued;
+        this.Status = ResourceTaskStatus.Queued;
         this.CreatedAt = now;
         this.UpdatedAt = now;
     }
@@ -316,9 +331,14 @@ internal sealed class ComposeTask
     internal string HostName { get; }
 
     /// <summary>
-    /// Compose 项目名称。
+    /// 资源类型（<c>compose</c> / <c>container</c>）。
     /// </summary>
-    internal string ComposeName { get; }
+    internal string ResourceKind { get; }
+
+    /// <summary>
+    /// 资源名称（Compose 项目名或容器名）。
+    /// </summary>
+    internal string ResourceName { get; }
 
     /// <summary>
     /// 操作类型。
@@ -328,7 +348,7 @@ internal sealed class ComposeTask
     /// <summary>
     /// 状态。
     /// </summary>
-    internal ComposeTaskStatus Status { get; private set; }
+    internal ResourceTaskStatus Status { get; private set; }
 
     /// <summary>
     /// 总体进度百分比；无法确定时为 <see langword="null"/>。
@@ -358,7 +378,7 @@ internal sealed class ComposeTask
     /// <summary>
     /// 成功时的结果摘要。
     /// </summary>
-    internal ComposeOperationResult? Result { get; private set; }
+    internal TResult? Result { get; private set; }
 
     /// <summary>
     /// 创建时刻（UTC）。
@@ -373,7 +393,7 @@ internal sealed class ComposeTask
     /// <summary>
     /// 任务是否已结束。
     /// </summary>
-    internal bool IsTerminal => this.Status is ComposeTaskStatus.Succeeded or ComposeTaskStatus.Failed;
+    internal bool IsTerminal => this.Status is ResourceTaskStatus.Succeeded or ResourceTaskStatus.Failed;
 
     /// <summary>
     /// 标记开始执行。
@@ -384,7 +404,7 @@ internal sealed class ComposeTask
     {
         lock (_gate)
         {
-            this.Status = ComposeTaskStatus.Running;
+            this.Status = ResourceTaskStatus.Running;
             this.Step = step;
             this.UpdatedAt = now;
         }
@@ -413,13 +433,13 @@ internal sealed class ComposeTask
     /// <param name="warnings">警告。</param>
     /// <param name="now">当前时刻（UTC）。</param>
     internal void MarkSucceeded(
-        ComposeOperationResult result,
+        TResult result,
         IReadOnlyList<string> warnings,
         DateTime now)
     {
         lock (_gate)
         {
-            this.Status = ComposeTaskStatus.Succeeded;
+            this.Status = ResourceTaskStatus.Succeeded;
             this.Result = result;
             this.Warnings = warnings;
             this.Percent = 100;
@@ -440,7 +460,7 @@ internal sealed class ComposeTask
     {
         lock (_gate)
         {
-            this.Status = ComposeTaskStatus.Failed;
+            this.Status = ResourceTaskStatus.Failed;
             this.ErrorCode = errorCode;
             this.ErrorMessage = errorMessage;
             this.UpdatedAt = now;
@@ -451,16 +471,17 @@ internal sealed class ComposeTask
     /// 取快照。
     /// </summary>
     /// <returns>任务的不可变快照。</returns>
-    internal ComposeTaskSnapshot Snapshot()
+    internal ResourceTaskSnapshot<TResult> Snapshot()
     {
         lock (_gate)
         {
-            return new ComposeTaskSnapshot(
+            return new ResourceTaskSnapshot<TResult>(
                 this.TaskId,
                 this.HostName,
-                this.ComposeName,
+                this.ResourceKind,
+                this.ResourceName,
                 this.Operation,
-                ComposeTaskStatusText.From(this.Status),
+                ResourceTaskStatusText.From(this.Status),
                 this.Percent,
                 this.Step,
                 this.ErrorCode,

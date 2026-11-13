@@ -6,7 +6,7 @@ import type {
   ComposeProjectDetail,
   ComposeProjectListResult,
   ComposeProjectSummary,
-  ComposeTaskSnapshot,
+  ResourceTaskSnapshot,
   ComposeWebhookInfo
 } from '@/types/api'
 
@@ -120,7 +120,7 @@ export function composeHandlers(scenario: () => MockScenario) {
    * ⚠️ **不能永远返回 `queued`**：那样前端的「完成后刷新列表」分支永远走不到，
    * 而「部署完列表还是旧的」正是这个功能最容易出的问题。
    */
-  function snapshotOf(task: MockTask): ComposeTaskSnapshot {
+  function snapshotOf(task: MockTask): ResourceTaskSnapshot {
     const elapsed = Date.now() - task.queuedAt
     const finished = elapsed >= TASK_DURATION_MS
     const running = !finished && elapsed >= TASK_DURATION_MS / 3
@@ -130,7 +130,8 @@ export function composeHandlers(scenario: () => MockScenario) {
     return {
       taskId: task.taskId,
       hostName: task.hostId,
-      composeName: task.composeName,
+      resourceKind: 'compose',
+      resourceName: task.composeName,
       operation: task.operation,
       status,
       percent: finished ? 100 : running ? 45 : null,

@@ -126,9 +126,10 @@ public sealed class ComposeOperationExecutor
 
         // 变量在**执行时**重新解析：请求期解析过了，但到执行时值可能已经变了。
         // 配置哈希取的是**插值后**的服务定义，因此「只改变量值」也会触发重建。
+        // Webhook 的覆盖项在这里生效——它只作用于本次部署，不落库。
         var host = await _accessor.ResolveAsync(request.HostName, cancellationToken).ConfigureAwait(false);
         var resolved = await _variables
-            .ResolveAsync(host.Id, request.ComposeName, cancellationToken: cancellationToken)
+            .ResolveAsync(host.Id, request.ComposeName, request.VariableOverrides, cancellationToken)
             .ConfigureAwait(false);
 
         var document = ComposeParser.Parse(request.ComposeContent, resolved.Values);

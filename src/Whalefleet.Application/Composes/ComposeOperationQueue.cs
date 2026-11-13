@@ -70,7 +70,8 @@ public sealed record ComposeOperationRequest(
     Guid? ActorId,
     string? ActorName,
     string? ClientIp,
-    string? WebhookTokenHint);
+    string? WebhookTokenHint,
+    IReadOnlyDictionary<string, string>? VariableOverrides = null);
 
 /// <summary>
 /// 编排操作队列：把「要做的事」交给后台工作线程。

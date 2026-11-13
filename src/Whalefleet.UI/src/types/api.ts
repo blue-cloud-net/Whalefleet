@@ -1741,14 +1741,21 @@ export interface ComposeOperationResult {
   volumesRemoved: number
 }
 
-/** Compose 任务的快照。 */
-export interface ComposeTaskSnapshot {
+/**
+ * 资源任务的快照（编排项目与容器重建共用同一套契约）。
+ *
+ * `resourceKind` 区分资源类型（compose / container），
+ * `resourceName` 是资源名（编排项目名或容器名）。
+ */
+export interface ResourceTaskSnapshot {
   /** 任务标识（客户端生成的进度令牌） */
   taskId: string
   /** 所属主机名 */
   hostName: string
-  /** Compose 项目名称 */
-  composeName: string
+  /** 资源类型（compose / container） */
+  resourceKind: string
+  /** 资源名称（编排项目名或容器名） */
+  resourceName: string
   /** 操作类型（deploy / update / stop / remove） */
   operation: string
   /** 状态 */

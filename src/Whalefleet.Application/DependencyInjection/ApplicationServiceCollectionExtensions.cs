@@ -19,6 +19,7 @@ using Whalefleet.Application.Hosts;
 using Whalefleet.Application.HostTags;
 using Whalefleet.Application.Images;
 using Whalefleet.Application.Networks;
+using Whalefleet.Application.Operations;
 using Whalefleet.Application.Permissions;
 using Whalefleet.Application.Repositories;
 using Whalefleet.Application.Composes;
@@ -126,7 +127,7 @@ public static class ApplicationServiceCollectionExtensions
         // 登记表要在「HTTP 请求线程」与「后台工作线程」之间共享状态，
         // 队列更是跨请求传递的唯一通道。
         services.AddSingleton<ComposeWebhookRateLimiter>();
-        services.AddSingleton<ComposeTaskRegistry>();
+        services.AddSingleton<ResourceTaskRegistry<ComposeOperationResult>>();
         services.AddSingleton<ComposeOperationQueue>();
 
         // 文件传输（0.14.0）：配置选项。**绑定与校验放在 Api 层**（与 RealtimeOptions / TerminalOptions
