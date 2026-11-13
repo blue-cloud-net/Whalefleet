@@ -183,7 +183,10 @@
     "selected": "已选 {count} 项",
     "sidebar": "切换侧边栏",
     "sizeSharedHint": "实际体积 {virtual}（含与其他镜像共享的层）",
-    "value": "值"
+    "value": "值",
+    "confirmTitle": "请确认",
+    "deleted": "已删除",
+    "operationFailed": "操作失败"
   },
   "container": {
     "action": {
@@ -1079,7 +1082,9 @@
     "sourceValue": {
       "alert-fired": "告警",
       "container-died": "容器退出",
-      "compose-task-failed": "编排失败"
+      "compose-task-failed": "编排失败",
+      "image-update-available": "镜像有更新",
+      "image-update-failed": "镜像更新失败"
     },
     "alert": {
       "hostOffline": "主机「{host}」离线",
@@ -1087,6 +1092,10 @@
       "containerMemory": "容器「{container}」（{host}）内存使用率 {value}%，超过阈值 {threshold}%",
       "containerNetwork": "容器「{container}」（{host}）网络吞吐 {value} MB/s，超过阈值 {threshold} MB/s",
       "loginFailureSurge": "最近 {window} 秒登录失败 {count} 次"
+    },
+    "imageUpdate": {
+      "available": "镜像「{image}」（{host}）有新版本",
+      "failed": "镜像「{image}」（{host}）更新失败：{detail}"
     }
   },
   "alert": {
@@ -1843,7 +1852,8 @@
       "containers": "容器",
       "overview": "概览",
       "services": "服务",
-      "webhook": "Webhook"
+      "webhook": "Webhook",
+      "variables": "变量与密钥"
     },
     "services": {
       "empty": "还没有服务",
@@ -1945,6 +1955,77 @@
       "tag": "标签（可选，默认 latest）",
       "sizeHint": "服务端有可配置的上传上限（默认 20 GB），且是边传边计数：超限会传到一半才失败。",
       "start": "开始导入"
+    }
+  },
+  "variables": {
+    "name": "名称",
+    "value": "值",
+    "flags": "标记",
+    "secret": "密钥",
+    "webhookOverridable": "Webhook 可覆盖",
+    "description": "备注",
+    "nameHint": "只允许字母、数字与下划线，且不能以数字开头（最长 64 个字符）",
+    "valueKeepHint": "留空表示不修改当前值",
+    "secretHint": "标记为密钥（界面遮罩显示，且不可被 Webhook 覆盖）",
+    "webhookOverridableHint": "允许 Webhook 的查询串覆盖此变量（密钥永远不可覆盖）",
+    "error": {
+      "nameInvalid": "变量名不合法：只允许字母、数字与下划线，且不能以数字开头",
+      "1909": "变量名不合法：只允许字母、数字与下划线，且不能以数字开头",
+      "1913": "变量不存在，可能已被删除",
+      "1914": "同一作用域内已有同名变量"
+    },
+    "global": {
+      "title": "全局变量",
+      "hint": "对所有 Compose 项目生效；项目级变量同名时覆盖这里的值",
+      "add": "新增变量",
+      "edit": "编辑变量",
+      "empty": "还没有全局变量",
+      "removeConfirm": "确定删除全局变量「{name}」吗？引用它的项目将无法部署。"
+    },
+    "project": {
+      "title": "变量与密钥",
+      "hint": "只对这个 Compose 项目生效；同名的全局变量会被这里的值覆盖",
+      "add": "新增项目变量",
+      "edit": "编辑项目变量",
+      "empty": "还没有变量，Compose 文件里可以直接使用 ${VAR} 引用全局变量",
+      "own": "项目变量",
+      "inherited": "继承的全局变量",
+      "inheritedHint": "这些变量在「全局设置」里维护，改动会影响所有项目",
+      "undefined": "**Compose 文件引用了这些变量，但它们还没有定义**：{names}。部署会因此失败——请在上面的变量里补上。",
+      "removeConfirm": "确定删除变量「{name}」吗？"
+    }
+  },
+  "imageUpdate": {
+    "title": "自动更新",
+    "hint": "按标签跟踪仓库摘要变化；镜像引用一旦改变就是一条新策略",
+    "track": "跟踪此标签",
+    "untrack": "取消跟踪",
+    "notTracked": "还没有跟踪这个标签的更新",
+    "checkNow": "立即检查",
+    "check": {
+      "updateAvailable": "仓库上有新版本，尚未应用",
+      "applied": "已更新并重建 {count} 个容器",
+      "upToDate": "已是最新版本"
+    },
+    "state": {
+      "label": "状态",
+      "unknown": "尚未检查",
+      "upToDate": "已是最新",
+      "updateAvailable": "有新版本",
+      "applied": "已应用",
+      "failed": "检查失败"
+    },
+    "mode": {
+      "label": "方式",
+      "notify": "只通知",
+      "auto": "自动更新"
+    },
+    "lastCheckedAt": "最近检查",
+    "remoteDigest": "远端摘要",
+    "autoHint": "自动更新会拉取新镜像并按原配置重建引用它的容器；重建失败时旧容器保留为 whalefleet-replaced-* 以便回退。",
+    "error": {
+      "1405": "更新策略不存在，可能已被删除",
+      "1406": "这个标签已经有更新策略了"
     }
   }
 }

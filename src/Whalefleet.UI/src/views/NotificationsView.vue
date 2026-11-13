@@ -27,7 +27,13 @@ const search = ref('')
 const isEmpty = computed(() => !loading.value && items.value.length === 0)
 
 const severityOptions: AlertSeverity[] = ['info', 'warning', 'critical']
-const sourceOptions: NotificationSourceKind[] = ['alert-fired', 'container-died', 'compose-task-failed']
+const sourceOptions: NotificationSourceKind[] = [
+  'alert-fired',
+  'container-died',
+  'compose-task-failed',
+  'image-update-available',
+  'image-update-failed'
+]
 
 /** 严重度 → el-tag 类型。 */
 function severityType(value: AlertSeverity): 'info' | 'warning' | 'danger' {

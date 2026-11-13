@@ -1849,7 +1849,12 @@ export type AlertSeverity = 'info' | 'warning' | 'critical'
 export type NotificationChannelKind = 'webhook' | 'email'
 
 /** 站内通知来源。 */
-export type NotificationSourceKind = 'alert-fired' | 'container-died' | 'compose-task-failed'
+export type NotificationSourceKind =
+  | 'alert-fired'
+  | 'container-died'
+  | 'compose-task-failed'
+  | 'image-update-available'
+  | 'image-update-failed'
 
 /** 告警规则。 */
 export interface AlertRule {
@@ -2141,4 +2146,97 @@ export interface ContainerRunSpec {
 export interface ComposeExportResult {
   name: string
   content: string
+}
+
+// ===== 环境变量与密钥（0.15.0） =====
+
+/**
+ * 变量作用域。
+ *
+ * **只有两档**：`global`（对所有 Compose 项目生效）与 `project`（只对一个项目生效）。
+ * 后端用 CHECK 约束锁死了「有主机但没有项目名」这种半截作用域，前端也不提供它。
+ */
+export type EnvVariableScope = 'global' | 'project'
+
+/**
+ * 环境变量投影。
+ *
+ * ⚠️ **值永远不在响应里**：`hasValue` 表示「设过值」，`valueMasked` 是界面用的遮罩串。
+ * 这不是「后端忘了返回」——变量里常存口令，而响应会进浏览器缓存与日志。
+ */
+export interface EnvVariableDto {
+  name: string
+  scope: EnvVariableScope
+  /** 项目级变量的主机名；全局变量为 null */
+  hostName: string | null
+  /** 项目级变量的 Compose 项目名；全局变量为 null */
+  composeName: string | null
+  /** 密钥：界面遮罩显示，且**永不可被 Webhook 覆盖** */
+  isSecret: boolean
+  /** 是否允许被 Webhook 的查询串覆盖（密钥恒为 false） */
+  webhookOverridable: boolean
+  description: string | null
+  hasValue: boolean
+  /** 界面直接展示的遮罩串（后端给，前端不自己拼） */
+  valueMasked: string | null
+}
+
+/** 某个 Compose 项目可见的变量集合。 */
+export interface ComposeVariablesResponse {
+  /** 项目自己的变量 */
+  project: EnvVariableDto[]
+  /** 从全局继承来的变量 */
+  inherited: EnvVariableDto[]
+  /**
+   * Compose 文件引用了、但**没有定义**的变量名。
+   *
+   * 后端在部署时会直接报 `1908`（而不是替换成空串），所以这里必须在界面上
+   * 提前告警——否则用户点「部署」才看到失败，而失败原因是「某处少了一个变量」。
+   */
+  undefined: string[]
+}
+
+/** 新增 / 修改变量的请求（`value` 省略表示「不改值」）。 */
+export interface SaveEnvVariableRequest {
+  name: string
+  value?: string | null
+  isSecret: boolean
+  webhookOverridable: boolean
+  description?: string | null
+}
+
+// ===== 镜像自动更新（0.15.0） =====
+
+/** 执行模式：只通知 / 拉取并重建。 */
+export type ImageUpdateMode = 'notify' | 'auto'
+
+/** 检查结论。`unknown`（还没查过）与 `up-to-date`（查过确实最新）是两件事。 */
+export type ImageUpdateState =
+  | 'unknown'
+  | 'up-to-date'
+  | 'update-available'
+  | 'applied'
+  | 'failed'
+
+/** 镜像自动更新策略。 */
+export interface ImageUpdatePolicy {
+  id: string
+  imageReference: string
+  mode: ImageUpdateMode
+  enabled: boolean
+  state: ImageUpdateState
+  /** 上次确认过的远端摘要；null = 尚未建立基线 */
+  baselineDigest: string | null
+  /** 最近一次探测到的远端摘要 */
+  remoteDigest: string | null
+  /** 失败原因 / 已应用说明 */
+  message: string | null
+  lastCheckedAt: string | null
+  lastAppliedAt: string | null
+}
+
+/** 立即检查的结果。 */
+export interface ImageUpdateCheckResult {
+  policy: ImageUpdatePolicy
+  recreatedContainers: number
 }
