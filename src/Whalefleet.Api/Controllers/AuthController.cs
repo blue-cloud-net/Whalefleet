@@ -1,10 +1,12 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
+using Whalefleet.Api.Middleware;
 using Whalefleet.Api.Security;
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Auth;
 using Whalefleet.Application.Common;
+using Whalefleet.Application.Users;
 
 namespace Whalefleet.Api.Controllers;
 
@@ -25,6 +27,7 @@ public sealed class AuthController : ControllerBase
     private readonly AuthService _authService;
     private readonly ICurrentUser _currentUser;
     private readonly IPermissionChecker _permissions;
+    private readonly UserService _users;
     private readonly ILogger<AuthController> _logger;
 
     /// <summary>
@@ -33,22 +36,26 @@ public sealed class AuthController : ControllerBase
     /// <param name="authService">认证用例服务。</param>
     /// <param name="currentUser">当前登录用户（由 JWT claims 解析）。</param>
     /// <param name="permissions">权限判定（<c>me</c> 端点回传全局有效权限集）。</param>
+    /// <param name="users">用户管理用例（<c>me</c> 端点回传「必须改密」标记）。</param>
     /// <param name="logger">日志记录器。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
     public AuthController(
         AuthService authService,
         ICurrentUser currentUser,
         IPermissionChecker permissions,
+        UserService users,
         ILogger<AuthController> logger)
     {
         ArgumentNullException.ThrowIfNull(authService);
         ArgumentNullException.ThrowIfNull(currentUser);
         ArgumentNullException.ThrowIfNull(permissions);
+        ArgumentNullException.ThrowIfNull(users);
         ArgumentNullException.ThrowIfNull(logger);
 
         _authService = authService;
         _currentUser = currentUser;
         _permissions = permissions;
+        _users = users;
         _logger = logger;
     }
 
@@ -75,7 +82,12 @@ public sealed class AuthController : ControllerBase
         var clientIp = ClientIpResolver.Resolve(this.HttpContext);
 
         var response = await _authService
-            .LoginAsync(request, clientIp, cancellationToken)
+            .LoginAsync(
+                request,
+                clientIp,
+                this.ReadFingerprint(),
+                this.HttpContext.Request.Headers.UserAgent.ToString(),
+                cancellationToken)
             .ConfigureAwait(false);
 
         _logger.LogDebug("登录成功（用户名={Username}，IP={ClientIp}）", response.User.Username, clientIp);
@@ -135,6 +147,25 @@ public sealed class AuthController : ControllerBase
     }
 
     /// <summary>
+    /// 读取客户端上报的设备指纹（<b>只记录、不校验</b>）。
+    /// </summary>
+    /// <returns>指纹；未上报时返回 <see langword="null"/>。</returns>
+    /// <remarks>
+    /// 指纹的作用是让人在会话列表里认出「哪一条是我自己」，因此它<b>不是</b>安全边界，
+    /// 客户端不上报也完全不影响登录。
+    /// </remarks>
+    private string? ReadFingerprint()
+    {
+        if (this.HttpContext.Request.Headers.TryGetValue(AccountSessionMiddleware.FingerprintHeader, out var value)
+            && !String.IsNullOrWhiteSpace(value))
+        {
+            return value.ToString().Trim();
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// 获取当前登录用户摘要。
     /// </summary>
     /// <returns>统一响应，<c>data</c> 为 <see cref="AuthenticatedUser"/>。</returns>
@@ -176,10 +207,17 @@ public sealed class AuthController : ControllerBase
             .GetEffectivePermissionsAsync(userId.Value, null, cancellationToken)
             .ConfigureAwait(false);
 
+        // 「必须改密」也查库：它是账号状态的一部分，不在令牌里。
+        // 前端据此强制跳转到改密页，而不是靠「请求返回 1205」才知道。
+        var mustChangePassword = await _users
+            .GetMustChangePasswordAsync(userId.Value, cancellationToken)
+            .ConfigureAwait(false);
+
         return this.Ok(ApiResults.Ok(new AuthenticatedUser(
             userId.Value,
             username,
             _currentUser.Roles,
-            [.. Core.Permissions.Permission.All.Where(permissions.Contains)])));
+            [.. Core.Permissions.Permission.All.Where(permissions.Contains)],
+            mustChangePassword)));
     }
 }

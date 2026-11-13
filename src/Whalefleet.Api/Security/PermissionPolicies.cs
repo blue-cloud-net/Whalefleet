@@ -62,4 +62,18 @@ public static class PermissionPolicies
     /// 增删改告警规则与通知渠道（<c>alert.write</c>）。
     /// </summary>
     public const string AlertsWrite = "perm.alert.write";
+
+    /// <summary>
+    /// 查看团队花名册、成员与团队角色授权（<c>team.read</c>）。
+    /// </summary>
+    public const string TeamsRead = "perm.team.read";
+
+    /// <summary>
+    /// 增删改团队、调整成员与团队角色授权、同步到成员（<c>team.write</c>）。
+    /// </summary>
+    /// <remarks>
+    /// <b>它比 <see cref="UsersWrite"/> 弱</b>：团队只<b>收窄</b>权限、不扩权，
+    /// 而团队成员的个人授权仍由 <c>user.write</c> 管理。
+    /// </remarks>
+    public const string TeamsWrite = "perm.team.write";
 }
