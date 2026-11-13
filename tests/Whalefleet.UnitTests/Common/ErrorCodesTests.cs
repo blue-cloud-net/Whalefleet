@@ -100,6 +100,11 @@ public class ErrorCodesTests
         [nameof(ErrorCodes.ComposeOperationInProgress)] = 1905,
         [nameof(ErrorCodes.ComposeWebhookTokenInvalid)] = 1906,
         [nameof(ErrorCodes.ComposeWebhookRateLimited)] = 1907,
+        [nameof(ErrorCodes.VariableNotDefined)] = 1908,
+        [nameof(ErrorCodes.InvalidVariableName)] = 1909,
+        [nameof(ErrorCodes.VariableNotOverridable)] = 1910,
+        [nameof(ErrorCodes.VariableNotFound)] = 1913,
+        [nameof(ErrorCodes.VariableNameAlreadyExists)] = 1914,
 
         // 告警与通知
         [nameof(ErrorCodes.AlertRuleNotFound)] = 1700,

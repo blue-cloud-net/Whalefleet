@@ -122,16 +122,50 @@ public class ComposeParserTests
     }
 
     [Fact]
-    public void 解析_含变量插值_报1904而不是替换成空串()
+    public void 解析_含变量插值_严格模式报1908而不是替换成空串()
     {
-        var exception = Assert.Throws<BusinessException>(() => ComposeParser.Parse("""
+        var exception = Assert.Throws<BusinessException>(() => ComposeParser.Parse(
+            """
             services:
               web:
                 image: nginx:${TAG}
-            """));
+            """,
+            new Dictionary<string, string>(StringComparer.Ordinal)));
 
-        exception.Code.Should().Be(ErrorCodes.ComposeInvalid);
-        exception.Message.Should().Contain("services.web.image");
+        exception.Code.Should().Be(ErrorCodes.VariableNotDefined);
+        exception.Message.Should().Contain("TAG");
+    }
+
+    [Fact]
+    public void 解析_含变量插值_宽松模式用占位符且记录被引用的变量()
+    {
+        var document = ComposeParser.Parse("""
+            services:
+              web:
+                image: nginx:${TAG}
+            """);
+
+        // 宽松模式不报错：详情页要在用户还没填变量值时也能打开。
+        document.Services.Should().ContainSingle();
+        document.ReferencedVariables.Should().Contain("TAG");
+
+        // 但占位符必须是**纯数字**——否则「ports: "${PORT}:80"」这类字段会解析失败。
+        document.Services[0].Image.Should().NotBe("nginx:");
+        document.Services[0].Image.Should().NotBe("nginx:${TAG}");
+    }
+
+    [Fact]
+    public void 解析_变量已定义_替换成真实值()
+    {
+        var document = ComposeParser.Parse(
+            """
+            services:
+              web:
+                image: nginx:${TAG}
+            """,
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["TAG"] = "1.2.3" });
+
+        document.Services[0].Image.Should().Be("nginx:1.2.3");
     }
 
     [Fact]
