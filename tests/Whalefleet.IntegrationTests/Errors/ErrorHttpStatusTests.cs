@@ -65,6 +65,8 @@ public class ErrorHttpStatusTests
         [ErrorCodes.DownloadTicketInvalid] = 410,
         [ErrorCodes.FileWriteDisabled] = 403,
         [ErrorCodes.TransferJobNotFound] = 404,
+        [ErrorCodes.ImageUpdatePolicyNotFound] = 404,
+        [ErrorCodes.ImageUpdatePolicyAlreadyExists] = 400,
 
         [ErrorCodes.ResourceForbidden] = 403,
         [ErrorCodes.HostForbidden] = 403,

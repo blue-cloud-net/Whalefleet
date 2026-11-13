@@ -231,7 +231,7 @@ public class ContainerWebhookEndpointsTests : IAsyncLifetime
         failed.Should().BeTrue("不存在的容器应在执行期失败，而不是永久停在 queued");
     }
 
-    private async Task<bool> WaitForFailureAsync(HttpClient client, string token, string taskId)
+    private static async Task<bool> WaitForFailureAsync(HttpClient client, string token, string taskId)
     {
         for (var attempt = 0; attempt < 40; attempt++)
         {

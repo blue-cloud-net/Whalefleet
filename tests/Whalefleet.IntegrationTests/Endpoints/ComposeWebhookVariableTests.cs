@@ -104,7 +104,7 @@ public class ComposeWebhookVariableTests : IAsyncLifetime
         }
         finally
         {
-            await this.CleanupAsync(client, name);
+            await CleanupAsync(client, name);
         }
     }
 
@@ -133,7 +133,7 @@ public class ComposeWebhookVariableTests : IAsyncLifetime
         }
         finally
         {
-            await this.CleanupAsync(client, name);
+            await CleanupAsync(client, name);
         }
     }
 
@@ -162,7 +162,7 @@ public class ComposeWebhookVariableTests : IAsyncLifetime
         }
         finally
         {
-            await this.CleanupAsync(client, name);
+            await CleanupAsync(client, name);
         }
     }
 
@@ -188,7 +188,7 @@ public class ComposeWebhookVariableTests : IAsyncLifetime
         }
         finally
         {
-            await this.CleanupAsync(client, name);
+            await CleanupAsync(client, name);
         }
     }
 
@@ -261,7 +261,7 @@ public class ComposeWebhookVariableTests : IAsyncLifetime
     /// 因此必须走删除端点把容器与网络一并清掉；
     /// 只清数据库会留下占着网段的网络，让别的集成测试随机 409。
     /// </remarks>
-    private async Task CleanupAsync(HttpClient client, string name)
+    private static async Task CleanupAsync(HttpClient client, string name)
     {
         for (var attempt = 0; attempt < 20; attempt++)
         {

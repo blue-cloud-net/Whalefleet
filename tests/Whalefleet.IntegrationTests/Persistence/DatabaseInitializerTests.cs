@@ -27,9 +27,10 @@ public class DatabaseInitializerTests
     /// 0.6.0 新增 <c>0008_host_tags.sql</c>；0.9.0 新增 <c>0009_audit_logs.sql</c>；
     /// 0.10.0 新增 <c>0010_composes.sql</c>；0.11.0 新增 <c>0011_alerts.sql</c>；
     /// 0.12.0 新增 <c>0012_container_rbac.sql</c>；0.13.0 新增 <c>0013_accounts_teams_security.sql</c>；
-    /// 0.15.0 新增 <c>0014_env_variables.sql</c> 与 <c>0015_container_webhooks.sql</c>。
+    /// 0.15.0 新增 <c>0014_env_variables.sql</c>、<c>0015_container_webhooks.sql</c>
+    /// 与 <c>0016_image_update_policies.sql</c>。
     /// </remarks>
-    private const int _expectedSchemaVersion = 15;
+    private const int _expectedSchemaVersion = 16;
 
     [Fact]
     public async Task 初始化_建出业务表并推进架构版本()
@@ -51,9 +52,9 @@ public class DatabaseInitializerTests
             + "AND name IN ('users', 'roles', 'hosts', 'refresh_tokens', 'user_role_assignments', "
             + "'host_tags', 'host_tag_assignments', 'composes', "
             + "'teams', 'team_members', 'team_role_assignments', 'security_settings', "
-            + "'env_variables', 'container_webhooks')");
+            + "'env_variables', 'container_webhooks', 'image_update_policies')");
 
-        tableCount.Should().Be("14");
+        tableCount.Should().Be("15");
     }
 
     [Fact]
