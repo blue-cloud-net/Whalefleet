@@ -145,6 +145,11 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<ImageTransferService>();
         services.AddScoped<ContainerTransferService>();
 
+        // 文件浏览（0.14.0）。Scoped：依赖 Scoped 的主机访问器、授权判定与当前用户。
+        // 卷浏览内部借道「一次性辅助容器」，但它对调用方是透明的。
+        services.AddScoped<ContainerFileService>();
+        services.AddScoped<VolumeFileService>();
+
         // 传输编排（0.14.0）。Scoped：它要读「当前用户 / 来源 IP」来填审计里的操作者。
         services.AddScoped<TransferService>();
 

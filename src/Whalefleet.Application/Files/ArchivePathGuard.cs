@@ -39,12 +39,12 @@ public static class ArchivePathGuard
     /// <param name="path">原始路径（可空、可相对、可带 <c>.</c> 与 <c>..</c>）。</param>
     /// <returns>规范化后的绝对路径（以 <c>/</c> 开头，根目录为 <c>/</c>）。</returns>
     /// <exception cref="BusinessException">
-    /// 路径非法（<c>1405</c>）——含 <c>..</c> 上跳、NUL 字符、超长、或空路径。
+    /// 路径非法（<c>1405</c>）——含 <c>..</c> 上跳、NUL 字符或超长。
     /// </exception>
     /// <remarks>
-    /// <para><b>为什么「空路径」算非法而不是「当前目录」</b>：界面上「当前目录」是显式的 <c>/</c>，
-    /// 而空串更可能是前端漏传字段。把它当成「当前目录」会静默返回根目录的列表——
-    /// 用户以为自己在一个子目录里，实际看到的是根目录的内容。</para>
+    /// <para><b>空路径 / 省略 = 根目录 <c>/</c></b>：浏览与写入目录时「不传 path」是常态，
+    /// 把它当非法会逼每个调用方补一个斜杠。而真正危险的是「下载根目录」——
+    /// 那条在下载端点单独拒绝（那不是一个可下载的文件）。</para>
     /// <para><b><c>.</c> 段会被去掉</b>（<c>/a/./b</c> → <c>/a/b</c>），
     /// 而 <c>..</c> 段<b>一律拒绝</b>而不是「往上跳」——
     /// 往上跳的合法用法（从子目录回到父目录）由界面上的面包屑负责，
@@ -52,11 +52,9 @@ public static class ArchivePathGuard
     /// </remarks>
     public static string Normalize(string? path)
     {
-        if (path is null || String.IsNullOrWhiteSpace(path))
+        if (String.IsNullOrWhiteSpace(path))
         {
-            throw new BusinessException(
-                ErrorCodes.InvalidFilePath,
-                "文件路径不能为空");
+            return "/";
         }
 
         if (path.Length > MaxPathLength)
