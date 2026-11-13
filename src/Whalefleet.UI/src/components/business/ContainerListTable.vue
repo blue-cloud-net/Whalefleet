@@ -512,9 +512,10 @@ function formatRate(bytesPerSecond: number | null): string {
 
     <!--
       行动作列：内容由调用方给（`row-actions` 插槽）。
-      宽度固定 136px：五个 24px 圆形按钮紧邻排列，5×24=120px 比 `gap-0.5` 的 128px 省 8px。
+      宽度固定 180px：六个 28px 圆形按钮（`IconActionButton` 的 `medium` 尺寸）
+      紧邻排列，6×28=168px，留 12px 余量。
     -->
-    <el-table-column v-if="showActions" :label="t('container.col.actions')" width="136">
+    <el-table-column v-if="showActions" :label="t('container.col.actions')" width="180">
       <template #default="{ row }">
         <div class="flex items-center">
           <slot name="row-actions" :row="row" />

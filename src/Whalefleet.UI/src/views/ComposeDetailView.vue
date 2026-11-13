@@ -740,6 +740,7 @@ onBeforeUnmount(() => {
                 :label="action.label"
                 :disabled="action.disabled"
                 :hint="action.hint"
+                size="medium"
                 @click="action.run(row)"
               />
             </template>

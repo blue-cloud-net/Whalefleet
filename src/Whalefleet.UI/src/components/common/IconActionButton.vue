@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
 /**
  * 行内图标动作按钮：图标 + 悬浮提示。
  *
@@ -18,14 +20,25 @@
  * 和路由 `meta.icon` 是同一个坑，见那里的 `collectRouteIcons` 与 `assertIconsExist`
  * （后者会在 dev/build 期直接抛错，所以名字写错不会静默溜过去）。
  */
-withDefaults(
+const props = withDefaults(
   defineProps<{
     /** Carbon 图标类名，如 `i-carbon-trash-can`；必须是 safelist 里已有的名字 */
     icon: string
     /** 悬浮提示文案，同时作为无障碍标签 */
     label: string
     tone?: 'default' | 'danger'
-    size?: 'default' | 'small'
+    /**
+     * 按钮尺寸：
+     *  - `small`：EP 原生 small 圆形按钮（24px），行内动作的常规尺寸；
+     *  - `medium`：28px 圆形按钮 + 16px 图标——24px 在密集表格里**偏小**，
+     *    图标细到要凑近看，因此容器 / 镜像列表的行内动作改用它；
+     *  - `default`：EP 原生 default 尺寸（32px）。
+     *
+     * `medium` 用「small 尺寸 + 尺寸覆写类」实现，而不是用 EP 的 `default`：
+     * EP 的 default 圆形按钮是 32px 且字号 14px，图标相对按钮偏小，
+     * 而这里要的是「图标也跟着变大」——两者比例要一起调。
+     */
+    size?: 'small' | 'medium' | 'default'
     /** 执行中：转圈并禁用 */
     loading?: boolean
     disabled?: boolean
@@ -71,6 +84,27 @@ withDefaults(
 const emit = defineEmits<{ click: [event: MouseEvent] }>()
 
 /**
+ * `medium` 的尺寸覆写类。
+ *
+ * ⚠️ 必须带 UnoCSS 的 important 前缀（`!`）：EP 的 `.el-button--small.is-circle`
+ * 把 `width` / `padding` 写死了（`width: var(--el-button-size)`、`padding: 5px`），
+ * 同特异度下**样式表在前的会输**——EP 的样式表在 `main.ts` 里 import，
+ * 组件样式是构建期注入的，谁先谁后并不稳定。这里用 `!` 直接压过它，
+ * 不依赖注入顺序。
+ */
+const MEDIUM_CLASS = '!w-7 !h-7 !p-0 !text-base'
+
+const elButtonSize = computed(() => (props.size === 'medium' ? 'small' : props.size))
+
+/**
+ * 覆写类只作用于**纯图标**形态：`showLabel` 是标准带框按钮，
+ * 尺寸由文字撑开，套圆形尺寸会把它压扁。
+ */
+const buttonClass = computed(() =>
+  props.size === 'medium' && !props.showLabel ? MEDIUM_CLASS : undefined
+)
+
+/**
  * tooltip 延迟：相邻几个按钮鼠标横扫过去时，无延迟会连成一片闪。
  * 300ms 足够用户在某个按钮上停稳再判断要不要读提示。
  */
@@ -95,7 +129,8 @@ const SHOW_AFTER = 300
         :text="!showLabel"
         :plain="showLabel"
         :circle="!showLabel"
-        :size="size"
+        :size="elButtonSize"
+        :class="buttonClass"
         :type="tone"
         :loading="loading"
         :disabled="disabled"

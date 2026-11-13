@@ -644,15 +644,16 @@ watch(
           </el-table-column>
 
           <!-- 与容器列表共用 IconActionButton：图标按钮 + tooltip 文字标签。
-               `gap-0` + 112px 定宽：四个 24px 按钮 = 96px，gap-0.5 时是 102px，取 112 留余量。
+               `gap-0` + 124px 定宽：四个 28px 按钮（`medium` 尺寸）= 112px，取 124 留余量。
                悬空镜像没有标签，打标签（要源标识）与推送（要 仓库:标签）都不成立，
                那一行只剩「详情 / 删除」两个按钮。 -->
-          <el-table-column :label="t('container.col.actions')" width="112">
+          <el-table-column :label="t('container.col.actions')" width="124">
             <template #default="{ row }">
               <div class="flex items-center">
                 <IconActionButton
                   icon="i-carbon-document-view"
                   :label="t('container.action.detail')"
+                  size="medium"
                   @click="openInspect(row)"
                 />
                 <IconActionButton
@@ -660,12 +661,14 @@ watch(
                   icon="i-carbon-tag"
                   :label="t('image.action.tag')"
                   :disabled="busyIds.has(row.id)"
+                  size="medium"
                   @click="openTag(row)"
                 />
                 <IconActionButton
                   v-if="!isDangling(row.repoTags)"
                   icon="i-carbon-container-image-push"
                   :label="t('image.action.push')"
+                  size="medium"
                   @click="openPush(row)"
                 />
                 <IconActionButton
@@ -673,6 +676,7 @@ watch(
                   :label="t('common.delete')"
                   tone="danger"
                   :loading="busyIds.has(row.id)"
+                  size="medium"
                   @click="onRemove(row)"
                 />
               </div>

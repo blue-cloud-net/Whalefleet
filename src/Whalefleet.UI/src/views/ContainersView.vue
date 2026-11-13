@@ -1313,6 +1313,7 @@ onBeforeUnmount(() => {
               :tone="action.tone ?? 'default'"
               :loading="action.loading"
               :disabled="action.disabled"
+              size="medium"
               @click="action.run(row)"
             />
             <!--
@@ -1336,6 +1337,7 @@ onBeforeUnmount(() => {
                 text
                 circle
                 size="small"
+                class="!w-7 !h-7 !p-0 !text-base"
                 :aria-label="t('container.action.more')"
                 :disabled="busyIds.has(row.id)"
               >
