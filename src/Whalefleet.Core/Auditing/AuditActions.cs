@@ -442,6 +442,18 @@ public static class AuditActions
     /// </summary>
     public const string NotificationChannelUpdate = "alert.channel.update";
     #endregion
+
+    #region 环境变量
+
+    /// <summary>
+    /// 新增 / 修改 / 删除环境变量。
+    /// </summary>
+    /// <remarks>
+    /// <b>审计里只有变量名，没有值</b>：值是密钥或配置，
+    /// 而审计日志会被采集器上报到集中式系统。
+    /// </remarks>
+    public const string VariableUpdate = "variable.update";
+    #endregion
 }
     #endregion
 
@@ -508,6 +520,11 @@ public static class AuditTargetTypes
     /// 审计日志本身。
     /// </summary>
     public const string Audit = "audit";
+
+    /// <summary>
+    /// 环境变量（全局变量或 Compose 项目级变量）。
+    /// </summary>
+    public const string Variable = "variable";
 
     /// <summary>
     /// 告警规则。

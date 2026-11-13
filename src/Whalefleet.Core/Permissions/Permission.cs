@@ -206,6 +206,25 @@ public static class Permission
     public const string AlertWrite = "alert.write";
 
     /// <summary>
+    /// 查看环境变量（全局变量与 Compose 项目级变量的清单）。
+    /// </summary>
+    /// <remarks>
+    /// <b>为什么不复用 <see cref="ComposeRead"/></b>：全局变量对<b>所有</b>主机生效，
+    /// 而 <c>compose.read</c> 是主机域权限——把它给出去等于让「某台主机的运维」
+    /// 看见了全实例的变量清单（包括密钥的<b>名字</b>与作用域）。
+    /// </remarks>
+    public const string VariableRead = "variable.read";
+
+    /// <summary>
+    /// 增删改环境变量（全局变量与 Compose 项目级变量）。
+    /// </summary>
+    /// <remarks>
+    /// 它比 <see cref="ComposeWrite"/> 弱：项目级变量虽然随项目生效，
+    /// 但它的「作用域」是全实例的（全局变量），因此权限放在全局档。
+    /// </remarks>
+    public const string VariableWrite = "variable.write";
+
+    /// <summary>
     /// 全局作用域的全部权限标识。
     /// </summary>
     public static readonly IReadOnlyList<string> Globals =
@@ -222,6 +241,8 @@ public static class Permission
         AlertWrite,
         TeamRead,
         TeamWrite,
+        VariableRead,
+        VariableWrite,
     ];
 
     /// <summary>
