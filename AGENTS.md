@@ -570,6 +570,7 @@ flowchart TD
 | [docs/api-spec.md](docs/api-spec.md) | RPC 风格 API 约定、**错误码分段表**、SignalR Hub、WebSocket 终端 |
 | [docs/features.md](docs/features.md) | 按模块分组的完整功能列表（按版本标注） |
 | [docs/roadmap.md](docs/roadmap.md) | 版本迭代与进度（**版本编号即执行顺序**；`0.0.6` 是空号） |
+| [docs/v0.14.0-implementation.md](docs/v0.14.0-implementation.md) | 0.14.0 的实测结论、取舍理由、配置项与测试口径 |
 | [docs/ui-guidelines.md](docs/ui-guidelines.md) | UI 布局、断点、组件分层、快捷键、主题、路由 |
 | [src/Whalefleet.UI/README.md](src/Whalefleet.UI/README.md) | 前端快速开始、**Mock 模式**（`?mock=on`，顶栏有 MOCK 角标） |
 | [CHANGELOG.md](CHANGELOG.md) | 已交付内容（0.0.1 – 0.0.15）；0.1.0 的条目暂存于 `[Unreleased]` |

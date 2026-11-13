@@ -86,7 +86,19 @@
       "userUpdatePassword": "修改密码",
       "volumeCreate": "创建数据卷",
       "volumePrune": "清理数据卷",
-      "volumeRemove": "删除数据卷"
+      "volumeRemove": "删除数据卷",
+      "imageExport": "导出镜像",
+      "imageImport": "导入镜像",
+      "containerExport": "导出容器",
+      "containerImport": "导入容器",
+      "containerCommit": "容器提交为镜像",
+      "containerFilesBrowse": "浏览容器文件",
+      "containerFilesDownload": "下载容器文件",
+      "containerFilesWrite": "上传容器文件",
+      "volumeFilesBrowse": "浏览卷文件",
+      "volumeFilesDownload": "下载卷文件",
+      "volumeFilesWrite": "上传卷文件",
+      "composeExport": "导出编排原文"
     },
     "col": {
       "action": "动作",
@@ -204,7 +216,8 @@
       "start": "启动",
       "stop": "停止",
       "terminal": "终端",
-      "update": "热更新"
+      "update": "热更新",
+      "export": "导出"
     },
     "addVolumes": {
       "done": "挂载已追加",
@@ -769,7 +782,9 @@
       "build": "构建镜像",
       "pull": "拉取镜像",
       "push": "推送镜像",
-      "tag": "打标签"
+      "tag": "打标签",
+      "export": "导出",
+      "import": "导入"
     },
     "backToList": "返回镜像列表",
     "batch": {
@@ -1865,6 +1880,71 @@
       "tokenHint": "请立刻保存这个令牌——服务端只保存哈希，之后无法再次查看。",
       "tokenTitle": "Webhook 令牌（只显示这一次）",
       "urlHint": "触发地址：{url}（把 {token} 换成上面的令牌）。"
+    }
+  },
+  "fileBrowser": {
+    "title": "文件浏览",
+    "path": "当前目录",
+    "root": "根目录",
+    "up": "上一级",
+    "refresh": "刷新",
+    "download": "下载",
+    "upload": "上传文件",
+    "uploadDialog": {
+      "title": "上传文件到 {path}",
+      "pick": "选择文件",
+      "hint": "上传会覆盖同名文件；单次上传受服务端上限约束",
+      "start": "上传",
+      "progress": "已上传 {percent}%"
+    },
+    "empty": "这个目录是空的",
+    "truncated": "目录条目过多，只显示了前一部分",
+    "loadFailed": "目录列举失败",
+    "writeDisabled": "管理员已禁用文件写入",
+    "overwriteHint": "同名文件会被覆盖，请确认后再上传",
+    "uploadSucceeded": "已上传 {name}",
+    "writeRootForbidden": "根目录不是一个可下载的文件",
+    "col": {
+      "name": "名称",
+      "size": "大小",
+      "modified": "修改时间",
+      "kind": "类型"
+    },
+    "kind": {
+      "directory": "目录",
+      "file": "文件",
+      "symlink": "符号链接",
+      "other": "其它"
+    },
+    "container": {
+      "title": "容器文件",
+      "emptyHint": "容器未运行时同样可以浏览——文件系统层与进程是否在跑无关"
+    },
+    "volume": {
+      "title": "卷文件",
+      "helperHint": "浏览卷时后端会临时创建一个辅助容器挂载它，用完立即删除"
+    }
+  },
+  "transfer": {
+    "download": "下载",
+    "downloadStarted": "已开始下载，请留意浏览器的下载记录",
+    "export": {
+      "title": "导出",
+      "backgroundHint": "导出在服务端后台跑，关掉这个对话框也会继续；产物有时效，请及时下载。",
+      "preparing": "正在准备…",
+      "reused": "该资源已有进行中的导出，这里显示的是同一个任务。"
+    },
+    "import": {
+      "title": "导入",
+      "subtitleImage": "导入镜像包（docker load）：保留原有的层、标签与历史，可以继续基于它构建。",
+      "subtitleContainer": "导入容器文件系统快照（docker import）：压成单层镜像，没有历史，不能追构建过程。",
+      "imageSucceeded": "已导入 {count} 个镜像引用",
+      "imageNoop": "镜像已存在且内容一致（守护进程回了 {count} 条消息）",
+      "containerSucceeded": "容器文件系统已导入为镜像",
+      "repository": "仓库名（可选，如 myapp）",
+      "tag": "标签（可选，默认 latest）",
+      "sizeHint": "服务端有可配置的上传上限（默认 20 GB），且是边传边计数：超限会传到一半才失败。",
+      "start": "开始导入"
     }
   }
 }

@@ -12,6 +12,7 @@ using Whalefleet.Application.Auditing;
 using Whalefleet.Application.Auth;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Containers;
+using Whalefleet.Application.Files;
 using Whalefleet.Application.HostGroups;
 using Whalefleet.Application.Hosts;
 using Whalefleet.Application.HostTags;
@@ -123,6 +124,37 @@ public static class ApplicationServiceCollectionExtensions
         services.AddSingleton<ComposeWebhookRateLimiter>();
         services.AddSingleton<ComposeTaskRegistry>();
         services.AddSingleton<ComposeOperationQueue>();
+
+        // 文件传输（0.14.0）：配置选项。**绑定与校验放在 Api 层**（与 RealtimeOptions / TerminalOptions
+        // 同一处理方式）——配置绑定是入站适配器的职责，而应用层不引入配置绑定相关的包。
+        // 这里注册一次「空」的选项类型，保证只用应用层时也能解析出默认值。
+        services.AddOptions<FilesOptions>();
+
+        // 下载票据登记表、任务登记表与队列（0.14.0）。**必须 Singleton**：
+        // 它们要在「HTTP 请求线程」与「后台工作线程」之间共享状态，
+        // 票据登记表更是「导出完成 → 浏览器来下载」这条链路的唯一交接点。
+        services.AddSingleton<DownloadTicketStore>();
+        services.AddSingleton<TransferJobRegistry>();
+        services.AddSingleton<TransferJobQueue>();
+
+        // 导出产物存储（0.14.0）。**必须 Singleton**：它持有临时目录的解析结果，
+        // 且导出与清理两个后台任务都要用它。
+        services.AddSingleton<ExportArtifactStore>();
+
+        // 镜像 / 容器传输用例（0.14.0）。Scoped：依赖 Scoped 的主机访问器与授权判定。
+        services.AddScoped<ImageTransferService>();
+        services.AddScoped<ContainerTransferService>();
+
+        // 文件浏览（0.14.0）。Scoped：依赖 Scoped 的主机访问器、授权判定与当前用户。
+        // 卷浏览内部借道「一次性辅助容器」，但它对调用方是透明的。
+        services.AddScoped<ContainerFileService>();
+        services.AddScoped<VolumeFileService>();
+
+        // 容器定义反向生成（0.14.0）。Scoped：只读一次 inspect，依赖主机访问器与授权判定。
+        services.AddScoped<ContainerDefinitionService>();
+
+        // 传输编排（0.14.0）。Scoped：它要读「当前用户 / 来源 IP」来填审计里的操作者。
+        services.AddScoped<TransferService>();
 
         // 仓库配置用例（0.4.0）。Scoped：依赖 Scoped 的仓储与口令保护器。
         // 同时以 IRepositoryCredentialResolver 的身份暴露**同一实例**——

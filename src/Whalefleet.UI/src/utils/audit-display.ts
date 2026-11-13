@@ -67,6 +67,20 @@ const ACTION_KEYS: Record<string, string> = {
   'role.assign': 'audit.action.roleAssign',
   'role.revoke': 'audit.action.roleRevoke',
 
+  // 文件传输与文件浏览（0.14.0）
+  'image.export': 'audit.action.imageExport',
+  'image.import': 'audit.action.imageImport',
+  'container.export': 'audit.action.containerExport',
+  'container.import': 'audit.action.containerImport',
+  'container.commit': 'audit.action.containerCommit',
+  'container.files.browse': 'audit.action.containerFilesBrowse',
+  'container.files.download': 'audit.action.containerFilesDownload',
+  'container.files.write': 'audit.action.containerFilesWrite',
+  'volume.files.browse': 'audit.action.volumeFilesBrowse',
+  'volume.files.download': 'audit.action.volumeFilesDownload',
+  'volume.files.write': 'audit.action.volumeFilesWrite',
+  'compose.export': 'audit.action.composeExport',
+
   // 审计自身
   'audit.export': 'audit.action.auditExport',
   'http.error': 'audit.action.httpError',

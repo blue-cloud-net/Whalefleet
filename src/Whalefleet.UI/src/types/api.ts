@@ -169,6 +169,20 @@ export const ErrorCode = {
   /** 通知渠道名已被占用 */
   NotificationChannelNameAlreadyExists: 1705,
 
+  // ===== 1405-1410 文件传输（0.14.0）=====
+  /** 文件路径非法（含 `..` 上跳、NUL 等） */
+  InvalidFilePath: 1405,
+  /** 文件或目录不存在 */
+  FilePathNotFound: 1406,
+  /** 上传体积超过上限 */
+  UploadTooLarge: 1407,
+  /** 下载票据无效或已过期 */
+  DownloadTicketInvalid: 1408,
+  /** 文件写入已被管理员禁用 */
+  FileWriteDisabled: 1409,
+  /** 导出任务不存在 */
+  TransferJobNotFound: 1410,
+
   // ===== 9000-9999 服务器内部错误 =====
   /** 服务器内部错误（未捕获异常） */
   InternalError: 9999
@@ -2005,4 +2019,119 @@ export interface TeamSyncResult {
   skipped: number
   /** 被同步的成员数 */
   members: number
+}
+
+/** 传输任务状态取值（与后端字符串逐字一致）。 */
+export type TransferJobStatusValue = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled'
+
+/**
+ * 导出任务的受理结果。
+ *
+ * `reused` 为 `true` 表示命中了**正在跑的同一个导出**——界面不该把它当成新任务提示。
+ */
+export interface TransferJobAccepted {
+  jobId: string
+  status: string
+  reused: boolean
+}
+
+/**
+ * 导出任务状态。
+ *
+ * ⚠️ **权威状态在这里，SignalR 只是提示**：连接断开时界面仍应能靠轮询 `status` 收敛。
+ * `downloadUrl` 是**带一次性票据**的地址，不要把令牌抽出来自己拼。
+ */
+export interface TransferJobStatus {
+  jobId: string
+  /** `image.export` / `container.export` */
+  operation: string
+  status: TransferJobStatusValue
+  /** 0–100；为 `null` 表示后端还说不准进度 */
+  percent: number | null
+  /** 当前阶段的可读说明 */
+  step: string | null
+  errorCode: number | null
+  errorMessage: string | null
+  /** 一次性下载地址；仅 `succeeded` 时有值 */
+  downloadUrl: string | null
+  fileName: string | null
+  sizeBytes: number | null
+  /** 产物与票据的过期时刻（UTC） */
+  expiresAt: string
+}
+
+/** 镜像导入结果（`docker load`）。 */
+export interface ImageImportResult {
+  /** 导入（或已存在）的镜像引用 */
+  images: string[]
+  /** 守护进程返回的消息条数（用于诊断「什么都没导入」） */
+  messageCount: number
+}
+
+/** 容器导入结果（`docker import`）。 */
+export interface ContainerImportResult {
+  imageId: string
+  repository: string | null
+  tag: string | null
+  /** 守护进程的提示（不是错误） */
+  warnings: string[]
+}
+
+/** 容器提交（commit 成镜像）的结果。 */
+export interface CommitContainerResult {
+  imageId: string
+  repository: string
+  tag: string
+}
+
+/**
+ * 文件 / 目录条目（容器与卷共用同一形状）。
+ *
+ * `kind` 是契约值（`file` / `directory` / `symlink` / `other`），**不是**布尔——
+ * 「符号链接」既不是普通文件也不是目录，用布尔表达会把它归错类。
+ */
+export interface FileEntry {
+  name: string
+  /** 规范化后的绝对路径（以 `/` 开头） */
+  path: string
+  kind: FileEntryKind
+  sizeBytes: number
+  /** 修改时间（UTC）；未知时为 `null` */
+  modifiedAt: string | null
+  /** 指向自身的符号链接目标；不是链接时为 `null` */
+  linkTarget: string | null
+  /** 权限位文本（如 `drwxr-xr-x`）；拿不到时为 `null` */
+  mode: string | null
+}
+
+/** 文件条目类型。 */
+export type FileEntryKind = 'file' | 'directory' | 'symlink' | 'other'
+
+/**
+ * 目录列举结果。
+ *
+ * `truncated` 为 `true` 表示条目数超过上限被截断——界面必须提示，
+ * 否则用户会以为目录里就这么多东西。
+ */
+export interface FileListResult {
+  path: string
+  /** 父目录路径；根目录为 `null`（界面据此决定面包屑要不要给「上一级」） */
+  parentPath: string | null
+  entries: FileEntry[]
+  truncated: boolean
+}
+
+/** 容器定义的输出格式。 */
+export type ContainerRunSpecFormat = 'dockerRun' | 'composeYaml'
+
+/** 容器定义生成结果。 */
+export interface ContainerRunSpec {
+  format: ContainerRunSpecFormat
+  content: string
+}
+
+/** 编排项目原文导出结果。 */
+export interface ComposeExportResult {
+  name: string
+  content: string
 }

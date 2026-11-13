@@ -111,6 +111,36 @@ public static class AuditActions
     /// 复制容器。
     /// </summary>
     public const string ContainerDuplicate = "container.duplicate";
+
+    /// <summary>
+    /// 导出容器文件系统（0.14.0）。
+    /// </summary>
+    public const string ContainerExport = "container.export";
+
+    /// <summary>
+    /// 导入容器文件系统为镜像（0.14.0）。
+    /// </summary>
+    public const string ContainerImport = "container.import";
+
+    /// <summary>
+    /// 提交容器为镜像（0.14.0）。
+    /// </summary>
+    public const string ContainerCommit = "container.commit";
+
+    /// <summary>
+    /// 浏览容器文件系统（0.14.0）。
+    /// </summary>
+    public const string ContainerFilesBrowse = "container.files.browse";
+
+    /// <summary>
+    /// 下载容器内的文件（0.14.0）。
+    /// </summary>
+    public const string ContainerFilesDownload = "container.files.download";
+
+    /// <summary>
+    /// 写入容器内的文件（0.14.0）。
+    /// </summary>
+    public const string ContainerFilesWrite = "container.files.write";
     #endregion
 
     #region 镜像
@@ -144,6 +174,16 @@ public static class AuditActions
     /// 清理镜像。
     /// </summary>
     public const string ImagePrune = "image.prune";
+
+    /// <summary>
+    /// 导出镜像（0.14.0）。
+    /// </summary>
+    public const string ImageExport = "image.export";
+
+    /// <summary>
+    /// 导入镜像（0.14.0）。
+    /// </summary>
+    public const string ImageImport = "image.import";
     #endregion
 
     #region 数据卷 / 网络
@@ -162,6 +202,21 @@ public static class AuditActions
     /// 清理数据卷。
     /// </summary>
     public const string VolumePrune = "volume.prune";
+
+    /// <summary>
+    /// 浏览卷内文件（0.14.0）。
+    /// </summary>
+    public const string VolumeFilesBrowse = "volume.files.browse";
+
+    /// <summary>
+    /// 下载卷内文件（0.14.0）。
+    /// </summary>
+    public const string VolumeFilesDownload = "volume.files.download";
+
+    /// <summary>
+    /// 写入卷内文件（0.14.0）。
+    /// </summary>
+    public const string VolumeFilesWrite = "volume.files.write";
 
     /// <summary>
     /// 创建网络。
@@ -205,6 +260,11 @@ public static class AuditActions
     /// 删除 Compose 项目。
     /// </summary>
     public const string ComposeRemove = "compose.remove";
+
+    /// <summary>
+    /// 导出 Compose 项目的 YAML（0.14.0）。
+    /// </summary>
+    public const string ComposeExport = "compose.export";
 
     /// <summary>
     /// 由 Webhook 触发重放已保存的 YAML。

@@ -165,6 +165,12 @@
 | `1402` | 500 | Docker API 调用失败 | 0.0.9 |
 | `1403` | 408 | Docker 操作超时 | 0.0.9 |
 | `1404` | 409 | 资源当前状态不允许该操作（如不带 `force` 删除运行中的容器） | 0.0.9 |
+| `1405` | 400 | 文件路径非法（含 `..` 上跳、绝对路径、NUL 等） | 0.14.0 |
+| `1406` | 404 | 文件或目录不存在 | 0.14.0 |
+| `1407` | 413 | 上传体积超过上限（`Files:MaxUploadBytes`） | 0.14.0 |
+| `1408` | 410 | 下载票据无效或已过期 | 0.14.0 |
+| `1409` | 403 | 文件写入已被管理员禁用（`Files:AllowWrite=false`） | 0.14.0 |
+| `1410` | 404 | 导出任务不存在 | 0.14.0 |
 | `1500` | 403 | 无权限访问此资源 | 0.0.8 |
 | `1501` | 403 | 无权限访问此主机 | 0.0.8 |
 | `1502` | 403 | 无权限执行此操作（包含容器 read/write 拒绝） | 0.1.0 |
@@ -455,9 +461,42 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 账号启停与会话管理 | `POST /api/v1/admin/users/{userId}/{enable,disable}` + `POST /api/v1/admin/users/{userId}/sessions/*` | 0.13.0 |
 | 安全策略设置 | `POST /api/v1/admin/settings/security/{get,update}` | 0.13.0 |
 | 镜像 / 容器导出导入 | `POST /api/v1/hosts/{hostId}/{images,containers}/{export,import,commit}` | 0.14.0 |
-| 容器 / 卷文件浏览 | `POST /api/v1/hosts/{hostId}/{containers,volumes}/files/{list,download}` | 0.14.0 |
+| 容器 / 卷文件浏览 | `POST /api/v1/hosts/{hostId}/{containers,volumes}/files/{list,download,write}` | 0.14.0 |
+| **容器定义反向生成** | `POST /api/v1/hosts/{hostId}/containers/run-command` | 0.14.0 |
+| **编排原文导出** | `POST /api/v1/hosts/{hostId}/composes/export` | 0.14.0 |
 | 资源 Webhook | `POST /api/v1/webhooks/{token}` | 0.15.0 |
 | 镜像自动更新策略 | `POST /api/v1/hosts/{hostId}/images/auto-update` | 0.15.0 |
+
+### 文件传输（0.14.0）
+
+导出的产物可能几 GB，因此**不用「请求返回就是文件」的形态**，分三步：
+
+| 步骤 | 端点 | 说明 |
+|------|------|------|
+| 1 发起 | `POST .../{images,containers}/export` | 返回 `202` 的 `jobId` + `reused`。同一资源已有进行中的导出时 `reused=true`，复用那个任务 |
+| 2 轮询 | `POST .../export/status` | **权威状态源**。SignalR 只推提示，断线后仍靠这里收敛 |
+| 3 下载 | `GET .../download?token=<票据>` | 票据短时效、绑定单个产物文件；过期回 `1408`（410） |
+
+> **为什么下载要票据而不是直接带 access token**：`<a href>` 与浏览器原生下载都无法带
+> `Authorization` 头，把 access token 拼进 URL 会把它写进访问日志与浏览器历史。
+> 票据只能换一个文件、且很快就过期，泄露的代价有界。
+
+**上传**（`.../images/import`、`.../containers/import`）的请求体是裸
+`application/octet-stream`，不是 multipart：只有一个东西要传，套表单只多一次拷贝。
+服务端**边读边数**，超限立刻回 `1407`（413），不会先把几十 GB 收完再说太大。
+上限是 `Files:MaxUploadBytes`（默认 20 GB）。
+
+**文件浏览**：
+
+| 端点 | 说明 |
+|------|------|
+| `POST .../containers/files/list` | `{ containerId, path }`，`path` 省略等价于 `/` |
+| `POST .../containers/files/download` | 返回单个文件的字节流 |
+| `POST .../containers/files/write` | `multipart/form-data`：`containerId` / `directoryPath` / `file` |
+| `POST .../volumes/files/{list,download,write}` | 同上，把 `containerId` 换成 `volumeName` |
+
+> 卷没有文件接口，后端借**一次性辅助容器**挂载。因此这三条比容器侧多一次容器创建开销。
+> `Files:AllowWrite=false` 时写入一律回 `1409`（403）。
 
 > 审计写入由**应用服务层统一埋点**（非每个 Controller 各写一遍），中间件兜底记录 4xx / 5xx。
 > **Webhook 端点无需认证头**——URL 里的 token 即凭据；因此令牌必须可撤销、可重置，且随库备份。

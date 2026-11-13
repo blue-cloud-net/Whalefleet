@@ -14,6 +14,8 @@ import ImageTagDialog from '@/components/business/ImageTagDialog.vue'
 import BuildImageDialog from '@/components/business/BuildImageDialog.vue'
 import PushImageDialog from '@/components/business/PushImageDialog.vue'
 import PruneDialog from '@/components/business/PruneDialog.vue'
+import TransferExportDialog from '@/components/business/TransferExportDialog.vue'
+import TransferImportDialog from '@/components/business/TransferImportDialog.vue'
 import ImageSize from '@/components/business/ImageSize.vue'
 import { onActionRequest } from '@/composables/useActionBus'
 import { useListSearch } from '@/composables/useListSearch'
@@ -71,6 +73,13 @@ const buildDialogVisible = ref(false)
  */
 const pushTarget = ref<ImageSummary | null>(null)
 const pushDialogVisible = ref(false)
+
+/** 导出（0.14.0）：后台任务 + 一次性票据下载，详情见 TransferExportDialog。 */
+const exportTarget = ref<ImageSummary | null>(null)
+const exportDialogVisible = ref(false)
+
+/** 导入（0.14.0）：上传 tar 包走 `docker load`。 */
+const importVisible = ref(false)
 
 /** 0.3.0：打标签的目标镜像与对话框开关。 */
 const tagDialogVisible = ref(false)
@@ -386,6 +395,35 @@ function openPush(image: ImageSummary): void {
   pushDialogVisible.value = true
 }
 
+/**
+ * 打开导出对话框。
+ *
+ * ⚠️ 传**镜像引用**（如 `nginx:1.27`）而不是镜像 ID：用引用导出会保留全部
+ * `RepoTags`，而用 ID 导出的包再导入时没有标签，得手工重新打——
+ * 用户拿到一个 `<none>:<none>` 会以为是导入坏了。
+ */
+function openExport(image: ImageSummary): void {
+  exportTarget.value = image
+  exportDialogVisible.value = true
+}
+
+/** 导出用的资源标识：优先镜像引用，悬空镜像退回 ID（只有它能用）。 */
+const exportResourceId = computed(() => {
+  const image = exportTarget.value
+
+  if (!image) {
+    return ''
+  }
+
+  return image.repoTags?.[0] ?? image.id
+})
+
+/** 导入完成后刷新：新镜像可能不在当前页，回到第一页。 */
+async function onImported(): Promise<void> {
+  pageIndex.value = 0
+  await load()
+}
+
 /** 推送不改变本地镜像，列表理论上不变；仍刷新一次以拉齐「推送后 digest 变化」这类情况。 */
 async function onPushed(): Promise<void> {
   await load()
@@ -522,6 +560,9 @@ watch(
               ⚠️ 图标放在 `icon` 插槽里（不是默认插槽）：EP 的 Button 在 `loading` 时
               会用转圈图标**替换** `icon` 插槽的内容，两个都渲染就成了「转圈 + 图标」。
             -->
+            <el-button size="small" @click="importVisible = true">
+              {{ t('image.action.import') }}
+            </el-button>
             <el-tooltip
               :content="t('common.refresh')"
               placement="bottom"
@@ -672,6 +713,12 @@ watch(
                   @click="openPush(row)"
                 />
                 <IconActionButton
+                  icon="i-carbon-download"
+                  :label="t('image.action.export')"
+                  size="medium"
+                  @click="openExport(row)"
+                />
+                <IconActionButton
                   icon="i-carbon-trash-can"
                   :label="t('common.delete')"
                   tone="danger"
@@ -732,6 +779,21 @@ watch(
       :host-id="hostId"
       :scope="pruneScope"
       @done="load"
+    />
+
+    <TransferExportDialog
+      v-model="exportDialogVisible"
+      :host-id="hostId"
+      kind="image"
+      :resource-id="exportResourceId"
+      :resource-name="exportTarget?.repoTags?.[0] ?? exportTarget?.id"
+    />
+
+    <TransferImportDialog
+      v-model="importVisible"
+      :host-id="hostId"
+      kind="image"
+      @done="onImported"
     />
 
     <p class="mt-3 text-xs text-content-faint">

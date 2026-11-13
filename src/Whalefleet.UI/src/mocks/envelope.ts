@@ -151,6 +151,20 @@ export const ErrorCode = {
   /** 通知渠道名已被占用 → 400 */
   NotificationChannelNameAlreadyExists: 1705,
 
+  // ===== 1405-1410 文件传输（0.14.0）=====
+  /** 文件路径非法 → 400 */
+  InvalidFilePath: 1405,
+  /** 文件或目录不存在 → 404 */
+  FilePathNotFound: 1406,
+  /** 上传体积超过上限 → 413 */
+  UploadTooLarge: 1407,
+  /** 下载票据无效或已过期 → 410 */
+  DownloadTicketInvalid: 1408,
+  /** 文件写入已被管理员禁用 → 403 */
+  FileWriteDisabled: 1409,
+  /** 导出任务不存在 → 404 */
+  TransferJobNotFound: 1410,
+
   /** 服务器内部错误 → 500 */
   InternalError: 9999
 } as const
@@ -238,6 +252,13 @@ export const ERROR_HTTP_STATUS: Record<number, number> = {
   [ErrorCode.NotificationNotFound]: 404,
   [ErrorCode.NotificationChannelNameAlreadyExists]: 400,
 
+  [ErrorCode.InvalidFilePath]: 400,
+  [ErrorCode.FilePathNotFound]: 404,
+  [ErrorCode.UploadTooLarge]: 413,
+  [ErrorCode.DownloadTicketInvalid]: 410,
+  [ErrorCode.FileWriteDisabled]: 403,
+  [ErrorCode.TransferJobNotFound]: 404,
+
   [ErrorCode.InternalError]: 500
 }
 
@@ -315,6 +336,13 @@ export const ERROR_MESSAGES: Record<number, string> = {
   [ErrorCode.NotificationChannelTestFailed]: '通知渠道测试失败',
   [ErrorCode.NotificationNotFound]: '通知不存在',
   [ErrorCode.NotificationChannelNameAlreadyExists]: '通知渠道名已被占用',
+
+  [ErrorCode.InvalidFilePath]: '文件路径非法',
+  [ErrorCode.FilePathNotFound]: '文件或目录不存在',
+  [ErrorCode.UploadTooLarge]: '上传体积超过上限',
+  [ErrorCode.DownloadTicketInvalid]: '下载票据无效或已过期',
+  [ErrorCode.FileWriteDisabled]: '文件写入已被管理员禁用',
+  [ErrorCode.TransferJobNotFound]: '导出任务不存在',
 
   [ErrorCode.InternalError]: '服务器内部错误'
 }

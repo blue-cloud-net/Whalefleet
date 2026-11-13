@@ -116,12 +116,21 @@ endif
 # 残留容器会继续占着宿主机端口。
 ALL_SERVICES := direct proxy socket-proxy
 
+# 卷文件浏览的辅助镜像（0.14.0）。
+#
+# ⚠️ **不由 compose 启动**：它是一个「用完即删」的一次性容器，
+# 由应用在浏览 / 写入卷时按需创建。0.x 期间它**不发布**，需要本机自己构建一次：
+#     make volfs-helper
+# 1.0.0 起改由发布流水线推到 GHCR，届时 `Files:HelperImage` 默认值指向那里。
+VOLFS_HELPER_IMAGE ?= whalefleet/volfs-helper:0.14.0
+
 .PHONY: help env-file deploy-env deps check check-docker \
         dev dev-server dev-client \
         dev-up dev-down dev-logs dev-build dev-restart dev-reset \
         build build-dotnet restore \
         docker-build docker-up docker-start docker-smoke docker-logs docker-ps \
         docker-shell docker-down docker-clean docker-admin-password backup \
+        volfs-helper \
         test test-unit test-ui lint typecheck format clean
 
 # ---------- 帮助 ----------
@@ -247,6 +256,12 @@ docker-build: check-docker ## 构建生产镜像（docker build --load，context
 	@echo "🔨 构建镜像 $(IMAGE)..."
 	@docker build --load -f "$(DOCKERFILE)" -t "$(IMAGE)" "$(ROOT_DIR)"
 	@echo "✅ 镜像已构建：$(IMAGE)"
+
+volfs-helper: check-docker ## 构建卷文件浏览辅助镜像（0.14.0；很小，约 5 kB）
+	@echo "🔨 构建辅助镜像 $(VOLFS_HELPER_IMAGE)..."
+	@docker build --load -f "deployments/volfs-helper/Dockerfile" -t "$(VOLFS_HELPER_IMAGE)" "deployments/volfs-helper"
+	@echo "✅ 辅助镜像已构建：$(VOLFS_HELPER_IMAGE)"
+	@echo "   卷文件浏览首次使用时不会再等待拉取。"
 
 docker-up: deploy-env docker-build ## 一键生产部署（构建 → 启动 → 等待健康；MODE=direct|proxy）
 	@# 先停掉另一种模式：两者共用同一个宿主机端口与数据卷，无法共存

@@ -29,6 +29,8 @@ public static class ErrorHttpStatus
         ErrorCategory.Timeout => StatusCodes.Status408RequestTimeout,
         ErrorCategory.Forbidden => StatusCodes.Status403Forbidden,
         ErrorCategory.Conflict => StatusCodes.Status409Conflict,
+        ErrorCategory.PayloadTooLarge => StatusCodes.Status413PayloadTooLarge,
+        ErrorCategory.Gone => StatusCodes.Status410Gone,
         ErrorCategory.UpstreamFailure => StatusCodes.Status502BadGateway,
         ErrorCategory.Internal => StatusCodes.Status500InternalServerError,
         _ => StatusCodes.Status500InternalServerError,

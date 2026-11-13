@@ -58,6 +58,26 @@ public enum ErrorCategory
     Conflict,
 
     /// <summary>
+    /// 请求体超出服务端允许的体积上限（0.14.0 起）。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="Validation"/> 分开：请求<b>内容本身合法</b>，是它太大了。
+    /// 归成 400 会让调用方去查自己的请求体，而真正该做的是改用更小的文件——
+    /// 两者给出的后续动作完全不同，因此需要独立的状态码（413）。
+    /// </remarks>
+    PayloadTooLarge,
+
+    /// <summary>
+    /// 资源曾经存在、但已失效（0.14.0 起的下载票据）。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="NotFound"/> 分开：404 意味着「从来没有这个东西」，
+    /// 而票据是「有过、现在过期了」——重新生成一个就能继续，
+    /// 调用方据此可以自动重试而不是报错。
+    /// </remarks>
+    Gone,
+
+    /// <summary>
     /// 上游依赖（Docker 守护进程等）失败。
     /// </summary>
     UpstreamFailure,

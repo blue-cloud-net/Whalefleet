@@ -55,11 +55,21 @@ builder.Services.AddApiTerminal(builder.Configuration);
 // 必须在 AddApplication 之后（要用例服务与队列），且在 AddApiRealtime 之后（通知器依赖 Hub 上下文）。
 builder.Services.AddApiComposes();
 
+// 文件传输（0.14.0）：Files 配置节 + 导出后台工作器 + 过期清理。
+// 必须在 AddApplication 之后（要用例服务与登记表）。
+builder.Services.AddApiFiles(builder.Configuration);
+
 // ASP.NET Core MVC（Controller 风格）
 // 统一 JSON 编码策略（中文原样输出而非 \uXXXX），与错误响应序列化器共用同一套默认值。
 builder.Services
     .AddControllers()
     .AddJsonOptions(options => ApiJsonDefaults.Apply(options.JsonSerializerOptions));
+
+// 原始字节流的输入格式化器（0.14.0）：导入端点收的是裸 tar 流，
+// 默认的 JSON 格式化器读不了它——不放行的话请求会得到 415「不支持的媒体类型」。
+// 插在最前面：它的 CanReadType 只认 Stream，与 JSON 格式化器不冲突。
+builder.Services.Configure<MvcOptions>(options =>
+    options.InputFormatters.Insert(0, new OctetStreamInputFormatter()));
 
 // 统一「模型校验失败」与「框架自动生成的客户端错误」的响应形状，使其符合 ApiResult 契约。
 builder.Services.Configure<ApiBehaviorOptions>(options =>

@@ -60,6 +60,12 @@ public class ErrorCodesTests
         [nameof(ErrorCodes.DockerApiFailed)] = 1402,
         [nameof(ErrorCodes.DockerTimeout)] = 1403,
         [nameof(ErrorCodes.DockerResourceConflict)] = 1404,
+        [nameof(ErrorCodes.InvalidFilePath)] = 1405,
+        [nameof(ErrorCodes.FilePathNotFound)] = 1406,
+        [nameof(ErrorCodes.UploadTooLarge)] = 1407,
+        [nameof(ErrorCodes.DownloadTicketInvalid)] = 1408,
+        [nameof(ErrorCodes.FileWriteDisabled)] = 1409,
+        [nameof(ErrorCodes.TransferJobNotFound)] = 1410,
 
         // 资源权限
         [nameof(ErrorCodes.ResourceForbidden)] = 1500,

@@ -497,6 +497,56 @@ public sealed class ComposeProjectService
     }
 
     /// <summary>
+    /// 导出 Compose 项目的原文（YAML）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">导出请求（项目名称）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>项目名称与 YAML 原文。</returns>
+    /// <exception cref="BusinessException">
+    /// 名称为空或非法（<c>1000</c>）、主机不可达（<c>1301</c>）、
+    /// 不是本平台部署（<c>1903</c>）或缺少 <c>compose.write</c>（<c>1502</c>）。
+    /// </exception>
+    /// <remarks>
+    /// <para><b>「导出」本质是取回我们存下的 YAML</b>，因此它只对<b>本平台部署</b>的项目成立。
+    /// 守护进程上存在、但库里没有记录的项目（<c>managed=false</c>）拿不到原文——
+    /// 那里的信息只有「容器现在长什么样」，反推出来的 YAML 与用户最初的意图不是一回事。
+    /// 这种情形必须报 <c>1903</c>，而不是「导出成功但内容是我猜的」。</para>
+    /// <para><b>为什么不复用 <see cref="InspectAsync"/></b>：详情要遍历全部容器做权限判定
+    /// 与远端 discover，而导出只需一次数据库读取。用详情换原文会让「导出」变成
+    /// 一次几十次守护进程调用的操作，且任何一台容器不可达就导不出来。</para>
+    /// <para><b>要求 <c>compose.write</c> 而不是 <c>compose.read</c></b>：YAML 里常有
+    /// 明文的环境变量（数据库密码、令牌），这份原文等价于「部署能力」。
+    /// 判据与 webhook 令牌同口径——能把它复制走的人，本来就能拿它部署。</para>
+    /// </remarks>
+    public async Task<ComposeExportResult> ExportAsync(
+        string hostId,
+        ExportComposeProjectRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var name = RequireName(request.Name);
+        var host = await _accessor.ResolveAsync(hostId, cancellationToken).ConfigureAwait(false);
+
+        await EnsureWritePermissionAsync(host.Id, cancellationToken).ConfigureAwait(false);
+
+        var recorded = await _repository
+            .FindByHostAndNameAsync(host.Id, name, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (recorded is null)
+        {
+            throw new BusinessException(
+                ErrorCodes.ComposeNotManaged,
+                $"编排 Compose 项目「{name}」不是本平台部署的，没有可导出的原文");
+        }
+
+        return new ComposeExportResult(recorded.Name, recorded.ComposeContent);
+    }
+
+    /// <summary>
     /// 查询任务快照。
     /// </summary>
     /// <param name="hostId">主机标识（主机名）。</param>

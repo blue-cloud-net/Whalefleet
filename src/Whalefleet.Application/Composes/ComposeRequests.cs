@@ -192,3 +192,14 @@ public sealed record ComposeWebhookTaskRequest
     /// </summary>
     public string? TaskId { get; init; }
 }
+
+/// <summary>
+/// 导出 Compose 项目原文的请求。
+/// </summary>
+public sealed record ExportComposeProjectRequest
+{
+    /// <summary>
+    /// Compose 项目名称；必填。
+    /// </summary>
+    public string? Name { get; init; }
+}
