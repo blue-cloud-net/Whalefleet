@@ -8,8 +8,11 @@ using Microsoft.Extensions.Logging;
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Common;
+using Whalefleet.Application.Operations;
+using Whalefleet.Application.Webhooks;
 using Whalefleet.Application.Docker;
 using Whalefleet.Application.Images;
+using Whalefleet.Application.Variables;
 
 namespace Whalefleet.Application.Composes;
 
@@ -52,6 +55,7 @@ public sealed class ComposeOperationExecutor
 
     private readonly IDockerHostAccessor _accessor;
     private readonly ImageService _images;
+    private readonly EnvVariableService _variables;
     private readonly IOperationProgressPublisher _progress;
     private readonly ILogger<ComposeOperationExecutor> _logger;
 
@@ -60,22 +64,26 @@ public sealed class ComposeOperationExecutor
     /// </summary>
     /// <param name="accessor">主机访问器。</param>
     /// <param name="images">镜像用例（复用它的拉取逻辑与进度上报）。</param>
+    /// <param name="variables">环境变量用例（部署时注入 Compose 的变量值）。</param>
     /// <param name="progress">进度发布器。</param>
     /// <param name="logger">日志。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
     public ComposeOperationExecutor(
         IDockerHostAccessor accessor,
         ImageService images,
+        EnvVariableService variables,
         IOperationProgressPublisher progress,
         ILogger<ComposeOperationExecutor> logger)
     {
         ArgumentNullException.ThrowIfNull(accessor);
         ArgumentNullException.ThrowIfNull(images);
+        ArgumentNullException.ThrowIfNull(variables);
         ArgumentNullException.ThrowIfNull(progress);
         ArgumentNullException.ThrowIfNull(logger);
 
         _accessor = accessor;
         _images = images;
+        _variables = variables;
         _progress = progress;
         _logger = logger;
     }
@@ -88,7 +96,7 @@ public sealed class ComposeOperationExecutor
     /// <returns>结果摘要。</returns>
     /// <exception cref="BusinessException">操作失败。</exception>
     public async Task<ComposeOperationResult> ExecuteAsync(
-        ComposeOperationRequest request,
+        ResourceOperationRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -108,7 +116,7 @@ public sealed class ComposeOperationExecutor
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>结果摘要。</returns>
     private async Task<ComposeOperationResult> ApplyAsync(
-        ComposeOperationRequest request,
+        ResourceOperationRequest request,
         CancellationToken cancellationToken)
     {
         if (String.IsNullOrWhiteSpace(request.ComposeContent))
@@ -118,8 +126,16 @@ public sealed class ComposeOperationExecutor
 
         var client = await _accessor.GetClientAsync(request.HostName, cancellationToken).ConfigureAwait(false);
 
-        var document = ComposeParser.Parse(request.ComposeContent);
-        var plan = ComposePlanner.Plan(request.ComposeName, document);
+        // 变量在**执行时**重新解析：请求期解析过了，但到执行时值可能已经变了。
+        // 配置哈希取的是**插值后**的服务定义，因此「只改变量值」也会触发重建。
+        // Webhook 的覆盖项在这里生效——它只作用于本次部署，不落库。
+        var host = await _accessor.ResolveAsync(request.HostName, cancellationToken).ConfigureAwait(false);
+        var resolved = await _variables
+            .ResolveAsync(host.Id, request.ResourceName, request.VariableOverrides, cancellationToken)
+            .ConfigureAwait(false);
+
+        var document = ComposeParser.Parse(request.ComposeContent, resolved.Values);
+        var plan = ComposePlanner.Plan(request.ResourceName, document);
 
         var created = 0;
         var recreated = 0;
@@ -144,7 +160,7 @@ public sealed class ComposeOperationExecutor
                     continue;
                 }
 
-                if (await EnsureNetworkAsync(client, request.ComposeName, network.ActualName, cancellationToken).ConfigureAwait(false))
+                if (await EnsureNetworkAsync(client, request.ResourceName, network.ActualName, cancellationToken).ConfigureAwait(false))
                 {
                     networksCreated++;
                     createdNetworkIds.Add(network.ActualName);
@@ -160,13 +176,13 @@ public sealed class ComposeOperationExecutor
                     continue;
                 }
 
-                if (await EnsureVolumeAsync(client, request.ComposeName, volume.ActualName, cancellationToken).ConfigureAwait(false))
+                if (await EnsureVolumeAsync(client, request.ResourceName, volume.ActualName, cancellationToken).ConfigureAwait(false))
                 {
                     volumesCreated++;
                 }
             }
 
-            var existing = await ListProjectContainersAsync(client, request.ComposeName, cancellationToken)
+            var existing = await ListProjectContainersAsync(client, request.ResourceName, cancellationToken)
                 .ConfigureAwait(false);
 
             var total = Math.Max(plan.Services.Count, 1);
@@ -214,7 +230,7 @@ public sealed class ComposeOperationExecutor
             _logger.LogInformation(
                 "主机 {HostId} 应用编排 {ComposeProject}：新建 {Created} 个服务、重建 {Recreated} 个、清理 {Removed} 个孤儿",
                 request.HostName,
-                request.ComposeName,
+                request.ResourceName,
                 created,
                 recreated,
                 removed);
@@ -257,7 +273,7 @@ public sealed class ComposeOperationExecutor
     /// </remarks>
     private async Task<(int Created, int Recreated, int Started)> ApplyServiceAsync(
         IDockerClient client,
-        ComposeOperationRequest request,
+        ResourceOperationRequest request,
         ComposePlan plan,
         ComposeServicePlan servicePlan,
         IReadOnlyList<ContainerListResponse> existing,
@@ -352,7 +368,7 @@ public sealed class ComposeOperationExecutor
     /// <returns>删除数与保留数。</returns>
     private async Task<(int Removed, int Skipped)> PruneOrphansAsync(
         IDockerClient client,
-        ComposeOperationRequest request,
+        ResourceOperationRequest request,
         ComposePlan plan,
         IReadOnlyList<ContainerListResponse> existing,
         CancellationToken cancellationToken)
@@ -391,11 +407,11 @@ public sealed class ComposeOperationExecutor
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>结果摘要。</returns>
     private async Task<ComposeOperationResult> StopAsync(
-        ComposeOperationRequest request,
+        ResourceOperationRequest request,
         CancellationToken cancellationToken)
     {
         var client = await _accessor.GetClientAsync(request.HostName, cancellationToken).ConfigureAwait(false);
-        var containers = await ListProjectContainersAsync(client, request.ComposeName, cancellationToken)
+        var containers = await ListProjectContainersAsync(client, request.ResourceName, cancellationToken)
             .ConfigureAwait(false);
 
         var stopped = 0;
@@ -418,7 +434,7 @@ public sealed class ComposeOperationExecutor
             stopped++;
         }
 
-        _logger.LogInformation("主机 {HostId} 停止编排 {ComposeProject}：停了 {Stopped} 个容器", request.HostName, request.ComposeName, stopped);
+        _logger.LogInformation("主机 {HostId} 停止编排 {ComposeProject}：停了 {Stopped} 个容器", request.HostName, request.ResourceName, stopped);
 
         return new ComposeOperationResult(0, 0, 0, 0, 0, stopped, 0, 0, 0);
     }
@@ -430,11 +446,11 @@ public sealed class ComposeOperationExecutor
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>结果摘要。</returns>
     private async Task<ComposeOperationResult> RemoveAsync(
-        ComposeOperationRequest request,
+        ResourceOperationRequest request,
         CancellationToken cancellationToken)
     {
         var client = await _accessor.GetClientAsync(request.HostName, cancellationToken).ConfigureAwait(false);
-        var containers = await ListProjectContainersAsync(client, request.ComposeName, cancellationToken)
+        var containers = await ListProjectContainersAsync(client, request.ResourceName, cancellationToken)
             .ConfigureAwait(false);
 
         var stopped = 0;
@@ -470,7 +486,7 @@ public sealed class ComposeOperationExecutor
         {
             if (!String.Equals(
                     LabelOf(network, ComposeLabels.Project),
-                    request.ComposeName,
+                    request.ResourceName,
                     StringComparison.Ordinal))
             {
                 continue;
@@ -491,7 +507,7 @@ public sealed class ComposeOperationExecutor
                 _logger.LogWarning(
                     "主机 {HostId} 删除编排 {ComposeProject} 时网络 {Network} 未被删除：{Reason}",
                     request.HostName,
-                    request.ComposeName,
+                    request.ResourceName,
                     network.Name,
                     exception.Message);
             }
@@ -512,7 +528,7 @@ public sealed class ComposeOperationExecutor
             {
                 if (!String.Equals(
                         LabelOf(volume, ComposeLabels.Project),
-                        request.ComposeName,
+                        request.ResourceName,
                         StringComparison.Ordinal))
                 {
                     continue;
@@ -537,7 +553,7 @@ public sealed class ComposeOperationExecutor
         _logger.LogInformation(
             "主机 {HostId} 删除编排 {ComposeProject}：移除 {Containers} 个容器、{Networks} 个网络、{Volumes} 个卷",
             request.HostName,
-            request.ComposeName,
+            request.ResourceName,
             containers.Count,
             removedNetworks,
             removedVolumes);
@@ -568,7 +584,7 @@ public sealed class ComposeOperationExecutor
     /// </remarks>
     private async Task EnsureImageAsync(
         IDockerClient client,
-        ComposeOperationRequest request,
+        ResourceOperationRequest request,
         string image,
         CancellationToken cancellationToken)
     {
@@ -584,7 +600,7 @@ public sealed class ComposeOperationExecutor
         _logger.LogInformation(
             "主机 {HostId} 编排 {ComposeProject} 拉取镜像 {Image}（策略={Policy}）",
             request.HostName,
-            request.ComposeName,
+            request.ResourceName,
             image,
             request.PullAlways ? "always" : "missing");
 
@@ -752,14 +768,14 @@ public sealed class ComposeOperationExecutor
     /// <param name="servicePlan">服务计划。</param>
     /// <returns>创建参数。</returns>
     private static CreateContainerParameters BuildCreateParameters(
-        ComposeOperationRequest request,
+        ResourceOperationRequest request,
         ComposeServicePlan servicePlan)
     {
         var service = servicePlan.Service;
 
         var labels = new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            [ComposeLabels.Project] = request.ComposeName,
+            [ComposeLabels.Project] = request.ResourceName,
             [ComposeLabels.Service] = service.Name,
             [ComposeLabels.ContainerNumber] = "1",
             [ComposeLabels.ConfigHash] = servicePlan.ConfigHash,
@@ -971,7 +987,7 @@ public sealed class ComposeOperationExecutor
     /// <param name="step">当前步骤。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     private async Task PublishAsync(
-        ComposeOperationRequest request,
+        ResourceOperationRequest request,
         double? percent,
         string step,
         CancellationToken cancellationToken)

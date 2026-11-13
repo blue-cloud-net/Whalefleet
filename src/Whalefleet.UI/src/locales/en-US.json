@@ -183,7 +183,10 @@
     "selected": "{count} selected",
     "sidebar": "Toggle sidebar",
     "sizeSharedHint": "Actual size {virtual} (includes layers shared with other images)",
-    "value": "Value"
+    "value": "Value",
+    "confirmTitle": "Please confirm",
+    "deleted": "Deleted",
+    "operationFailed": "Operation failed"
   },
   "container": {
     "action": {
@@ -1079,7 +1082,9 @@
     "sourceValue": {
       "alert-fired": "Alert",
       "container-died": "Container exit",
-      "compose-task-failed": "Stack failure"
+      "compose-task-failed": "Stack failure",
+      "image-update-available": "Image update available",
+      "image-update-failed": "Image update failed"
     },
     "alert": {
       "hostOffline": "Host “{host}” is offline",
@@ -1087,6 +1092,10 @@
       "containerMemory": "Container “{container}” on {host} memory usage {value}%, above {threshold}%",
       "containerNetwork": "Container “{container}” on {host} network throughput {value} MB/s, above {threshold} MB/s",
       "loginFailureSurge": "{count} login failures in the last {window} seconds"
+    },
+    "imageUpdate": {
+      "available": "Image \"{image}\" on {host} has a new version",
+      "failed": "Image update for \"{image}\" on {host} failed: {detail}"
     }
   },
   "alert": {
@@ -1843,7 +1852,8 @@
       "containers": "Containers",
       "overview": "Overview",
       "services": "Services",
-      "webhook": "Webhook"
+      "webhook": "Webhook",
+      "variables": "Variables & secrets"
     },
     "services": {
       "empty": "No services",
@@ -1945,6 +1955,77 @@
       "tag": "Tag (optional, defaults to latest)",
       "sizeHint": "The server enforces a configurable upload limit (20 GB by default) while streaming, so an oversized upload fails midway.",
       "start": "Start import"
+    }
+  },
+  "variables": {
+    "name": "Name",
+    "value": "Value",
+    "flags": "Flags",
+    "secret": "Secret",
+    "webhookOverridable": "Webhook override",
+    "description": "Note",
+    "nameHint": "Letters, digits and underscores only; must not start with a digit (max 64 chars)",
+    "valueKeepHint": "Leave empty to keep the current value",
+    "secretHint": "Mark as secret (masked in the UI, never overridable by webhooks)",
+    "webhookOverridableHint": "Allow a webhook query string to override this variable (secrets never can)",
+    "error": {
+      "nameInvalid": "Invalid variable name: letters, digits and underscores only; must not start with a digit",
+      "1909": "Invalid variable name: letters, digits and underscores only; must not start with a digit",
+      "1913": "Variable not found; it may have been deleted",
+      "1914": "A variable with this name already exists in the same scope"
+    },
+    "global": {
+      "title": "Global variables",
+      "hint": "Applies to every Compose project; project-level variables override these",
+      "add": "Add variable",
+      "edit": "Edit variable",
+      "empty": "No global variables yet",
+      "removeConfirm": "Delete global variable \"{name}\"? Projects referencing it will fail to deploy."
+    },
+    "project": {
+      "title": "Variables & secrets",
+      "hint": "Applies to this Compose project only; overrides global variables with the same name",
+      "add": "Add project variable",
+      "edit": "Edit project variable",
+      "empty": "No variables yet; your Compose file can reference global variables with ${VAR}",
+      "own": "Project variables",
+      "inherited": "Inherited global variables",
+      "inheritedHint": "Maintained under Global settings; changes affect every project",
+      "undefined": "**The Compose file references these variables, but they are not defined**: {names}. Deployment will fail — add them above.",
+      "removeConfirm": "Delete variable \"{name}\"?"
+    }
+  },
+  "imageUpdate": {
+    "title": "Auto update",
+    "hint": "Tracks the digest behind a tag; changing the reference means a new policy",
+    "track": "Track this tag",
+    "untrack": "Stop tracking",
+    "notTracked": "This tag is not tracked yet",
+    "checkNow": "Check now",
+    "check": {
+      "updateAvailable": "A newer version is available in the registry",
+      "applied": "Updated and recreated {count} container(s)",
+      "upToDate": "Already up to date"
+    },
+    "state": {
+      "label": "State",
+      "unknown": "Not checked",
+      "upToDate": "Up to date",
+      "updateAvailable": "Update available",
+      "applied": "Applied",
+      "failed": "Check failed"
+    },
+    "mode": {
+      "label": "Mode",
+      "notify": "Notify only",
+      "auto": "Auto update"
+    },
+    "lastCheckedAt": "Last checked",
+    "remoteDigest": "Remote digest",
+    "autoHint": "Auto update pulls the new image and recreates the containers using it with their original config; on failure the old container is kept as whalefleet-replaced-* so you can roll back.",
+    "error": {
+      "1411": "Update policy not found; it may have been deleted",
+      "1412": "This tag already has an update policy"
     }
   }
 }

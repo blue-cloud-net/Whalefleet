@@ -329,7 +329,8 @@ public class ComposeEndpointsTests : IAsyncLifetime
             var snapshot = await WaitForTerminalAsync(client, taskId);
 
             snapshot.TaskId.Should().Be(taskId);
-            snapshot.ComposeName.Should().Be(name);
+            snapshot.ResourceKind.Should().Be("compose");
+            snapshot.ResourceName.Should().Be(name);
             snapshot.Operation.Should().Be("deploy");
             snapshot.Status.Should().Be("succeeded");
             snapshot.Result.Should().NotBeNull();
@@ -641,7 +642,8 @@ public class ComposeEndpointsTests : IAsyncLifetime
 
     private sealed record TaskPayload(
         string TaskId,
-        string ComposeName,
+        string ResourceKind,
+        string ResourceName,
         string Operation,
         string Status,
         double? Percent,

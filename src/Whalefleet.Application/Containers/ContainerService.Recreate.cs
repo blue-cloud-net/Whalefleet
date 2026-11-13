@@ -322,10 +322,65 @@ public sealed partial class ContainerService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
         ArgumentNullException.ThrowIfNull(request);
-        using var lease = await _coordinator.AcquireAsync(hostId, cancellationToken).ConfigureAwait(false);
 
         var containerId = RequireContainerId(request.ContainerId);
         containerId = await _authorization.EnsureAsync(hostId, containerId, Permission.ContainerWrite, cancellationToken).ConfigureAwait(false);
+
+        return await this.RecreateAuthorizedAsync(hostId, containerId, request, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 由 Webhook 触发的容器重建（**跳过「当前用户」的权限判定**）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="containerId">容器标识。</param>
+    /// <param name="start">重建后是否启动；<see langword="null"/> 表示沿用原容器的运行状态。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>新容器 ID、名称、被让位的旧容器 ID 与实际生效的运行状态。</returns>
+    /// <exception cref="BusinessException">
+    /// 容器不存在（<c>1401</c>）、重建失败且回滚也失败（<c>1402</c>）或主机不可达（<c>1301</c>）。
+    /// </exception>
+    /// <remarks>
+    /// <para><b>为什么可以跳过「当前用户」的权限判定</b>：Webhook 是<b>匿名</b>端点，
+    /// 凭据是 URL 里的令牌——而令牌等价于「对这个容器重建」的权限，
+    /// 它在生成时已经过了用户的权限检查。反过来说：
+    /// <b>持令牌的人不需要是平台的登录用户</b>。</para>
+    /// <para><b>但「授权分配」仍要搬移</b>：重建会让容器 ID 改变，
+    /// 0.12.0 的容器粒度授权必须跟着搬到新容器上——
+    /// 否则重建一次，这个容器的授权就没了（而用户什么都没做）。</para>
+    /// </remarks>
+    public async Task<ContainerRecreatedResult> RecreateByWebhookAsync(
+        string hostId,
+        string containerId,
+        bool? start = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(containerId);
+
+        return await this.RecreateAuthorizedAsync(
+            hostId,
+            containerId,
+            new RecreateContainerRequest { ContainerId = containerId, Start = start },
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 已通过权限判定的重建流程。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="containerId">容器标识（已通过权限判定）。</param>
+    /// <param name="request">重建请求。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>重建结果。</returns>
+    private async Task<ContainerRecreatedResult> RecreateAuthorizedAsync(
+        string hostId,
+        string containerId,
+        RecreateContainerRequest request,
+        CancellationToken cancellationToken)
+    {
+        using var lease = await _coordinator.AcquireAsync(hostId, cancellationToken).ConfigureAwait(false);
+
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
 
         var source = await DockerErrorTranslator.ExecuteAsync(

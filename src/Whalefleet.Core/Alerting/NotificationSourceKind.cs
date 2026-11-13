@@ -23,6 +23,16 @@ public enum NotificationSourceKind
     /// Compose 项目任务失败。
     /// </summary>
     ComposeTaskFailed,
+
+    /// <summary>
+    /// 镜像有新版本（仓库摘要变了）。
+    /// </summary>
+    ImageUpdateAvailable,
+
+    /// <summary>
+    /// 镜像更新检查或自动应用失败。
+    /// </summary>
+    ImageUpdateFailed,
 }
 
 /// <summary>
@@ -40,6 +50,8 @@ public static class NotificationSourceKindText
         NotificationSourceKind.AlertFired => "alert-fired",
         NotificationSourceKind.ContainerDied => "container-died",
         NotificationSourceKind.ComposeTaskFailed => "compose-task-failed",
+        NotificationSourceKind.ImageUpdateAvailable => "image-update-available",
+        NotificationSourceKind.ImageUpdateFailed => "image-update-failed",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "未知的通知来源类型"),
     };
 
@@ -63,6 +75,8 @@ public static class NotificationSourceKindText
             "alert-fired" => NotificationSourceKind.AlertFired,
             "container-died" => NotificationSourceKind.ContainerDied,
             "compose-task-failed" => NotificationSourceKind.ComposeTaskFailed,
+            "image-update-available" => NotificationSourceKind.ImageUpdateAvailable,
+            "image-update-failed" => NotificationSourceKind.ImageUpdateFailed,
             _ => throw new FormatException($"未知的通知来源类型文本：{text}"),
         };
     }

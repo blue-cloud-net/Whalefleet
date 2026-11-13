@@ -66,6 +66,8 @@ public class ErrorCodesTests
         [nameof(ErrorCodes.DownloadTicketInvalid)] = 1408,
         [nameof(ErrorCodes.FileWriteDisabled)] = 1409,
         [nameof(ErrorCodes.TransferJobNotFound)] = 1410,
+        [nameof(ErrorCodes.ImageUpdatePolicyNotFound)] = 1411,
+        [nameof(ErrorCodes.ImageUpdatePolicyAlreadyExists)] = 1412,
 
         // 资源权限
         [nameof(ErrorCodes.ResourceForbidden)] = 1500,
@@ -100,6 +102,14 @@ public class ErrorCodesTests
         [nameof(ErrorCodes.ComposeOperationInProgress)] = 1905,
         [nameof(ErrorCodes.ComposeWebhookTokenInvalid)] = 1906,
         [nameof(ErrorCodes.ComposeWebhookRateLimited)] = 1907,
+        [nameof(ErrorCodes.VariableNotDefined)] = 1908,
+        [nameof(ErrorCodes.InvalidVariableName)] = 1909,
+        [nameof(ErrorCodes.VariableNotOverridable)] = 1910,
+        [nameof(ErrorCodes.VariableNotFound)] = 1913,
+        [nameof(ErrorCodes.VariableNameAlreadyExists)] = 1914,
+        [nameof(ErrorCodes.ContainerWebhookTokenInvalid)] = 1911,
+        [nameof(ErrorCodes.ContainerWebhookRateLimited)] = 1912,
+        [nameof(ErrorCodes.ContainerWebhookNotFound)] = 1915,
 
         // 告警与通知
         [nameof(ErrorCodes.AlertRuleNotFound)] = 1700,

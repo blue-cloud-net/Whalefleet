@@ -1,7 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Threading.Channels;
 
-namespace Whalefleet.Application.Composes;
+namespace Whalefleet.Application.Operations;
 
 /// <summary>
 /// 编排操作类型。
@@ -58,10 +58,11 @@ public static class ComposeOperations
 /// <param name="ActorName">操作者名（快照）。</param>
 /// <param name="ClientIp">来源 IP。</param>
 /// <param name="WebhookTokenHint">触发来源的 Webhook 令牌提示；<see langword="null"/> 表示用户手动触发。</param>
-public sealed record ComposeOperationRequest(
+public sealed record ResourceOperationRequest(
     string TaskId,
     string HostName,
-    string ComposeName,
+    string ResourceKind,
+    string ResourceName,
     string Operation,
     string? ComposeContent,
     bool PullAlways,
@@ -70,7 +71,9 @@ public sealed record ComposeOperationRequest(
     Guid? ActorId,
     string? ActorName,
     string? ClientIp,
-    string? WebhookTokenHint);
+    string? WebhookTokenHint,
+    IReadOnlyDictionary<string, string>? VariableOverrides = null,
+    bool Started = true);
 
 /// <summary>
 /// 编排操作队列：把「要做的事」交给后台工作线程。
@@ -89,11 +92,11 @@ public sealed record ComposeOperationRequest(
 [SuppressMessage(
     "Naming",
     "CA1711:Identifiers should not have incorrect suffix",
-    Justification = "ComposeOperationQueue 是本项目的领域名词（编排操作队列），非 CA1711 所针对的系统命名空间后缀。")]
-public sealed class ComposeOperationQueue
+    Justification = "ResourceOperationQueue 是本项目的领域名词（编排操作队列），非 CA1711 所针对的系统命名空间后缀。")]
+public sealed class ResourceOperationQueue
 {
-    private readonly Channel<ComposeOperationRequest> _channel =
-        Channel.CreateUnbounded<ComposeOperationRequest>(new UnboundedChannelOptions
+    private readonly Channel<ResourceOperationRequest> _channel =
+        Channel.CreateUnbounded<ResourceOperationRequest>(new UnboundedChannelOptions
         {
             // 单读者：不需要多播；关闭时把排队里的都放出去
             SingleReader = true,
@@ -105,7 +108,7 @@ public sealed class ComposeOperationQueue
     /// </summary>
     /// <param name="request">操作请求。</param>
     /// <returns>入队成功返回 <see langword="true"/>。</returns>
-    public bool TryEnqueue(ComposeOperationRequest request)
+    public bool TryEnqueue(ResourceOperationRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -117,7 +120,7 @@ public sealed class ComposeOperationQueue
     /// </summary>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>操作请求的异步序列。</returns>
-    public IAsyncEnumerable<ComposeOperationRequest> ReadAllAsync(CancellationToken cancellationToken = default) =>
+    public IAsyncEnumerable<ResourceOperationRequest> ReadAllAsync(CancellationToken cancellationToken = default) =>
         _channel.Reader.ReadAllAsync(cancellationToken);
 
     /// <summary>

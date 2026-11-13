@@ -76,4 +76,14 @@ public static class PermissionPolicies
     /// 而团队成员的个人授权仍由 <c>user.write</c> 管理。
     /// </remarks>
     public const string TeamsWrite = "perm.team.write";
+
+    /// <summary>
+    /// 查看环境变量（<c>variable.read</c>）。
+    /// </summary>
+    public const string VariablesRead = "perm.variable.read";
+
+    /// <summary>
+    /// 增删改环境变量（<c>variable.write</c>）。
+    /// </summary>
+    public const string VariablesWrite = "perm.variable.write";
 }

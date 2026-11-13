@@ -188,7 +188,8 @@ public class ComposeWebhookEndpointsTests : IAsyncLifetime
 
             var snapshot = (await ReadAsync(task)).GetProperty("data");
             snapshot.GetProperty("taskId").GetString().Should().Be(taskId);
-            snapshot.GetProperty("composeName").GetString().Should().Be(name);
+            snapshot.GetProperty("resourceKind").GetString().Should().Be("compose");
+            snapshot.GetProperty("resourceName").GetString().Should().Be(name);
         }
         finally
         {
@@ -444,7 +445,8 @@ public class ComposeWebhookEndpointsTests : IAsyncLifetime
 
     private sealed record TaskPayload(
         string TaskId,
-        string ComposeName,
+        string ResourceKind,
+        string ResourceName,
         string Operation,
         string Status,
         int? ErrorCode,

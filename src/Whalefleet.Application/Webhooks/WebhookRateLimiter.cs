@@ -1,22 +1,22 @@
 using System.Collections.Concurrent;
 
-namespace Whalefleet.Application.Composes;
+namespace Whalefleet.Application.Webhooks;
 
 /// <summary>
-/// 跨请求共享的 Webhook 滑动窗口限流器，每个 Compose 项目每分钟最多受理十次。
+/// 跨请求共享的 Webhook 滑动窗口限流器，每个 Webhook 目标每分钟最多受理十次。
 /// </summary>
-public sealed class ComposeWebhookRateLimiter(TimeProvider clock)
+public sealed class WebhookRateLimiter(TimeProvider clock)
 {
     private readonly ConcurrentDictionary<Guid, Queue<long>> _triggers = new();
 
     /// <summary>
     /// 原子地检查窗口并登记一次触发；被拒绝的请求不增加窗口记录。
     /// </summary>
-    /// <param name="composeId">Compose 项目主键。</param>
+    /// <param name="targetId">Webhook 目标主键（编排项目或容器 Webhook）。</param>
     /// <returns>窗口内尚有名额时返回 true。</returns>
-    public bool TryAcquire(Guid composeId)
+    public bool TryAcquire(Guid targetId)
     {
-        var queue = _triggers.GetOrAdd(composeId, static _ => new Queue<long>());
+        var queue = _triggers.GetOrAdd(targetId, static _ => new Queue<long>());
         lock (queue)
         {
             var now = clock.GetTimestamp();

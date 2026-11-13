@@ -442,6 +442,44 @@ public static class AuditActions
     /// </summary>
     public const string NotificationChannelUpdate = "alert.channel.update";
     #endregion
+
+    #region 环境变量
+
+    /// <summary>
+    /// 新增 / 修改 / 删除环境变量。
+    /// </summary>
+    /// <remarks>
+    /// <b>审计里只有变量名，没有值</b>：值是密钥或配置，
+    /// 而审计日志会被采集器上报到集中式系统。
+    /// </remarks>
+    public const string VariableUpdate = "variable.update";
+    #endregion
+
+    #region 容器重建 Webhook
+
+    /// <summary>
+    /// 由 Webhook 触发的容器重建。
+    /// </summary>
+    public const string ContainerWebhookRecreate = "container.webhook.recreate";
+    #endregion
+
+    #region 镜像自动更新
+
+    /// <summary>
+    /// 镜像自动更新：拉取新版本并按策略重建容器。
+    /// </summary>
+    /// <remarks>
+    /// <b>由后台扫描触发，不在任何请求作用域里</b>。它仍然要写审计——
+    /// 「谁在什么时候换了生产环境跑的镜像」是必须能回答的问题，
+    /// 而自动更新恰恰是唯一没有操作人的一次变更。
+    /// </remarks>
+    public const string ImageUpdateApply = "image.update.apply";
+
+    /// <summary>
+    /// 镜像自动更新策略的新增 / 修改 / 删除。
+    /// </summary>
+    public const string ImageUpdatePolicyChange = "image.update.policy";
+    #endregion
 }
     #endregion
 
@@ -508,6 +546,11 @@ public static class AuditTargetTypes
     /// 审计日志本身。
     /// </summary>
     public const string Audit = "audit";
+
+    /// <summary>
+    /// 环境变量（全局变量或 Compose 项目级变量）。
+    /// </summary>
+    public const string Variable = "variable";
 
     /// <summary>
     /// 告警规则。

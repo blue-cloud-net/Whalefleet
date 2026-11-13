@@ -27,9 +27,10 @@ namespace Whalefleet.Application.Composes;
 /// <c>depends_on</c> / <c>restart</c> / <c>healthcheck</c>。
 /// 顶层：<c>services</c> / <c>networks</c> / <c>volumes</c>，
 /// 以及被忽略并给出提示的 <c>version</c> 与 <c>name</c>。</para>
-/// <para><b>变量插值（<c>${VAR}</c>）显式拒绝</b>：它需要一套「变量从哪来」的约定
-/// （进程环境 / .env 文件 / 平台级变量），那是 0.15.0 的能力。
-/// 现在放行会得到「变量被替换成空串」的结果——那比重报一个错糟糕得多。</para>
+/// <para><b>变量插值（<c>${VAR}</c>）在 0.15.0 起支持</b>：插值发生在
+/// <b>YAML 标量层</b>（先替换文本、再按字段语义解析），
+/// 因此 <c>ports: "${PORT}:80"</c> 里的端口号能被正常解析。
+/// 详见 <see cref="ComposeVariableResolver"/>。</para>
 /// </remarks>
 internal static class ComposeParser
 {
@@ -104,14 +105,40 @@ internal static class ComposeParser
     };
 
     /// <summary>
-    /// 解析 Compose 文件。
+    /// 解析 Compose 文件（**不提供变量上下文**）。
     /// </summary>
     /// <param name="content">YAML 文本。</param>
     /// <returns>解析结果。</returns>
     /// <exception cref="BusinessException">
     /// YAML 语法错误或含暂不支持的字段（<c>1904</c>）。
     /// </exception>
-    internal static ComposeDocument Parse(string content)
+    /// <remarks>
+    /// <b>未定义的变量在这里不会被报错</b>，而是被替换成保持形态的占位符。
+    /// 理由：这个重载用于「只看结构」的场合（详情页、变更预览），
+    /// 那里的用户还没填变量值，报错会让整个页面打不开——
+    /// 而真正要部署时，走的是带变量表的严格重载（未定义即 <c>1908</c>）。
+    /// </remarks>
+    internal static ComposeDocument Parse(string content) => Parse(content, variables: null);
+
+    /// <summary>
+    /// 解析 Compose 文件（带变量上下文）。
+    /// </summary>
+    /// <param name="content">YAML 文本。</param>
+    /// <param name="variables">
+    /// 变量表；<see langword="null"/> 表示宽松模式（未定义变量换成占位符），
+    /// 非 <see langword="null"/> 表示严格模式（未定义变量报 <c>1908</c>）。
+    /// </param>
+    /// <returns>解析结果。</returns>
+    /// <exception cref="BusinessException">
+    /// YAML 语法错误或含暂不支持的字段（<c>1904</c>）、
+    /// 变量未定义（<c>1908</c>）或变量名非法（<c>1909</c>）。
+    /// </exception>
+    /// <remarks>
+    /// <b>插值先于语义解析</b>：先在 YAML 标量层把 <c>${VAR}</c> 替换掉，
+    /// 再按字段语义解析（端口是不是数字、镜像名合不合法……）。
+    /// 顺序反了的话，<c>ports: "${PORT}:80"</c> 会在「端口不是数字」这一步先失败。
+    /// </remarks>
+    internal static ComposeDocument Parse(string content, IReadOnlyDictionary<string, string>? variables)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(content);
 
@@ -142,6 +169,14 @@ internal static class ComposeParser
                 "Compose 文件的顶层必须是一个映射（键值对）");
         }
 
+        // 变量引用必须在**插值之前**收集：插值会把 ${VAR} 换成真实文本，
+        // 插值后再扫就什么也扫不到了。
+        var referenced = CollectReferences(root);
+
+        // 插值：严格模式下未定义的变量在这里就报 1908——请求期反馈比后台任务失败快得多。
+        var unresolved = new HashSet<string>(StringComparer.Ordinal);
+        ComposeVariableResolver.InterpolateTree(root, variables, unresolved);
+
         var warnings = new List<string>();
         RejectUnknownKeys(rootMapping, String.Empty, _topLevelKeys);
 
@@ -161,7 +196,53 @@ internal static class ComposeParser
         var networks = ParseNetworks(rootMapping);
         var volumes = ParseVolumes(rootMapping);
 
-        return new ComposeDocument(services, networks, volumes, warnings);
+        return new ComposeDocument(services, networks, volumes, warnings, referenced);
+    }
+
+    /// <summary>
+    /// 收集文件里引用到的变量名。
+    /// </summary>
+    /// <param name="root">YAML 树根（**插值前**）。</param>
+    /// <returns>变量名列表（去重，按首次出现顺序）。</returns>
+    private static List<string> CollectReferences(YamlNode root)
+    {
+        var names = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        void Visit(YamlNode node)
+        {
+            switch (node)
+            {
+                case YamlScalarNode scalar when scalar.Value is not null:
+                    foreach (var name in ComposeVariableResolver.CollectReferences(scalar.Value))
+                    {
+                        if (seen.Add(name))
+                        {
+                            names.Add(name);
+                        }
+                    }
+                    break;
+
+                case YamlMappingNode mapping:
+                    foreach (var pair in mapping.Children)
+                    {
+                        Visit(pair.Key);
+                        Visit(pair.Value);
+                    }
+                    break;
+
+                case YamlSequenceNode sequence:
+                    foreach (var child in sequence.Children)
+                    {
+                        Visit(child);
+                    }
+                    break;
+            }
+        }
+
+        Visit(root);
+
+        return names;
     }
 
     /// <summary>
@@ -246,7 +327,6 @@ internal static class ComposeParser
             throw new BusinessException(ErrorCodes.ComposeInvalid, $"「{path}.image」不能为空");
         }
 
-        RejectInterpolation(image, $"{path}.image");
 
         return new ComposeService
         {
@@ -311,7 +391,6 @@ internal static class ComposeParser
 
                 var value = scalar.Value ?? String.Empty;
 
-                RejectInterpolation(value, $"{path}.environment.{key}");
 
                 environment.Add($"{key}={value}");
             }
@@ -324,7 +403,6 @@ internal static class ComposeParser
             foreach (var item in sequence.Children)
             {
                 var text = RequireScalar(item, $"{path}.environment");
-                RejectInterpolation(text, $"{path}.environment");
 
                 if (!text.Contains('=', StringComparison.Ordinal))
                 {
@@ -374,7 +452,6 @@ internal static class ComposeParser
         }
 
         var text = RequireScalar(node, $"{path}.command");
-        RejectInterpolation(text, $"{path}.command");
 
         return Shellwords.Split(text);
     }
@@ -411,7 +488,6 @@ internal static class ComposeParser
             }
 
             var text = RequireScalar(item, $"{path}.ports");
-            RejectInterpolation(text, $"{path}.ports");
 
             ports.Add(ParsePort(text, $"{path}.ports"));
         }
@@ -528,7 +604,6 @@ internal static class ComposeParser
             }
 
             var text = RequireScalar(item, $"{path}.volumes");
-            RejectInterpolation(text, $"{path}.volumes");
 
             mounts.Add(ParseMount(text, $"{path}.volumes"));
         }
@@ -826,7 +901,6 @@ internal static class ComposeParser
         }
 
         var text = RequireScalar(node, $"{path}.test");
-        RejectInterpolation(text, $"{path}.test");
 
         if (text.Length == 0)
         {
@@ -1083,30 +1157,6 @@ internal static class ComposeParser
                 ErrorCodes.ComposeInvalid,
                 $"「{fullPath}」是本版本暂不支持的 Compose 字段——已明确报错而不是忽略，"
                 + "以免「YAML 里写了但没生效」变成难以排查的故障");
-        }
-    }
-
-    /// <summary>
-    /// 拒绝含变量插值的文本。
-    /// </summary>
-    /// <param name="value">文本。</param>
-    /// <param name="path">字段路径。</param>
-    /// <exception cref="BusinessException">含插值（<c>1904</c>）。</exception>
-    /// <remarks>
-    /// <b>为什么现在不能支持</b>：变量插值需要一套「变量从哪来」的约定
-    /// （进程环境 / .env 文件 / 平台级变量），那是 0.15.0 的能力。
-    /// 现在放行会得到「变量被替换成空串」的结果——
-    /// 端口映射会变成 <c>:80</c>、环境变量会变成 <c>KEY=</c>，
-    /// 症状是「服务起来了但什么都不对」，比直接报错糟糕得多。
-    /// </remarks>
-    private static void RejectInterpolation(string value, string path)
-    {
-        if (value.Contains("${", StringComparison.Ordinal) || value.Contains('$', StringComparison.Ordinal))
-        {
-            throw new BusinessException(
-                ErrorCodes.ComposeInvalid,
-                $"「{path}」里含变量引用（${{...}}）——变量与密钥的注入排在 0.15.0，"
-                + "当前版本会把它替换成空串，因此明确报错");
         }
     }
 }

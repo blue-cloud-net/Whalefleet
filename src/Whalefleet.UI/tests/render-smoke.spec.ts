@@ -5,7 +5,7 @@ import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import ElementPlus from 'element-plus'
 import { i18n } from '../src/locales'
 import { useAuthStore } from '../src/stores/auth'
-import type { CurrentUser } from '../src/types/api'
+import type { ComposeVariablesResponse, CurrentUser } from '../src/types/api'
 
 /**
  * 渲染冒烟（0.4.0 新增 / 改动组件）。
@@ -47,6 +47,77 @@ vi.mock('../src/api/auth', () => ({
   login: vi.fn(),
   logoutSession: vi.fn(),
   refreshSession: vi.fn()
+}))
+
+// ===== 0.15.0：环境变量与镜像自动更新端点 =====
+vi.mock('../src/api/variables', () => ({
+  listGlobalVariables: vi.fn(async () => [
+    {
+      name: 'GLOBAL_TAG',
+      scope: 'global',
+      hostName: null,
+      composeName: null,
+      isSecret: false,
+      webhookOverridable: true,
+      description: '默认标签',
+      hasValue: true,
+      valueMasked: '••••••'
+    },
+    {
+      name: 'REGISTRY_PASSWORD',
+      scope: 'global',
+      hostName: null,
+      composeName: null,
+      isSecret: true,
+      webhookOverridable: false,
+      description: null,
+      hasValue: true,
+      valueMasked: '••••••'
+    }
+  ]),
+  createGlobalVariable: vi.fn(),
+  updateGlobalVariable: vi.fn(),
+  removeGlobalVariable: vi.fn(async () => null),
+  listComposeVariables: vi.fn(async (): Promise<ComposeVariablesResponse> => ({
+    project: [
+      {
+        name: 'APP_TAG',
+        scope: 'project',
+        hostName: 'local',
+        composeName: 'shop',
+        isSecret: false,
+        webhookOverridable: false,
+        description: null,
+        hasValue: true,
+        valueMasked: '••••••'
+      }
+    ],
+    inherited: [
+      {
+        name: 'GLOBAL_TAG',
+        scope: 'global',
+        hostName: null,
+        composeName: null,
+        isSecret: false,
+        webhookOverridable: true,
+        description: null,
+        hasValue: true,
+        valueMasked: '••••••'
+      }
+    ],
+    undefined: ['IMAGE_TAG']
+  })),
+  createComposeVariable: vi.fn(),
+  updateComposeVariable: vi.fn(),
+  removeComposeVariable: vi.fn(async () => null)
+}))
+
+vi.mock('../src/api/image-update', () => ({
+  listImageUpdatePolicies: vi.fn(async () => []),
+  createImageUpdatePolicy: vi.fn(),
+  updateImageUpdatePolicy: vi.fn(),
+  removeImageUpdatePolicy: vi.fn(async () => null),
+  checkImageUpdatePolicy: vi.fn()
 }))
 
 // ===== 0.10.0：Compose 项目端点 =====
@@ -849,6 +920,73 @@ describe('团队页与账号安全组件渲染冒烟（0.13.0）', () => {
 
     expect(templateBugs(), '渲染期告警').toEqual([])
     expect(wrapper.text()).toContain('会话管理')
+    wrapper.unmount()
+  })
+})
+
+describe('环境变量与镜像自动更新渲染冒烟（0.15.0）', () => {
+  it('全局变量卡片：遮罩值渲染出来，且密钥不显示「可被覆盖」', async () => {
+    const Card = (await import('../src/components/business/GlobalVariablesCard.vue')).default
+    const wrapper = await mountSmoke(Card, { permissions: ['variable.read', 'variable.write'] })
+
+    await wrapper.vm.$nextTick()
+    await Promise.resolve()
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    expect(wrapper.text()).toContain('全局变量')
+    expect(wrapper.text()).toContain('GLOBAL_TAG')
+    // 值永不回显：表格里只该出现遮罩串
+    expect(wrapper.text()).toContain('••••••')
+    expect(wrapper.text()).toContain('Webhook 可覆盖')
+    wrapper.unmount()
+  })
+
+  it('全局变量卡片：只有 variable.read 时不渲染写操作', async () => {
+    const Card = (await import('../src/components/business/GlobalVariablesCard.vue')).default
+    const wrapper = await mountSmoke(Card, { permissions: ['variable.read'] })
+
+    await wrapper.vm.$nextTick()
+    await Promise.resolve()
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    expect(wrapper.text()).not.toContain('新增变量')
+    wrapper.unmount()
+  })
+
+  it('项目变量卡片：未定义变量必须提前告警', async () => {
+    const Card = (await import('../src/components/business/ComposeVariablesCard.vue')).default
+    const wrapper = await mountSmoke(Card, {
+      permissions: ['compose.read', 'compose.write'],
+      props: { hostId: 'local', composeName: 'shop' }
+    })
+
+    await wrapper.vm.$nextTick()
+    await Promise.resolve()
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    // 后端遇到未定义变量直接报 1908（不会替换成空串），因此必须在部署前提醒
+    expect(wrapper.text()).toContain('IMAGE_TAG')
+    expect(wrapper.text()).toContain('继承的全局变量')
+    wrapper.unmount()
+  })
+
+  it('镜像自动更新卡片：未跟踪时给出跟踪入口', async () => {
+    const Card = (await import('../src/components/business/ImageAutoUpdateCard.vue')).default
+    const wrapper = await mountSmoke(Card, {
+      permissions: ['image.read', 'image.write'],
+      props: { hostId: 'local', repoTags: ['nginx:1.27'] }
+    })
+
+    await wrapper.vm.$nextTick()
+    await Promise.resolve()
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    expect(wrapper.text()).toContain('自动更新')
+    expect(wrapper.text()).toContain('跟踪此标签')
     wrapper.unmount()
   })
 })

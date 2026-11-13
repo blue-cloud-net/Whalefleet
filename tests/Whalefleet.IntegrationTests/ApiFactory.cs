@@ -1,7 +1,12 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+
+using Whalefleet.Application.Abstractions;
 
 namespace Whalefleet.IntegrationTests;
 
@@ -33,6 +38,11 @@ public class ApiFactory : WebApplicationFactory<Program>
     private readonly string _databasePath;
 
     /// <summary>
+    /// 仓库清单探测器的替身；<see langword="null"/> 表示用真实实现。
+    /// </summary>
+    private IRegistryManifestProbe? _registryProbe;
+
+    /// <summary>
     /// 初始化 <see cref="ApiFactory"/>，并为本次测试分配独立的日志目录与数据库文件。
     /// </summary>
     public ApiFactory()
@@ -60,11 +70,33 @@ public class ApiFactory : WebApplicationFactory<Program>
     /// <param name="key">配置键，使用 <c>:</c> 分隔层级。</param>
     /// <param name="value">配置值。</param>
     /// <returns>当前工厂实例，便于链式调用。</returns>
+    /// <remarks>
+    /// <b>就地修改（返回 <c>this</c>）</b>：打在类共享的 <c>IClassFixture</c> 上会把配置
+    /// 留给本类其他用例（见 AGENTS.md 陷阱 20）。需要另一套配置时必须 <c>new ApiFactory()</c>。
+    /// </remarks>
     public ApiFactory WithSetting(string key, string? value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
 
         _settings[key] = value;
+        return this;
+    }
+
+    /// <summary>
+    /// 替换仓库清单探测器（必须在首次创建 <c>HttpClient</c> 之前调用）。
+    /// </summary>
+    /// <param name="probe">替身探测器。</param>
+    /// <returns>当前工厂实例，便于链式调用。</returns>
+    /// <remarks>
+    /// <b>为什么必须可替换</b>：真实实现会向 Docker Hub 发 HTTPS 请求。
+    /// 让集成测试依赖公网，等于把它们变成「今天网络好不好」的检测器——
+    /// 断网、限流、镜像被删都会让它们变红，而它们要验的与这些毫无关系。
+    /// </remarks>
+    public ApiFactory WithRegistryProbe(IRegistryManifestProbe probe)
+    {
+        ArgumentNullException.ThrowIfNull(probe);
+
+        _registryProbe = probe;
         return this;
     }
 
@@ -106,6 +138,10 @@ public class ApiFactory : WebApplicationFactory<Program>
                 // 这是"账号由外部预置"的等效场景，与该开关的用途一致。
                 ["Admin:AutoBootstrap"] = "false",
 
+                // 关掉镜像自动更新扫描：它是后台轮询，会向真实仓库发 HTTPS 请求。
+                // 测试要验的是端点契约与策略状态机，不该顺带依赖公网。
+                ["ImageUpdates:Enabled"] = "false",
+
                 // 认证端点测试会真实调用 Argon2；用便宜参数避免整套测试被 KDF 拖慢。
                 // 参数强度由 Argon2PasswordHasherTests 用默认值单独覆盖。
                 ["Security:Argon2:MemorySizeKiB"] = "8192",
@@ -119,6 +155,17 @@ public class ApiFactory : WebApplicationFactory<Program>
             }
 
             configuration.AddInMemoryCollection(settings);
+        });
+
+        if (_registryProbe is null)
+        {
+            return;
+        }
+
+        builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<IRegistryManifestProbe>();
+            services.AddSingleton(_registryProbe);
         });
     }
 

@@ -9,6 +9,7 @@ using Whalefleet.Api.Security;
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Composes;
+using Whalefleet.Application.Operations;
 
 using AspNetCorsOptions = Microsoft.AspNetCore.Cors.Infrastructure.CorsOptions;
 
@@ -109,7 +110,7 @@ public static class ApiServiceCollectionExtensions
         services.AddSingleton<IComposeTaskNotifier, HubComposeTaskNotifier>();
 
         // 后台工作器：HostedService 天然是单例，且它自己按任务建作用域。
-        services.AddHostedService<ComposeOperationWorker>();
+        services.AddHostedService<ResourceOperationWorker>();
 
         return services;
     }

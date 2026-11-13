@@ -5,6 +5,7 @@ using Dapper;
 
 using Whalefleet.Core.Alerting;
 using Whalefleet.Core.Hosts;
+using Whalefleet.Core.Images;
 
 namespace Whalefleet.Infrastructure.Persistence;
 
@@ -77,6 +78,12 @@ internal static class DapperTypeMaps
             SqlMapper.AddTypeHandler(new NotificationSourceKindTypeHandler());
             SqlMapper.AddTypeHandler(new EnumTextTypeHandler<AlertSeverity>());
             SqlMapper.AddTypeHandler(new EnumTextTypeHandler<NotificationChannelKind>());
+
+            // 镜像自动更新（0.15.0）：ImageUpdateMode 的小写名与库中形态一致（notify / auto），
+            // 走通用处理器；ImageUpdateState 的库中形态是 kebab-case（up-to-date），
+            // 而枚举名是 UpToDate——通用处理器按小写名写库会得到 uptodate，与列注释不符。
+            SqlMapper.AddTypeHandler(new EnumTextTypeHandler<ImageUpdateMode>());
+            SqlMapper.AddTypeHandler(new ImageUpdateStateTypeHandler());
 
             _initialized = true;
         }
@@ -155,6 +162,28 @@ internal static class DapperTypeMaps
             NotificationSourceKind typed => typed,
             _ => throw new DataException(
                 $"无法把 {value?.GetType().Name ?? "null"} 解析为 {nameof(NotificationSourceKind)}"),
+        };
+    }
+
+    /// <summary>
+    /// <see cref="ImageUpdateState"/> ↔ kebab-case 文本。
+    /// </summary>
+    private sealed class ImageUpdateStateTypeHandler : SqlMapper.TypeHandler<ImageUpdateState>
+    {
+        public override void SetValue(IDbDataParameter parameter, ImageUpdateState value)
+        {
+            ArgumentNullException.ThrowIfNull(parameter);
+
+            parameter.DbType = DbType.String;
+            parameter.Value = ImageUpdateStateText.ToText(value);
+        }
+
+        public override ImageUpdateState Parse(object value) => value switch
+        {
+            string text => ImageUpdateStateText.Parse(text),
+            ImageUpdateState typed => typed,
+            _ => throw new DataException(
+                $"无法把 {value?.GetType().Name ?? "null"} 解析为 {nameof(ImageUpdateState)}"),
         };
     }
 

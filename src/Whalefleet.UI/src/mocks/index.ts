@@ -14,6 +14,8 @@ import { userHandlers } from './handlers/users'
 import { teamHandlers } from './handlers/teams'
 import { securitySettingsHandlers } from './handlers/security-settings'
 import { transferHandlers } from './handlers/transfer'
+import { variableHandlers } from './handlers/variables'
+import { imageUpdateHandlers } from './handlers/image-updates'
 import { resolveScenario, type MockScenario } from './scenarios'
 
 /**
@@ -58,6 +60,8 @@ export const handlers = [
   ...userHandlers(() => currentScenario),
   ...teamHandlers(() => currentScenario),
   ...securitySettingsHandlers(() => currentScenario),
+  ...variableHandlers(() => currentScenario),
+  ...imageUpdateHandlers(() => currentScenario),
   ...roleHandlers(() => currentScenario),
   ...transferHandlers(() => currentScenario),
   ...auditHandlers(),

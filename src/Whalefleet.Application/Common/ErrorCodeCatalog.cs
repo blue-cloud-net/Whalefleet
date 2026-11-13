@@ -68,6 +68,8 @@ public static class ErrorCodeCatalog
             [ErrorCodes.DownloadTicketInvalid] = (ErrorCategory.Gone, "下载票据无效或已过期"),
             [ErrorCodes.FileWriteDisabled] = (ErrorCategory.Forbidden, "文件写入已被禁用"),
             [ErrorCodes.TransferJobNotFound] = (ErrorCategory.NotFound, "导出任务不存在"),
+            [ErrorCodes.ImageUpdatePolicyNotFound] = (ErrorCategory.NotFound, "镜像更新策略不存在"),
+            [ErrorCodes.ImageUpdatePolicyAlreadyExists] = (ErrorCategory.Validation, "该镜像已有更新策略"),
 
             [ErrorCodes.ResourceForbidden] = (ErrorCategory.Forbidden, "无权限访问此资源"),
             [ErrorCodes.HostForbidden] = (ErrorCategory.Forbidden, "无权限访问此主机"),
@@ -99,6 +101,14 @@ public static class ErrorCodeCatalog
             [ErrorCodes.ComposeOperationInProgress] = (ErrorCategory.Conflict, "该 Compose 项目已有进行中的操作"),
             [ErrorCodes.ComposeWebhookTokenInvalid] = (ErrorCategory.NotFound, "Webhook 令牌无效或已吊销"),
             [ErrorCodes.ComposeWebhookRateLimited] = (ErrorCategory.RateLimited, "Webhook 触发过于频繁"),
+            [ErrorCodes.VariableNotDefined] = (ErrorCategory.Validation, "Compose 文件引用的变量未定义"),
+            [ErrorCodes.InvalidVariableName] = (ErrorCategory.Validation, "变量名非法"),
+            [ErrorCodes.VariableNotOverridable] = (ErrorCategory.Validation, "该变量不允许被 Webhook 覆盖"),
+            [ErrorCodes.VariableNotFound] = (ErrorCategory.NotFound, "变量不存在"),
+            [ErrorCodes.VariableNameAlreadyExists] = (ErrorCategory.Validation, "变量名已被占用"),
+            [ErrorCodes.ContainerWebhookTokenInvalid] = (ErrorCategory.NotFound, "容器 Webhook 令牌无效或已吊销"),
+            [ErrorCodes.ContainerWebhookRateLimited] = (ErrorCategory.RateLimited, "容器 Webhook 触发过于频繁"),
+            [ErrorCodes.ContainerWebhookNotFound] = (ErrorCategory.NotFound, "容器 Webhook 记录不存在"),
 
             [ErrorCodes.AlertRuleNotFound] = (ErrorCategory.NotFound, "告警规则不存在"),
             [ErrorCodes.AlertRuleInvalid] = (ErrorCategory.Validation, "告警规则参数非法"),

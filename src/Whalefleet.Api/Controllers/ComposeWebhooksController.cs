@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Mvc;
 
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Composes;
+using Whalefleet.Application.Operations;
+using Whalefleet.Core.Variables;
 
 namespace Whalefleet.Api.Controllers;
 
@@ -46,13 +48,15 @@ public sealed class ComposeWebhooksController : ControllerBase
     /// <param name="token">Webhook 令牌明文。</param>
     /// <param name="request">重放请求（拉取与清理选项、是否同步等待）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>统一响应，<c>data</c> 为任务标识与初始状态。</returns>
+    /// <returns>统一响应，<c>data</c> 为任务标识、初始状态与本次的变量覆盖结果。</returns>
     /// <response code="202">已受理，后台执行中。</response>
+    /// <response code="400">试图覆盖密钥（<c>1910</c>）。</response>
     /// <response code="404">令牌无效 / 已吊销（<c>1906</c>）。</response>
     /// <response code="409">该 Compose 项目已有进行中的操作（<c>1905</c>）。</response>
     /// <response code="429">触发过于频繁（<c>1907</c>）。</response>
     [HttpPost("{token}")]
-    [ProducesResponseType(typeof(ApiResult<ComposeTaskAccepted>), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(ApiResult<ResourceTaskAccepted>), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status409Conflict)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status429TooManyRequests)]
@@ -61,11 +65,51 @@ public sealed class ComposeWebhooksController : ControllerBase
         [FromBody] ComposeWebhookReloadRequest? request,
         CancellationToken cancellationToken)
     {
+        var overrides = this.ReadOverrides();
+
         var accepted = await _webhooks
-            .TriggerAsync(token, request ?? new ComposeWebhookReloadRequest(), cancellationToken)
+            .TriggerAsync(token, request ?? new ComposeWebhookReloadRequest(), overrides, cancellationToken)
             .ConfigureAwait(false);
 
         return this.Accepted(ApiResults.Ok(accepted));
+    }
+
+    /// <summary>
+    /// 从查询串里读出变量覆盖项。
+    /// </summary>
+    /// <returns>变量名 → 值。</returns>
+    /// <remarks>
+    /// <para><b>查询串里的键就是变量名</b>：<c>?TAG=3&amp;MODE=dev</c> 表示
+    /// 「用 3 覆盖 <c>TAG</c>、用 dev 覆盖 <c>MODE</c>」。
+    /// <b>没有 <c>?tag=</c> 这个魔法参数</b>——它等价于「覆盖名为 <c>TAG</c> 的变量」，
+    /// 而魔法替换会让「哪个键对应哪个变量」变成隐式约定。</para>
+    /// <para><b>白名单在应用服务里判</b>：这里只负责把查询串搬成字典，
+    /// 哪些键能用由变量表决定（未声明 / 未勾选可覆盖的键会被忽略并回带名字）。</para>
+    /// <para><b>同名键取最后一个</b>；<b>空值与过长的值直接丢弃</b>——
+    /// 它们要么是空操作，要么超出变量的长度上限。</para>
+    /// </remarks>
+    private Dictionary<string, string> ReadOverrides()
+    {
+        var overrides = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var pair in this.Request.Query)
+        {
+            if (String.IsNullOrWhiteSpace(pair.Key) || pair.Value.Count == 0)
+            {
+                continue;
+            }
+
+            var value = pair.Value[^1];
+
+            if (String.IsNullOrEmpty(value) || value.Length > EnvVariable.MaxValueLength)
+            {
+                continue;
+            }
+
+            overrides[pair.Key] = value;
+        }
+
+        return overrides;
     }
 
     /// <summary>
@@ -79,7 +123,7 @@ public sealed class ComposeWebhooksController : ControllerBase
     /// <response code="400">任务标识为空（<c>1000</c>）。</response>
     /// <response code="404">令牌无效 / 已吊销（<c>1906</c>）。</response>
     [HttpPost("{token}/task")]
-    [ProducesResponseType(typeof(ApiResult<ComposeTaskSnapshot>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult<ResourceTaskSnapshot<ComposeOperationResult>>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> TaskAsync(

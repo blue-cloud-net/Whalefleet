@@ -140,8 +140,17 @@ public sealed record ComposeVolumeDefinition(
 /// <param name="Networks">顶层网络定义。</param>
 /// <param name="Volumes">顶层卷定义。</param>
 /// <param name="Warnings">解析过程中的提示（如 <c>version</c> 已被废弃）。</param>
+/// <param name="ReferencedVariables">
+/// 文件里引用到的全部变量名（去重，按首次出现顺序）。
+/// </param>
+/// <remarks>
+/// <b>为什么要单独带出来</b>：详情页要告诉用户「这个项目引用了哪些变量、其中哪些还没定义」。
+/// 而「哪些被引用」只有解析器知道（它扫过整棵 YAML 树），
+/// 「哪些已定义」只有应用服务知道（它在查库）——两边各自知道一半，合起来才是完整答案。
+/// </remarks>
 public sealed record ComposeDocument(
     IReadOnlyList<ComposeService> Services,
     IReadOnlyList<ComposeNetworkDefinition> Networks,
     IReadOnlyList<ComposeVolumeDefinition> Volumes,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings,
+    IReadOnlyList<string> ReferencedVariables);

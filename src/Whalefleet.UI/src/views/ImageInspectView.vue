@@ -7,6 +7,7 @@ import SectionCard from '@/components/common/SectionCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import JsonTree from '@/components/common/JsonTree.vue'
 import ImageSize from '@/components/business/ImageSize.vue'
+import ImageAutoUpdateCard from '@/components/business/ImageAutoUpdateCard.vue'
 import { inspectImage } from '@/api/image'
 import { ApiRequestError } from '@/api'
 import { isDangling, primaryImageName, shortDigest } from '@/utils/image-display'
@@ -97,6 +98,13 @@ watch(imageId, load, { immediate: true })
     </div>
 
     <div v-else-if="detail" class="flex flex-col gap-4">
+      <!--
+        自动更新（0.15.0）：紧跟概览，因为「这个镜像是不是最新的」是打开详情页时
+        最常问的问题之一。悬空镜像（没有标签）由卡片自己隐藏——
+        没有标签就没有可比对的目标。
+      -->
+      <ImageAutoUpdateCard :host-id="hostId" :repo-tags="detail.repoTags" />
+
       <SectionCard :title="t('image.detail.overview')">
         <dl class="app-facts">
           <div>

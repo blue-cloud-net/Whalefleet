@@ -6,7 +6,10 @@ using Microsoft.Extensions.Logging;
 
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
+using Whalefleet.Application.Operations;
+using Whalefleet.Application.Webhooks;
 using Whalefleet.Application.Docker;
+using Whalefleet.Application.Variables;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Composes;
 
@@ -55,8 +58,9 @@ public sealed class ComposeProjectService
     private readonly IDockerHostAccessor _accessor;
     private readonly ContainerAuthorizationService _authorization;
     private readonly IComposeProjectRepository _repository;
-    private readonly ComposeTaskRegistry _tasks;
-    private readonly ComposeOperationQueue _queue;
+    private readonly EnvVariableService _variables;
+    private readonly ResourceTaskRegistry<ComposeOperationResult> _tasks;
+    private readonly ResourceOperationQueue _queue;
     private readonly IPermissionChecker _permissions;
     private readonly ICurrentUser _currentUser;
     private readonly ICurrentClientIp _clientIp;
@@ -79,8 +83,9 @@ public sealed class ComposeProjectService
     public ComposeProjectService(
         IDockerHostAccessor accessor, ContainerAuthorizationService authorization,
         IComposeProjectRepository repository,
-        ComposeTaskRegistry tasks,
-        ComposeOperationQueue queue,
+        EnvVariableService variables,
+        ResourceTaskRegistry<ComposeOperationResult> tasks,
+        ResourceOperationQueue queue,
         IPermissionChecker permissions,
         ICurrentUser currentUser,
         ICurrentClientIp clientIp,
@@ -89,6 +94,7 @@ public sealed class ComposeProjectService
     {
         ArgumentNullException.ThrowIfNull(accessor);
         ArgumentNullException.ThrowIfNull(repository);
+        ArgumentNullException.ThrowIfNull(variables);
         ArgumentNullException.ThrowIfNull(tasks);
         ArgumentNullException.ThrowIfNull(queue);
         ArgumentNullException.ThrowIfNull(permissions);
@@ -100,6 +106,7 @@ public sealed class ComposeProjectService
         _accessor = accessor;
         _authorization = authorization;
         _repository = repository;
+        _variables = variables;
         _tasks = tasks;
         _queue = queue;
         _permissions = permissions;
@@ -235,15 +242,27 @@ public sealed class ComposeProjectService
 
         var warnings = new List<string>();
         var declaredServiceNames = new List<string>();
+        ComposeVariablesResponse? variables = null;
 
         if (recorded is not null)
         {
             try
             {
+                // 宽松解析：未定义的变量换成占位符而不是报错——
+                // 详情页要在用户还没填变量值时也能打开（那正是最需要它的时候）。
                 var document = ComposeParser.Parse(recorded.ComposeContent);
 
                 warnings.AddRange(document.Warnings);
                 declaredServiceNames.AddRange(document.Services.Select(service => service.Name));
+
+                variables = await _variables
+                    .ListForComposeAsync(
+                        host.Id,
+                        host.Name,
+                        name,
+                        document.ReferencedVariables,
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
             catch (BusinessException)
             {
@@ -266,7 +285,8 @@ public sealed class ComposeProjectService
             services,
             warnings,
             declaredServiceNames.Count,
-            missingServices);
+            missingServices,
+            variables);
     }
 
     /// <summary>
@@ -280,7 +300,7 @@ public sealed class ComposeProjectService
     /// 名称非法（<c>1000</c>）、YAML 非法（<c>1904</c>）、同名已存在（<c>1902</c>）、
     /// 缺 <c>compose.write</c>（<c>1502</c>）或已有进行中的操作（<c>1905</c>）。
     /// </exception>
-    public async Task<ComposeTaskAccepted> DeployAsync(
+    public async Task<ResourceTaskAccepted> DeployAsync(
         string hostId,
         ApplyComposeProjectRequest request,
         CancellationToken cancellationToken = default)
@@ -297,8 +317,13 @@ public sealed class ComposeProjectService
 
         await this.EnsureWritePermissionAsync(host.Id, cancellationToken).ConfigureAwait(false);
 
-        // 解析在请求期做：语法错、含不支持的字段都直接回给用户
-        var document = ComposeParser.Parse(content);
+        // 解析在请求期做：语法错、含不支持的字段、**变量未定义**都直接回给用户。
+        // 变量未定义报 1908 而不是「替换成空串」——空串会产出「服务起来了但什么都不对」。
+        var resolved = await _variables
+            .ResolveAsync(host.Id, name, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
+        var document = ComposeParser.Parse(content, resolved.Values);
 
         var existing = await _repository
             .FindByHostAndNameAsync(host.Id, name, cancellationToken)
@@ -313,7 +338,7 @@ public sealed class ComposeProjectService
 
         await this.EnsureNotBusyAsync(host.Name, name).ConfigureAwait(false);
 
-        _tasks.TryRegister(taskId, host.Name, name, ComposeOperations.Deploy, _timeProvider.GetUtcNow().UtcDateTime);
+        _tasks.TryRegister(taskId, host.Name, ResourceKinds.Compose, name, ComposeOperations.Deploy, _timeProvider.GetUtcNow().UtcDateTime);
 
         // 先落库再入队：后台任务可能立刻开始，而它需要读到这份 YAML。
         // 写库失败必须撤销登记——否则这个 Compose 项目会被「占住」到 TTL 结束，
@@ -347,7 +372,7 @@ public sealed class ComposeProjectService
             taskId,
             document.Services.Count);
 
-        return new ComposeTaskAccepted(taskId, ComposeTaskStatusText.Queued, 1);
+        return new ResourceTaskAccepted(taskId, ResourceTaskStatusText.Queued, 1);
     }
 
     /// <summary>
@@ -362,7 +387,7 @@ public sealed class ComposeProjectService
     /// 非本平台部署（<c>1903</c>）、缺 <c>compose.write</c>（<c>1502</c>）
     /// 或已有进行中的操作（<c>1905</c>）。
     /// </exception>
-    public async Task<ComposeTaskAccepted> UpdateAsync(
+    public async Task<ResourceTaskAccepted> UpdateAsync(
         string hostId,
         ApplyComposeProjectRequest request,
         CancellationToken cancellationToken = default)
@@ -379,7 +404,12 @@ public sealed class ComposeProjectService
 
         await this.EnsureWritePermissionAsync(host.Id, cancellationToken).ConfigureAwait(false);
 
-        var document = ComposeParser.Parse(content);
+        // 同部署：解析在请求期做，变量未定义直接报 1908。
+        var resolved = await _variables
+            .ResolveAsync(host.Id, name, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
+        var document = ComposeParser.Parse(content, resolved.Values);
 
         var existing = await _repository
             .FindByHostAndNameAsync(host.Id, name, cancellationToken)
@@ -389,7 +419,7 @@ public sealed class ComposeProjectService
 
         await this.EnsureNotBusyAsync(host.Name, name).ConfigureAwait(false);
 
-        _tasks.TryRegister(taskId, host.Name, name, ComposeOperations.Update, _timeProvider.GetUtcNow().UtcDateTime);
+        _tasks.TryRegister(taskId, host.Name, ResourceKinds.Compose, name, ComposeOperations.Update, _timeProvider.GetUtcNow().UtcDateTime);
 
         existing.ReplaceContent(content);
 
@@ -421,7 +451,7 @@ public sealed class ComposeProjectService
             taskId,
             document.Services.Count);
 
-        return new ComposeTaskAccepted(taskId, ComposeTaskStatusText.Queued, 1);
+        return new ResourceTaskAccepted(taskId, ResourceTaskStatusText.Queued, 1);
     }
 
     /// <summary>
@@ -431,7 +461,7 @@ public sealed class ComposeProjectService
     /// <param name="request">停止请求。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>任务受理结果。</returns>
-    public async Task<ComposeTaskAccepted> StopAsync(
+    public async Task<ResourceTaskAccepted> StopAsync(
         string hostId,
         StopComposeProjectRequest request,
         CancellationToken cancellationToken = default)
@@ -449,11 +479,11 @@ public sealed class ComposeProjectService
 
         await this.EnsureNotBusyAsync(host.Name, name).ConfigureAwait(false);
 
-        _tasks.TryRegister(taskId, host.Name, name, ComposeOperations.Stop, _timeProvider.GetUtcNow().UtcDateTime);
+        _tasks.TryRegister(taskId, host.Name, ResourceKinds.Compose, name, ComposeOperations.Stop, _timeProvider.GetUtcNow().UtcDateTime);
 
         this.Enqueue(taskId, host.Name, name, ComposeOperations.Stop, null, false, false, false);
 
-        return new ComposeTaskAccepted(taskId, ComposeTaskStatusText.Queued, 1);
+        return new ResourceTaskAccepted(taskId, ResourceTaskStatusText.Queued, 1);
     }
 
     /// <summary>
@@ -463,7 +493,7 @@ public sealed class ComposeProjectService
     /// <param name="request">删除请求。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>任务受理结果。</returns>
-    public async Task<ComposeTaskAccepted> RemoveAsync(
+    public async Task<ResourceTaskAccepted> RemoveAsync(
         string hostId,
         RemoveComposeProjectRequest request,
         CancellationToken cancellationToken = default)
@@ -481,7 +511,7 @@ public sealed class ComposeProjectService
 
         await this.EnsureNotBusyAsync(host.Name, name).ConfigureAwait(false);
 
-        _tasks.TryRegister(taskId, host.Name, name, ComposeOperations.Remove, _timeProvider.GetUtcNow().UtcDateTime);
+        _tasks.TryRegister(taskId, host.Name, ResourceKinds.Compose, name, ComposeOperations.Remove, _timeProvider.GetUtcNow().UtcDateTime);
 
         this.Enqueue(
             taskId,
@@ -493,7 +523,7 @@ public sealed class ComposeProjectService
             false,
             request.RemoveVolumes ?? false);
 
-        return new ComposeTaskAccepted(taskId, ComposeTaskStatusText.Queued, 1);
+        return new ResourceTaskAccepted(taskId, ResourceTaskStatusText.Queued, 1);
     }
 
     /// <summary>
@@ -553,7 +583,7 @@ public sealed class ComposeProjectService
     /// <param name="request">查询请求（任务标识）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>任务快照；任务不存在时为 <see langword="null"/>。</returns>
-    public async Task<ComposeTaskSnapshot?> GetTaskAsync(
+    public async Task<ResourceTaskSnapshot<ComposeOperationResult>?> GetTaskAsync(
         string hostId,
         GetComposeTaskRequest request,
         CancellationToken cancellationToken = default)
@@ -928,7 +958,7 @@ public sealed class ComposeProjectService
             .Any(snapshot =>
                 !IsTerminal(snapshot.Status)
                 && String.Equals(snapshot.HostName, hostName, StringComparison.OrdinalIgnoreCase)
-                && String.Equals(snapshot.ComposeName, composeName, StringComparison.Ordinal));
+                && String.Equals(snapshot.ResourceName, composeName, StringComparison.Ordinal));
 
         if (busy)
         {
@@ -961,9 +991,10 @@ public sealed class ComposeProjectService
         bool pruneOrphans,
         bool removeVolumes)
     {
-        if (!_queue.TryEnqueue(new ComposeOperationRequest(
+        if (!_queue.TryEnqueue(new ResourceOperationRequest(
             taskId,
             hostName,
+            ResourceKinds.Compose,
             composeName,
             operation,
             content,
@@ -1116,7 +1147,7 @@ public sealed class ComposeProjectService
     /// <param name="status">状态文本。</param>
     /// <returns>已结束返回 <see langword="true"/>。</returns>
     private static bool IsTerminal(string status) =>
-        status is ComposeTaskStatusText.Succeeded or ComposeTaskStatusText.Failed;
+        status is ResourceTaskStatusText.Succeeded or ResourceTaskStatusText.Failed;
 
     /// <summary>
     /// 守护进程上发现的一个 compose 项目。

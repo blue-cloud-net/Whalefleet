@@ -5,6 +5,9 @@ using Microsoft.Extensions.Logging;
 
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
+using Whalefleet.Application.Operations;
+using Whalefleet.Application.Webhooks;
+using Whalefleet.Application.Variables;
 using Whalefleet.Core.Hosts;
 using Whalefleet.Core.Composes;
 
@@ -54,18 +57,20 @@ public sealed class ComposeWebhookService
 
     private readonly IComposeProjectRepository _repository;
     private readonly IHostRepository _hosts;
-    private readonly ComposeTaskRegistry _tasks;
-    private readonly ComposeOperationQueue _queue;
+    private readonly EnvVariableService _variables;
+    private readonly ResourceTaskRegistry<ComposeOperationResult> _tasks;
+    private readonly ResourceOperationQueue _queue;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<ComposeWebhookService> _logger;
 
-    private readonly ComposeWebhookRateLimiter _rateLimiter;
+    private readonly WebhookRateLimiter _rateLimiter;
 
     /// <summary>
     /// 初始化 Webhook 用例。
     /// </summary>
     /// <param name="repository">Compose 项目仓储。</param>
     /// <param name="hosts">主机仓储（由主键反查主机名）。</param>
+    /// <param name="variables">环境变量用例（校验 Webhook 的变量覆盖白名单）。</param>
     /// <param name="tasks">任务登记表。</param>
     /// <param name="queue">任务队列。</param>
     /// <param name="timeProvider">时间源。</param>
@@ -75,14 +80,16 @@ public sealed class ComposeWebhookService
     public ComposeWebhookService(
         IComposeProjectRepository repository,
         IHostRepository hosts,
-        ComposeTaskRegistry tasks,
-        ComposeOperationQueue queue,
+        EnvVariableService variables,
+        ResourceTaskRegistry<ComposeOperationResult> tasks,
+        ResourceOperationQueue queue,
         TimeProvider timeProvider,
         ILogger<ComposeWebhookService> logger,
-        ComposeWebhookRateLimiter rateLimiter)
+        WebhookRateLimiter rateLimiter)
     {
         ArgumentNullException.ThrowIfNull(repository);
         ArgumentNullException.ThrowIfNull(hosts);
+        ArgumentNullException.ThrowIfNull(variables);
         ArgumentNullException.ThrowIfNull(tasks);
         ArgumentNullException.ThrowIfNull(queue);
         ArgumentNullException.ThrowIfNull(timeProvider);
@@ -92,6 +99,7 @@ public sealed class ComposeWebhookService
         _rateLimiter = rateLimiter;
         _repository = repository;
         _hosts = hosts;
+        _variables = variables;
         _tasks = tasks;
         _queue = queue;
         _timeProvider = timeProvider;
@@ -168,18 +176,23 @@ public sealed class ComposeWebhookService
     /// </summary>
     /// <param name="token">令牌明文。</param>
     /// <param name="request">重放请求。</param>
+    /// <param name="overrides">
+    /// 本次的变量覆盖（通常来自 URL 的查询串）。
+    /// 可为空；<b>非白名单的键会被忽略</b>，而覆盖密钥会报错（<c>1910</c>）。
+    /// </param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>
     /// 不等待时返回任务受理结果；等待时返回任务快照
     /// （若在上限内没跑完，则返回仍在进行中的快照）。
     /// </returns>
     /// <exception cref="BusinessException">
-    /// 令牌无效 / 已吊销（<c>1906</c>）、触发过于频繁（<c>1907</c>）
-    /// 或已有进行中的操作（<c>1905</c>）。
+    /// 令牌无效 / 已吊销（<c>1906</c>）、触发过于频繁（<c>1907</c>）、
+    /// 已有进行中的操作（<c>1905</c>）或试图覆盖密钥（<c>1910</c>）。
     /// </exception>
-    public async Task<ComposeTaskAccepted> TriggerAsync(
+    public async Task<ResourceTaskAccepted> TriggerAsync(
         string token,
         ComposeWebhookReloadRequest request,
+        IReadOnlyDictionary<string, string>? overrides = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -190,9 +203,15 @@ public sealed class ComposeWebhookService
 
         var hostName = await this.ResolveHostNameAsync(compose, cancellationToken).ConfigureAwait(false);
 
+        // 覆盖项先过一遍白名单：未声明 / 未勾选可覆盖的键被忽略，
+        // 而覆盖密钥直接报错（静默忽略会让 CI 以为口令已经改了）。
+        var resolved = await _variables
+            .ResolveAsync(compose.HostId, compose.Name, overrides, cancellationToken)
+            .ConfigureAwait(false);
+
         var taskId = GenerateTaskId();
 
-        _tasks.TryRegister(taskId, hostName, compose.Name, ComposeOperations.Update, _timeProvider.GetUtcNow().UtcDateTime);
+        _tasks.TryRegister(taskId, hostName, ResourceKinds.Compose, compose.Name, ComposeOperations.Update, _timeProvider.GetUtcNow().UtcDateTime);
 
         try
         {
@@ -202,9 +221,10 @@ public sealed class ComposeWebhookService
                 throw new BusinessException(ErrorCodes.ComposeNotFound, "编排 Compose 项目已不存在。");
             }
 
-            if (!_queue.TryEnqueue(new ComposeOperationRequest(
+            if (!_queue.TryEnqueue(new ResourceOperationRequest(
             taskId,
             hostName,
+            ResourceKinds.Compose,
             compose.Name,
             ComposeOperations.Update,
             compose.ComposeContent,
@@ -214,7 +234,8 @@ public sealed class ComposeWebhookService
             ActorId: null,
             ActorName: null,
             ClientIp: null,
-            WebhookTokenHint: compose.WebhookTokenHint)))
+            WebhookTokenHint: compose.WebhookTokenHint,
+            VariableOverrides: overrides)))
             {
                 throw new BusinessException(ErrorCodes.ComposeDeployFailed, "编排队列已关闭，本次触发未被受理。");
             }
@@ -226,12 +247,18 @@ public sealed class ComposeWebhookService
         }
 
         _logger.LogInformation(
-            "编排 {ComposeName}（主机 {HostName}）被 Webhook 触发重放（任务 {TaskId}）",
+            "编排 {ComposeName}（主机 {HostName}）被 Webhook 触发重放（任务 {TaskId}，生效覆盖 {Applied}，忽略 {Ignored}）",
             compose.Name,
             hostName,
-            taskId);
+            taskId,
+            resolved.AppliedOverrides.Count,
+            resolved.IgnoredOverrides.Count);
 
-        var accepted = new ComposeTaskAccepted(taskId, ComposeTaskStatusText.Queued, 1);
+        var accepted = new ResourceTaskAccepted(taskId, ResourceTaskStatusText.Queued, 1)
+        {
+            AppliedVariables = resolved.AppliedOverrides,
+            IgnoredVariables = resolved.IgnoredOverrides,
+        };
 
         if (request.Wait == true)
         {
@@ -249,7 +276,7 @@ public sealed class ComposeWebhookService
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>任务快照；任务不存在或不属于该 Compose 项目时返回 <see langword="null"/>。</returns>
     /// <exception cref="BusinessException">令牌无效（<c>1906</c>）。</exception>
-    public async Task<ComposeTaskSnapshot?> GetTaskAsync(
+    public async Task<ResourceTaskSnapshot<ComposeOperationResult>?> GetTaskAsync(
         string token,
         ComposeWebhookTaskRequest request,
         CancellationToken cancellationToken = default)
@@ -268,7 +295,7 @@ public sealed class ComposeWebhookService
         var snapshot = _tasks.Get(taskId);
 
         if (snapshot is null
-            || !String.Equals(snapshot.ComposeName, compose.Name, StringComparison.Ordinal))
+            || !String.Equals(snapshot.ResourceName, compose.Name, StringComparison.Ordinal))
         {
             return null;
         }
@@ -291,7 +318,7 @@ public sealed class ComposeWebhookService
             var snapshot = _tasks.Get(taskId);
 
             if (snapshot is not null
-                && snapshot.Status is ComposeTaskStatusText.Succeeded or ComposeTaskStatusText.Failed)
+                && snapshot.Status is ResourceTaskStatusText.Succeeded or ResourceTaskStatusText.Failed)
             {
                 return;
             }

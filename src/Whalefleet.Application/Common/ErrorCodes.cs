@@ -272,6 +272,20 @@ public static class ErrorCodes
     /// 标识不存在（拼错、已过期清理、或进程重启后丢失）时用它。
     /// </remarks>
     public const int TransferJobNotFound = 1410;
+
+    /// <summary>
+    /// 镜像自动更新策略不存在（HTTP 404）。
+    /// </summary>
+    /// <remarks>
+    /// <b>「属于别的主机」也报这个码</b>：报「策略属于另一台主机」等于告诉调用方
+    /// 「这个 ID 确实存在」，而那是一条不该泄露的信息。
+    /// </remarks>
+    public const int ImageUpdatePolicyNotFound = 1411;
+
+    /// <summary>
+    /// 同一主机上已有同一镜像的更新策略（HTTP 400）。
+    /// </summary>
+    public const int ImageUpdatePolicyAlreadyExists = 1412;
     #endregion
 
     #region 1500-1599 资源权限
@@ -492,6 +506,74 @@ public static class ErrorCodes
     /// 触发一次就是一次完整部署（可能拉镜像），不加限制的话一个循环的 CI 会把守护进程打满。
     /// </remarks>
     public const int ComposeWebhookRateLimited = 1907;
+
+    /// <summary>
+    /// Compose 文件引用的变量未定义（HTTP 400）。
+    /// </summary>
+    /// <remarks>
+    /// <b>绝不替换成空串</b>：空串看起来像「配错了」，而报错能说清「哪个变量没定义」。
+    /// 端口映射会变成 <c>:80</c>、环境变量会变成 <c>KEY=</c>——
+    /// 症状是「服务起来了但什么都不对」，比直接报错糟糕得多。
+    /// </remarks>
+    public const int VariableNotDefined = 1908;
+
+    /// <summary>
+    /// 变量名非法（HTTP 400）。
+    /// </summary>
+    /// <remarks>
+    /// 变量名只允许字母、数字与下划线，且不得以数字开头（与 Compose 的 <c>${VAR}</c> 语法一致）。
+    /// </remarks>
+    public const int InvalidVariableName = 1909;
+
+    /// <summary>
+    /// 该变量不允许被 Webhook 覆盖（HTTP 400）。
+    /// </summary>
+    /// <remarks>
+    /// <b>密钥一律不可覆盖</b>：Webhook 是匿名入口（凭据就是 URL 里的令牌），
+    /// 而 URL 会进反代的 access log——允许远程改密钥等于开了一条提权通道。
+    /// 因此这一条<b>显式报错</b>而不像「未声明的键」那样静默忽略：
+    /// 静默忽略会让 CI 以为口令已经改了，而实际跑的还是旧值。
+    /// </remarks>
+    public const int VariableNotOverridable = 1910;
+
+    /// <summary>
+    /// 变量不存在（HTTP 404）。
+    /// </summary>
+    public const int VariableNotFound = 1913;
+
+    /// <summary>
+    /// 容器 Webhook 令牌无效、已吊销或未启用（HTTP 404）。
+    /// </summary>
+    /// <remarks>
+    /// <b>不区分三种情况</b>：区分了就成了令牌探测工具——
+    /// 攻击者能靠状态码差异确认「这个令牌曾经存在过」。一律 404。
+    /// </remarks>
+    public const int ContainerWebhookTokenInvalid = 1911;
+
+    /// <summary>
+    /// 容器 Webhook 触发过于频繁（HTTP 429）。
+    /// </summary>
+    /// <remarks>
+    /// 一次触发就是一次容器重建，不加限制的话一个循环的 CI 会把守护进程打满。
+    /// </remarks>
+    public const int ContainerWebhookRateLimited = 1912;
+
+    /// <summary>
+    /// 变量名已被占用（HTTP 400）。
+    /// </summary>
+    /// <remarks>
+    /// 同一作用域内变量名唯一（全局唯一 / 同一项目的项目级变量唯一）。
+    /// </remarks>
+    public const int VariableNameAlreadyExists = 1914;
+
+    /// <summary>
+    /// 容器 Webhook 记录不存在（HTTP 404）。
+    /// </summary>
+    /// <remarks>
+    /// 用于「吊销一个还没配令牌的容器」这类管理侧操作；
+    /// 匿名端点一律报 <c>1911</c>（不区分「不存在」与「已吊销」）。
+    /// </remarks>
+    public const int ContainerWebhookNotFound = 1915;
     #endregion
 
     #region 1700-1799 告警与通知

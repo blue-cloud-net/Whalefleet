@@ -15,6 +15,7 @@ import ListToolbar from '@/components/common/ListToolbar.vue'
 import ContainerListTable from '@/components/business/ContainerListTable.vue'
 import ComposeApplyDialog from '@/components/business/ComposeApplyDialog.vue'
 import ComposeWebhookCard from '@/components/business/ComposeWebhookCard.vue'
+import ComposeVariablesCard from '@/components/business/ComposeVariablesCard.vue'
 import { useComposeTask } from '@/composables/useComposeTask'
 import {
   inspectComposeProject,
@@ -774,6 +775,20 @@ onBeforeUnmount(() => {
           <ComposeWebhookCard
             :host-id="hostId"
             :compose="detail.summary"
+            @changed="load"
+          />
+        </SectionCard>
+
+        <!--
+          变量与密钥（0.15.0）。
+
+          放在 Webhook 之后、YAML 之前：它回答的是「这份 YAML 里的 ${VAR}
+          到底会取到什么值」，因此紧挨着原文看最顺。
+        -->
+        <SectionCard :title="t('compose.section.variables')">
+          <ComposeVariablesCard
+            :host-id="hostId"
+            :compose-name="composeName"
             @changed="load"
           />
         </SectionCard>

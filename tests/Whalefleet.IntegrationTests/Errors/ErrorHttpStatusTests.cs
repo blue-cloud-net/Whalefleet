@@ -65,6 +65,8 @@ public class ErrorHttpStatusTests
         [ErrorCodes.DownloadTicketInvalid] = 410,
         [ErrorCodes.FileWriteDisabled] = 403,
         [ErrorCodes.TransferJobNotFound] = 404,
+        [ErrorCodes.ImageUpdatePolicyNotFound] = 404,
+        [ErrorCodes.ImageUpdatePolicyAlreadyExists] = 400,
 
         [ErrorCodes.ResourceForbidden] = 403,
         [ErrorCodes.HostForbidden] = 403,
@@ -96,6 +98,14 @@ public class ErrorHttpStatusTests
         [ErrorCodes.ComposeOperationInProgress] = 409,
         [ErrorCodes.ComposeWebhookTokenInvalid] = 404,
         [ErrorCodes.ComposeWebhookRateLimited] = 429,
+        [ErrorCodes.VariableNotDefined] = 400,
+        [ErrorCodes.InvalidVariableName] = 400,
+        [ErrorCodes.VariableNotOverridable] = 400,
+        [ErrorCodes.VariableNotFound] = 404,
+        [ErrorCodes.VariableNameAlreadyExists] = 400,
+        [ErrorCodes.ContainerWebhookTokenInvalid] = 404,
+        [ErrorCodes.ContainerWebhookRateLimited] = 429,
+        [ErrorCodes.ContainerWebhookNotFound] = 404,
 
         [ErrorCodes.AlertRuleNotFound] = 404,
         [ErrorCodes.AlertRuleInvalid] = 400,

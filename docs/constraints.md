@@ -200,8 +200,16 @@
 |--------|------|
 | `Alerts:*` | 告警规则阈值与冷却期（三级严重度各一组） |
 | `Notifications:*` | 通知渠道（Webhook URL / 邮件 SMTP） |
-| `Webhooks:*` | 资源 Webhook 的令牌密钥 —— **必须随数据库一起备份**，否则恢复后全部 Webhook 静默失效 |
 | `Mcp:*` | `AllowWrite`（默认 `false`）、`AllowedHosts`（DNS-rebinding 白名单，不匹配返回 421） |
+| `ImageUpdates:*` | 镜像自动更新的扫描节奏与上游探测参数（0.15.0） |
+
+> ⚠️ **本表曾列过一个 `Webhooks:*`（「资源 Webhook 的令牌密钥，必须随数据库一起备份」）——它从来不存在。**
+> 资源 Webhook 的令牌**只存 SHA-256 哈希**（明文不落库，见 `composes.webhook_token_hash`
+> 与 `container_webhooks.webhook_token_hash`），因此**没有密钥文件要备份**：
+> 令牌随数据库一起备份即可，恢复后原链接仍然有效。
+> ⚠️ **变量值是另一回事**：0.15.0 起的 `.env` 变量（尤其是 secret）**加密**落库，
+> 密钥复用数据卷上的 `repository.key`（与仓库口令同一把）——**该文件必须随数据库一起备份**，
+> 否则恢复后 secret 变量解不开。`scripts/backup.sh` 已包含它。
 
 ### 速率限制
 

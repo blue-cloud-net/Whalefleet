@@ -5,6 +5,7 @@ import { usePreferencesStore, PAGE_SIZE_ALL, PAGE_SIZE_OPTIONS } from '@/stores/
 import { setLocale, type AppLocale } from '@/locales'
 import AuthorizationSettingsCard from '@/components/business/AuthorizationSettingsCard.vue'
 import SecuritySettingsCard from '@/components/business/SecuritySettingsCard.vue'
+import GlobalVariablesCard from '@/components/business/GlobalVariablesCard.vue'
 import { useAuthStore } from '@/stores/auth'
 import PageHeader from '@/components/common/PageHeader.vue'
 import SectionCard from '@/components/common/SectionCard.vue'
@@ -49,6 +50,11 @@ function onLocaleChange(next: AppLocale) {
     <div class="max-w-3xl space-y-4">
       <AuthorizationSettingsCard v-if="auth.isAdmin" />
       <SecuritySettingsCard />
+      <!--
+        全局变量（0.15.0）。门控用 `variable.read` 而不是 `isAdmin`：
+        权限是后端契约，角色是数据——自定义角色同样可以带全部权限。
+      -->
+      <GlobalVariablesCard v-if="auth.hasPermission('variable.read')" />
       <!-- 外观 -->
       <SectionCard :title="t('settings.appearance')">
         <div class="space-y-5">

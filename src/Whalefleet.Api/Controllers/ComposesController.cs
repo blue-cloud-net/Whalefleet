@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Composes;
+using Whalefleet.Application.Operations;
 
 namespace Whalefleet.Api.Controllers;
 
@@ -120,7 +121,7 @@ public sealed class ComposesController : ControllerBase
     /// <response code="409">该 Compose 项目已有进行中的操作（<c>1905</c>）。</response>
     /// <response code="502">主机不可达（<c>1301</c>）。</response>
     [HttpPost("deploy")]
-    [ProducesResponseType(typeof(ApiResult<ComposeTaskAccepted>), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(ApiResult<ResourceTaskAccepted>), StatusCodes.Status202Accepted)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
@@ -152,7 +153,7 @@ public sealed class ComposesController : ControllerBase
     /// <response code="409">该 Compose 项目已有进行中的操作（<c>1905</c>）。</response>
     /// <response code="502">主机不可达（<c>1301</c>）。</response>
     [HttpPost("update")]
-    [ProducesResponseType(typeof(ApiResult<ComposeTaskAccepted>), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(ApiResult<ResourceTaskAccepted>), StatusCodes.Status202Accepted)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
@@ -184,7 +185,7 @@ public sealed class ComposesController : ControllerBase
     /// <response code="409">该 Compose 项目已有进行中的操作（<c>1905</c>）。</response>
     /// <response code="502">主机不可达（<c>1301</c>）。</response>
     [HttpPost("stop")]
-    [ProducesResponseType(typeof(ApiResult<ComposeTaskAccepted>), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(ApiResult<ResourceTaskAccepted>), StatusCodes.Status202Accepted)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
@@ -216,7 +217,7 @@ public sealed class ComposesController : ControllerBase
     /// <response code="409">该 Compose 项目已有进行中的操作（<c>1905</c>）。</response>
     /// <response code="502">主机不可达（<c>1301</c>）。</response>
     [HttpPost("remove")]
-    [ProducesResponseType(typeof(ApiResult<ComposeTaskAccepted>), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(ApiResult<ResourceTaskAccepted>), StatusCodes.Status202Accepted)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
@@ -246,7 +247,7 @@ public sealed class ComposesController : ControllerBase
     /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
     /// <response code="404">主机不存在（<c>1300</c>）。</response>
     [HttpPost("task")]
-    [ProducesResponseType(typeof(ApiResult<ComposeTaskSnapshot>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult<ResourceTaskSnapshot<ComposeOperationResult>>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]

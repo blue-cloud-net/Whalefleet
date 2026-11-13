@@ -2,7 +2,7 @@ import { computed, onUnmounted, ref } from 'vue'
 import { subscribeProgress } from '@/realtime/notification'
 import { createProgressToken } from '@/composables/useImageProgress'
 import { getComposeTask } from '@/api/compose'
-import type { OperationProgress, ComposeTaskSnapshot } from '@/types/api'
+import type { OperationProgress, ResourceTaskSnapshot } from '@/types/api'
 
 /**
  * Compose 任务（0.10.0）的进度跟踪。
@@ -35,7 +35,7 @@ const POLL_TIMEOUT_MS = 10 * 60 * 1000
  */
 export function useComposeTask() {
   /** 最近一次任务快照。 */
-  const task = ref<ComposeTaskSnapshot | null>(null)
+  const task = ref<ResourceTaskSnapshot | null>(null)
 
   /** 实时进度（可能为 null——推送比轮询先到或后到都正常）。 */
   const progress = ref<OperationProgress | null>(null)
@@ -96,7 +96,7 @@ export function useComposeTask() {
    * @param taskId 任务标识。
    * @returns 终态快照；超时或出错时返回当前快照。
    */
-  async function poll(hostId: string, taskId: string): Promise<ComposeTaskSnapshot | null> {
+  async function poll(hostId: string, taskId: string): Promise<ResourceTaskSnapshot | null> {
     const deadline = Date.now() + POLL_TIMEOUT_MS
 
     while (!cancelled && Date.now() < deadline) {
@@ -135,7 +135,7 @@ export function useComposeTask() {
     hostId: string,
     action: (taskId: string) => Promise<unknown>,
     onFinished?: () => void | Promise<void>
-  ): Promise<ComposeTaskSnapshot | null> {
+  ): Promise<ResourceTaskSnapshot | null> {
     stop()
     cancelled = false
 
