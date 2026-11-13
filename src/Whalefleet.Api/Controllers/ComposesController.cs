@@ -318,4 +318,46 @@ public sealed class ComposesController : ControllerBase
 
         return this.Ok(ApiResults.Ok(info));
     }
+
+    /// <summary>
+    /// 导出 Compose 项目的原文（YAML）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">导出请求（项目名称）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应，<c>data</c> 为项目名称与 YAML 原文。</returns>
+    /// <response code="200">导出成功。</response>
+    /// <response code="400">名称为空或非法（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）或缺少 <c>compose.write</c>（<c>1502</c>）。</response>
+    /// <response code="404">主机不存在（<c>1300</c>）。</response>
+    /// <response code="409">该 Compose 项目不是本平台部署的，没有可导出的原文（<c>1903</c>）。</response>
+    /// <response code="502">主机不可达（<c>1301</c>）。</response>
+    /// <remarks>
+    /// <para><b>为什么不是「下载」而是「返回正文」</b>：YAML 通常只有几 KB，返回 JSON 里的字符串
+    /// 最简单——界面可以预览、复制，也可以自己另存为文件。而「下载」要走票据 + 临时文件那一套，
+    /// 那是给几百 MB 的镜像 tar 用的机制，用在这里只是徒增复杂度。</para>
+    /// <para><b>要求 <c>compose.write</c></b>：YAML 里常有明文密码，这份原文等价于部署能力。</para>
+    /// </remarks>
+    [HttpPost("export")]
+    [ProducesResponseType(typeof(ApiResult<ComposeExportResult>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> ExportAsync(
+        string hostId,
+        [FromBody] ExportComposeProjectRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var result = await _composes
+            .ExportAsync(hostId, request, cancellationToken)
+            .ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok(result));
+    }
 }

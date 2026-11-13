@@ -461,7 +461,9 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 账号启停与会话管理 | `POST /api/v1/admin/users/{userId}/{enable,disable}` + `POST /api/v1/admin/users/{userId}/sessions/*` | 0.13.0 |
 | 安全策略设置 | `POST /api/v1/admin/settings/security/{get,update}` | 0.13.0 |
 | 镜像 / 容器导出导入 | `POST /api/v1/hosts/{hostId}/{images,containers}/{export,import,commit}` | 0.14.0 |
-| 容器 / 卷文件浏览 | `POST /api/v1/hosts/{hostId}/{containers,volumes}/files/{list,download}` | 0.14.0 |
+| 容器 / 卷文件浏览 | `POST /api/v1/hosts/{hostId}/{containers,volumes}/files/{list,download,write}` | 0.14.0 |
+| **容器定义反向生成** | `POST /api/v1/hosts/{hostId}/containers/run-command` | 0.14.0 |
+| **编排原文导出** | `POST /api/v1/hosts/{hostId}/composes/export` | 0.14.0 |
 | 资源 Webhook | `POST /api/v1/webhooks/{token}` | 0.15.0 |
 | 镜像自动更新策略 | `POST /api/v1/hosts/{hostId}/images/auto-update` | 0.15.0 |
 

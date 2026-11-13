@@ -150,6 +150,9 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<ContainerFileService>();
         services.AddScoped<VolumeFileService>();
 
+        // 容器定义反向生成（0.14.0）。Scoped：只读一次 inspect，依赖主机访问器与授权判定。
+        services.AddScoped<ContainerDefinitionService>();
+
         // 传输编排（0.14.0）。Scoped：它要读「当前用户 / 来源 IP」来填审计里的操作者。
         services.AddScoped<TransferService>();
 

@@ -155,3 +155,17 @@ public sealed record ComposeWebhookInfo(
     string? TokenHint,
     string? Token,
     DateTime? LastUsedAt);
+
+/// <summary>
+/// Compose 项目原文导出结果。
+/// </summary>
+/// <param name="Name">Compose 项目名称（= 文件名的主体）。</param>
+/// <param name="Content">YAML 原文（与本平台部署时存下的一字不差）。</param>
+/// <remarks>
+/// <b>返回原文而不是「重新生成一份」</b>：重新生成会丢掉注释、锚点与键序，
+/// 而用户要的是「原本部署的那份文件」。这一点与「容器反向生成」
+/// （<c>containers/run-command</c>）正好相反——后者没有原文可拿，只能重建。
+/// </remarks>
+public sealed record ComposeExportResult(
+    string Name,
+    string Content);

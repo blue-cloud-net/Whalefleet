@@ -46,6 +46,7 @@ public sealed class ContainersController : ControllerBase
     private readonly TransferService _transferJobs;
     private readonly DownloadTicketStore _tickets;
     private readonly FilesOptions _filesOptions;
+    private readonly ContainerDefinitionService _definitions;
 
     /// <summary>
     /// 初始化容器查询控制器。
@@ -62,6 +63,7 @@ public sealed class ContainersController : ControllerBase
     /// <param name="transferJobs">传输任务编排（0.14.0）。</param>
     /// <param name="tickets">下载票据登记表（0.14.0）。</param>
     /// <param name="filesOptions">文件传输配置（0.14.0）。</param>
+    /// <param name="definitions">容器定义反向生成（0.14.0）。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
     public ContainersController(
         ContainerService containers,
@@ -75,7 +77,8 @@ public sealed class ContainersController : ControllerBase
         ContainerTransferService transfers,
         TransferService transferJobs,
         DownloadTicketStore tickets,
-        IOptions<FilesOptions> filesOptions)
+        IOptions<FilesOptions> filesOptions,
+        ContainerDefinitionService definitions)
     {
         ArgumentNullException.ThrowIfNull(containers);
         ArgumentNullException.ThrowIfNull(logProvider);
@@ -89,6 +92,7 @@ public sealed class ContainersController : ControllerBase
         ArgumentNullException.ThrowIfNull(transferJobs);
         ArgumentNullException.ThrowIfNull(tickets);
         ArgumentNullException.ThrowIfNull(filesOptions);
+        ArgumentNullException.ThrowIfNull(definitions);
 
         _containers = containers;
         _logProvider = logProvider;
@@ -102,6 +106,7 @@ public sealed class ContainersController : ControllerBase
         _tickets = tickets;
         _filesOptions = filesOptions.Value;
         _clock = clock;
+        _definitions = definitions;
     }
 
     /// <summary>
@@ -1059,5 +1064,45 @@ public sealed class ContainersController : ControllerBase
             imageId,
             repository,
             request.Tag?.Trim() ?? "latest")));
+    }
+
+    /// <summary>
+    /// 生成容器的可复制定义（<c>docker run</c> 命令或 compose 片段）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">生成请求（容器标识与格式）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应，<c>data</c> 为格式与生成结果。</returns>
+    /// <response code="200">生成成功。</response>
+    /// <response code="400">容器标识为空或格式不受支持（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）或容器（<c>1502</c>）。</response>
+    /// <response code="404">主机（<c>1300</c>）或容器（<c>1401</c>）不存在。</response>
+    /// <response code="502">主机不可达（<c>1301</c>）或 Docker 调用失败（<c>1402</c>）。</response>
+    /// <remarks>
+    /// <para><b>为什么是 POST 而不是 GET</b>：与其它「读」端点一致——本项目的 API 是 RPC 风格，
+    /// 查询条件一律走请求体（<c>containerId</c> 里有 <c>sha256:</c>，放路径要处理编码）。</para>
+    /// <para><b>生成结果里含明文环境变量</b>：界面必须提示「这份文本含配置里的敏感值」，
+    /// 与详情页对 <c>env</c> 的处理同口径。</para>
+    /// </remarks>
+    [HttpPost("run-command")]
+    [ProducesResponseType(typeof(ApiResult<ContainerRunSpec>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> RunCommandAsync(
+        string hostId,
+        [FromBody] BuildContainerRunSpecRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var spec = await _definitions
+            .BuildAsync(hostId, request, cancellationToken)
+            .ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok(spec));
     }
 }
