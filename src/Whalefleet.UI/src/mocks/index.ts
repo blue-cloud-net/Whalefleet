@@ -13,6 +13,7 @@ import { composeHandlers } from './handlers/composes'
 import { userHandlers } from './handlers/users'
 import { teamHandlers } from './handlers/teams'
 import { securitySettingsHandlers } from './handlers/security-settings'
+import { transferHandlers } from './handlers/transfer'
 import { resolveScenario, type MockScenario } from './scenarios'
 
 /**
@@ -58,6 +59,7 @@ export const handlers = [
   ...teamHandlers(() => currentScenario),
   ...securitySettingsHandlers(() => currentScenario),
   ...roleHandlers(() => currentScenario),
+  ...transferHandlers(() => currentScenario),
   ...auditHandlers(),
   ...alertHandlers()
 ]
