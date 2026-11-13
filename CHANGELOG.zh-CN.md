@@ -25,6 +25,47 @@
 
 ## [Unreleased]
 
+### 0.14.0 — 资源导入导出与文件浏览（内部草稿）
+
+#### 新增
+
+- **镜像导出 / 导入**：`POST .../images/export` 把 `docker save` 作为**后台任务**执行，
+  `.../export/status` 是权威进度源（SignalR 推送只是提示），`.../download?token=<票据>`
+  凭一次性短时票据下载产物。按**镜像引用**导出能保住全部 `RepoTags`；同一镜像已有导出
+  在跑时复用那个任务。`POST .../images/import` 把上传的 tar 直接流进 `docker load`，
+  不整块读进内存。
+- **容器导出 / 导入 / commit**：与镜像同一套票据下载，另有 `docker import` 文件系统快照
+  与 `docker commit` 把运行中容器提交为镜像。`docker export` **不含卷内容与运行配置**——
+  界面把这一点写在明处，因为最现实的误用就是把它当备份。
+- **文件浏览**（容器与卷）：列目录、下载单个文件、上传文件（覆盖同名）。Docker 不给卷提供
+  文件接口，因此后端借**一次性辅助容器**挂载，并在 `finally` 里强制删除。目录列举有上限
+  并回 `truncated`——静默给出一份残缺清单会被读成「这个目录就这么多东西」。
+- **反向生成**：`POST .../containers/run-command` 用**原始 inspect** 生成可直接粘贴的
+  `docker run` 命令或 compose 服务片段（现有详情投影刻意不含 `capAdd` / `sysctls` /
+  `devices` / `ulimits` / `logConfig` / `healthcheck` / 端口绑定宿主 IP，用它生成会静默
+  丢配置）。`POST .../composes/export` 返回**部署时存下的** YAML；不是本平台部署的项目
+  回 `1903`，而不是给一份凭现状猜出来的定义。
+- **界面**：容器与卷的文件浏览页、带上传进度的导入导出对话框，以及含 `docker run` /
+  compose 两档的「生成定义」对话框。
+
+#### 变更
+
+- 新增 `Files` 配置段：`AllowWrite`（默认**开启**，管理员可整体关闭写入）、
+  `MaxUploadBytes`（20 GB）、`TempDirectory`、`TicketTtl`、`ExportTtl`、
+  `MaxConcurrentExports`、`HelperImage`、`SweepInterval`、`MaxListEntries`。
+- 新增错误码 `1405`–`1410`（文件路径非法、文件不存在、上传超限、下载票据无效、写入被禁用、
+  导出任务不存在），并新增两个分类：`PayloadTooLarge` → 413、`Gone` → 410。
+- 容器导出的授权移到**请求期**并入队规范化后的容器 ID：后台线程没有 `ICurrentUser`，
+  在那里判权限要么直接失败，要么变成「信任调用方」。
+
+#### 注意
+
+- 卷文件浏览需要 `whalefleet/volfs-helper` 镜像（`scratch` 打底约 10 kB，**从不启动**——
+  只用 Docker 的 `archive` 接口，它对 `created` 状态的容器同样可用）。先 `make volfs-helper`
+  构建一次；缺失时后端会按需拉取，拉不到会给出带命令的提示。
+- 反向代理必须放行大请求体与长下载：nginx 的 `client_max_body_size` 要抬到
+  `Files:MaxUploadBytes` 之上，Traefik 不能缓冲响应（缓冲会把几 GB 的流变成内存压力）。
+
 ### 0.13.0 — 账号、团队与安全（内部草稿）
 
 #### 新增

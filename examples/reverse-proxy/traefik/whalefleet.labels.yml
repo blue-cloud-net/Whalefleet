@@ -67,7 +67,10 @@ labels:
   traefik.http.routers.whalefleet.middlewares: "whalefleet-headers"
 
   # ---- 上传体积 ----
-  # 容器日志与未来的镜像构建（0.3.0）走 multipart，默认限制远不够。
+  # 容器日志与镜像构建走 multipart，0.14.0 起的镜像 / 容器导入还要上传整包 tar。
+  # ⚠️ 这个值必须 ≥ 应用侧的 `Files:MaxUploadBytes`（默认 20 GB），
+  #    否则大包在 Traefik 这一层就被拒——用户看到「上传失败」，应用日志里却什么都没有。
+  #    上面的 100 MB 是历史值，要做导入导出请抬到实际上限（如 "21474836480"）。
   traefik.http.middlewares.whalefleet-size.maxRequestBodyBytes: "104857600"
 
   # ---- 超时 ----
@@ -91,3 +94,11 @@ labels:
   traefik.http.middlewares.whalefleet-ratelimit.ratelimit.average: "120"
   traefik.http.middlewares.whalefleet-ratelimit.ratelimit.burst: "60"
   traefik.http.routers.whalefleet.middlewares: "whalefleet-ratelimit"
+
+  # ---- 响应缓冲（0.14.0）----
+  # 导出的 tar 可能有几 GB。Traefik 默认**不**缓冲响应，这点与 nginx 不同：
+  # nginx 的 `proxy_buffering` 默认开启，会把大响应先攒到内存 / 临时文件里，
+  # 几 GB 的下载会直接把内存吃满或把临时盘写满。用 nginx 时**务必**为下载路径关掉：
+  #     proxy_buffering off;
+  # 下载地址带一次性票据（`?token=`），路径前缀固定为
+  # `/api/v1/hosts/{hostId}/{images,containers}/download`，可以按前缀单独关缓冲。

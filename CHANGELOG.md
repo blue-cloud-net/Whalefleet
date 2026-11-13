@@ -27,6 +27,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 0.14.0 — Resource import / export and file browsing (internal draft)
+
+#### Added
+
+- **Image export / import**: `POST .../images/export` runs `docker save` as a background
+  task, `.../export/status` is the authoritative progress source (the SignalR push is only a
+  hint), and `.../download?token=<ticket>` serves the artifact through a short-lived one-shot
+  ticket. Exports made **by reference** keep every `RepoTags`; a second export of the same
+  image while one is running reuses that job. `POST .../images/import` streams the uploaded
+  tar straight into `docker load` without buffering it in memory.
+- **Container export / import / commit**: same ticket-based download as images, plus
+  `docker import` of a filesystem snapshot and `docker commit` of a live container into an
+  image. `docker export` excludes volumes and runtime configuration — the UI says so
+  explicitly, because the realistic mistake is treating it as a backup.
+- **File browsing** for containers *and* volumes: list a directory, download a single file,
+  upload a file (overwriting same-named files). Volumes have no file API in Docker, so the
+  backend mounts them through a **one-shot helper container** that is force-removed in a
+  `finally`. Directory listing is capped and reports `truncated` — silently returning a
+  partial listing would read as "the directory really has this many entries".
+- **Reverse generation**: `POST .../containers/run-command` emits a paste-ready `docker run`
+  command or a compose service fragment built from the **raw inspect** (the existing detail
+  projection deliberately omits `capAdd` / `sysctls` / `devices` / `ulimits` / `logConfig` /
+  `healthcheck` / host-port bindings, so building from it would silently drop configuration).
+  `POST .../composes/export` returns the YAML **stored at deploy time**; projects the platform
+  did not deploy answer `1903` instead of a reconstructed guess.
+- **UI**: file browser page for containers and volumes, import / export dialogs with upload
+  progress, and a "generate definition" dialog with `docker run` / compose tabs.
+
+#### Changed
+
+- New `Files` configuration section: `AllowWrite` (defaults to **true**; admins can switch
+  file writing off entirely), `MaxUploadBytes` (20 GB), `TempDirectory`, `TicketTtl`,
+  `ExportTtl`, `MaxConcurrentExports`, `HelperImage`, `SweepInterval`, `MaxListEntries`.
+- New error codes `1405`–`1410` (invalid path, path not found, upload too large, invalid or
+  expired download ticket, writing disabled, transfer job not found), with the two new
+  categories `PayloadTooLarge` → 413 and `Gone` → 410.
+- Container export authorises at **request time** and queues the canonical container ID: a
+  background worker has no `ICurrentUser`, so authorising there would either fail or trust
+  the caller.
+
+#### Notes
+
+- Volume file browsing needs the `whalefleet/volfs-helper` image (a `scratch` image of about
+  10 kB that **never runs** — only Docker's `archive` API is used, which works on `created`
+  containers). Build it once with `make volfs-helper`; the backend pulls it on demand if it
+  is missing and fails with a hint when it cannot.
+- A reverse proxy must allow large request bodies and long downloads: nginx needs
+  `client_max_body_size` raised past `Files:MaxUploadBytes`, and Traefik must not buffer the
+  response (buffering turns a multi-GB stream into memory pressure).
+
 ### 0.13.0 — Accounts, teams and security (internal draft)
 
 #### Added
