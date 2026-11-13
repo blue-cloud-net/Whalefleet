@@ -92,6 +92,22 @@ internal sealed class CurrentHostMiddleware
             return;
         }
 
+        // ⚠️ 凭票据下载文件的端点（0.14.0）在这里也是**匿名**请求：
+        // 它用「一次性的短时票据」而不是 access token 鉴权，
+        // 因此 HttpContext.User 没有任何身份。若照常往下走，
+        // 下面那句 HasPermissionAsync(Guid.Empty, …) 必然为 false，
+        // 结果是「点下载就 403」——而票据完全正确。
+        //
+        // 它的凭证校验在端点内部自己做（见 DownloadTicketStore.Resolve），
+        // 不是「漏保护」，而是**换了一种凭证**。
+        // 排除按**端点元数据**判定而不是按路径形状：漏标注的后果是「端点仍然受保护」
+        // （fail-closed），而按路径判定漏改的后果是「端点意外裸奔」。
+        if (context.GetEndpoint()?.Metadata.GetMetadata<DownloadTicketAttribute>() is not null)
+        {
+            await _next(context).ConfigureAwait(false);
+            return;
+        }
+
         var hostId = context.GetRouteData().Values[RouteValueKey] as string;
 
         if (!String.IsNullOrWhiteSpace(hostId))

@@ -59,6 +59,12 @@ public class ErrorHttpStatusTests
         [ErrorCodes.DockerApiFailed] = 500,
         [ErrorCodes.DockerTimeout] = 408,
         [ErrorCodes.DockerResourceConflict] = 409,
+        [ErrorCodes.InvalidFilePath] = 400,
+        [ErrorCodes.FilePathNotFound] = 404,
+        [ErrorCodes.UploadTooLarge] = 413,
+        [ErrorCodes.DownloadTicketInvalid] = 410,
+        [ErrorCodes.FileWriteDisabled] = 403,
+        [ErrorCodes.TransferJobNotFound] = 404,
 
         [ErrorCodes.ResourceForbidden] = 403,
         [ErrorCodes.HostForbidden] = 403,
@@ -110,6 +116,9 @@ public class ErrorHttpStatusTests
         { ErrorCategory.RateLimited, 429 },
         { ErrorCategory.Timeout, 408 },
         { ErrorCategory.Forbidden, 403 },
+        { ErrorCategory.Conflict, 409 },
+        { ErrorCategory.PayloadTooLarge, 413 },
+        { ErrorCategory.Gone, 410 },
         { ErrorCategory.UpstreamFailure, 502 },
         { ErrorCategory.Internal, 500 },
     };

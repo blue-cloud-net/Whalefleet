@@ -1,8 +1,11 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
+using Whalefleet.Api.Security;
 using Whalefleet.Application.Common;
+using Whalefleet.Application.Files;
 using Whalefleet.Application.Images;
 
 namespace Whalefleet.Api.Controllers;
@@ -25,20 +28,42 @@ public sealed class ImagesController : ControllerBase
 {
     private readonly ImageService _images;
     private readonly ImageBuildPushService _buildPush;
+    private readonly ImageTransferService _transfers;
+    private readonly TransferService _transferJobs;
+    private readonly DownloadTicketStore _tickets;
+    private readonly FilesOptions _filesOptions;
 
     /// <summary>
     /// 初始化镜像控制器。
     /// </summary>
     /// <param name="images">镜像用例。</param>
     /// <param name="buildPush">镜像构建与推送用例（0.4.0）。</param>
+    /// <param name="transfers">镜像导入导出用例（0.14.0）。</param>
+    /// <param name="transferJobs">传输任务编排（0.14.0）。</param>
+    /// <param name="tickets">下载票据登记表（0.14.0）。</param>
+    /// <param name="filesOptions">文件传输配置（0.14.0）。</param>
     /// <exception cref="ArgumentNullException">任一参数为 <see langword="null"/>。</exception>
-    public ImagesController(ImageService images, ImageBuildPushService buildPush)
+    public ImagesController(
+        ImageService images,
+        ImageBuildPushService buildPush,
+        ImageTransferService transfers,
+        TransferService transferJobs,
+        DownloadTicketStore tickets,
+        IOptions<FilesOptions> filesOptions)
     {
         ArgumentNullException.ThrowIfNull(images);
         ArgumentNullException.ThrowIfNull(buildPush);
+        ArgumentNullException.ThrowIfNull(transfers);
+        ArgumentNullException.ThrowIfNull(transferJobs);
+        ArgumentNullException.ThrowIfNull(tickets);
+        ArgumentNullException.ThrowIfNull(filesOptions);
 
         _images = images;
         _buildPush = buildPush;
+        _transfers = transfers;
+        _transferJobs = transferJobs;
+        _tickets = tickets;
+        _filesOptions = filesOptions.Value;
     }
 
     /// <summary>
@@ -350,6 +375,216 @@ public sealed class ImagesController : ControllerBase
         CancellationToken cancellationToken)
     {
         var result = await _images.PruneAsync(hostId, request, cancellationToken).ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok(result));
+    }
+
+    /// <summary>
+    /// 导出镜像为 tar（等价 <c>docker save</c>，**后台任务**）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">导出请求（镜像标识）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应，<c>data</c> 为任务标识与状态。</returns>
+    /// <response code="200">已受理（导出在后台执行）。</response>
+    /// <response code="400">镜像标识为空（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机不存在（<c>1300</c>）。</response>
+    /// <remarks>
+    /// <para><b>为什么是后台任务而不是同步返回</b>：GB 级镜像的导出要读完整的守护进程数据流
+    /// 再写到磁盘，可能好几分钟；HTTP 请求扛不住那么长（反代会掐断连接，
+    /// 客户端拿到的是「504」而不是「导出失败」）。</para>
+    /// <para><b>为什么任务标识由客户端给</b>：客户端先生成令牌、在 SignalR 上订阅它，
+    /// 再把它带进请求——这样「进度事件」与「任务查询」用的是同一个串。</para>
+    /// <para><b>导出会去重</b>：同一镜像已有进行中的导出时，本次直接复用那个任务
+    /// （响应里 <c>reused=true</c>），不会产出第二份 GB 级文件。</para>
+    /// </remarks>
+    [HttpPost("export")]
+    [ProducesResponseType(typeof(ApiResult<StartExportResult>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ExportAsync(
+        string hostId,
+        [FromBody] StartExportRequest request,
+        CancellationToken cancellationToken)
+    {
+        var resourceId = request.ResourceId?.Trim();
+
+        if (String.IsNullOrWhiteSpace(resourceId))
+        {
+            throw new ArgumentException("镜像标识不能为空。", nameof(request));
+        }
+
+        var jobId = request.ProgressToken?.Trim();
+
+        if (String.IsNullOrWhiteSpace(jobId))
+        {
+            jobId = Guid.NewGuid().ToString("N");
+        }
+
+        var result = _transferJobs.StartExport(
+            hostId,
+            TransferOperations.ImageExport,
+            resourceId,
+            jobId,
+            resourceId);
+
+        return this.Ok(ApiResults.Ok(result));
+    }
+
+    /// <summary>
+    /// 查询镜像导出任务的状态。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">状态查询请求（任务标识）。</param>
+    /// <returns>统一响应，<c>data</c> 为任务状态（完成时含下载地址）。</returns>
+    /// <response code="200">查询成功。</response>
+    /// <response code="400">任务标识为空（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机不存在（<c>1300</c>）或任务不存在（<c>1410</c>）。</response>
+    /// <remarks>
+    /// <b>状态查询是权威的，SignalR 只是提示</b>：客户端可能没连上实时通道
+    /// （或浏览器把它降级成了长轮询），因此「任务完成没有」必须能从这里问到。
+    /// </remarks>
+    [HttpPost("export/status")]
+    [ProducesResponseType(typeof(ApiResult<TransferJobStatusResult>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ExportStatusAsync(
+        string hostId,
+        [FromBody] TransferJobStatusRequest request,
+        CancellationToken cancellationToken)
+    {
+        var jobId = request.JobId?.Trim();
+
+        if (String.IsNullOrWhiteSpace(jobId))
+        {
+            throw new ArgumentException("任务标识不能为空。", nameof(request));
+        }
+
+        var status = _transferJobs.GetStatus(jobId);
+
+        if (status is null)
+        {
+            throw new BusinessException(
+                ErrorCodes.TransferJobNotFound,
+                $"导出任务「{jobId}」不存在或已过期");
+        }
+
+        return this.Ok(ApiResults.Ok(status));
+    }
+
+    /// <summary>
+    /// 凭下载票据取走导出产物（**匿名端点**，票据即凭证）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）；仅用于路径一致性，不承担鉴权职责。</param>
+    /// <param name="token">下载票据。</param>
+    /// <returns>文件流（<c>application/x-tar</c> + <c>Content-Disposition</c>）。</returns>
+    /// <response code="200">下载流已开始。</response>
+    /// <response code="410">票据无效或已过期（<c>1408</c>）。</response>
+    /// <remarks>
+    /// <para><b>为什么是匿名端点</b>：大文件下载走的是<b>浏览器原生导航</b>，
+    /// 而原生导航带不了 <c>Authorization</c> 头。
+    /// 因此凭证是「一次性的短时票据」——它只能取走那一个文件。</para>
+    /// <para><b>为什么票据不在下载后立刻作废</b>：浏览器可能因为断线而重试，
+    /// 也可能用 Range 请求断点续传。票据的有效期（默认 10 分钟）就是给这些场景留的窗口。</para>
+    /// </remarks>
+    [HttpGet("download")]
+    [AllowAnonymous]
+    [DownloadTicket]
+    [ProducesResponseType(typeof(string), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status410Gone)]
+    public IActionResult DownloadAsync(
+        string hostId,
+        [FromQuery] string? token)
+    {
+        var now = DateTime.UtcNow;
+        var ticket = _tickets.Resolve(token, now);
+
+        if (ticket is null)
+        {
+            throw new BusinessException(
+                ErrorCodes.DownloadTicketInvalid,
+                "下载票据无效或已过期，请重新发起导出。");
+        }
+
+        if (!System.IO.File.Exists(ticket.FilePath))
+        {
+            // 票据在、文件不在：只能是产物被外部删了（或进程重启时清掉了）。
+            throw new BusinessException(
+                ErrorCodes.DownloadTicketInvalid,
+                "导出产物已不存在，请重新发起导出。");
+        }
+
+        return this.PhysicalFile(
+            ticket.FilePath,
+            "application/x-tar",
+            ticket.FileName,
+            enableRangeProcessing: true);
+    }
+
+    /// <summary>
+    /// 导入镜像 tar（等价 <c>docker load</c>，**原始请求体**）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="repository">镜像仓库名（可空）。</param>
+    /// <param name="tag">镜像标签（可空）。</param>
+    /// <param name="body">tar 流（请求体）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应，<c>data</c> 为导入结果。</returns>
+    /// <response code="200">导入成功。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机不存在（<c>1300</c>）。</response>
+    /// <response code="413">上传体积超过上限（<c>1407</c>）。</response>
+    /// <response code="500">导入失败（<c>1402</c>）。</response>
+    /// <response code="502">主机不可达（<c>1301</c>）。</response>
+    /// <remarks>
+    /// <para><b>为什么是原始请求体而不是 multipart</b>：tar 是二进制，
+    /// 走 multipart 会在文件外面再包一层边界——浏览器端还得自己拼，
+    /// 而 <c>docker save</c> 的产物本来就是可以直接 <c>curl --data-binary</c> 的裸流。</para>
+    /// <para><b>为什么必须放开框架的体积上限</b>：Kestrel 默认 30 MB、
+    /// <c>FormOptions</c> 默认 128 MB，而本项目要支持 20 GB。
+    /// 放开之后限制由应用层用 <see cref="LimitedReadStream"/> 逐字节执行。</para>
+    /// </remarks>
+    [HttpPost("import")]
+    [Consumes("application/octet-stream")]
+    [DisableRequestSizeLimit]
+    [ProducesResponseType(typeof(ApiResult<ImageImportResult>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status413PayloadTooLarge)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status500InternalServerError)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> ImportAsync(
+        string hostId,
+        [FromBody] Stream body,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+
+        // 请求头已知长度时**提前拒绝**：否则要先把这 GB 级请求体传给守护进程，
+        // 让它读到一半才发现超限——那时网络与磁盘都已经白花了。
+        // 不知道长度（chunked）时靠 LimitedReadStream 在流式读取中逐字节兜底。
+        if (this.Request.ContentLength is long declaredLength && declaredLength > _filesOptions.MaxUploadBytes)
+        {
+            throw new BusinessException(
+                ErrorCodes.UploadTooLarge,
+                $"上传体积超过上限（{_filesOptions.MaxUploadBytes} 字节）");
+        }
+
+        await using var limited = new LimitedReadStream(body, _filesOptions.MaxUploadBytes);
+
+        var result = await _transfers
+            .ImportAsync(hostId, limited, cancellationToken)
+            .ConfigureAwait(false);
 
         return this.Ok(ApiResults.Ok(result));
     }
