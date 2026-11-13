@@ -81,9 +81,9 @@ export const ErrorCode = {
   /** 资源当前状态不允许该操作 → 409（如不带 force 删除运行中的容器） */
   DockerResourceConflict: 1404,
   /** 镜像自动更新策略不存在 → 404 */
-  ImageUpdatePolicyNotFound: 1405,
+  ImageUpdatePolicyNotFound: 1411,
   /** 同一主机上已有该镜像的更新策略 → 400 */
-  ImageUpdatePolicyAlreadyExists: 1406,
+  ImageUpdatePolicyAlreadyExists: 1412,
 
   /** 无权限访问此资源 → 403 */
   ResourceForbidden: 1500,

@@ -7,7 +7,7 @@ namespace Whalefleet.Core.Images;
 /// </summary>
 /// <remarks>
 /// <b>「未命中」返回 <see langword="null"/> / <see langword="false"/>，不抛异常</b>：
-/// 错误码（<c>1405</c> / <c>1406</c>）由应用服务决定。
+/// 错误码（<c>1411</c> / <c>1412</c>）由应用服务决定。
 /// </remarks>
 public interface IImageUpdatePolicyRepository : IRepository<ImageUpdatePolicy, Guid>
 {

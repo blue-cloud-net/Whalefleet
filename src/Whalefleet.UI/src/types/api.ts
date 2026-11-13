@@ -183,6 +183,12 @@ export const ErrorCode = {
   /** 导出任务不存在 */
   TransferJobNotFound: 1410,
 
+  // ===== 1411-1412 镜像自动更新（0.15.0）=====
+  /** 镜像自动更新策略不存在 */
+  ImageUpdatePolicyNotFound: 1411,
+  /** 同一主机上已有该镜像的更新策略 */
+  ImageUpdatePolicyAlreadyExists: 1412,
+
   // ===== 9000-9999 服务器内部错误 =====
   /** 服务器内部错误（未捕获异常） */
   InternalError: 9999

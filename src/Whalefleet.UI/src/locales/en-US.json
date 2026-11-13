@@ -2024,8 +2024,8 @@
     "remoteDigest": "Remote digest",
     "autoHint": "Auto update pulls the new image and recreates the containers using it with their original config; on failure the old container is kept as whalefleet-replaced-* so you can roll back.",
     "error": {
-      "1405": "Update policy not found; it may have been deleted",
-      "1406": "This tag already has an update policy"
+      "1411": "Update policy not found; it may have been deleted",
+      "1412": "This tag already has an update policy"
     }
   }
 }

@@ -1733,7 +1733,7 @@ nginx: [emerg] …
 | 操作 | 路径 | 请求体 | 说明 |
 |------|------|--------|------|
 | 列出 | `POST /api/v1/hosts/{hostId}/images/update-policies/list` | — | `image.read` |
-| 新增 | `POST /api/v1/hosts/{hostId}/images/update-policies/create` | `{ reference, mode?, enabled? }` | `image.write`；同一主机上同一引用唯一（`1406`） |
+| 新增 | `POST /api/v1/hosts/{hostId}/images/update-policies/create` | `{ reference, mode?, enabled? }` | `image.write`；同一主机上同一引用唯一（`1412`） |
 | 修改 | `POST /api/v1/hosts/{hostId}/images/update-policies/update` | `{ id, mode?, enabled? }` | `image.write`；**镜像引用不可改**（改引用等于换一条策略） |
 | 删除 | `POST /api/v1/hosts/{hostId}/images/update-policies/remove` | `{ id }` | `image.write` |
 | 立即检查 | `POST /api/v1/hosts/{hostId}/images/update-policies/check` | `{ id }` | `image.write`；`auto` 模式下会拉取并重建 |

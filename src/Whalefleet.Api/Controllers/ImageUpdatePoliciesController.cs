@@ -76,7 +76,7 @@ public sealed class ImageUpdatePoliciesController : ControllerBase
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>统一响应，<c>data</c> 为新建的策略。</returns>
     /// <response code="200">创建成功。</response>
-    /// <response code="400">镜像引用为空或非法（<c>1000</c>）、该镜像已有策略（<c>1406</c>）。</response>
+    /// <response code="400">镜像引用为空或非法（<c>1000</c>）、该镜像已有策略（<c>1412</c>）。</response>
     /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
     /// <response code="403">无权访问该主机（<c>1501</c>）或缺少 <c>image.write</c>（<c>1502</c>）。</response>
     /// <response code="404">主机不存在（<c>1300</c>）。</response>
@@ -110,7 +110,7 @@ public sealed class ImageUpdatePoliciesController : ControllerBase
     /// <response code="400">模式非法（<c>1000</c>）。</response>
     /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
     /// <response code="403">无权访问该主机（<c>1501</c>）或缺少 <c>image.write</c>（<c>1502</c>）。</response>
-    /// <response code="404">主机不存在（<c>1300</c>）或策略不存在（<c>1405</c>）。</response>
+    /// <response code="404">主机不存在（<c>1300</c>）或策略不存在（<c>1411</c>）。</response>
     [HttpPost("update")]
     [ProducesResponseType(typeof(ApiResult<ImageUpdatePolicyDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
@@ -140,7 +140,7 @@ public sealed class ImageUpdatePoliciesController : ControllerBase
     /// <response code="200">删除成功。</response>
     /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
     /// <response code="403">无权访问该主机（<c>1501</c>）或缺少 <c>image.write</c>（<c>1502</c>）。</response>
-    /// <response code="404">主机不存在（<c>1300</c>）或策略不存在（<c>1405</c>）。</response>
+    /// <response code="404">主机不存在（<c>1300</c>）或策略不存在（<c>1411</c>）。</response>
     [HttpPost("remove")]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
@@ -170,7 +170,7 @@ public sealed class ImageUpdatePoliciesController : ControllerBase
     /// <response code="200">检查完成（结论可能是「有新版本」「已是最新」或「失败」）。</response>
     /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
     /// <response code="403">无权访问该主机（<c>1501</c>）或缺少 <c>image.write</c>（<c>1502</c>）。</response>
-    /// <response code="404">主机不存在（<c>1300</c>）或策略不存在（<c>1405</c>）。</response>
+    /// <response code="404">主机不存在（<c>1300</c>）或策略不存在（<c>1411</c>）。</response>
     /// <remarks>
     /// <b>仓库不可达 / 需授权 / 限流都返回 200</b>：它们是<b>检查结论</b>
     /// （落在 <c>state=failed</c> 与 <c>message</c> 里），而不是请求本身有错。

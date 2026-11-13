@@ -123,7 +123,7 @@ public sealed class ImageUpdateService
     /// <returns>新建的策略。</returns>
     /// <exception cref="BusinessException">
     /// 镜像引用为空或非法（<c>1000</c>）、模式非法（<c>1000</c>）、
-    /// 该主机上已有同一镜像的策略（<c>1406</c>）或主机不存在（<c>1300</c>）。
+    /// 该主机上已有同一镜像的策略（<c>1412</c>）或主机不存在（<c>1300</c>）。
     /// </exception>
     public async Task<ImageUpdatePolicyDto> CreateAsync(
         string hostName,
@@ -190,7 +190,7 @@ public sealed class ImageUpdateService
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>修改后的策略。</returns>
     /// <exception cref="BusinessException">
-    /// 策略不存在（<c>1405</c>）、模式非法（<c>1000</c>）或主机不存在（<c>1300</c>）。
+    /// 策略不存在（<c>1411</c>）、模式非法（<c>1000</c>）或主机不存在（<c>1300</c>）。
     /// </exception>
     public async Task<ImageUpdatePolicyDto> UpdateAsync(
         string hostName,
@@ -231,7 +231,7 @@ public sealed class ImageUpdateService
     /// <param name="request">请求（策略主键）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>表示异步操作的任务。</returns>
-    /// <exception cref="BusinessException">策略不存在（<c>1405</c>）或主机不存在（<c>1300</c>）。</exception>
+    /// <exception cref="BusinessException">策略不存在（<c>1411</c>）或主机不存在（<c>1300</c>）。</exception>
     public async Task RemoveAsync(
         string hostName,
         RemoveImageUpdatePolicyRequest? request,
@@ -264,7 +264,7 @@ public sealed class ImageUpdateService
     /// <param name="request">请求（策略主键）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>检查后的策略与本次重建的容器数。</returns>
-    /// <exception cref="BusinessException">策略不存在（<c>1405</c>）或主机不存在（<c>1300</c>）。</exception>
+    /// <exception cref="BusinessException">策略不存在（<c>1411</c>）或主机不存在（<c>1300</c>）。</exception>
     public async Task<ImageUpdateCheckResult> CheckAsync(
         string hostName,
         CheckImageUpdatePolicyRequest? request,

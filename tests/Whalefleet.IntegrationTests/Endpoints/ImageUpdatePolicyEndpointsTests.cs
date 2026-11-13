@@ -99,7 +99,7 @@ public class ImageUpdatePolicyEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task 同一镜像重复新增_返回1406()
+    public async Task 同一镜像重复新增_返回1412()
     {
         using var client = await this.CreateAuthenticatedClientAsync();
 
@@ -110,7 +110,7 @@ public class ImageUpdatePolicyEndpointsTests : IAsyncLifetime
             new { reference = _reference });
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await ReadCodeAsync(response)).Should().Be(1406);
+        (await ReadCodeAsync(response)).Should().Be(1412);
     }
 
     [Fact]
@@ -235,7 +235,7 @@ public class ImageUpdatePolicyEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task 删除不存在的策略_返回1405()
+    public async Task 删除不存在的策略_返回1411()
     {
         using var client = await this.CreateAuthenticatedClientAsync();
 
@@ -244,7 +244,7 @@ public class ImageUpdatePolicyEndpointsTests : IAsyncLifetime
             new { id = Guid.NewGuid().ToString("D") });
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
-        (await ReadCodeAsync(response)).Should().Be(1405);
+        (await ReadCodeAsync(response)).Should().Be(1411);
     }
 
     /// <summary>
