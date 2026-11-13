@@ -66,6 +66,8 @@ public class ErrorCodesTests
         [nameof(ErrorCodes.DownloadTicketInvalid)] = 1408,
         [nameof(ErrorCodes.FileWriteDisabled)] = 1409,
         [nameof(ErrorCodes.TransferJobNotFound)] = 1410,
+        [nameof(ErrorCodes.ImageUpdatePolicyNotFound)] = 1411,
+        [nameof(ErrorCodes.ImageUpdatePolicyAlreadyExists)] = 1412,
 
         // 资源权限
         [nameof(ErrorCodes.ResourceForbidden)] = 1500,
