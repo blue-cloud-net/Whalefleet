@@ -281,6 +281,15 @@ const routes: RouteRecordRaw[] = [
         meta: { scope: 'host', showInSidebar: false, title: 'container.terminal.title' }
       },
       {
+        // 容器文件浏览（0.14.0）：从详情页与列表行的「文件」入口进来。
+        // 与详情页同属「从列表跳进来的下级页」，因此不进侧边栏。
+        // ⚠️ 刻意**不设 narrow**：文件列表吃横向空间（名称 + 大小 + 时间 + 操作）。
+        path: 'hosts/:hostId/containers/:id/files',
+        name: 'host-container-files',
+        component: () => import('@/views/ContainerFilesView.vue'),
+        meta: { scope: 'host', showInSidebar: false, title: 'fileBrowser.container.title' }
+      },
+      {
         path: 'hosts/:hostId/images',
         name: 'host-images',
         component: () => import('@/views/ImagesView.vue'),
@@ -300,6 +309,13 @@ const routes: RouteRecordRaw[] = [
         name: 'host-volumes',
         component: () => import('@/views/VolumesView.vue'),
         meta: { scope: 'host', icon: 'i-carbon-data-volume', title: 'nav.volumes' }
+      },
+      {
+        // 卷文件浏览（0.14.0）：卷没有文件接口，后端借一次性辅助容器完成。
+        path: 'hosts/:hostId/volumes/:name/files',
+        name: 'host-volume-files',
+        component: () => import('@/views/VolumeFilesView.vue'),
+        meta: { scope: 'host', showInSidebar: false, title: 'fileBrowser.volume.title' }
       },
       {
         path: 'hosts/:hostId/networks',

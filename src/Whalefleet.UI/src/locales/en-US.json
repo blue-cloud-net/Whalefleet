@@ -1866,5 +1866,48 @@
       "tokenTitle": "Webhook token (shown only once)",
       "urlHint": "Trigger URL: {url} (replace {token} with the token above)."
     }
+  },
+  "fileBrowser": {
+    "title": "Files",
+    "path": "Current directory",
+    "root": "Root",
+    "up": "Up one level",
+    "refresh": "Refresh",
+    "download": "Download",
+    "upload": "Upload file",
+    "uploadDialog": {
+      "title": "Upload a file to {path}",
+      "pick": "Choose file",
+      "hint": "Uploading overwrites files with the same name; the server enforces an upper size limit",
+      "start": "Upload",
+      "progress": "Uploaded {progress}%"
+    },
+    "empty": "This directory is empty",
+    "truncated": "Too many entries; only the first part is shown",
+    "loadFailed": "Failed to list the directory",
+    "writeDisabled": "File writing is disabled by the administrator",
+    "overwriteHint": "A file with the same name will be overwritten",
+    "uploadSucceeded": "Uploaded {name}",
+    "writeRootForbidden": "The root directory is not a downloadable file",
+    "col": {
+      "name": "Name",
+      "size": "Size",
+      "modified": "Modified",
+      "kind": "Type"
+    },
+    "kind": {
+      "directory": "Directory",
+      "file": "File",
+      "symlink": "Symlink",
+      "other": "Other"
+    },
+    "container": {
+      "title": "Container files",
+      "emptyHint": "Browsing works even when the container is not running — the filesystem layer does not depend on the process"
+    },
+    "volume": {
+      "title": "Volume files",
+      "helperHint": "Browsing a volume makes the backend mount it through a temporary helper container that is removed right away"
+    }
   }
 }

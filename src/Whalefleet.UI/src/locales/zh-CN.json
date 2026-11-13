@@ -1866,5 +1866,48 @@
       "tokenTitle": "Webhook 令牌（只显示这一次）",
       "urlHint": "触发地址：{url}（把 {token} 换成上面的令牌）。"
     }
+  },
+  "fileBrowser": {
+    "title": "文件浏览",
+    "path": "当前目录",
+    "root": "根目录",
+    "up": "上一级",
+    "refresh": "刷新",
+    "download": "下载",
+    "upload": "上传文件",
+    "uploadDialog": {
+      "title": "上传文件到 {path}",
+      "pick": "选择文件",
+      "hint": "上传会覆盖同名文件；单次上传受服务端上限约束",
+      "start": "上传",
+      "progress": "已上传 {percent}%"
+    },
+    "empty": "这个目录是空的",
+    "truncated": "目录条目过多，只显示了前一部分",
+    "loadFailed": "目录列举失败",
+    "writeDisabled": "管理员已禁用文件写入",
+    "overwriteHint": "同名文件会被覆盖，请确认后再上传",
+    "uploadSucceeded": "已上传 {name}",
+    "writeRootForbidden": "根目录不是一个可下载的文件",
+    "col": {
+      "name": "名称",
+      "size": "大小",
+      "modified": "修改时间",
+      "kind": "类型"
+    },
+    "kind": {
+      "directory": "目录",
+      "file": "文件",
+      "symlink": "符号链接",
+      "other": "其它"
+    },
+    "container": {
+      "title": "容器文件",
+      "emptyHint": "容器未运行时同样可以浏览——文件系统层与进程是否在跑无关"
+    },
+    "volume": {
+      "title": "卷文件",
+      "helperHint": "浏览卷时后端会临时创建一个辅助容器挂载它，用完立即删除"
+    }
   }
 }
