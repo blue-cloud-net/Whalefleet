@@ -46,6 +46,8 @@ public static class PermissionAuthorizationServiceCollectionExtensions
             AddPolicy(options, PermissionPolicies.AuditRead, Permission.AuditRead);
             AddPolicy(options, PermissionPolicies.AlertsRead, Permission.AlertRead);
             AddPolicy(options, PermissionPolicies.AlertsWrite, Permission.AlertWrite);
+            AddPolicy(options, PermissionPolicies.TeamsRead, Permission.TeamRead);
+            AddPolicy(options, PermissionPolicies.TeamsWrite, Permission.TeamWrite);
         });
 
         return services;
