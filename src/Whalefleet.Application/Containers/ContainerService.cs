@@ -455,15 +455,17 @@ public sealed partial class ContainerService
         {
             var result = descending ? comparison(y.Container, x.Container) : comparison(x.Container, y.Container);
 
-            // 同值时用 ID 兜底，保证顺序稳定；ID 也相同（理论上不会）时回退到原下标
+            // 主键有差异时**必须返回主键的比较结果**——否则排序字段会被彻底忽略，
+            // 顺序退化成「按 ID 排」（症状：按名称排序，界面看起来却像按 ID 排）。
             if (result != 0)
             {
-                var byId = String.CompareOrdinal(x.Container.ID ?? String.Empty, y.Container.ID ?? String.Empty);
-
-                return byId != 0 ? byId : x.Index.CompareTo(y.Index);
+                return result;
             }
 
-            return x.Index.CompareTo(y.Index);
+            // 同值时用 ID 兜底，保证顺序稳定；ID 也相同（理论上不会）时回退到原下标
+            var byId = String.CompareOrdinal(x.Container.ID ?? String.Empty, y.Container.ID ?? String.Empty);
+
+            return byId != 0 ? byId : x.Index.CompareTo(y.Index);
         });
 
         return [.. sorted.Select(item => item.Container)];

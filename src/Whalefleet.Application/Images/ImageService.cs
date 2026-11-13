@@ -602,7 +602,9 @@ public sealed class ImageService
     /// <br/>
     /// <b>仓库名取首个标签</b>：悬空镜像（无标签）的 <c>RepoTags</c> 为空，
     /// 直接取 <c>[0]</c> 会抛 <see cref="ArgumentOutOfRangeException"/>。
-    /// 空列表按空串参与比较，排在有名字的镜像后面（升序）/ 前面（降序）——任一都是可预期的，
+    /// 空列表按空串参与比较——空串在序数比较下小于任何非空串，
+    /// 因此悬空镜像排在**前面**（升序）/ **后面**（降序）。
+    /// 这与 mock 处理器（<c>image.repoTags[0] ?? ''</c>）一致；
     /// 抛异常则不是。
     /// </remarks>
     private static IReadOnlyList<ImagesListResponse> Sort(
@@ -637,15 +639,17 @@ public sealed class ImageService
         {
             var result = descending ? comparison(y.Image, x.Image) : comparison(x.Image, y.Image);
 
-            // 同值时用 ID 兜底，保证顺序稳定；ID 也相同（理论上不会）时回退到原下标
+            // 主键有差异时**必须返回主键的比较结果**——否则排序字段会被彻底忽略，
+            // 顺序退化成「按 ID 排」（症状：按仓库名排序，界面看起来却像按 ID 排）。
             if (result != 0)
             {
-                var byId = String.CompareOrdinal(x.Image.ID ?? String.Empty, y.Image.ID ?? String.Empty);
-
-                return byId != 0 ? byId : x.Index.CompareTo(y.Index);
+                return result;
             }
 
-            return x.Index.CompareTo(y.Index);
+            // 同值时用 ID 兜底，保证顺序稳定；ID 也相同（理论上不会）时回退到原下标
+            var byId = String.CompareOrdinal(x.Image.ID ?? String.Empty, y.Image.ID ?? String.Empty);
+
+            return byId != 0 ? byId : x.Index.CompareTo(y.Index);
         });
 
         return [.. sorted.Select(item => item.Image)];
