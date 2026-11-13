@@ -336,6 +336,8 @@ export default defineConfig({
     'i-carbon-dashboard', 'i-carbon-activity', 'i-carbon-cube',
     'i-carbon-chevron-right', 'i-carbon-chevron-down', 'i-carbon-arrow-right',
     'i-carbon-arrow-left', 'i-carbon-add', 'i-carbon-renew',
+    // 文件浏览（0.14.0）：上行目录与下载动作都是动态 icon
+    'i-carbon-arrow-up', 'i-carbon-download',
     'i-carbon-edit', 'i-carbon-trash-can', 'i-carbon-copy',
     'i-carbon-folder', 'i-carbon-folder-off', 'i-carbon-meter',
     'i-carbon-cloud-offline', 'i-carbon-cloud-satellite',
