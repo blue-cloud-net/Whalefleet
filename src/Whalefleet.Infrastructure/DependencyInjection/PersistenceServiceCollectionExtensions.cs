@@ -13,8 +13,10 @@ using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Repositories;
 using Whalefleet.Core.Composes;
 using Whalefleet.Core.Teams;
+using Whalefleet.Core.Variables;
 using Whalefleet.Core.Users;
 using Whalefleet.Infrastructure.Persistence.Teams;
+using Whalefleet.Infrastructure.Persistence.Variables;
 using Whalefleet.Infrastructure.Persistence;
 using Whalefleet.Infrastructure.Persistence.Alerting;
 using Whalefleet.Infrastructure.Persistence.Auditing;
@@ -100,6 +102,9 @@ public static class PersistenceServiceCollectionExtensions
 
         // 编排 Compose 项目（0.10.0）：存 Compose YAML 原文与 Webhook 令牌哈希。
         services.AddScoped<IComposeProjectRepository, SqliteComposeProjectRepository>();
+
+        // 环境变量（0.15.0）：全局变量与 Compose 项目级变量；值只存密文。
+        services.AddScoped<IEnvVariableRepository, SqliteEnvVariableRepository>();
 
         // 审计日志（0.9.0）：只追加 + 只查，因此不派生 RepositoryBase（那个基类带更新与软删除）。
         services.AddScoped<IAuditLogRepository, AuditLogRepository>();
