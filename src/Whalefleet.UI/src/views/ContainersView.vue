@@ -13,6 +13,7 @@ import CreateContainerDialog from '@/components/business/CreateContainerDialog.v
 import ContainerBatchActions from '@/components/business/ContainerBatchActions.vue'
 import ContainerListTable from '@/components/business/ContainerListTable.vue'
 import ContainerOperationDialogs from '@/components/business/ContainerOperationDialogs.vue'
+import TransferExportDialog from '@/components/business/TransferExportDialog.vue'
 import { onActionRequest } from '@/composables/useActionBus'
 import { useListSearch } from '@/composables/useListSearch'
 import {
@@ -800,6 +801,22 @@ interface RowAction {
 }
 
 /**
+ * 导出（0.14.0）。
+ *
+ * 容器导出（`docker export`）导出的是**文件系统快照**，不含镜像历史、不含卷内容，
+ * 也不含容器的运行配置——要「完整复制一个容器」请走「生成 docker run 命令」。
+ * 界面必须在对话框里说清这一点，否则用户会拿它当备份。
+ */
+function openExport(container: ContainerSummary): void {
+  exportTarget.value = container
+  exportDialogVisible.value = true
+}
+
+/** 导出对话框状态。 */
+const exportDialogVisible = ref(false)
+const exportTarget = ref<ContainerSummary | null>(null)
+
+/**
  * 某一行当前可用的动作。
  *
  * ## 排列顺序：详情 → 日常操作 → 危险操作
@@ -855,6 +872,14 @@ function rowActions(container: ContainerSummary): RowAction[] {
       icon: 'i-carbon-terminal',
       label: t('container.action.logs'),
       run: openLogs
+    },
+    {
+      // 导出（0.14.0）：只读动作，因此不吃 `busy`（写权限）——
+      // 只读用户同样该能把自己的容器带走。
+      key: 'export',
+      icon: 'i-carbon-download',
+      label: t('container.action.export'),
+      run: openExport
     },
     {
       key: 'remove',
@@ -1413,6 +1438,14 @@ onBeforeUnmount(() => {
       :target="operationTarget"
       @done="onOperationDone"
       @recreated="onOperationDone"
+    />
+
+    <TransferExportDialog
+      v-model="exportDialogVisible"
+      :host-id="hostId"
+      kind="container"
+      :resource-id="exportTarget?.id ?? ''"
+      :resource-name="exportTarget?.name"
     />
   </div>
 </template>

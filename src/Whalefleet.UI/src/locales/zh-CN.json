@@ -204,7 +204,8 @@
       "start": "启动",
       "stop": "停止",
       "terminal": "终端",
-      "update": "热更新"
+      "update": "热更新",
+      "export": "导出"
     },
     "addVolumes": {
       "done": "挂载已追加",
@@ -769,7 +770,9 @@
       "build": "构建镜像",
       "pull": "拉取镜像",
       "push": "推送镜像",
-      "tag": "打标签"
+      "tag": "打标签",
+      "export": "导出",
+      "import": "导入"
     },
     "backToList": "返回镜像列表",
     "batch": {
@@ -1908,6 +1911,28 @@
     "volume": {
       "title": "卷文件",
       "helperHint": "浏览卷时后端会临时创建一个辅助容器挂载它，用完立即删除"
+    }
+  },
+  "transfer": {
+    "download": "下载",
+    "downloadStarted": "已开始下载，请留意浏览器的下载记录",
+    "export": {
+      "title": "导出",
+      "backgroundHint": "导出在服务端后台跑，关掉这个对话框也会继续；产物有时效，请及时下载。",
+      "preparing": "正在准备…",
+      "reused": "该资源已有进行中的导出，这里显示的是同一个任务。"
+    },
+    "import": {
+      "title": "导入",
+      "subtitleImage": "导入镜像包（docker load）：保留原有的层、标签与历史，可以继续基于它构建。",
+      "subtitleContainer": "导入容器文件系统快照（docker import）：压成单层镜像，没有历史，不能追构建过程。",
+      "imageSucceeded": "已导入 {count} 个镜像引用",
+      "imageNoop": "镜像已存在且内容一致（守护进程回了 {count} 条消息）",
+      "containerSucceeded": "容器文件系统已导入为镜像",
+      "repository": "仓库名（可选，如 myapp）",
+      "tag": "标签（可选，默认 latest）",
+      "sizeHint": "服务端有可配置的上传上限（默认 20 GB），且是边传边计数：超限会传到一半才失败。",
+      "start": "开始导入"
     }
   }
 }

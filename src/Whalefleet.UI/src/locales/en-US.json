@@ -204,7 +204,8 @@
       "start": "Start",
       "stop": "Stop",
       "terminal": "Terminal",
-      "update": "Update"
+      "update": "Update",
+      "export": "Export"
     },
     "addVolumes": {
       "done": "Mounts added",
@@ -769,7 +770,9 @@
       "build": "Build image",
       "pull": "Pull image",
       "push": "Push image",
-      "tag": "Tag"
+      "tag": "Tag",
+      "export": "Export",
+      "import": "Import"
     },
     "backToList": "Back to images",
     "batch": {
@@ -1908,6 +1911,28 @@
     "volume": {
       "title": "Volume files",
       "helperHint": "Browsing a volume makes the backend mount it through a temporary helper container that is removed right away"
+    }
+  },
+  "transfer": {
+    "download": "Download",
+    "downloadStarted": "Download started; check your browser's download list",
+    "export": {
+      "title": "Export",
+      "backgroundHint": "The export runs in the background on the server and continues after you close this dialog; the artifact expires, so download it in time.",
+      "preparing": "Preparing…",
+      "reused": "An export for this resource is already running; this shows the same job."
+    },
+    "import": {
+      "title": "Import",
+      "subtitleImage": "Import an image archive (docker load): layers, tags and history are preserved, so you can keep building on it.",
+      "subtitleContainer": "Import a container filesystem snapshot (docker import): flattened into a single layer with no history.",
+      "imageSucceeded": "Imported {count} image reference(s)",
+      "imageNoop": "The image already exists with identical content ({count} daemon messages)",
+      "containerSucceeded": "The container filesystem was imported as an image",
+      "repository": "Repository name (optional, e.g. myapp)",
+      "tag": "Tag (optional, defaults to latest)",
+      "sizeHint": "The server enforces a configurable upload limit (20 GB by default) while streaming, so an oversized upload fails midway.",
+      "start": "Start import"
     }
   }
 }
