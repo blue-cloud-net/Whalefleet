@@ -171,6 +171,8 @@
 | `1408` | 410 | 下载票据无效或已过期 | 0.14.0 |
 | `1409` | 403 | 文件写入已被管理员禁用（`Files:AllowWrite=false`） | 0.14.0 |
 | `1410` | 404 | 导出任务不存在 | 0.14.0 |
+| `1411` | 404 | 镜像自动更新策略不存在 | 0.15.0 |
+| `1412` | 400 | 同一主机上已有该镜像的更新策略 | 0.15.0 |
 | `1500` | 403 | 无权限访问此资源 | 0.0.8 |
 | `1501` | 403 | 无权限访问此主机 | 0.0.8 |
 | `1502` | 403 | 无权限执行此操作（包含容器 read/write 拒绝） | 0.1.0 |
@@ -1730,6 +1732,57 @@ nginx: [emerg] …
 > 前者说明凭据配置生效了，后者说明可能配错地址了。
 >
 > **推送不影响本地镜像**：推成功后本地标签仍在。
+
+#### 镜像自动更新策略（0.15.0）
+
+| 操作 | 路径 | 请求体 | 说明 |
+|------|------|--------|------|
+| 列出 | `POST /api/v1/hosts/{hostId}/images/update-policies/list` | — | `image.read` |
+| 新增 | `POST /api/v1/hosts/{hostId}/images/update-policies/create` | `{ reference, mode?, enabled? }` | `image.write`；同一主机上同一引用唯一（`1406`） |
+| 修改 | `POST /api/v1/hosts/{hostId}/images/update-policies/update` | `{ id, mode?, enabled? }` | `image.write`；**镜像引用不可改**（改引用等于换一条策略） |
+| 删除 | `POST /api/v1/hosts/{hostId}/images/update-policies/remove` | `{ id }` | `image.write` |
+| 立即检查 | `POST /api/v1/hosts/{hostId}/images/update-policies/check` | `{ id }` | `image.write`；`auto` 模式下会拉取并重建 |
+
+响应形态：
+
+```jsonc
+// check 的 data
+{
+  "policy": {
+    "id": "…",
+    "imageReference": "nginx:1.27",
+    "mode": "notify",              // notify | auto
+    "enabled": true,
+    "state": "update-available",   // unknown | up-to-date | update-available | applied | failed
+    "baselineDigest": "sha256:…",  // 上次确认过的远端摘要（null = 尚未建立基线）
+    "remoteDigest": "sha256:…",    // 最近一次探测到的远端摘要
+    "message": null,               // 失败原因 / 已应用的说明
+    "lastCheckedAt": "2026-03-01T12:00:00Z",
+    "lastAppliedAt": null
+  },
+  "recreatedContainers": 0
+}
+```
+
+> **`unknown` 与 `up-to-date` 必须分开**：「还没查过」与「查过、确实最新」是两件事。
+> 合并成一个值会让刚加上的策略立刻宣称自己是最新的，而它一次都没查过。
+
+> **首次检查只建立基线**：刚加上的策略如果立刻报「有更新」，用户第一次看到的就是
+> 一屏需要决策的红点，而他还没做任何选择。首次检查把当前远端摘要记为基线，
+> **之后的变化**才提醒。
+
+> **检查的失败结论是 200，不是 5xx**：仓库不可达 / 需授权 / 限流都落在
+> `state=failed` 与 `message` 里。译成 4xx/5xx 会让界面上分不清「我点错了」
+> 和「仓库今天不通」。
+
+> **检查只发 `HEAD /v2/<name>/manifests/<tag>`，不拉层**：`Docker-Content-Digest`
+> 就是答案。走 `docker pull` 检查更新会产生几百 MB 流量。
+> 官方镜像（`nginx`）会补 `library/` 命名空间——不补就是 404，而那个 404 看起来
+> 像「镜像不存在」。
+
+> **`auto` 模式的重建走与界面「重建」完全相同的内核**（从 inspect 还原完整配置、
+> 失败自动回滚）。失败写**站内通知**（`image-update-failed`），**不写告警规则**——
+> 告警规则是用户自己配的「什么条件下通知我」，塞进去等于替用户配了一条他没配过的规则。
 
 ---
 
