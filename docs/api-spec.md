@@ -146,9 +146,13 @@
 | `1102` | 401 | Refresh token 已撤销或无效 | 0.0.5 |
 | `1103` | 429 | 登录速率限制（5 次/分钟） | 0.0.4 |
 | `1104` | 401 | Terminal token 无效或已过期 | 0.8.0 |
+| `1108` | 401 | 账号已停用 | 0.13.0 |
 | `1200` | 400 | 用户名已存在 | 0.0.8 |
 | `1201` | 404 | 用户不存在 | 0.0.8 |
 | `1202` | 400 | 密码强度不满足要求 | 0.0.5 |
+| `1203` | 400 | 团队名已占用 | 0.13.0 |
+| `1204` | 404 | 团队不存在 | 0.13.0 |
+| `1205` | 403 | 必须先修改密码才能继续 | 0.13.0 |
 | `1300` | 404 | 主机不存在 | 0.0.8 |
 | `1301` | 502 | 主机连通性失败 | 0.0.13 |
 | `1302` | 400 | 主机已停用 | 0.0.8 |
@@ -171,6 +175,7 @@
 | `1513` | 400 | 内置角色受保护，不可修改或删除 | 0.1.0 |
 | `1514` | 400 | 未知权限标识（不在权限目录中） | 0.1.0 |
 | `1515` | 404 | 角色分配不存在 | 0.1.0 |
+| `1516` | 404 | 团队角色分配不存在 | 0.13.0 |
 | `1800` | 404 | 仓库配置不存在 | 0.4.0 |
 | `1801` | 400 | 仓库别名已被占用 | 0.4.0 |
 | `1802` | 400 | 仓库服务地址已被占用 | 0.4.0 |
@@ -207,8 +212,6 @@
 | `1105` | 401 | 个人访问令牌（PAT）无效或已撤销 | 0.18.0 |
 | `1106` | 401 | 个人访问令牌已过期 | 0.18.0 |
 | `1107` | 404 | 个人访问令牌不存在 | 0.18.0 |
-| `1203` | 400 | 团队名已占用 | 0.13.0 |
-| `1204` | 404 | 团队不存在 | 0.13.0 |
 | `1504` | 403 | MCP 写工具未启用（`Mcp:AllowWrite=false`） | 0.18.0 |
 
 ### Mock 与契约同步
@@ -447,8 +450,10 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 告警规则 | `POST /api/v1/admin/alert-rules/{list,update}` | 0.11.0 |
 | 通知中心 | `POST /api/v1/notifications/{list,read}` | 0.11.0 |
 | 通知渠道测试 | `POST /api/v1/admin/notifications/test` | 0.11.0 |
-| 团队 CRUD 与成员 | `POST /api/v1/admin/teams/*` | 0.13.0 |
-| **团队批量授权** | `POST /api/v1/admin/teams/{teamId}/grant` | 0.13.0 |
+| 团队 CRUD 与成员 | `POST /api/v1/admin/teams/*` + `POST /api/v1/admin/teams/{teamId}/members/*` | 0.13.0 |
+| **团队角色分配与同步** | `POST /api/v1/admin/teams/{teamId}/roles/*` + `POST /api/v1/admin/teams/{teamId}/sync` | 0.13.0 |
+| 账号启停与会话管理 | `POST /api/v1/admin/users/{userId}/{enable,disable}` + `POST /api/v1/admin/users/{userId}/sessions/*` | 0.13.0 |
+| 安全策略设置 | `POST /api/v1/admin/settings/security/{get,update}` | 0.13.0 |
 | 镜像 / 容器导出导入 | `POST /api/v1/hosts/{hostId}/{images,containers}/{export,import,commit}` | 0.14.0 |
 | 容器 / 卷文件浏览 | `POST /api/v1/hosts/{hostId}/{containers,volumes}/files/{list,download}` | 0.14.0 |
 | 资源 Webhook | `POST /api/v1/webhooks/{token}` | 0.15.0 |
@@ -490,6 +495,108 @@ POST /api/v1/hosts/{hostId}/containers/list
 **列表分页**：请求 `{ pageIndex?, pageSize? }`；`pageSize` 上限 100（超出**夹紧**而非报错），
 响应 `{ items, total, pageIndex, pageSize }`，其中 `pageIndex` / `pageSize` 是夹紧后的**实际**取值——
 调用方传 9999 却只拿到 100 条时能看出服务端用了多少，不必猜是否丢数据。
+
+---
+
+### 账号状态、会话与安全策略（0.13.0）
+
+| 操作 | 路径 | 权限 | 说明 |
+|------|------|------|------|
+| 会话列表 | `POST /api/v1/admin/users/{userId}/sessions/list` | `user.read` | 仅返回**活跃**会话（未撤销且未过期） |
+| 吊销单个会话 | `POST /api/v1/admin/users/{userId}/sessions/revoke` | `user.write` | Body: `{ sessionId }`；**幂等** |
+| 吊销全部会话 | `POST /api/v1/admin/users/{userId}/sessions/revoke-all` | `user.write` | 返回吊销条数（`data` 为数字） |
+| 启用 / 停用账号 | `POST /api/v1/admin/users/{userId}/set-enabled` | `user.write` | Body: `{ enabled: boolean }`。停用会**撤销其全部会话**（之后请求 `1108`）；启用**不恢复**已撤销的会话，需重新登录；不能停用自己 |
+| 读取安全设置 | `POST /api/v1/admin/settings/security/get` | `user.write` | 密码策略与首次改密开关 |
+| 更新安全设置 | `POST /api/v1/admin/settings/security/update` | `user.write` | 同上；写入活动审计 |
+
+**会话模型（0.13.0 起）**：**一个会话 = `refresh_tokens` 的一行**，该行的 `id`（UUID）既是会话 id，
+也是当前 refresh token 的 id。access token 增加 `sid` 声明指向它。
+
+| 变更 | 行为 |
+|------|------|
+| 刷新令牌 | **原地轮换**：同一行更新 `token_hash` 与 `expires_at`，旧哈希写入 `previous_token_hash`；`sid` **不变** |
+| 重放检测 | 入参哈希命中 `previous_token_hash` → 判定重放，撤销该用户**全部**会话并返回 `1102` |
+| 吊销会话 | 写 `revoked_at`；该会话的 access token 在**下一次请求**即失效（不再等 15 分钟） |
+| 停用账号 | `is_disabled=1` + 撤销全部会话；后续请求返回 `1108` / 401 |
+
+> **为什么轮换不插新行**：access token 里的 `sid` 在轮换前后必须指向**同一会话**，
+> 否则「会话列表」会把一次登录显示成多条记录，「按会话吊销」也会漏掉旧令牌。
+>
+> **无 `sid` 的 access token 一律 `1100` / 401**：0.x 尚未正式发布，没有存量部署需要兼容。
+
+**会话列表项**：
+
+```jsonc
+{
+  "sessionId": "…uuid…",       // 会话 id（= refresh_tokens.id），吊销时回传
+  "createdAt": "2026-11-12T08:31:05Z",
+  "expiresAt": "2026-11-19T08:31:05Z",
+  "rotatedAt": "2026-11-12T09:02:11Z",   // 最近一次轮换时间；从未轮换为 null
+  "createdIp": "10.0.0.7",
+  "userAgent": "Mozilla/5.0 …",
+  "deviceFingerprint": "3f9a1c2b…"      // 浏览器指纹前缀；仅展示，不参与鉴权
+}
+```
+
+> **指纹只记录、不校验**：客户端每次请求带 `X-Client-Fingerprint`；变化时**覆盖**会话记录，
+> 请求照常通过。它用来让人在会话列表里认出「哪一条是我自己」，不是安全边界。
+
+**强制改密（0.13.0）**：安全设置可开启「首次登录强制改密」与「密码有效期」。
+命中时登录与刷新**照常成功**，但响应带 `mustChangePassword=true`；
+此后服务端只放行 `auth/me`、`auth/refresh`、`auth/logout`、`admin/users/update-password`，
+其余端点返回 `1205` / 403。
+
+**安全设置结构**：
+
+```jsonc
+{
+  "minLength": 10,                    // 最小长度
+  "requireLetter": true,              // 必须含字母
+  "requireDigitOrSymbol": true,       // 必须含数字或符号
+  "passwordExpiryDays": 0,            // 0 = 永不过期
+  "mustChangeOnFirstLogin": true      // 新建用户首次登录强制改密
+}
+```
+
+---
+
+### 团队与团队权限（0.13.0）
+
+| 操作 | 路径 | 权限 | 说明 |
+|------|------|------|------|
+| 团队列表 | `POST /api/v1/admin/teams/list` | `team.read` | 分页 |
+| 创建团队 | `POST /api/v1/admin/teams/create` | `team.write` | Body: `{ name, displayName?, description? }` |
+| 更新团队 | `POST /api/v1/admin/teams/update` | `team.write` | Body: `{ teamId, displayName?, description? }` |
+| 删除团队 | `POST /api/v1/admin/teams/remove` | `team.write` | Body: `{ teamId }` |
+| 成员列表 | `POST /api/v1/admin/teams/{teamId}/members/list` | `team.read` | |
+| 添加成员 | `POST /api/v1/admin/teams/{teamId}/members/add` | `team.write` | Body: `{ userIds: string[] }` |
+| 移除成员 | `POST /api/v1/admin/teams/{teamId}/members/remove` | `team.write` | Body: `{ userIds: string[] }` |
+| 团队角色列表 | `POST /api/v1/admin/teams/{teamId}/roles/list` | `team.read` | 团队已授予的角色及其作用域 |
+| 授予团队角色 | `POST /api/v1/admin/teams/{teamId}/roles/assign` | `team.write` | Body: `{ role, host?, containerId? }` |
+| 撤销团队角色 | `POST /api/v1/admin/teams/{teamId}/roles/revoke` | `team.write` | Body: `{ role, host?, containerId? }` |
+| 同步到成员 | `POST /api/v1/admin/teams/{teamId}/sync` | `team.write` | Body: `{ userIds?: string[] }`（省略 = 全部成员） |
+
+**团队权限的语义（与容器粒度 RBAC 同构）**：团队**只收窄、不扩权**。
+成员在某作用域上的有效权限 = **个人权限 ∩ 团队权限上限**。
+
+| 作用域 | 团队已授权时 | 团队未授权时 |
+|------|------|------|
+| 全局 | 个人全局权限 ∩ 各团队全局角色权限并集 | 继承个人全局权限 |
+| 主机 H | 个人在 H 的权限 ∩ 各团队在 H 的角色权限并集 | 继承个人在 H 的权限 |
+| 容器 C | (个人主机 ∩ 个人容器) ∩ (团队主机 ∩ 团队容器) | 继承主机有效权限 |
+
+- **多团队**：先并集各团队的权限，再与个人权限取交集。
+- **内置全局 `admin`**：其全局分配**不受**团队上限约束——否则把管理员误加进一个受限团队
+  就会把他锁在门外。
+- **加入团队不会自动获得权限**：团队角色只作为上限；成员的**个人**授权（`user_role_assignments`）
+  仍需显式写入。
+
+> **为什么团队只收窄不扩权**：让团队成为授权主体意味着「加进团队 = 获得权限」，
+> 而团队成员变更往往由HR / 组长这类**非管理员**操作——那会变成一条绕过 `user.write` 的提权路径。
+> 团队在此扮演的是**权限上限的收窄器**，个人授权仍由管理员在用户侧配置。
+>
+> **同步是显式动作**：`teams/{teamId}/sync` 把团队已授的角色写入成员的 `user_role_assignments`
+> 作为个人基线（幂等，返回 `{ assigned, skipped }`）。加入团队**不会**自动调用它。
 
 ---
 
