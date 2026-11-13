@@ -80,6 +80,10 @@ export const ErrorCode = {
   DockerTimeout: 1403,
   /** 资源当前状态不允许该操作 → 409（如不带 force 删除运行中的容器） */
   DockerResourceConflict: 1404,
+  /** 镜像自动更新策略不存在 → 404 */
+  ImageUpdatePolicyNotFound: 1405,
+  /** 同一主机上已有该镜像的更新策略 → 400 */
+  ImageUpdatePolicyAlreadyExists: 1406,
 
   /** 无权限访问此资源 → 403 */
   ResourceForbidden: 1500,
@@ -137,6 +141,22 @@ export const ErrorCode = {
   ComposeWebhookTokenInvalid: 1906,
   /** Webhook 触发过于频繁 → 429 */
   ComposeWebhookRateLimited: 1907,
+  /** 变量未定义（YAML 引用了不存在的变量）→ 400 */
+  VariableNotDefined: 1908,
+  /** 变量名非法 → 400 */
+  InvalidVariableName: 1909,
+  /** 该变量不允许被 Webhook 覆盖 → 400 */
+  VariableNotOverridable: 1910,
+  /** 容器 Webhook 令牌无效或已吊销 → 404 */
+  ContainerWebhookTokenInvalid: 1911,
+  /** 容器 Webhook 触发过于频繁 → 429 */
+  ContainerWebhookRateLimited: 1912,
+  /** 变量不存在 → 404 */
+  VariableNotFound: 1913,
+  /** 变量名已被占用 → 400 */
+  VariableNameAlreadyExists: 1914,
+  /** 容器 Webhook 不存在 → 404 */
+  ContainerWebhookNotFound: 1915,
 
   /** 告警规则不存在 → 404 */
   AlertRuleNotFound: 1700,
@@ -213,6 +233,8 @@ export const ERROR_HTTP_STATUS: Record<number, number> = {
   [ErrorCode.DockerApiFailed]: 500,
   [ErrorCode.DockerTimeout]: 408,
   [ErrorCode.DockerResourceConflict]: 409,
+  [ErrorCode.ImageUpdatePolicyNotFound]: 404,
+  [ErrorCode.ImageUpdatePolicyAlreadyExists]: 400,
 
   [ErrorCode.ResourceForbidden]: 403,
   [ErrorCode.HostForbidden]: 403,
@@ -244,6 +266,14 @@ export const ERROR_HTTP_STATUS: Record<number, number> = {
   [ErrorCode.ComposeOperationInProgress]: 409,
   [ErrorCode.ComposeWebhookTokenInvalid]: 404,
   [ErrorCode.ComposeWebhookRateLimited]: 429,
+  [ErrorCode.VariableNotDefined]: 400,
+  [ErrorCode.InvalidVariableName]: 400,
+  [ErrorCode.VariableNotOverridable]: 400,
+  [ErrorCode.ContainerWebhookTokenInvalid]: 404,
+  [ErrorCode.ContainerWebhookRateLimited]: 429,
+  [ErrorCode.VariableNotFound]: 404,
+  [ErrorCode.VariableNameAlreadyExists]: 400,
+  [ErrorCode.ContainerWebhookNotFound]: 404,
 
   [ErrorCode.AlertRuleNotFound]: 404,
   [ErrorCode.AlertRuleInvalid]: 400,
@@ -329,6 +359,16 @@ export const ERROR_MESSAGES: Record<number, string> = {
   [ErrorCode.ComposeOperationInProgress]: '该 Compose 项目已有进行中的操作',
   [ErrorCode.ComposeWebhookTokenInvalid]: 'Webhook 令牌无效或已吊销',
   [ErrorCode.ComposeWebhookRateLimited]: 'Webhook 触发过于频繁',
+  [ErrorCode.VariableNotDefined]: '变量未定义',
+  [ErrorCode.InvalidVariableName]: '变量名非法',
+  [ErrorCode.VariableNotOverridable]: '该变量不允许被 Webhook 覆盖',
+  [ErrorCode.ContainerWebhookTokenInvalid]: '容器 Webhook 令牌无效或已吊销',
+  [ErrorCode.ContainerWebhookRateLimited]: '容器 Webhook 触发过于频繁',
+  [ErrorCode.VariableNotFound]: '变量不存在',
+  [ErrorCode.VariableNameAlreadyExists]: '变量名已被占用',
+  [ErrorCode.ContainerWebhookNotFound]: '容器 Webhook 不存在',
+  [ErrorCode.ImageUpdatePolicyNotFound]: '镜像自动更新策略不存在',
+  [ErrorCode.ImageUpdatePolicyAlreadyExists]: '该镜像已有更新策略',
 
   [ErrorCode.AlertRuleNotFound]: '告警规则不存在',
   [ErrorCode.AlertRuleInvalid]: '告警规则参数非法',
