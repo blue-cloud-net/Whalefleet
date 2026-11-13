@@ -566,6 +566,7 @@ flowchart TD
 | [docs/overview.md](docs/overview.md) | 项目定位、非目标、发布模型与版本号策略 |
 | [docs/constraints.md](docs/constraints.md) | 技术栈版本基线、安全 / CI-CD 约束、**Conventional Commits 规范**、配置系统、API 约定、集成测试门槛 |
 | [docs/architecture.md](docs/architecture.md) | 分层依赖方向、充血模型约定、实体清单、**反模式清单**、Dapper 物化约定、鉴权架构 |
+| [docs/session-management.md](docs/session-management.md) | 会话模型（refresh token 即会话）、每请求校验与缓存、吊销与清理、强制改密 |
 | [docs/api-spec.md](docs/api-spec.md) | RPC 风格 API 约定、**错误码分段表**、SignalR Hub、WebSocket 终端 |
 | [docs/features.md](docs/features.md) | 按模块分组的完整功能列表（按版本标注） |
 | [docs/roadmap.md](docs/roadmap.md) | 版本迭代与进度（**版本编号即执行顺序**；`0.0.6` 是空号） |

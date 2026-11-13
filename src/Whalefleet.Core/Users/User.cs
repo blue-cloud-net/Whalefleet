@@ -43,6 +43,35 @@ public sealed class User : FullAuditedEntity<Guid, Guid>
     public string PasswordHash { get; private set; } = String.Empty;
 
     /// <summary>
+    /// 是否已停用（0.13.0）。
+    /// </summary>
+    /// <remarks>
+    /// <para><b>停用与删除是两件事</b>：删除是软删除（行仍在库，只是不再参与查询），
+    /// 而停用保留账号与它的全部审计历史，只是拒绝登录。</para>
+    /// <para>停用后该用户已签发的会话会全部被撤销；即便旧 access token 尚未过期，
+    /// 每次请求的会话校验也会因 <c>is_disabled</c> 而拒绝。</para>
+    /// </remarks>
+    public bool IsDisabled { get; private set; }
+
+    /// <summary>
+    /// 是否必须先修改密码才能继续使用（0.13.0）。
+    /// </summary>
+    /// <remarks>
+    /// 置位时机：① 新建用户（按安全设置 <c>must_change_on_first_login</c>）；
+    /// ② 密码超过有效期。改密成功后清除。
+    /// </remarks>
+    public bool MustChangePassword { get; private set; }
+
+    /// <summary>
+    /// 最近一次密码变更时间（UTC）；<see langword="null"/> 表示从未变更。
+    /// </summary>
+    /// <remarks>
+    /// 用于计算密码有效期。<b>不回填到历史行</b>——迁移里对存量行回填的是创建时间，
+    /// 那已经是历史事实的近似；应用层新建账号时则显式写入当前时间。
+    /// </remarks>
+    public DateTime? PasswordChangedAt { get; private set; }
+
+    /// <summary>
     /// 供 Dapper 物化使用的非公开无参构造。业务代码请改用 <see cref="Create"/>。
     /// </summary>
     private User()
@@ -55,6 +84,10 @@ public sealed class User : FullAuditedEntity<Guid, Guid>
     /// <param name="id">用户主键（Guid.Empty 表示尚未分配，由调用方保证非空）。</param>
     /// <param name="username">用户名；首尾空白会被去除，长度 3-32，仅允许 ASCII 字母、数字与 <c>. _ -</c>。</param>
     /// <param name="passwordHash">密码哈希（不得为明文，也不得为空）。</param>
+    /// <param name="passwordChangedAt">
+    /// 密码变更时间（UTC）；省略表示<b>从未变更</b>。新建账号应当显式传入当前时间——
+    /// 否则密码有效期无从计算。
+    /// </param>
     /// <returns>新建的用户实体。</returns>
     /// <exception cref="ArgumentException">
     /// 用户名为空、长度越界、含非法字符，或密码哈希为空。
@@ -64,13 +97,14 @@ public sealed class User : FullAuditedEntity<Guid, Guid>
     /// 应用服务在创建后另外建立默认角色的全局分配。
     /// 把角色写进本实体会让它看起来像「用户天生就属于某个角色」，而那不是事实。
     /// </remarks>
-    public static User Create(Guid id, string username, string passwordHash)
+    public static User Create(Guid id, string username, string passwordHash, DateTime? passwordChangedAt = null)
     {
         return new User
         {
             Id = id,
             Username = NormalizeUsername(username),
             PasswordHash = EnsurePasswordHash(passwordHash),
+            PasswordChangedAt = passwordChangedAt,
         };
     }
 
@@ -78,10 +112,51 @@ public sealed class User : FullAuditedEntity<Guid, Guid>
     /// 更换密码哈希。
     /// </summary>
     /// <param name="passwordHash">新的密码哈希（不得为空）。</param>
+    /// <param name="utcNow">变更时间（UTC），用于重置密码有效期与首次改密标记。</param>
     /// <exception cref="ArgumentException">密码哈希为空。</exception>
-    public void ChangePassword(string passwordHash)
+    /// <remarks>
+    /// <b>改密必然清除「必须改密」标记</b>：否则用户改完密码仍被拦在门外，
+    /// 且没有任何途径能解开——那是一个死锁。
+    /// </remarks>
+    public void ChangePassword(string passwordHash, DateTime utcNow)
     {
         this.PasswordHash = EnsurePasswordHash(passwordHash);
+        this.PasswordChangedAt = utcNow;
+        this.MustChangePassword = false;
+    }
+
+    /// <summary>
+    /// 标记为「必须先改密」。
+    /// </summary>
+    /// <remarks>
+    /// 幂等：重复标记无副作用。
+    /// </remarks>
+    public void MarkPasswordChangeRequired()
+    {
+        this.MustChangePassword = true;
+    }
+
+    /// <summary>
+    /// 停用账号。
+    /// </summary>
+    /// <remarks>
+    /// <b>停用不撤销会话</b>：那是应用服务的职责（它需要同时写审计并清缓存）。
+    /// 实体只管自己的状态。
+    /// </remarks>
+    public void Disable()
+    {
+        this.IsDisabled = true;
+    }
+
+    /// <summary>
+    /// 启用账号。
+    /// </summary>
+    /// <remarks>
+    /// <b>启用不恢复已撤销的会话</b>：被吊销的会话不会因为账号恢复而复活。
+    /// </remarks>
+    public void Enable()
+    {
+        this.IsDisabled = false;
     }
 
     /// <summary>

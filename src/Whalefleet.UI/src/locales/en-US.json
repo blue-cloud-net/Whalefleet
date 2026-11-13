@@ -154,6 +154,7 @@
     "enabled": "Enabled",
     "key": "Key",
     "loading": "Loading…",
+    "logout": "Sign out",
     "menu": "Menu",
     "next": "Next",
     "pageSize": "Page size",
@@ -942,6 +943,7 @@
     "roles": "Roles & permissions",
     "settings": "Settings",
     "status": "Status",
+    "teams": "Teams",
     "users": "Users",
     "volumes": "Volumes",
     "composes": "Compose"
@@ -1196,18 +1198,28 @@
     "audit": {
       "read": "View audit log"
     },
+    "alert": {
+      "read": "View alert rules",
+      "write": "Manage alert rules"
+    },
+    "team": {
+      "read": "View teams",
+      "write": "Manage teams"
+    },
     "container": {
       "read": "View containers",
       "write": "Operate containers"
     },
     "domain": {
       "audit": "Audit",
+      "alert": "Alerts",
       "container": "Containers",
       "host": "Host",
       "image": "Images",
       "network": "Networks",
       "repository": "Repository",
       "role": "Roles",
+      "team": "Teams",
       "user": "Users",
       "volume": "Volumes",
       "compose": "Compose"
@@ -1444,6 +1456,16 @@
     "realtimeHint": "Three independent switches, all on by default",
     "realtimeNotifications": "Notifications for containers that exit unexpectedly",
     "realtimeStats": "Runtime metrics on the container detail page",
+    "security": {
+      "description": "The password policy affects only future changes; existing passwords are not re-validated.",
+      "expiry": "Password expiry (days)",
+      "expiryHint": "0 means never expires",
+      "minLength": "Minimum length",
+      "mustChangeOnFirstLogin": "Force password change on first sign-in",
+      "requireDigitOrSymbol": "Must contain a digit or symbol",
+      "requireLetter": "Must contain a letter",
+      "title": "Password policy"
+    },
     "subtitle": "Preferences are stored in this browser and do not affect Docker configuration on the server.",
     "title": "Settings"
   },
@@ -1513,11 +1535,19 @@
   "user": {
     "action": {
       "create": "New user",
+      "disable": "Disable account",
+      "disableHint": "Signs the user out immediately and blocks sign-in",
+      "enable": "Enable account",
+      "enableHint": "Old sessions stay revoked — the user must sign in again",
       "resetPassword": "Reset password",
       "roles": "Role assignment",
-      "rolesHint": "Assign roles to this person, optionally scoped to a host"
+      "rolesHint": "Assign roles to this person, optionally scoped to a host",
+      "sessions": "Sessions",
+      "sessionsHint": "View active sessions and force sign-out"
     },
     "badge": {
+      "disabled": "Disabled",
+      "mustChange": "Password change pending",
       "self": "You"
     },
     "change": {
@@ -1529,6 +1559,7 @@
     "col": {
       "created": "Created",
       "roles": "Roles",
+      "status": "Status",
       "username": "Username"
     },
     "confirm": {
@@ -1577,7 +1608,85 @@
     "role": {
       "none": "No role"
     },
+    "session": {
+      "col": {
+        "created": "Signed in",
+        "expires": "Expires",
+        "fingerprint": "Fingerprint",
+        "ip": "Source IP",
+        "userAgent": "Browser"
+      },
+      "empty": "No active sessions.",
+      "revoke": "Force sign-out",
+      "revokeAll": "Sign out everywhere",
+      "revokeAllConfirm": "This revokes every session of the user; all devices must sign in again.",
+      "revokeConfirm": "This revokes the session; the device is signed out on its next request.",
+      "revoked": "Session revoked",
+      "revokedAll": "Revoked {count} session(s)",
+      "title": "Sessions"
+    },
+    "status": {
+      "disabled": "Disabled",
+      "enabled": "Active",
+      "mustChange": "Change pending"
+    },
     "total": "{total} users"
+  },
+  "team": {
+    "action": {
+      "addMembers": "Add members",
+      "assignRole": "Grant role",
+      "create": "New team",
+      "remove": "Delete team",
+      "removeMembers": "Remove members",
+      "sync": "Sync to members"
+    },
+    "col": {
+      "members": "Members",
+      "name": "Team",
+      "roles": "Roles"
+    },
+    "create": {
+      "done": "Team \"{name}\" created",
+      "submit": "Create",
+      "title": "New team"
+    },
+    "deleteConfirm": "Delete team \"{name}\"? Personal assignments already granted are not revoked.",
+    "empty": "No teams yet.",
+    "form": {
+      "description": "Description",
+      "displayName": "Display name",
+      "name": "Team identifier"
+    },
+    "hint": "Teams only narrow permissions; they never grant them. Adding a member grants nothing — use \"Sync to members\" to write the team's roles into their personal assignments.",
+    "member": {
+      "addHint": "Only existing users can be selected",
+      "empty": "No members yet",
+      "join": "Join",
+      "removeHint": "Removing a member does not revoke their personal assignments"
+    },
+    "role": {
+      "assignHint": "Sets the team's permission ceiling; leave host empty for global",
+      "container": "Container",
+      "empty": "No team role assignments yet",
+      "global": "Global"
+    },
+    "sync": {
+      "done": "Synced: {assigned} added, {skipped} skipped ({members} members)"
+    },
+    "title": "Teams"
+  },
+  "password": {
+    "change": {
+      "confirmPassword": "Confirm new password",
+      "description": "This account must change its password before continuing. All sessions are revoked afterwards; sign in again with the new password.",
+      "done": "Password changed — please sign in again",
+      "mismatch": "The two passwords do not match",
+      "newPassword": "New password",
+      "oldPassword": "Current password",
+      "submit": "Change password",
+      "title": "Password change required"
+    }
   },
   "volume": {
     "action": {

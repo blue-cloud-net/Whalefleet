@@ -23,6 +23,10 @@ public interface ITokenService
     /// 新建用户到被分配角色之间存在一个窗口期，那段时间他确实没有任何角色。
     /// </param>
     /// <param name="utcNow">当前 UTC 时间（用于计算过期时刻）。</param>
+    /// <param name="sessionId">
+    /// 会话 id（写入 <c>sid</c> 声明）；<b>0.13.0 起必填</b>。
+    /// 它是 <c>refresh_tokens.id</c>，让服务端能按会话吊销。
+    /// </param>
     /// <returns>令牌原文与过期时间。</returns>
     /// <exception cref="ArgumentException">用户名为空或全空白。</exception>
     /// <remarks>
@@ -34,7 +38,8 @@ public interface ITokenService
         Guid userId,
         string username,
         IReadOnlyList<string> roleNames,
-        DateTime utcNow);
+        DateTime utcNow,
+        Guid sessionId);
 
     /// <summary>
     /// 生成一个新的 refresh token（<b>随机字节，非 JWT</b>）。

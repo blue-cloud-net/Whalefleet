@@ -31,7 +31,14 @@ export const useAuthStore = defineStore('auth', {
     isAdmin: (state) => isAdminPermissions(state.user?.permissions ?? []),
     /** 是否具备某个权限（用于按权限隐藏按钮 / 菜单）。 */
     hasPermission: (state) => (permission: string) =>
-      (state.user?.permissions ?? []).includes(permission)
+      (state.user?.permissions ?? []).includes(permission),
+    /**
+     * 是否必须先改密才能继续使用（0.13.0）。
+     *
+     * 服务端在强制改密期间只放行白名单端点，其余返回 `1205`。
+     * 前端据此**主动跳转**到改密页，而不是等某个请求失败才发现。
+     */
+    mustChangePassword: (state) => state.user?.mustChangePassword ?? false
   },
   actions: {
     /**
@@ -107,6 +114,18 @@ export const useAuthStore = defineStore('auth', {
       this.accessToken = ''
       this.refreshToken = ''
       this.user = null
+    },
+
+    /**
+     * 清除「必须改密」标记（改密成功后调用）。
+     *
+     * 不重新请求 `/auth/me`：那会多一次往返，而这里的事实是确定的——
+     * 密码已经改了，后端也清掉了标记。
+     */
+    clearMustChangePassword() {
+      if (this.user) {
+        this.user = { ...this.user, mustChangePassword: false }
+      }
     }
   },
   persist: {

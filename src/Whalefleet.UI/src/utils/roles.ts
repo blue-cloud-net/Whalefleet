@@ -88,7 +88,11 @@ const PERMISSION_LABEL_KEYS: Record<string, string> = {
   'host.manage': 'permission.host.manage',
   'repository.read': 'permission.repository.read',
   'repository.write': 'permission.repository.write',
-  'audit.read': 'permission.audit.read'
+  'audit.read': 'permission.audit.read',
+  'alert.read': 'permission.alert.read',
+  'alert.write': 'permission.alert.write',
+  'team.read': 'permission.team.read',
+  'team.write': 'permission.team.write'
 }
 
 /** 权限的 i18n key；后端新增权限时返回 null（调用方回退显示权限名）。 */
@@ -110,7 +114,9 @@ const DOMAIN_LABEL_KEYS: Record<string, string> = {
   // `repository`（见 src/Whalefleet.Core/Permissions/Permission.cs）。写成 `registry`
   // 会让 `domainLabelKey()` 返回 null，权限矩阵的分组标题回退显示英文原词。
   repository: 'permission.domain.repository',
-  audit: 'permission.domain.audit'
+  audit: 'permission.domain.audit',
+  alert: 'permission.domain.alert',
+  team: 'permission.domain.team'
 }
 
 /** 域的 i18n key；未登记的域返回 null。 */

@@ -154,6 +154,16 @@ app.UseWebSockets(new WebSocketOptions
 //    - UseAuthentication 填充 HttpContext.User（ICurrentUser 依赖它）
 //    - UseAuthorization 执行 [Authorize] / [Authorize(Roles = …)]
 app.UseAuthentication();
+
+// 6.1) 会话校验（0.13.0）：确认「这个登录态还能用吗」。
+//     必须夹在 UseAuthentication 之后、UseAuthorization 之前：
+//       * 之后 —— 它要读 JwtBearer 已验证过的 HttpContext.User；
+//       * 之前 —— 这样连匿名端点与 [Authorize] 端点都能被统一拦截，
+//                 否则权限策略会先跑一遍，而「会话已吊销」的用户仍会触发查询。
+//     它只回答「会话是否还有效 / 账号是否停用 / 是否必须改密」，
+//     权限判定仍是 IPermissionChecker 的职责。
+app.UseMiddleware<AccountSessionMiddleware>();
+
 app.UseAuthorization();
 
 // 7) 前端产物（0.0.15）：生产镜像内由本进程同源托管，部署因此只有一个容器、一个端口。

@@ -40,6 +40,8 @@ public sealed class UserService
     private readonly IUserRoleAssignmentRepository _assignments;
     private readonly IRefreshTokenRepository _refreshTokens;
     private readonly IPasswordHasher _passwordHasher;
+    private readonly ISecuritySettingsStore _securitySettings;
+    private readonly ISessionStatusCache _sessionCache;
     private readonly ICurrentUser _currentUser;
     private readonly TimeProvider _timeProvider;
     private readonly IAuditLogger _audit;
@@ -51,8 +53,10 @@ public sealed class UserService
     /// <param name="users">用户仓储。</param>
     /// <param name="roles">角色仓储。</param>
     /// <param name="assignments">分配仓储（角色的多对多关系；创建用户与删除管理员都走它）。</param>
-    /// <param name="refreshTokens">刷新令牌仓储（改密码后撤销会话）。</param>
+    /// <param name="refreshTokens">刷新令牌仓储（0.13.0 起它同时是会话表）。</param>
     /// <param name="passwordHasher">密码哈希器。</param>
+    /// <param name="securitySettings">安全策略存储（密码强度与有效期）。</param>
+    /// <param name="sessionCache">会话状态缓存（吊销 / 停用后即时失效）。</param>
     /// <param name="currentUser">当前登录用户（判断"改自己"还是"改别人"）。</param>
     /// <param name="timeProvider">时间源（便于测试）。</param>
     /// <param name="audit">审计日志。</param>
@@ -64,6 +68,8 @@ public sealed class UserService
         IUserRoleAssignmentRepository assignments,
         IRefreshTokenRepository refreshTokens,
         IPasswordHasher passwordHasher,
+        ISecuritySettingsStore securitySettings,
+        ISessionStatusCache sessionCache,
         ICurrentUser currentUser,
         TimeProvider timeProvider,
         IAuditLogger audit,
@@ -74,6 +80,8 @@ public sealed class UserService
         ArgumentNullException.ThrowIfNull(assignments);
         ArgumentNullException.ThrowIfNull(refreshTokens);
         ArgumentNullException.ThrowIfNull(passwordHasher);
+        ArgumentNullException.ThrowIfNull(securitySettings);
+        ArgumentNullException.ThrowIfNull(sessionCache);
         ArgumentNullException.ThrowIfNull(currentUser);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(audit);
@@ -84,6 +92,8 @@ public sealed class UserService
         _assignments = assignments;
         _refreshTokens = refreshTokens;
         _passwordHasher = passwordHasher;
+        _securitySettings = securitySettings;
+        _sessionCache = sessionCache;
         _currentUser = currentUser;
         _timeProvider = timeProvider;
         _audit = audit;
@@ -130,7 +140,9 @@ public sealed class UserService
                 user.Id,
                 user.Username,
                 rolesByUser.TryGetValue(user.Id, out var names) ? names : [],
-                user.CreationTime))
+                user.CreationTime,
+                user.IsDisabled,
+                user.MustChangePassword))
             .ToList();
 
         return new UserListResult(items, total, pageIndex, pageSize);
@@ -162,11 +174,20 @@ public sealed class UserService
         }
 
         // 与初始管理员引导共用同一套强度规则：两处用不同规则迟早出现"能建出来的账号登不进"。
-        PasswordPolicy.EnsureSatisfied(password);
+        // 0.13.0 起规则参数可配，因此这里读的是实例设置。
+        var policy = await _securitySettings.GetAsync(cancellationToken).ConfigureAwait(false);
+        PasswordPolicy.EnsureSatisfied(password, policy);
 
         var role = await this.ResolveRoleAsync(request.Role, cancellationToken).ConfigureAwait(false);
 
-        var user = User.Create(Guid.NewGuid(), username, _passwordHasher.Hash(password));
+        var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
+        var user = User.Create(Guid.NewGuid(), username, _passwordHasher.Hash(password), utcNow);
+
+        // 「首次登录强制改密」：新建的账号默认置位，用户改完密码后清除。
+        if (policy.MustChangeOnFirstLogin)
+        {
+            user.MarkPasswordChangeRequired();
+        }
 
         await _users.AddAsync(user, cancellationToken).ConfigureAwait(false);
 
@@ -192,7 +213,13 @@ public sealed class UserService
             },
             cancellationToken).ConfigureAwait(false);
 
-        return new UserSummary(user.Id, user.Username, [role.Name], user.CreationTime);
+        return new UserSummary(
+            user.Id,
+            user.Username,
+            [role.Name],
+            user.CreationTime,
+            user.IsDisabled,
+            user.MustChangePassword);
     }
 
     /// <summary>
@@ -229,7 +256,7 @@ public sealed class UserService
         await _users.RemoveByIdAsync(target.Id, cancellationToken).ConfigureAwait(false);
 
         // 删号后旧凭据不该继续有效：否则被删的人还能拿手里的 refresh token 换新 access token。
-        await this.RevokeAllSessionsAsync(target.Id, cancellationToken).ConfigureAwait(false);
+        await this.RevokeUserSessionsAsync(target.Id, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("已删除用户 {Username}", target.Username);
 
@@ -282,14 +309,16 @@ public sealed class UserService
 
         var newPassword = Require(request.NewPassword, "newPassword");
 
-        PasswordPolicy.EnsureSatisfied(newPassword);
+        var policy = await _securitySettings.GetAsync(cancellationToken).ConfigureAwait(false);
+        PasswordPolicy.EnsureSatisfied(newPassword, policy);
 
-        target.ChangePassword(_passwordHasher.Hash(newPassword));
+        // 改密会清掉「必须改密」标记（实体方法内完成）并更新密码变更时间。
+        target.ChangePassword(_passwordHasher.Hash(newPassword), _timeProvider.GetUtcNow().UtcDateTime);
 
         await _users.UpdateAsync(target, cancellationToken).ConfigureAwait(false);
 
         // 密码变更的常见动因就是"疑似泄漏"：不动会话等于把旧凭据留在原地。
-        await this.RevokeAllSessionsAsync(target.Id, cancellationToken).ConfigureAwait(false);
+        await this.RevokeUserSessionsAsync(target.Id, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation(
             "已修改用户 {Username} 的密码（操作者={ActorId}，自助={IsSelf}）",
@@ -309,6 +338,268 @@ public sealed class UserService
                 Detail = $"自助={isSelf}（密码内容不入库）",
             },
             cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 列出某用户的<b>活跃</b>会话（0.13.0）。
+    /// </summary>
+    /// <param name="request">请求（目标用户）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>会话列表；无活跃会话时返回空列表。</returns>
+    /// <exception cref="BusinessException">
+    /// 未提供 <c>userId</c>（<c>1000</c>）或用户不存在（<c>1201</c>）。
+    /// </exception>
+    public async Task<IReadOnlyList<UserSessionSummary>> ListSessionsAsync(
+        ListUserSessionsRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var userId = RequireUserId(request.UserId);
+        var user = await this.RequireUserAsync(userId, cancellationToken).ConfigureAwait(false);
+
+        var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
+        var sessions = await _refreshTokens
+            .ListActiveByUserAsync(userId, utcNow, cancellationToken)
+            .ConfigureAwait(false);
+
+        return [.. sessions.Select(session => new UserSessionSummary(
+            session.Id,
+            user.Username,
+            session.CreationTime,
+            session.ExpiresAt,
+            session.RotatedAt,
+            session.CreatedIp,
+            session.UserAgent,
+            session.DeviceFingerprint))];
+    }
+
+    /// <summary>
+    /// 吊销单个会话（0.13.0）。
+    /// </summary>
+    /// <param name="request">请求（目标用户 + 会话 id）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>表示异步操作的任务。</returns>
+    /// <exception cref="BusinessException">
+    /// 参数非法（<c>1000</c>）、用户不存在（<c>1201</c>）或会话不属于该用户（<c>1100</c>）。
+    /// </exception>
+    public async Task RevokeSessionAsync(
+        RevokeUserSessionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var userId = RequireUserId(request.UserId);
+        var user = await this.RequireUserAsync(userId, cancellationToken).ConfigureAwait(false);
+
+        if (request.SessionId is not { } sessionId || sessionId == Guid.Empty)
+        {
+            throw BusinessException.Validation("sessionId 不能为空");
+        }
+
+        var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
+
+        var session = await _refreshTokens
+            .QueryByIdAsync(sessionId, cancellationToken)
+            .ConfigureAwait(false);
+
+        // 会话不存在 → 幂等成功（它已经没了，吊销它没有意义）。
+        // 会话存在但属于别人 → 明确拒绝：否则能用别人的会话 id 探测它的存在性。
+        if (session is null)
+        {
+            return;
+        }
+
+        if (session.UserId != userId)
+        {
+            throw new BusinessException(ErrorCodes.Unauthenticated, "该会话不属于此用户");
+        }
+
+        await _refreshTokens.RevokeByIdAsync(sessionId, utcNow, cancellationToken).ConfigureAwait(false);
+        _sessionCache.Remove(sessionId);
+
+        _logger.LogInformation(
+            "已吊销用户 {Username} 的会话 {SessionId}（操作者={ActorId}）",
+            user.Username,
+            sessionId,
+            _currentUser.UserId);
+
+        await _audit.RecordAsync(
+            new AuditLogDraft
+            {
+                Category = AuditCategory.Activity,
+                Action = AuditActions.UserSessionRevoke,
+                Outcome = AuditOutcome.Success,
+                TargetType = AuditTargetTypes.User,
+                TargetId = user.Id.ToString("D"),
+                TargetName = user.Username,
+                Detail = $"会话={sessionId:D}",
+            },
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 吊销某用户的<b>全部</b>会话（0.13.0）。
+    /// </summary>
+    /// <param name="request">请求（目标用户）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>被吊销的会话数。</returns>
+    /// <exception cref="BusinessException">
+    /// 参数非法（<c>1000</c>）或用户不存在（<c>1201</c>）。
+    /// </exception>
+    public async Task<int> RevokeAllSessionsAsync(
+        ListUserSessionsRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var userId = RequireUserId(request.UserId);
+        var user = await this.RequireUserAsync(userId, cancellationToken).ConfigureAwait(false);
+
+        var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
+        var revoked = await _refreshTokens
+            .RevokeAllForUserAsync(userId, utcNow, cancellationToken)
+            .ConfigureAwait(false);
+
+        // 缓存也要清：否则最多 60 秒内那个会话仍会被当作有效。
+        _sessionCache.RemoveByUser(userId);
+
+        _logger.LogInformation(
+            "已吊销用户 {Username} 的全部会话（共 {Count} 条，操作者={ActorId}）",
+            user.Username,
+            revoked,
+            _currentUser.UserId);
+
+        await _audit.RecordAsync(
+            new AuditLogDraft
+            {
+                Category = AuditCategory.Activity,
+                Action = AuditActions.UserSessionRevokeAll,
+                Outcome = AuditOutcome.Success,
+                TargetType = AuditTargetTypes.User,
+                TargetId = user.Id.ToString("D"),
+                TargetName = user.Username,
+                Detail = $"共吊销 {revoked} 条会话",
+            },
+            cancellationToken).ConfigureAwait(false);
+
+        return revoked;
+    }
+
+    /// <summary>
+    /// 启用 / 停用账号（0.13.0）。
+    /// </summary>
+    /// <param name="request">请求（目标用户 + 是否启用）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>表示异步操作的任务。</returns>
+    /// <exception cref="BusinessException">
+    /// 参数非法（<c>1000</c>）、用户不存在（<c>1201</c>）、
+    /// 目标是当前登录账号或最后一个管理员（<c>1000</c>）。
+    /// </exception>
+    public async Task SetEnabledAsync(
+        SetUserEnabledRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var userId = RequireUserId(request.UserId);
+        var target = await this.RequireUserAsync(userId, cancellationToken).ConfigureAwait(false);
+
+        // enabled 省略时校验失败：默认为「不启用」会变成一个误调用就锁号的接口。
+        if (request.Enabled is not { } enabled)
+        {
+            throw BusinessException.Validation("enabled 不能为空");
+        }
+
+        if (!enabled)
+        {
+            if (target.Id == _currentUser.UserId)
+            {
+                throw BusinessException.Validation("不能停用当前登录的账号");
+            }
+
+            // 最后一个管理员被停用后无人能管理系统 —— 与「不能删最后一个管理员」同一条不变式。
+            await this.EnsureNotLastAdminAsync(target, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (target.IsDisabled == !enabled)
+        {
+            // 状态没变：幂等返回，不重复写审计。
+            return;
+        }
+
+        if (enabled)
+        {
+            target.Enable();
+        }
+        else
+        {
+            target.Disable();
+        }
+
+        await _users.UpdateAsync(target, cancellationToken).ConfigureAwait(false);
+
+        if (!enabled)
+        {
+            // 停用必须**立即**让已签发的会话失效：
+            // ① 撤销全部会话（库即事实源）；② 清缓存（否则最多 60 秒内仍被当作有效）。
+            var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
+            await _refreshTokens
+                .RevokeAllForUserAsync(target.Id, utcNow, cancellationToken)
+                .ConfigureAwait(false);
+
+            _sessionCache.RemoveByUser(target.Id);
+        }
+
+        _logger.LogInformation(
+            "已{Action}用户 {Username}（操作者={ActorId}）",
+            enabled ? "启用" : "停用",
+            target.Username,
+            _currentUser.UserId);
+
+        await _audit.RecordAsync(
+            new AuditLogDraft
+            {
+                Category = AuditCategory.Activity,
+                Action = enabled ? AuditActions.UserEnable : AuditActions.UserDisable,
+                Outcome = AuditOutcome.Success,
+                TargetType = AuditTargetTypes.User,
+                TargetId = target.Id.ToString("D"),
+                TargetName = target.Username,
+                Detail = enabled ? "启用账号" : "停用账号并撤销其全部会话",
+            },
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 查询某用户是否必须先改密（0.13.0）。
+    /// </summary>
+    /// <param name="userId">用户主键。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>需要强制改密返回 <see langword="true"/>。</returns>
+    /// <remarks>
+    /// <b>两个来源都要看</b>：用户身上的「必须改密」标记，以及密码超过有效期。
+    /// 后者由安全设置驱动——改了有效期后，历史账号也会在下次登录时被要求改密。
+    /// </remarks>
+    public async Task<bool> GetMustChangePasswordAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await _users.QueryByIdAsync(userId, cancellationToken).ConfigureAwait(false);
+
+        if (user is null)
+        {
+            return false;
+        }
+
+        if (user.MustChangePassword)
+        {
+            return true;
+        }
+
+        var policy = await _securitySettings.GetAsync(cancellationToken).ConfigureAwait(false);
+
+        return policy.IsPasswordExpired(user.PasswordChangedAt, _timeProvider.GetUtcNow().UtcDateTime);
     }
 
     /// <summary>
@@ -458,15 +749,47 @@ public sealed class UserService
     /// </summary>
     /// <param name="userId">用户主键。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    private async Task RevokeAllSessionsAsync(Guid userId, CancellationToken cancellationToken)
+    private async Task RevokeUserSessionsAsync(Guid userId, CancellationToken cancellationToken)
     {
         var revoked = await _refreshTokens
             .RevokeAllForUserAsync(userId, _timeProvider.GetUtcNow().UtcDateTime, cancellationToken)
             .ConfigureAwait(false);
 
+        // 缓存同步清理：否则最多 60 秒内那些会话仍会被当作有效。
+        _sessionCache.RemoveByUser(userId);
+
         if (revoked > 0)
         {
-            _logger.LogInformation("已撤销用户 {UserId} 的 {Count} 个刷新令牌", userId, revoked);
+            _logger.LogInformation("已撤销用户 {UserId} 的 {Count} 个会话", userId, revoked);
         }
+    }
+
+    /// <summary>
+    /// 读取必填的用户主键。
+    /// </summary>
+    /// <param name="userId">用户主键（可空）。</param>
+    /// <returns>用户主键。</returns>
+    /// <exception cref="BusinessException">未提供（<c>1000</c>）。</exception>
+    private static Guid RequireUserId(Guid? userId)
+    {
+        if (userId is not { } id || id == Guid.Empty)
+        {
+            throw BusinessException.Validation("userId 不能为空");
+        }
+
+        return id;
+    }
+
+    /// <summary>
+    /// 确认目标用户存在。
+    /// </summary>
+    /// <param name="userId">用户主键。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>用户实体。</returns>
+    /// <exception cref="BusinessException">用户不存在（<c>1201</c>）。</exception>
+    private async Task<User> RequireUserAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        return await _users.QueryByIdAsync(userId, cancellationToken).ConfigureAwait(false)
+            ?? throw new BusinessException(ErrorCodes.UserNotFound, "用户不存在");
     }
 }

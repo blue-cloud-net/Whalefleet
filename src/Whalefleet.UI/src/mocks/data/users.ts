@@ -30,31 +30,43 @@ const SEMANTIC_USERS: AdminUserSummary[] = [
     id: '00000000-0000-0000-0000-0000000000b1',
     username: 'admin',
     roles: ['admin'],
-    creationTime: '2026-09-20T02:00:00Z'
+    creationTime: '2026-09-20T02:00:00Z',
+    isDisabled: false,
+    mustChangePassword: false
   },
   {
     id: '00000000-0000-0000-0000-0000000000b2',
     username: 'ops-zhang',
     roles: ['operator', 'viewer'],
-    creationTime: '2026-09-28T07:31:12Z'
+    creationTime: '2026-09-28T07:31:12Z',
+    isDisabled: false,
+    mustChangePassword: false
   },
   {
     id: '00000000-0000-0000-0000-0000000000b3',
     username: 'readonly-li',
     roles: ['viewer'],
-    creationTime: '2026-10-02T11:05:40Z'
+    creationTime: '2026-10-02T11:05:40Z',
+    // 语义夹具：让「已停用」状态在走查里可见（停用后行上会有标记与启用按钮）
+    isDisabled: true,
+    mustChangePassword: false
   },
   {
     id: '00000000-0000-0000-0000-0000000000b4',
     username: 'deployer-bot',
     roles: ['deployer'],
-    creationTime: '2026-10-08T03:44:00Z'
+    creationTime: '2026-10-08T03:44:00Z',
+    isDisabled: false,
+    mustChangePassword: false
   },
   {
     id: '00000000-0000-0000-0000-0000000000b5',
     username: 'pending-chen',
     roles: [],
-    creationTime: '2026-10-12T08:20:00Z'
+    creationTime: '2026-10-12T08:20:00Z',
+    isDisabled: false,
+    // 语义夹具：新建后尚未改密，界面上应显示「待改密」
+    mustChangePassword: true
   }
 ]
 
@@ -124,7 +136,9 @@ const GENERATED_USERS: AdminUserSummary[] = USER_SEEDS.map((seed, index) => ({
   id: userIdOf(index),
   username: seed.username,
   roles: [...seed.roles],
-  creationTime: new Date(USER_EPOCH - (seed.daysAgo * 24 + jitterOf(seed.username) / 3600) * 3600 * 1000).toISOString()
+  creationTime: new Date(USER_EPOCH - (seed.daysAgo * 24 + jitterOf(seed.username) / 3600) * 3600 * 1000).toISOString(),
+  isDisabled: false,
+  mustChangePassword: false
 }))
 
 /** 默认场景的用户列表（顺序即服务端顺序：创建时间降序）。 */

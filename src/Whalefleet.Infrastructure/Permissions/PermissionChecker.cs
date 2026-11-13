@@ -35,6 +35,7 @@ internal sealed class PermissionChecker : IPermissionChecker
     private readonly ICurrentUser _currentUser;
     private readonly IUserRoleAssignmentRepository _assignments;
     private readonly IRoleRepository _roles;
+    private readonly ITeamPermissionResolver _teamCeiling;
     private readonly ILogger<PermissionChecker> _logger;
 
     /// <summary>
@@ -53,22 +54,26 @@ internal sealed class PermissionChecker : IPermissionChecker
     /// <param name="currentUser">当前登录用户。</param>
     /// <param name="assignments">分配仓储。</param>
     /// <param name="roles">角色仓储。</param>
+    /// <param name="teamCeiling">团队权限上限解析器（0.13.0）。</param>
     /// <param name="logger">日志。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
     public PermissionChecker(
         ICurrentUser currentUser,
         IUserRoleAssignmentRepository assignments,
         IRoleRepository roles,
+        ITeamPermissionResolver teamCeiling,
         ILogger<PermissionChecker> logger)
     {
         ArgumentNullException.ThrowIfNull(currentUser);
         ArgumentNullException.ThrowIfNull(assignments);
         ArgumentNullException.ThrowIfNull(roles);
+        ArgumentNullException.ThrowIfNull(teamCeiling);
         ArgumentNullException.ThrowIfNull(logger);
 
         _currentUser = currentUser;
         _assignments = assignments;
         _roles = roles;
+        _teamCeiling = teamCeiling;
         _logger = logger;
     }
 
@@ -169,8 +174,19 @@ internal sealed class PermissionChecker : IPermissionChecker
         }
 
         var result = permissions.Count == 0
-            ? []
+            ? FrozenSet<string>.Empty
             : permissions.ToFrozenSet(StringComparer.Ordinal);
+
+        // 0.13.0：团队权限上限。团队**只收窄**——个人权限 ∩ 团队上限。
+        // 上限为 null（该作用域没有团队约束）时不收窄，保留个人权限。
+        var ceiling = await _teamCeiling
+            .GetCeilingAsync(userId, hostId, containerId: null, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (ceiling is not null)
+        {
+            result = result.Intersect(ceiling, StringComparer.Ordinal).ToFrozenSet(StringComparer.Ordinal);
+        }
 
         _cache[key] = result;
         return result;

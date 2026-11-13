@@ -27,6 +27,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 0.13.0 — Accounts, teams and security (internal draft)
+
+#### Added
+
+- **Teams as permission ceilings**: new `teams` / `team_members` / `team_role_assignments`
+  tables. A team narrows what its members may do — the effective set is the member's own
+  assignments intersected with the union of their teams' roles. Joining a team **grants nothing**,
+  and built-in global admins are exempt from the ceiling.
+- **Explicit team sync**: `POST /api/v1/admin/teams/{id}/sync` writes a team's roles into its
+  members' personal assignments (idempotent; reports `assigned` / `skipped` / `members`). The UI
+  keeps saying out loud that teams only narrow permissions.
+- **Session management**: access tokens carry a `sid` claim pointing at the refresh-token row
+  that owns the login. Admins can list a user's sessions (created / expiry / IP / user agent /
+  fingerprint), revoke one, or revoke all; revocation takes effect on the **next request**.
+- **Per-request session validation** backed by a 60-second in-memory cache. Expired sessions are
+  queued for asynchronous deletion, with an hourly sweep as a fallback.
+- **Account enable / disable**: disabling revokes every session immediately
+  (`1108` thereafter). You cannot disable your own account.
+- **Password policy** (`POST /api/v1/admin/settings/security/{get,update}`): minimum length,
+  letter and digit-or-symbol requirements, expiry days, and forced change on first login.
+  While a change is required only `/auth/me`, `/auth/refresh`, `/auth/logout` and the
+  password-update endpoint are reachable; everything else returns `1205`.
+- **Device fingerprint**: recorded on login and overwritten when it changes. **Display only** —
+  it never rejects a request.
+
+#### Changed
+
+- Refresh-token rotation now updates the existing row instead of inserting a new one, so one
+  device maps to exactly one session and the `sid` stays stable across rotations.
+- Refresh responses return the full effective permission set plus `mustChangePassword`.
+
+#### Fixed
+
+- A silent token refresh used to return an empty permission list; the client then overwrote its
+  cached permissions and menu entries disappeared until the next full login.
+
+#### New error codes and permissions
+
+- `1108` account disabled, `1203` team name taken, `1204` team not found,
+  `1205` password change required, `1516` team role assignment not found.
+- New permissions `team.read` / `team.write`; the teams page lives at `/teams` in the sidebar.
+
 ### 0.12.0 — Container-level RBAC (internal draft)
 
 - Add container role assignments bounded by host permissions, with persistent inheritance and assignment-required policies.

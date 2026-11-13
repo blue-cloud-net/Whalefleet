@@ -9,7 +9,8 @@ internal sealed class ContainerPermissionChecker(
     IPermissionChecker hostPermissions,
     IUserRoleAssignmentRepository assignments,
     IRoleRepository roles,
-    IAuthorizationSettingsStore settings) : IContainerPermissionChecker
+    IAuthorizationSettingsStore settings,
+    ITeamPermissionResolver teamCeiling) : IContainerPermissionChecker
 {
     private readonly Dictionary<Guid, IReadOnlyList<UserRoleAssignment>> _assignments = [];
     private readonly Dictionary<Guid, IReadOnlySet<string>> _roles = [];
@@ -49,6 +50,18 @@ internal sealed class ContainerPermissionChecker(
                 result.IntersectWith(allowed);
             }
         }
+
+        // 0.13.0：团队权限上限同样作用在容器级。
+        // 上限为 null（该容器没有团队约束，或用户是内置全局管理员）时不收窄。
+        var ceiling = await teamCeiling
+            .GetCeilingAsync(userId, hostId, containerId, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (ceiling is not null)
+        {
+            result.IntersectWith(ceiling);
+        }
+
         _permissions[key] = result;
         return result;
     }

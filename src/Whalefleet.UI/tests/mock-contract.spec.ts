@@ -18,6 +18,8 @@ import { resetSessionHosts } from '../src/mocks/handlers/hosts'
 import { resetSessionImages } from '../src/mocks/handlers/images'
 import { resetSessionResources } from '../src/mocks/handlers/resources'
 import { resetSessionRoles } from '../src/mocks/handlers/permissions'
+import { resetSessionSecurityPolicy } from '../src/mocks/handlers/security-settings'
+import { resetSessionTeams } from '../src/mocks/handlers/teams'
 import { resetSessionUsers } from '../src/mocks/handlers/users'
 import { MOCK_CONTAINERS_DEFAULT } from '../src/mocks/data/containers'
 import { MOCK_IMAGES_DEFAULT } from '../src/mocks/data/images'
@@ -48,6 +50,8 @@ afterEach(() => {
   resetSessionImages()
   resetSessionResources()
   resetSessionRoles()
+  resetSessionSecurityPolicy()
+  resetSessionTeams()
   resetSessionUsers()
 })
 afterAll(() => mockServer.close())
@@ -108,9 +112,13 @@ describe('错误码 → HTTP 状态码（与后端 ErrorCodeCatalog + ErrorHttpS
     [1102, 401],
     [1103, 429],
     [1104, 401],
+    [1108, 401],
     [1200, 400],
     [1201, 404],
     [1202, 400],
+    [1203, 400],
+    [1204, 404],
+    [1205, 403],
     [1300, 404],
     [1301, 502],
     [1302, 400],
@@ -128,6 +136,7 @@ describe('错误码 → HTTP 状态码（与后端 ErrorCodeCatalog + ErrorHttpS
     [1513, 400],
     [1514, 400],
     [1515, 404],
+    [1516, 404],
     [1800, 404],
     [1801, 400],
     [1802, 400],
@@ -1345,10 +1354,12 @@ describe('角色与权限目录端点（0.1.0）', () => {
     const admin = roles.find((role) => role.name === 'admin')!
     expect(admin.isBuiltIn).toBe(true)
     // 0.4.0 把目录从 16 条扩到 18 条（repository.read / repository.write）；
-    // 0.10.0 再加 compose.read / compose.write，扩到 20 条。
+    // 0.10.0 再加 compose.read / compose.write，扩到 20 条；
+    // 0.11.0 加 alert.read / alert.write，扩到 22 条；
+    // 0.13.0 加 team.read / team.write，扩到 24 条。
     // admin 的权限集必须覆盖**整个目录**，因此这里跟着目录长度走：
     // 写死 16 会在新增权限时拦下「admin 漏了一项」——而那正是最该拦的情况。
-    expect(admin.permissions).toHaveLength(20)
+    expect(admin.permissions).toHaveLength(24)
     expect(typeof admin.assignmentCount).toBe('number')
 
     // 全库至多一个默认角色
@@ -1363,7 +1374,7 @@ describe('角色与权限目录端点（0.1.0）', () => {
     expect(roles.every((role) => !role.isBuiltIn)).toBe(true)
   })
 
-  it('权限目录共 20 条，Host 域在前、Global 在后（矩阵的分组顺序就来自它）', async () => {
+  it('权限目录共 24 条，Host 域在前、Global 在后（矩阵的分组顺序就来自它）', async () => {
     const { status, json } = await post('/api/v1/admin/roles/permissions')
 
     expect(status).toBe(200)
@@ -1375,9 +1386,9 @@ describe('角色与权限目录端点（0.1.0）', () => {
       scope: string
     }[]
 
-    expect(permissions).toHaveLength(20)
+    expect(permissions).toHaveLength(24)
     expect(permissions[0].name).toBe('host.read')
-    expect(permissions.at(-1)!.name).toBe('audit.read')
+    expect(permissions.at(-1)!.name).toBe('team.write')
     // 作用域是判定依据：host.manage 与 host.read 前缀相同、作用域完全不同
     expect(permissions.find((item) => item.name === 'host.manage')!.scope).toBe('global')
     expect(permissions.find((item) => item.name === 'host.read')!.scope).toBe('host')
@@ -2230,5 +2241,222 @@ describe('网络接入端点（0.7.0）', () => {
 
     expect(status).toBe(404)
     expect(json.code).toBe(ErrorCode.DockerResourceNotFound)
+  })
+})
+
+describe('团队管理（0.13.0）', () => {
+  const SRE = '00000000-0000-0000-0000-0000000000c1'
+
+  it('列表回带成员数与角色授权数（两者不是同一个数字）', async () => {
+    const { status, json } = await post('/api/v1/admin/teams/list', {})
+    expect(status).toBe(200)
+
+    const items = (json.data as { items: { name: string; memberCount: number; roleAssignmentCount: number }[] }).items
+    const sre = items.find((item) => item.name === 'sre')
+
+    expect(sre?.memberCount).toBe(2)
+    expect(sre?.roleAssignmentCount).toBe(1)
+  })
+
+  it('团队名不区分大小写唯一 → 1203 / 400', async () => {
+    const { status, json } = await post('/api/v1/admin/teams/create', { name: 'SRE' })
+
+    // ⚠️ 1203 映射的是 **400** 而不是 409：它与「字段非法」同属「请求本身有问题」，
+    // 与资源冲突类（1404/409）不是一回事。
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.TeamNameAlreadyExists)
+    expect(httpStatusOf(ErrorCode.TeamNameAlreadyExists)).toBe(400)
+  })
+
+  it('团队不存在 → 1204 / 404', async () => {
+    const { status, json } = await post('/api/v1/admin/teams/no-such-team/detail')
+
+    expect(status).toBe(404)
+    expect(json.code).toBe(ErrorCode.TeamNotFound)
+  })
+
+  it('加成员不会产生任何授权（团队只收窄、不授予）', async () => {
+    const users = (
+      await post('/api/v1/admin/users/list', { pageSize: 100 })
+    ).json.data as { items: { id: string; username: string }[] }
+
+    const before = (await post(`/api/v1/admin/teams/${SRE}/detail`)).json.data as {
+      roleAssignments: unknown[]
+      summary: { roleAssignmentCount: number }
+    }
+    const memberIds = new Set(
+      (
+        (await post(`/api/v1/admin/teams/${SRE}/detail`)).json.data as { members: { userId: string }[] }
+      ).members.map((member) => member.userId)
+    )
+    const outsider = users.items.find((user) => !memberIds.has(user.id))
+
+    expect(outsider).toBeDefined()
+
+    const added = await post(`/api/v1/admin/teams/${SRE}/members/add`, { userIds: [outsider!.id] })
+    expect(added.status).toBe(200)
+    expect(added.json.data).toBe(1)
+
+    const after = (await post(`/api/v1/admin/teams/${SRE}/detail`)).json.data as {
+      roleAssignments: unknown[]
+      summary: { roleAssignmentCount: number }
+    }
+
+    // 成员数变了，角色一条都不能多——否则「加入团队」会变成隐式授权。
+    expect(after.summary.roleAssignmentCount).toBe(before.summary.roleAssignmentCount)
+    expect(after.roleAssignments).toEqual(before.roleAssignments)
+  })
+
+  it('没有角色时同步 → 1000（无意义的动作不静默成功）', async () => {
+    const auditTeam = '00000000-0000-0000-0000-0000000000c2'
+    const { status, json } = await post(`/api/v1/admin/teams/${auditTeam}/sync`, {})
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.ValidationFailed)
+  })
+
+  it('同步是幂等的：第二次全部 skipped', async () => {
+    const first = await post(`/api/v1/admin/teams/${SRE}/sync`, {})
+    expect(first.status).toBe(200)
+    expect(first.json.data).toEqual({ assigned: 2, skipped: 0, members: 2 })
+
+    const second = await post(`/api/v1/admin/teams/${SRE}/sync`, {})
+    expect(second.json.data).toEqual({ assigned: 0, skipped: 2, members: 2 })
+  })
+
+  it('撤销不存在的团队授权 → 1516 / 404', async () => {
+    const { status, json } = await post(`/api/v1/admin/teams/${SRE}/roles/revoke`, { role: 'ghost' })
+
+    expect(status).toBe(404)
+    expect(json.code).toBe(ErrorCode.TeamRoleAssignmentNotFound)
+    expect(httpStatusOf(ErrorCode.TeamRoleAssignmentNotFound)).toBe(404)
+  })
+})
+
+describe('会话管理（0.13.0）', () => {
+  async function firstUserId(): Promise<string> {
+    const data = (await post('/api/v1/admin/users/list', { pageSize: 100 })).json.data as {
+      items: { id: string; username: string }[]
+    }
+
+    return (data.items.find((user) => user.username !== 'admin') ?? data.items[0]!).id
+  }
+
+  it('列表给出两条会话，且指纹 / UA / IP 都带上', async () => {
+    const userId = await firstUserId()
+    const { status, json } = await post(`/api/v1/admin/users/${userId}/sessions/list`)
+
+    expect(status).toBe(200)
+    const sessions = json.data as { sessionId: string; deviceFingerprint: string | null; userAgent: string | null }[]
+
+    // 两条而不是一条：这个界面存在的意义就是「多条里认出该踢哪一条」。
+    expect(sessions).toHaveLength(2)
+    expect(sessions[0]?.deviceFingerprint).toBeTruthy()
+    expect(sessions[0]?.userAgent).toBeTruthy()
+  })
+
+  it('吊销单条后只剩一条；吊销不存在的会话仍返回成功（幂等）', async () => {
+    const userId = await firstUserId()
+    const before = (await post(`/api/v1/admin/users/${userId}/sessions/list`)).json.data as {
+      sessionId: string
+    }[]
+
+    await post(`/api/v1/admin/users/${userId}/sessions/revoke`, { sessionId: before[0]!.sessionId })
+
+    const after = (await post(`/api/v1/admin/users/${userId}/sessions/list`)).json.data as unknown[]
+    expect(after).toHaveLength(1)
+
+    const again = await post(`/api/v1/admin/users/${userId}/sessions/revoke`, { sessionId: 'no-such-session' })
+    expect(again.status).toBe(200)
+  })
+
+  it('停用账号会立刻清空其全部会话', async () => {
+    const userId = await firstUserId()
+
+    const disabled = await post(`/api/v1/admin/users/${userId}/set-enabled`, { enabled: false })
+    expect(disabled.status).toBe(200)
+
+    const sessions = (await post(`/api/v1/admin/users/${userId}/sessions/list`)).json.data as unknown[]
+    expect(sessions).toHaveLength(0)
+  })
+
+  it('不能停用当前登录的账号 → 1000', async () => {
+    const data = (await post('/api/v1/admin/users/list', { pageSize: 100 })).json.data as {
+      items: { id: string; username: string }[]
+    }
+    const self = data.items.find((user) => user.username === 'admin')!
+
+    const { status, json } = await post(`/api/v1/admin/users/${self.id}/set-enabled`, { enabled: false })
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.ValidationFailed)
+  })
+})
+
+describe('实例安全策略（0.13.0）', () => {
+  it('默认最小长度 10，首次登录强制改密开启', async () => {
+    const { status, json } = await post('/api/v1/admin/settings/security/get')
+
+    expect(status).toBe(200)
+    expect(json.data).toMatchObject({ minLength: 10, mustChangeOnFirstLogin: true })
+  })
+
+  it('最小长度越界 → 1000（不静默夹紧）', async () => {
+    const { status, json } = await post('/api/v1/admin/settings/security/update', {
+      minLength: 0,
+      requireLetter: true,
+      requireDigitOrSymbol: true,
+      passwordExpiryDays: 0,
+      mustChangeOnFirstLogin: true
+    })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.ValidationFailed)
+  })
+
+  it('有效期不能为负 → 1000', async () => {
+    const { status, json } = await post('/api/v1/admin/settings/security/update', {
+      minLength: 12,
+      requireLetter: true,
+      requireDigitOrSymbol: true,
+      passwordExpiryDays: -1,
+      mustChangeOnFirstLogin: true
+    })
+
+    expect(status).toBe(400)
+    expect(json.code).toBe(ErrorCode.ValidationFailed)
+  })
+
+  it('保存后能读回同一份策略', async () => {
+    const saved = await post('/api/v1/admin/settings/security/update', {
+      minLength: 14,
+      requireLetter: false,
+      requireDigitOrSymbol: true,
+      passwordExpiryDays: 90,
+      mustChangeOnFirstLogin: false
+    })
+    expect(saved.status).toBe(200)
+
+    const { json } = await post('/api/v1/admin/settings/security/get')
+    expect(json.data).toEqual({
+      minLength: 14,
+      requireLetter: false,
+      requireDigitOrSymbol: true,
+      passwordExpiryDays: 90,
+      mustChangeOnFirstLogin: false
+    })
+  })
+})
+
+describe('首登强制改密（0.13.0）', () => {
+  it('登录响应带 mustChangePassword，供路由守卫跳转到改密页', async () => {
+    const { status, json } = await post('/api/v1/auth/login?mustChange=1', {
+      username: 'admin',
+      password: 'demo1234'
+    })
+
+    expect(status).toBe(200)
+    // mustChangePassword 在 `user` 里：它与权限集一样是「当前用户」的属性，
+    // 不是令牌本身的属性。
+    expect(json.data).toMatchObject({ user: { mustChangePassword: true } })
   })
 })

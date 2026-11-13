@@ -263,6 +263,71 @@ public static class AuditActions
     public const string UserUpdatePassword = "user.update-password";
 
     /// <summary>
+    /// 启用账号（0.13.0）。
+    /// </summary>
+    public const string UserEnable = "user.enable";
+
+    /// <summary>
+    /// 停用账号（0.13.0）。
+    /// </summary>
+    public const string UserDisable = "user.disable";
+
+    /// <summary>
+    /// 吊销单个会话（0.13.0）。
+    /// </summary>
+    public const string UserSessionRevoke = "user.session-revoke";
+
+    /// <summary>
+    /// 吊销某用户的全部会话（0.13.0）。
+    /// </summary>
+    public const string UserSessionRevokeAll = "user.session-revoke-all";
+
+    /// <summary>
+    /// 创建团队（0.13.0）。
+    /// </summary>
+    public const string TeamCreate = "team.create";
+
+    /// <summary>
+    /// 修改团队（0.13.0）。
+    /// </summary>
+    public const string TeamUpdate = "team.update";
+
+    /// <summary>
+    /// 删除团队（0.13.0）。
+    /// </summary>
+    public const string TeamRemove = "team.remove";
+
+    /// <summary>
+    /// 添加团队成员（0.13.0）。
+    /// </summary>
+    public const string TeamMemberAdd = "team.member-add";
+
+    /// <summary>
+    /// 移除团队成员（0.13.0）。
+    /// </summary>
+    public const string TeamMemberRemove = "team.member-remove";
+
+    /// <summary>
+    /// 授予团队角色（权限上限，0.13.0）。
+    /// </summary>
+    public const string TeamRoleAssign = "team.role-assign";
+
+    /// <summary>
+    /// 撤销团队角色（权限上限，0.13.0）。
+    /// </summary>
+    public const string TeamRoleRevoke = "team.role-revoke";
+
+    /// <summary>
+    /// 把团队权限同步到成员的个人授权（0.13.0）。
+    /// </summary>
+    public const string TeamSync = "team.sync";
+
+    /// <summary>
+    /// 修改实例级安全策略（0.13.0）。
+    /// </summary>
+    public const string SecuritySettingsUpdate = "security.settings-update";
+
+    /// <summary>
     /// 创建角色。
     /// </summary>
     public const string RoleCreate = "role.create";
@@ -393,4 +458,14 @@ public static class AuditTargetTypes
     /// 通知渠道。
     /// </summary>
     public const string NotificationChannel = "notification-channel";
+
+    /// <summary>
+    /// 团队（0.13.0）。
+    /// </summary>
+    public const string Team = "team";
+
+    /// <summary>
+    /// 实例级安全策略（0.13.0）。
+    /// </summary>
+    public const string SecuritySettings = "security-settings";
 }

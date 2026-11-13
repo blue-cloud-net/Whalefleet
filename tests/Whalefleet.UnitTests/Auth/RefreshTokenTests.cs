@@ -80,28 +80,65 @@ public class RefreshTokenTests
     }
 
     [Fact]
-    public void Revoke_记录撤销时间与轮换出的新令牌哈希()
+    public void Revoke_记录撤销时间()
     {
         var token = RefreshToken.Issue(Guid.NewGuid(), Guid.NewGuid(), _tokenHash, _expiresAt);
         var revokedAt = _issuedAt.AddHours(1);
 
-        token.Revoke(revokedAt, "bmV3LXRva2VuLWhhc2g");
+        token.Revoke(revokedAt);
 
         token.RevokedAt.Should().Be(revokedAt);
-        token.ReplacedByTokenHash.Should().Be("bmV3LXRva2VuLWhhc2g");
     }
 
     [Fact]
     public void Revoke_重复调用幂等_以最后一次为准()
     {
-        var replacement = "bmV3LXRva2VuLWhhc2g";
         var token = RefreshToken.Issue(Guid.NewGuid(), Guid.NewGuid(), _tokenHash, _expiresAt);
-        token.Revoke(_issuedAt.AddHours(1), replacement);
+        token.Revoke(_issuedAt.AddHours(1));
 
         token.Revoke(_issuedAt.AddHours(2));
 
         token.RevokedAt.Should().Be(_issuedAt.AddHours(2));
-        token.ReplacedByTokenHash.Should().BeNull();
+    }
+
+    [Fact]
+    public void Rotate_原地更新令牌并保留上一代哈希()
+    {
+        var token = RefreshToken.Issue(Guid.NewGuid(), Guid.NewGuid(), _tokenHash, _expiresAt);
+        var newHash = "bmV3LXRva2VuLWhhc2g";
+        var newExpiry = _issuedAt.AddDays(8);
+
+        token.Rotate(newHash, newExpiry, _issuedAt.AddHours(1));
+
+        // 会话 id 不变（它就是会话本身），只有绑定的令牌换了。
+        token.TokenHash.Should().Be(newHash);
+        token.PreviousTokenHash.Should().Be(_tokenHash);
+        token.ExpiresAt.Should().Be(newExpiry);
+        token.RotatedAt.Should().Be(_issuedAt.AddHours(1));
+        token.IsActiveAt(_issuedAt.AddHours(2)).Should().BeTrue();
+    }
+
+    [Fact]
+    public void MatchesPreviousHash_命中上一代才为真()
+    {
+        var token = RefreshToken.Issue(Guid.NewGuid(), Guid.NewGuid(), _tokenHash, _expiresAt);
+        token.Rotate("bmV3LXRva2VuLWhhc2g", _expiresAt, _issuedAt.AddHours(1));
+
+        token.MatchesPreviousHash(_tokenHash).Should().BeTrue();
+        token.MatchesPreviousHash("bmV3LXRva2VuLWhhc2g").Should().BeFalse();
+        token.MatchesPreviousHash("  ").Should().BeFalse();
+    }
+
+    [Fact]
+    public void UpdateFingerprint_覆盖旧值且空白值被忽略()
+    {
+        var token = RefreshToken.Issue(Guid.NewGuid(), Guid.NewGuid(), _tokenHash, _expiresAt, "old-fp");
+
+        token.UpdateFingerprint("new-fp");
+        token.DeviceFingerprint.Should().Be("new-fp");
+
+        token.UpdateFingerprint("   ");
+        token.DeviceFingerprint.Should().Be("new-fp");
     }
 
     [Fact]

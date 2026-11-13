@@ -32,15 +32,26 @@ describe('路由表', () => {
     expect(roles?.meta?.icon).toBe('i-carbon-user-role')
   })
 
-  it('管理组菜单顺序：主机 → 用户 → 角色 → Registry → 审计 → 告警（日常动线是「看人再建角色」）', () => {
+  it('管理组菜单顺序：主机 → 用户 → 团队 → 角色 → Registry → 审计 → 告警', () => {
     const manage = children()
       .filter((r) => r.meta?.scope !== 'host' && r.meta?.group === 'manage')
       .map((r) => r.name)
 
-    // Registry 与审计排在末尾：管理组前三项是「人」的动线（看主机 → 看人 → 缺角色再建），
-    // 后两项是「配一次就不动」的基础设施（Registry）与「出事才查」的审计。
-    // 0.11.0 的告警规则同样属于「出事才查」，排在审计之后。
-    expect(manage).toEqual(['hosts', 'users', 'roles', 'repositories', 'audit', 'alerts'])
+    // Registry 与审计排在末尾：管理组前几项是「人」的动线（看主机 → 看人 →
+    // 成队 → 缺角色再建），后两项是「配一次就不动」的基础设施（Registry）与
+    // 「出事才查」的审计。 0.11.0 的告警规则同样属于「出事才查」，排在审计之后。
+    // 0.13.0 的团队紧跟在用户之后：它与「人」是同一段动线，不是角色的子项。
+    expect(manage).toEqual(['hosts', 'users', 'teams', 'roles', 'repositories', 'audit', 'alerts'])
+  })
+
+  it('teams 用 team.read 把门（团队只收窄权限，自定义角色也可持有）', () => {
+    const teams = children().find((r) => r.name === 'teams')
+
+    // ⚠️ 不能用 requiresAdmin：后端这道门是 team.read / team.write，
+    // 自定义角色可能只带它们。用 requiresAdmin 会把「只能管团队」的人挡在页外。
+    expect(teams?.meta?.requiresPermission).toBe('team.read')
+    expect(teams?.meta?.requiresAdmin).toBeUndefined()
+    expect(teams?.meta?.group).toBe('manage')
   })
 
   it('audit 用 audit.read 权限把门（内置 auditor 只带这一项）', () => {

@@ -6,6 +6,8 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
 using Whalefleet.Application.Abstractions;
+using Whalefleet.Infrastructure.Persistence.Auth;
+using Whalefleet.Infrastructure.Sessions;
 using Whalefleet.Application.Abstractions.Notify;
 using Whalefleet.Application.Abstractions.Persistence;
 using Whalefleet.Application.Abstractions.Terminal;
@@ -88,8 +90,23 @@ public static class InfrastructureServiceCollectionExtensions
         // 逐资源授权表在 0.1.0 落地后本实现改为查表。
         services.AddScoped<IPermissionChecker, PermissionChecker>();
         services.AddScoped<IContainerPermissionChecker, ContainerPermissionChecker>();
+
+        // 团队权限上限解析器（0.13.0）：仓储之上的只读适配器，与 PermissionChecker 同层。
+        services.AddScoped<ITeamPermissionResolver, TeamPermissionResolver>();
         services.AddScoped<IContainerAssignmentStore, SqliteContainerAssignmentStore>();
         services.AddScoped<IAuthorizationSettingsStore, SqliteAuthorizationSettingsStore>();
+
+        // 会话管理（0.13.0）：
+        //   * 安全策略存储 —— Scoped（读的是数据库）。
+        //   * 会话状态缓存 —— **Singleton**：它的全部价值就是在多个请求之间复用，
+        //     做成 Scoped 等于每个请求都重新查一次库，退化成没有缓存。
+        //   * 清理队列 —— Singleton（生产者与消费者必须在同一个实例上）。
+        services.AddScoped<ISecuritySettingsStore, SqliteSecuritySettingsStore>();
+        services.AddSingleton<ISessionStatusCache, SessionStatusCache>();
+        services.AddSingleton<SessionCleanupQueue>();
+        services.AddSingleton<ISessionCleanupQueue>(static provider =>
+            provider.GetRequiredService<SessionCleanupQueue>());
+        services.AddHostedService<SessionCleanupWorker>();
 
         // 密码哈希（Argon2id）：参数越界在启动时即失败（ValidateOnStart），
         // 而不是拖到第一次登录。哈希器无状态，故为 Singleton。

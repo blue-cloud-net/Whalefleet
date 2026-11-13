@@ -4,6 +4,7 @@ import { useThemeStore, type ThemeColor, type ThemeMode } from '@/stores/theme'
 import { usePreferencesStore, PAGE_SIZE_ALL, PAGE_SIZE_OPTIONS } from '@/stores/preferences'
 import { setLocale, type AppLocale } from '@/locales'
 import AuthorizationSettingsCard from '@/components/business/AuthorizationSettingsCard.vue'
+import SecuritySettingsCard from '@/components/business/SecuritySettingsCard.vue'
 import { useAuthStore } from '@/stores/auth'
 import PageHeader from '@/components/common/PageHeader.vue'
 import SectionCard from '@/components/common/SectionCard.vue'
@@ -47,6 +48,7 @@ function onLocaleChange(next: AppLocale) {
 
     <div class="max-w-3xl space-y-4">
       <AuthorizationSettingsCard v-if="auth.isAdmin" />
+      <SecuritySettingsCard />
       <!-- 外观 -->
       <SectionCard :title="t('settings.appearance')">
         <div class="space-y-5">

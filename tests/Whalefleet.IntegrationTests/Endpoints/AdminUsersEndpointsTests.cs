@@ -197,7 +197,11 @@ public class AdminUsersEndpointsTests : IAsyncLifetime
     public async Task 删除_有其他管理员时可删除管理员账号()
     {
         using var client = await this.LoginAsync(_adminName, _adminPassword);
-        await CreateUserAsync(client, "admin-2", "Admin2P@ssw0rd", role: Role.AdminName);
+        var admin2 = await CreateUserAsync(client, "admin-2", "Admin2P@ssw0rd", role: Role.AdminName);
+
+        // 新建账号默认被要求「首次登录强制改密」（0.13.0），而改密是唯一能解除该标记的动作。
+        // 管理员重置一次密码即可完成入岗流程。
+        await ResetPasswordAsync(client, admin2.Id, "Admin2P@ssw0rd");
 
         // 换成 admin-2 来删 admin：此刻有 2 个管理员，删除是允许的
         // （反之若只剩一个，删它就会撞上"不能删自己"或"最后一个管理员"两道护栏）。
@@ -364,6 +368,26 @@ public class AdminUsersEndpointsTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.OK, "前置的创建步骤必须成功");
 
         return await ReadDataAsync<UserPayload>(response);
+    }
+
+    /// <summary>
+    /// 管理员重置目标用户的密码。
+    /// </summary>
+    /// <remarks>
+    /// <b>它顺带清掉了「必须改密」标记</b>（0.13.0）：新建用户默认被要求首次登录改密，
+    /// 而改密是唯一能解除该标记的动作。因此凡是「新建用户 → 立刻用他登录操作」的用例，
+    /// 都得先走这一步——这正是真实世界里管理员带新人上手的流程。
+    /// </remarks>
+    private static async Task ResetPasswordAsync(
+        HttpClient client,
+        Guid userId,
+        string newPassword)
+    {
+        using var response = await client.PostAsJsonAsync(
+            "/api/v1/admin/users/update-password",
+            new { userId, newPassword });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, "前置的重置密码步骤必须成功");
     }
 
     private static async Task<PagedPayload> ListAsync(HttpClient client)

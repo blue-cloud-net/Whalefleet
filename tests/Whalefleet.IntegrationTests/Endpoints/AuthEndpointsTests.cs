@@ -12,6 +12,7 @@ using Microsoft.IdentityModel.Tokens;
 
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
+using Whalefleet.Core.Auth;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Users;
 
@@ -286,12 +287,29 @@ public class AuthEndpointsTests : IAsyncLifetime
     /// <param name="userId">用户主键。</param>
     /// <param name="issuedAt">签发时刻（传过去的时刻即可得到"已过期"的令牌）。</param>
     /// <returns>JWT 原文。</returns>
+    /// <remarks>
+    /// <b>0.13.0：必须同时建一条会话行</b>。access token 里的 <c>sid</c> 指向一个真实存在的会话；
+    /// 没有它，会话校验中间件会一律判为「登录态无效」（1100），
+    /// 于是「有效令牌应通过」这类用例会莫名失败。
+    /// </remarks>
     private string CreateToken(Guid userId, DateTime issuedAt)
     {
         using var scope = _factory.Services.CreateScope();
         var tokens = scope.ServiceProvider.GetRequiredService<ITokenService>();
+        var refreshTokens = scope.ServiceProvider.GetRequiredService<IRefreshTokenRepository>();
 
-        return tokens.CreateAccessToken(userId, _username, ["admin"], issuedAt).Value;
+        var sessionId = Guid.NewGuid();
+
+        refreshTokens
+            .AddAsync(RefreshToken.Issue(
+                sessionId,
+                userId,
+                $"test-hash-{sessionId:N}",
+                issuedAt.AddDays(7)))
+            .GetAwaiter()
+            .GetResult();
+
+        return tokens.CreateAccessToken(userId, _username, ["admin"], issuedAt, sessionId).Value;
     }
 
     /// <summary>

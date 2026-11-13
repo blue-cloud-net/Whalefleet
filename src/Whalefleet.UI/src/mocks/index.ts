@@ -11,6 +11,8 @@ import { roleHandlers } from './handlers/permissions'
 import { resourceHandlers } from './handlers/resources'
 import { composeHandlers } from './handlers/composes'
 import { userHandlers } from './handlers/users'
+import { teamHandlers } from './handlers/teams'
+import { securitySettingsHandlers } from './handlers/security-settings'
 import { resolveScenario, type MockScenario } from './scenarios'
 
 /**
@@ -53,6 +55,8 @@ export const handlers = [
   ...resourceHandlers(() => currentScenario),
   ...composeHandlers(() => currentScenario),
   ...userHandlers(() => currentScenario),
+  ...teamHandlers(() => currentScenario),
+  ...securitySettingsHandlers(() => currentScenario),
   ...roleHandlers(() => currentScenario),
   ...auditHandlers(),
   ...alertHandlers()

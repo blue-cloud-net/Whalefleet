@@ -126,6 +126,45 @@ vi.mock('../src/realtime/connection', () => ({
   hostHubPath: vi.fn((hostId: string, kind: string) => `hosts/${hostId}/${kind}`)
 }))
 
+// ===== 0.13.0：团队 / 用户 / 角色 / 安全策略 =====
+vi.mock('../src/api/team', () => ({
+  listTeams: vi.fn(async () => ({ items: [], total: 0, pageIndex: 0, pageSize: 20 })),
+  getTeamDetail: vi.fn(),
+  createTeam: vi.fn(),
+  updateTeam: vi.fn(),
+  removeTeam: vi.fn(),
+  addTeamMembers: vi.fn(),
+  removeTeamMembers: vi.fn(),
+  assignTeamRole: vi.fn(),
+  revokeTeamRole: vi.fn(),
+  syncTeam: vi.fn()
+}))
+
+vi.mock('../src/api/user', () => ({
+  listUsers: vi.fn(async () => ({ items: [], total: 0, pageIndex: 0, pageSize: 20 })),
+  listUserSessions: vi.fn(async () => []),
+  revokeUserSession: vi.fn(),
+  revokeAllUserSessions: vi.fn(async () => 0),
+  setUserEnabled: vi.fn(),
+  deleteUser: vi.fn(),
+  updatePassword: vi.fn()
+}))
+
+vi.mock('../src/api/role', () => ({
+  listRoles: vi.fn(async () => [])
+}))
+
+vi.mock('../src/api/security-settings', () => ({
+  getSecuritySettings: vi.fn(async () => ({
+    minLength: 10,
+    requireLetter: true,
+    requireDigitOrSymbol: true,
+    passwordExpiryDays: 0,
+    mustChangeOnFirstLogin: true
+  })),
+  updateSecuritySettings: vi.fn()
+}))
+
 // ===== element-plus 的消息组件是副作用调用，桩掉以免污染测试输出 =====
 vi.mock('element-plus', async (importOriginal) => {
   const actual = await importOriginal<typeof import('element-plus')>()
@@ -203,6 +242,8 @@ function templateBugs(): string[] {
 
 const routes: RouteRecordRaw[] = [
   { path: '/', name: 'overview', component: { template: '<div />' } },
+  { path: '/teams', name: 'teams', component: { template: '<div />' } },
+  { path: '/users', name: 'users', component: { template: '<div />' } },
   { path: '/repositories', name: 'repositories', component: { template: '<div />' } },
   {
     path: '/hosts/:hostId/images',
@@ -741,6 +782,73 @@ describe('0.5.0 实时通道组件渲染冒烟', () => {
     // 页头标题与卡片说明都在（模板改过最容易在这里炸）
     expect(wrapper.text()).toContain('终端')
     expect(wrapper.text()).toContain('交互式 shell')
+    wrapper.unmount()
+  })
+})
+
+describe('团队页与账号安全组件渲染冒烟（0.13.0）', () => {
+  it('团队页：空列表也把「只收窄不授予」说清楚', async () => {
+    const TeamsView = (await import('../src/views/TeamsView.vue')).default
+    const wrapper = await mountSmoke(TeamsView, { permissions: ['team.read', 'team.write'], path: '/teams' })
+
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    expect(wrapper.text()).toContain('团队')
+    // 这句话是产品语义，不是装饰：缺了它用户会以为「加进团队就有权限了」。
+    expect(wrapper.text()).toContain('只收窄权限、不自动授予')
+    wrapper.unmount()
+  })
+
+  it('团队页：只有 team.read 时不渲染「新建团队」', async () => {
+    const TeamsView = (await import('../src/views/TeamsView.vue')).default
+    const wrapper = await mountSmoke(TeamsView, { permissions: ['team.read'], path: '/teams' })
+
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    expect(wrapper.text()).not.toContain('新建团队')
+    wrapper.unmount()
+  })
+
+  it('密码策略卡片：有 user.write 时渲染策略项', async () => {
+    const Card = (await import('../src/components/business/SecuritySettingsCard.vue')).default
+    const wrapper = await mountSmoke(Card, { permissions: ['user.write'] })
+
+    // 策略在 onMounted 里异步读回，等两拍才看得到卡片头
+    await wrapper.vm.$nextTick()
+    await Promise.resolve()
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    expect(wrapper.text()).toContain('密码策略')
+    wrapper.unmount()
+  })
+
+  it('会话对话框：表头与空态都要渲染（表格是异步渲染的）', async () => {
+    const Dialog = (await import('../src/components/business/UserSessionsDialog.vue')).default
+    const wrapper = await mountSmoke(Dialog, {
+      permissions: ['user.read', 'user.write'],
+      props: {
+        modelValue: true,
+        user: {
+          id: '00000000-0000-0000-0000-0000000000b1',
+          username: 'readonly-li',
+          roles: ['viewer'],
+          creationTime: '2026-10-01T00:00:00Z',
+          isDisabled: false,
+          mustChangePassword: false
+        }
+      }
+    })
+
+    // el-table 的表体是异步渲染的：只 await 一拍拿到的是空字符串。
+    await wrapper.vm.$nextTick()
+    await Promise.resolve()
+    await wrapper.vm.$nextTick()
+
+    expect(templateBugs(), '渲染期告警').toEqual([])
+    expect(wrapper.text()).toContain('会话管理')
     wrapper.unmount()
   })
 })

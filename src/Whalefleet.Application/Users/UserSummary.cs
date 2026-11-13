@@ -9,6 +9,8 @@ namespace Whalefleet.Application.Users;
 /// 角色名数组（多角色；尚未被分配时是<b>空数组</b>）。
 /// </param>
 /// <param name="CreationTime">创建时间（UTC）。</param>
+/// <param name="IsDisabled">账号是否已停用（0.13.0）。</param>
+/// <param name="MustChangePassword">账号是否必须先改密（0.13.0）。</param>
 /// <remarks>
 /// <para><b>为什么不用实体直接序列化</b>：<c>User</c> 带 <c>PasswordHash</c>。
 /// 逐字段挑选不是洁癖——把实体丢给序列化器，任何一个新加的敏感字段都会自动出现在响应里。</para>
@@ -18,7 +20,9 @@ public sealed record UserSummary(
     Guid Id,
     string Username,
     IReadOnlyList<string> Roles,
-    DateTimeOffset CreationTime);
+    DateTimeOffset CreationTime,
+    bool IsDisabled = false,
+    bool MustChangePassword = false);
 
 /// <summary>
 /// 分页结果。
@@ -37,3 +41,29 @@ public sealed record UserListResult(
     int Total,
     int PageIndex,
     int PageSize);
+
+/// <summary>
+/// 一个活跃会话的摘要（0.13.0）。
+/// </summary>
+/// <param name="SessionId">会话 id（吊销时回传它）。</param>
+/// <param name="Username">会话所属用户名。</param>
+/// <param name="CreatedAt">会话创建时间（UTC）。</param>
+/// <param name="ExpiresAt">会话过期时间（UTC）。</param>
+/// <param name="RotatedAt">最近一次轮换时间（UTC）；从未轮换为 <see langword="null"/>。</param>
+/// <param name="CreatedIp">登录来源 IP。</param>
+/// <param name="UserAgent">登录时的 User-Agent。</param>
+/// <param name="DeviceFingerprint">设备指纹。</param>
+/// <remarks>
+/// <para><b>不含任何可冒用会话的秘密</b>：令牌哈希不在这里。
+/// 它只是给人看的「谁在哪登录」的清单。</para>
+/// <para><b>指纹只是记录</b>：它不参与鉴权判定，只帮人认出「哪一条是我自己」。</para>
+/// </remarks>
+public sealed record UserSessionSummary(
+    Guid SessionId,
+    string Username,
+    DateTime CreatedAt,
+    DateTime ExpiresAt,
+    DateTime? RotatedAt,
+    string? CreatedIp,
+    string? UserAgent,
+    string? DeviceFingerprint);

@@ -7,6 +7,7 @@ import axios, {
 } from 'axios'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
+import { getFingerprint } from '@/utils/fingerprint'
 import { ErrorCode, type ApiError, type ApiResult, type LoginResult } from '@/types/api'
 
 /**
@@ -21,6 +22,13 @@ import { ErrorCode, type ApiError, type ApiResult, type LoginResult } from '@/ty
 
 /** 需要重新登录的响应码：401 本身，以及两个令牌失效码 */
 const TOKEN_EXPIRED_CODES: number[] = [ErrorCode.TokenExpired, ErrorCode.RefreshTokenRevoked]
+
+/**
+ * 设备指纹的请求头名（0.13.0）。
+ *
+ * 与服务端 `AccountSessionMiddleware.FingerprintHeader` 逐字一致。
+ */
+const FINGERPRINT_HEADER = 'X-Client-Fingerprint'
 
 /**
  * 认证端点：这些请求自身的 401 **不触发**刷新重放。
@@ -52,6 +60,10 @@ http.interceptors.request.use((config) => {
   if (auth.accessToken) {
     config.headers.set('Authorization', `Bearer ${auth.accessToken}`)
   }
+
+  // 设备指纹（0.13.0）：**只上报、不参与校验**。
+  // 服务端把它记在会话上，供会话列表里区分「哪一条是我自己」。
+  config.headers.set(FINGERPRINT_HEADER, getFingerprint())
 
   return config
 })
@@ -105,6 +117,14 @@ async function handleHttpError(error: unknown): Promise<AxiosResponse> {
         throw new ApiRequestError(apiErr)
       }
 
+      // 账号被停用（1108）：刷新令牌也已被撤销，重试没有意义。
+      // 直接结束会话并提示——否则用户会看到「不断刷新 → 不断 401」的循环。
+      if (apiErr.code === ErrorCode.AccountDisabled) {
+        endSession()
+        ElMessage({ type: 'error', message: apiErr.message || '账号已停用', showClose: true })
+        throw new ApiRequestError(apiErr)
+      }
+
       // 只重放一次：避免「刷新成功但该接口仍返回 401」时无限循环。
       if (!config._retried) {
         const token = await refreshAccessToken()
@@ -119,6 +139,14 @@ async function handleHttpError(error: unknown): Promise<AxiosResponse> {
 
       // 续期不可用 → 会话真的结束了
       endSession()
+      throw new ApiRequestError(apiErr)
+    }
+
+    // 必须先改密（1205）：这不是「出错」，而是一个**必须完成的前置步骤**。
+    // 把它当普通错误弹出 toast 没用——用户会反复点同一个按钮，
+    // 而唯一出路是去改密页。因此直接跳转。
+    if (apiErr.code === ErrorCode.PasswordChangeRequired) {
+      redirectToPasswordChange()
       throw new ApiRequestError(apiErr)
     }
 
@@ -211,6 +239,23 @@ function endSession(): void {
   const redirect = encodeURIComponent(window.location.pathname + window.location.search)
 
   window.location.replace(`${LOGIN_PATH}?redirect=${redirect}`)
+}
+
+/** 强制改密页的路径。 */
+const CHANGE_PASSWORD_PATH = '/change-password'
+
+/**
+ * 跳转到强制改密页。
+ *
+ * 用整页跳转而非 `router.push`：改密是**一次性的流程**，
+ * 途中任何其它请求都可能再次触发 1205，整页跳转能一次性把界面状态清干净。
+ */
+function redirectToPasswordChange(): void {
+  if (window.location.pathname === CHANGE_PASSWORD_PATH) {
+    return
+  }
+
+  window.location.replace(CHANGE_PASSWORD_PATH)
 }
 
 /**

@@ -62,7 +62,7 @@ function permissionsOf(roleName: string): string[] {
  * 用户信息嵌在 `user` 里，且 `roles` 是**数组**、`permissions` 是全局权限集——
  * 写扁平结构或单值角色会让 `auth.store` 与菜单权限判定一起失准。
  */
-function issueTokens(username: string, role: string) {
+function issueTokens(username: string, role: string, mustChangePassword = false) {
   const accessToken = nextToken('access')
   const refreshToken = nextToken('refresh')
   issuedRefreshTokens.add(refreshToken)
@@ -74,10 +74,21 @@ function issueTokens(username: string, role: string) {
       id: 'u-0000a1',
       username,
       roles: [role],
-      permissions: permissionsOf(role)
+      permissions: permissionsOf(role),
+      mustChangePassword
     }
   }
   return ok(result)
+}
+
+/**
+ * 是否需要强制改密（`?mustChange=1`）。
+ *
+ * 用查询参数而不是写死：强制改密页是**独立流程**，走查时需要能随时切进去，
+ * 而把它默认打开会让其他页面的走查全部被踢到改密页。
+ */
+function readMustChange(request: Request): boolean {
+  return new URL(request.url).searchParams.get('mustChange') === '1'
 }
 
 export function authHandlers(scenario: () => MockScenario) {
@@ -114,7 +125,9 @@ export function authHandlers(scenario: () => MockScenario) {
       }
 
       // 非 admin 用户的用户名，用于验证 requiresAdmin 路由拦截
-      return HttpResponse.json(issueTokens(body.username, roleOf(body.username, request)))
+      return HttpResponse.json(
+        issueTokens(body.username, roleOf(body.username, request), readMustChange(request))
+      )
     }),
 
     // ===== 刷新（轮换）=====
@@ -137,7 +150,7 @@ export function authHandlers(scenario: () => MockScenario) {
 
       // 轮换：旧令牌立即作废
       issuedRefreshTokens.delete(body.refreshToken)
-      return HttpResponse.json(issueTokens('admin', DEFAULT_ROLE))
+      return HttpResponse.json(issueTokens('admin', DEFAULT_ROLE, readMustChange(request)))
     }),
 
     // ===== 登出 =====
@@ -157,7 +170,8 @@ export function authHandlers(scenario: () => MockScenario) {
           id: 'u-0000a1',
           username,
           roles: [role],
-          permissions: permissionsOf(role)
+          permissions: permissionsOf(role),
+          mustChangePassword: readMustChange(request)
         })
       )
     })
