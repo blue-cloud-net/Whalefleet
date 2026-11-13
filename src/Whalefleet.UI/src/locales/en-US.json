@@ -86,7 +86,19 @@
       "userUpdatePassword": "Change password",
       "volumeCreate": "Create volume",
       "volumePrune": "Prune volumes",
-      "volumeRemove": "Remove volume"
+      "volumeRemove": "Remove volume",
+      "imageExport": "Export image",
+      "imageImport": "Import image",
+      "containerExport": "Export container",
+      "containerImport": "Import container",
+      "containerCommit": "Commit container as image",
+      "containerFilesBrowse": "Browse container files",
+      "containerFilesDownload": "Download container file",
+      "containerFilesWrite": "Upload container file",
+      "volumeFilesBrowse": "Browse volume files",
+      "volumeFilesDownload": "Download volume file",
+      "volumeFilesWrite": "Upload volume file",
+      "composeExport": "Export compose source"
     },
     "col": {
       "action": "Action",

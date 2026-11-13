@@ -239,6 +239,60 @@ public sealed class VolumeFileService
     }
 
     /// <summary>
+    /// 确保辅助镜像存在；不存在时拉取一次。
+    /// </summary>
+    /// <param name="client">Docker 客户端。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>表示异步操作的任务。</returns>
+    /// <exception cref="BusinessException">
+    /// 镜像既不存在也拉不到（<c>1402</c>）。
+    /// </exception>
+    /// <remarks>
+    /// <b>为什么只拉一次而不缓存「已确认」状态</b>：镜像可能在运行期被
+    /// <c>docker image prune -a</c> 清掉。缓存一个布尔值会让之后的浏览
+    /// 全部以「No such image」失败，而重新 inspect 只有一次本地调用。
+    /// </remarks>
+    private async Task EnsureHelperImageAsync(IDockerClient client, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await client.Images
+                .InspectImageAsync(_options.HelperImage, cancellationToken)
+                .ConfigureAwait(false);
+
+            return;
+        }
+        catch (DockerImageNotFoundException)
+        {
+            _logger.LogInformation("辅助镜像 {Image} 不存在，尝试拉取", _options.HelperImage);
+        }
+
+        try
+        {
+            await DockerErrorTranslator.ExecuteAsync(
+                () => client.Images.CreateImageAsync(
+                    new ImagesCreateParameters
+                    {
+                        FromImage = _options.HelperImage.Split(':')[0],
+                        Tag = _options.HelperImage.Contains(':') ? _options.HelperImage.Split(':')[1] : "latest",
+                    },
+                    null,
+                    new Progress<JSONMessage>(),
+                    cancellationToken),
+                $"辅助镜像 {_options.HelperImage}",
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (BusinessException exception)
+        {
+            throw new BusinessException(
+                ErrorCodes.DockerApiFailed,
+                $"卷文件浏览所需的辅助镜像「{_options.HelperImage}」不可用："
+                + "请先在本机构建（make volfs-helper）或让它可被拉取。"
+                + $"（{exception.Message}）");
+        }
+    }
+
+    /// <summary>
     /// 建一个一次性辅助容器、执行操作、再强制删除它。
     /// </summary>
     /// <typeparam name="T">操作结果类型。</typeparam>
@@ -258,8 +312,11 @@ public sealed class VolumeFileService
     /// 而守护进程对「无命令可执行」的镜像拒绝创建容器
     /// （<c>no command specified</c>）。给一个不存在的路径即可——
     /// 容器永远不会被启动，这个命令只会被记录下来。</para>
-    /// <para><b>不做「拉取辅助镜像」的前置检查</b>：镜像不存在时守护进程会在创建时报错，
-    /// 那条错误里带镜像名，运维据此 <c>docker build</c> 或 <c>docker pull</c> 即可。</para>
+    /// <para><b>镜像缺失时按需拉取一次</b>：辅助镜像不在 compose 里启动（它是用完即删的），
+    /// 因此「本机没构建过」是<b>常态</b>而不是异常。这里先 inspect，缺失就 pull 一次；
+    /// 拉不到才报错，并在提示里给出两条出路（本机构建 / 联网拉取）。
+    /// 不这么做的话，用户看到的会是守护进程那句
+    /// <c>No such image</c>——完全看不出和应用有什么关系。</para>
     /// </remarks>
     private async Task<T> WithHelperAsync<T>(
         string hostId,
@@ -276,6 +333,8 @@ public sealed class VolumeFileService
             () => client.Volumes.InspectAsync(volumeName, cancellationToken),
             $"卷 {volumeName}",
             cancellationToken).ConfigureAwait(false);
+
+        await EnsureHelperImageAsync(client, cancellationToken).ConfigureAwait(false);
 
         var created = await DockerErrorTranslator.ExecuteAsync(
             () => client.Containers.CreateContainerAsync(

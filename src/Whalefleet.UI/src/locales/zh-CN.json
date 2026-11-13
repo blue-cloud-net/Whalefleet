@@ -86,7 +86,19 @@
       "userUpdatePassword": "修改密码",
       "volumeCreate": "创建数据卷",
       "volumePrune": "清理数据卷",
-      "volumeRemove": "删除数据卷"
+      "volumeRemove": "删除数据卷",
+      "imageExport": "导出镜像",
+      "imageImport": "导入镜像",
+      "containerExport": "导出容器",
+      "containerImport": "导入容器",
+      "containerCommit": "容器提交为镜像",
+      "containerFilesBrowse": "浏览容器文件",
+      "containerFilesDownload": "下载容器文件",
+      "containerFilesWrite": "上传容器文件",
+      "volumeFilesBrowse": "浏览卷文件",
+      "volumeFilesDownload": "下载卷文件",
+      "volumeFilesWrite": "上传卷文件",
+      "composeExport": "导出编排原文"
     },
     "col": {
       "action": "动作",
