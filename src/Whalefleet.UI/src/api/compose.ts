@@ -2,7 +2,7 @@ import { request } from '@/api'
 import type {
   ComposeProjectDetail,
   ComposeProjectListResult,
-  ComposeTaskAccepted,
+  ResourceTaskAccepted,
   ResourceTaskSnapshot,
   ComposeWebhookInfo
 } from '@/types/api'
@@ -61,8 +61,8 @@ export function deployComposeProject(
     /** 是否清掉「已不在 YAML 里的」孤儿服务（部署时默认不清） */
     pruneOrphans?: boolean
   }
-): Promise<ComposeTaskAccepted> {
-  return request<ComposeTaskAccepted>({
+): Promise<ResourceTaskAccepted> {
+  return request<ResourceTaskAccepted>({
     url: `/api/v1/hosts/${encodeURIComponent(hostId)}/composes/deploy`,
     method: 'post',
     data: payload
@@ -86,8 +86,8 @@ export function updateComposeProject(
     /** 更新时默认清理孤儿（与 `docker compose up -d` 的口径一致） */
     pruneOrphans?: boolean
   }
-): Promise<ComposeTaskAccepted> {
-  return request<ComposeTaskAccepted>({
+): Promise<ResourceTaskAccepted> {
+  return request<ResourceTaskAccepted>({
     url: `/api/v1/hosts/${encodeURIComponent(hostId)}/composes/update`,
     method: 'post',
     data: payload
@@ -98,8 +98,8 @@ export function updateComposeProject(
 export function stopComposeProject(
   hostId: string,
   payload: { name: string; taskId: string }
-): Promise<ComposeTaskAccepted> {
-  return request<ComposeTaskAccepted>({
+): Promise<ResourceTaskAccepted> {
+  return request<ResourceTaskAccepted>({
     url: `/api/v1/hosts/${encodeURIComponent(hostId)}/composes/stop`,
     method: 'post',
     data: payload
@@ -115,8 +115,8 @@ export function stopComposeProject(
 export function removeComposeProject(
   hostId: string,
   payload: { name: string; taskId: string; removeVolumes?: boolean }
-): Promise<ComposeTaskAccepted> {
-  return request<ComposeTaskAccepted>({
+): Promise<ResourceTaskAccepted> {
+  return request<ResourceTaskAccepted>({
     url: `/api/v1/hosts/${encodeURIComponent(hostId)}/composes/remove`,
     method: 'post',
     data: payload
@@ -169,8 +169,8 @@ export function revokeComposeWebhook(hostId: string, name: string): Promise<Comp
 export function triggerComposeWebhook(
   token: string,
   params: { pullAlways?: boolean; pruneOrphans?: boolean; wait?: boolean } = {}
-): Promise<ComposeTaskAccepted> {
-  return request<ComposeTaskAccepted>({
+): Promise<ResourceTaskAccepted> {
+  return request<ResourceTaskAccepted>({
     url: `/api/v1/webhooks/composes/${encodeURIComponent(token)}`,
     method: 'post',
     data: params

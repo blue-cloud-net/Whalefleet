@@ -1785,7 +1785,7 @@ export interface ResourceTaskSnapshot {
  * 而 HTTP 请求扛不住那么长——反代会把连接掐掉，
  * 客户端拿到的是「504 网关超时」而不是「部署失败」。
  */
-export interface ComposeTaskAccepted {
+export interface ResourceTaskAccepted {
   /** 任务标识 */
   taskId: string
   /** 任务当前状态 */
