@@ -51,6 +51,11 @@ public class TransferEndpointsTests : IAsyncLifetime
     private ApiFactory _factory = null!;
     private bool _probeImageCreated;
 
+    /// <summary>
+    /// 本次测试创建的探针容器（用完即删）。
+    /// </summary>
+    private readonly List<string> _probeContainerIds = [];
+
     /// <inheritdoc />
     public async Task InitializeAsync()
     {
@@ -97,22 +102,45 @@ public class TransferEndpointsTests : IAsyncLifetime
     /// <inheritdoc />
     public async Task DisposeAsync()
     {
-        if (_probeImageCreated)
+        try
         {
-            try
-            {
-                using var client = new DockerClientBuilder()
-                    .WithEndpoint(new Uri("unix:///var/run/docker.sock"))
-                    .Build();
+            using var client = new DockerClientBuilder()
+                .WithEndpoint(new Uri("unix:///var/run/docker.sock"))
+                .Build();
 
-                await client.Images.DeleteImageAsync(
-                    _probeImage,
-                    new ImageDeleteParameters { Force = true });
-            }
-            catch (Exception)
+            // 先删容器再删镜像：镜像被容器占着时强制删除也只是不完整的行为，
+            // 而且留着容器会让下一次跑测试看到一堆同名的东西。
+            foreach (var containerId in _probeContainerIds)
             {
-                // 清理失败不影响测试结论
+                try
+                {
+                    await client.Containers.RemoveContainerAsync(
+                        containerId,
+                        new ContainerRemoveParameters { Force = true });
+                }
+                catch (Exception)
+                {
+                    // 清理失败不影响测试结论
+                }
             }
+
+            if (_probeImageCreated)
+            {
+                try
+                {
+                    await client.Images.DeleteImageAsync(
+                        _probeImage,
+                        new ImageDeleteParameters { Force = true });
+                }
+                catch (Exception)
+                {
+                    // 清理失败不影响测试结论
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // 守护进程不可用时也走到这里：清理不是测试断言的一部分
         }
 
         await _factory.DisposeAsync();
@@ -278,6 +306,37 @@ public class TransferEndpointsTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// 轮询容器导出任务直到它结束。
+    /// </summary>
+    /// <param name="client">已认证的客户端。</param>
+    /// <param name="jobId">任务标识。</param>
+    /// <returns>最终的任务状态。</returns>
+    private static async Task<StatusPayload> WaitForContainerExportAsync(HttpClient client, string jobId)
+    {
+        var deadline = DateTime.UtcNow.AddMinutes(2);
+
+        while (DateTime.UtcNow < deadline)
+        {
+            using var response = await client.PostAsJsonAsync(
+                $"/api/v1/hosts/{_localHost}/containers/export/status",
+                new { jobId });
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            var status = await ReadDataAsync<StatusPayload>(response);
+
+            if (status.Status is "succeeded" or "failed")
+            {
+                return status;
+            }
+
+            await Task.Delay(200);
+        }
+
+        throw new TimeoutException($"导出任务 {jobId} 在两分钟内没有结束。");
+    }
+
+    /// <summary>
     /// 确保探针镜像存在（几 KB 的空镜像；用完即删）。
     /// </summary>
     /// <returns>表示异步操作的任务。</returns>
@@ -312,6 +371,163 @@ public class TransferEndpointsTests : IAsyncLifetime
             CancellationToken.None);
 
         _probeImageCreated = true;
+    }
+
+    /// <summary>
+    /// 造一个探针容器（<b>不启动</b>——导出与提交对已创建的容器同样可用）。
+    /// </summary>
+    /// <returns>容器 ID。</returns>
+    private async Task<string> CreateProbeContainerAsync()
+    {
+        await this.EnsureProbeImageAsync();
+
+        using var client = new DockerClientBuilder()
+            .WithEndpoint(new Uri("unix:///var/run/docker.sock"))
+            .Build();
+
+        var created = await client.Containers.CreateContainerAsync(new CreateContainerParameters
+        {
+            Image = _probeImage,
+            Cmd = ["/nonexistent"],
+            Name = $"whalefleet-test-transfer-{Guid.NewGuid().ToString("N")[..12]}",
+        });
+
+        _probeContainerIds.Add(created.ID);
+
+        return created.ID;
+    }
+
+    [DockerFact]
+    public async Task 导出容器_下载到tar()
+    {
+        var containerId = await this.CreateProbeContainerAsync();
+
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
+
+        using var exportResponse = await client.PostAsJsonAsync(
+            $"/api/v1/hosts/{_localHost}/containers/export",
+            new { resourceId = containerId });
+
+        exportResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var started = await ReadDataAsync<ExportPayload>(exportResponse);
+
+        var status = await WaitForContainerExportAsync(client, started.JobId!);
+
+        status.Status.Should().Be("succeeded", $"导出失败：{status.ErrorMessage}");
+        status.DownloadUrl.Should().NotBeNullOrWhiteSpace();
+
+        using var downloadClient = _factory.CreateClient();
+
+        using var download = await downloadClient.GetAsync(status.DownloadUrl!);
+
+        download.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var tarBytes = await download.Content.ReadAsByteArrayAsync();
+
+        tarBytes.Should().NotBeEmpty();
+
+        // 产物是合法的 tar：能读出条目
+        using var memory = new MemoryStream(tarBytes);
+        using var reader = new TarReader(memory);
+        var names = new List<string>();
+
+        TarEntry? entry;
+
+        while ((entry = await reader.GetNextEntryAsync()) is not null)
+        {
+            names.Add(entry.Name);
+        }
+
+        names.Should().Contain("probe.txt", "导出产物里应当有容器文件系统中的文件");
+    }
+
+    [DockerFact]
+    public async Task 提交容器为镜像_产出带标签的镜像()
+    {
+        var containerId = await this.CreateProbeContainerAsync();
+
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
+
+        using var response = await client.PostAsJsonAsync(
+            $"/api/v1/hosts/{_localHost}/containers/commit",
+            new
+            {
+                containerId,
+                repository = "whalefleet-test-commit",
+                tag = "v1",
+                comment = "集成测试产物",
+                pause = false,
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var result = await ReadDataAsync<CommitPayload>(response);
+
+        result.ImageId.Should().NotBeNullOrWhiteSpace();
+        result.Repository.Should().Be("whalefleet-test-commit");
+
+        // 产出的镜像真的在本地，且带上了我们给的标签
+        using var docker = new DockerClientBuilder()
+            .WithEndpoint(new Uri("unix:///var/run/docker.sock"))
+            .Build();
+
+        var image = await docker.Images.InspectImageAsync("whalefleet-test-commit:v1");
+
+        image.RepoTags.Should().Contain("whalefleet-test-commit:v1");
+
+        await docker.Images.DeleteImageAsync(
+            "whalefleet-test-commit:v1",
+            new ImageDeleteParameters { Force = true });
+    }
+
+    [DockerFact]
+    public async Task 导入容器文件系统_产出镜像()
+    {
+        // 先导出一个容器，拿到 tar
+        var containerId = await this.CreateProbeContainerAsync();
+
+        using var client = await this.CreateAuthenticatedClientAsync(_adminName);
+
+        using var exportResponse = await client.PostAsJsonAsync(
+            $"/api/v1/hosts/{_localHost}/containers/export",
+            new { resourceId = containerId });
+
+        var started = await ReadDataAsync<ExportPayload>(exportResponse);
+        var status = await WaitForContainerExportAsync(client, started.JobId!);
+
+        status.Status.Should().Be("succeeded");
+
+        using var downloadClient = _factory.CreateClient();
+
+        using var download = await downloadClient.GetAsync(status.DownloadUrl!);
+
+        var tarBytes = await download.Content.ReadAsByteArrayAsync();
+
+        // 再把它导入成一个新镜像
+        using var importContent = new ByteArrayContent(tarBytes);
+        importContent.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+
+        using var importResponse = await client.PostAsync(
+            $"/api/v1/hosts/{_localHost}/containers/import?repository=whalefleet-test-import&tag=v1",
+            importContent);
+
+        importResponse.StatusCode.Should().Be(
+            HttpStatusCode.OK,
+            "导入响应体：{0}",
+            await importResponse.Content.ReadAsStringAsync());
+
+        using var docker = new DockerClientBuilder()
+            .WithEndpoint(new Uri("unix:///var/run/docker.sock"))
+            .Build();
+
+        var image = await docker.Images.InspectImageAsync("whalefleet-test-import:v1");
+
+        image.ID.Should().NotBeNullOrWhiteSpace();
+
+        await docker.Images.DeleteImageAsync(
+            "whalefleet-test-import:v1",
+            new ImageDeleteParameters { Force = true });
     }
 
     /// <summary>
@@ -438,6 +654,14 @@ public class TransferEndpointsTests : IAsyncLifetime
     /// <param name="Status">任务状态。</param>
     /// <param name="Reused">是否复用了进行中的任务。</param>
     private sealed record ExportPayload(string JobId, string Status, bool Reused);
+
+    /// <summary>
+    /// 提交容器为镜像的响应。
+    /// </summary>
+    /// <param name="ImageId">新镜像 ID。</param>
+    /// <param name="Repository">镜像仓库名。</param>
+    /// <param name="Tag">镜像标签。</param>
+    private sealed record CommitPayload(string ImageId, string Repository, string Tag);
 
     /// <summary>
     /// 导出任务状态。

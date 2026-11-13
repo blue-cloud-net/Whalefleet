@@ -78,6 +78,14 @@ public sealed class ContainerTransferService
     /// 容器标识为空（<c>1000</c>）、容器不存在（<c>1401</c>）、
     /// 无权限（<c>1502</c>）、主机不可达（<c>1301</c>）或 Docker 调用失败（<c>1402</c>）。
     /// </exception>
+    /// <remarks>
+    /// <para><b>本方法不做授权判定</b>——调用方必须在<b>请求期</b>用它自己的凭证把
+    /// 「这个人能不能读这个容器」判定完，再把<b>规范 ID</b> 传进来。</para>
+    /// <para><b>为什么不能在后台线程里判</b>：导出跑在后台工作器的自有作用域里，
+    /// 那里<b>没有任何登录用户</b>（<c>ICurrentUser.UserId</c> 为 null）。
+    /// 在那里调 <c>ContainerAuthorizationService.EnsureAsync</c> 会一律被判为无权限，
+    /// 症状是「一发起导出就失败」（而权限其实完全够）。</para>
+    /// </remarks>
     public async Task<TransferArtifact> ExportAsync(
         string hostId,
         string containerId,
@@ -87,22 +95,18 @@ public sealed class ContainerTransferService
         ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
         ArgumentException.ThrowIfNullOrWhiteSpace(containerId);
 
-        var resolved = await _authorization
-            .EnsureAsync(hostId, containerId, Permission.ContainerRead, cancellationToken)
-            .ConfigureAwait(false);
-
         var client = await _accessor.GetClientAsync(hostId, cancellationToken).ConfigureAwait(false);
 
         progress?.Report(new TransferProgress(null, "正在导出容器"));
 
         var stream = await DockerErrorTranslator.ExecuteAsync(
-            () => client.Containers.ExportContainerAsync(resolved, cancellationToken),
-            $"容器 {resolved}",
+            () => client.Containers.ExportContainerAsync(containerId, cancellationToken),
+            $"容器 {containerId}",
             cancellationToken).ConfigureAwait(false);
 
         await using (stream)
         {
-            var fileName = ExportArtifactStore.SanitizeFileName(resolved) + ".tar";
+            var fileName = ExportArtifactStore.SanitizeFileName(containerId) + ".tar";
             var path = _artifacts.AllocatePath(Guid.NewGuid().ToString("N"));
 
             var size = await WriteToFileAsync(stream, path, progress, cancellationToken).ConfigureAwait(false);
@@ -110,7 +114,7 @@ public sealed class ContainerTransferService
             _logger.LogInformation(
                 "主机 {HostId} 导出容器 {ContainerId} → {Path}（{Size} 字节）",
                 hostId,
-                resolved,
+                containerId,
                 path,
                 size);
 

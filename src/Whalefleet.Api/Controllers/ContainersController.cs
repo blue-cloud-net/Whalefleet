@@ -2,13 +2,16 @@ using System.Globalization;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
+using Whalefleet.Api.Security;
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Auditing;
 using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Abstractions.Terminal;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Containers;
+using Whalefleet.Application.Files;
 using Whalefleet.Core.Auditing;
 
 namespace Whalefleet.Api.Controllers;
@@ -39,6 +42,10 @@ public sealed class ContainersController : ControllerBase
     private readonly ICurrentUser _currentUser;
     private readonly IAuditLogger _audit;
     private readonly TimeProvider _clock;
+    private readonly ContainerTransferService _transfers;
+    private readonly TransferService _transferJobs;
+    private readonly DownloadTicketStore _tickets;
+    private readonly FilesOptions _filesOptions;
 
     /// <summary>
     /// 初始化容器查询控制器。
@@ -51,6 +58,10 @@ public sealed class ContainersController : ControllerBase
     /// <param name="currentUser">当前登录用户（终端令牌要绑定到人）。</param>
     /// <param name="audit">审计日志（敏感读留痕）。</param>
     /// <param name="clock">时间源（令牌过期时刻）。</param>
+    /// <param name="transfers">容器导入导出用例（0.14.0）。</param>
+    /// <param name="transferJobs">传输任务编排（0.14.0）。</param>
+    /// <param name="tickets">下载票据登记表（0.14.0）。</param>
+    /// <param name="filesOptions">文件传输配置（0.14.0）。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
     public ContainersController(
         ContainerService containers,
@@ -60,7 +71,11 @@ public sealed class ContainersController : ControllerBase
         ITerminalTokenService terminalTokens,
         ICurrentUser currentUser,
         IAuditLogger audit,
-        TimeProvider clock)
+        TimeProvider clock,
+        ContainerTransferService transfers,
+        TransferService transferJobs,
+        DownloadTicketStore tickets,
+        IOptions<FilesOptions> filesOptions)
     {
         ArgumentNullException.ThrowIfNull(containers);
         ArgumentNullException.ThrowIfNull(logProvider);
@@ -70,6 +85,10 @@ public sealed class ContainersController : ControllerBase
         ArgumentNullException.ThrowIfNull(currentUser);
         ArgumentNullException.ThrowIfNull(audit);
         ArgumentNullException.ThrowIfNull(clock);
+        ArgumentNullException.ThrowIfNull(transfers);
+        ArgumentNullException.ThrowIfNull(transferJobs);
+        ArgumentNullException.ThrowIfNull(tickets);
+        ArgumentNullException.ThrowIfNull(filesOptions);
 
         _containers = containers;
         _logProvider = logProvider;
@@ -78,6 +97,10 @@ public sealed class ContainersController : ControllerBase
         _terminalTokens = terminalTokens;
         _currentUser = currentUser;
         _audit = audit;
+        _transfers = transfers;
+        _transferJobs = transferJobs;
+        _tickets = tickets;
+        _filesOptions = filesOptions.Value;
         _clock = clock;
     }
 
@@ -774,5 +797,267 @@ public sealed class ContainersController : ControllerBase
         var recreated = await _containers.AddVolumesAsync(hostId, request, cancellationToken).ConfigureAwait(false);
 
         return this.Ok(ApiResults.Ok(recreated));
+    }
+
+    /// <summary>
+    /// 导出容器文件系统为 tar（等价 <c>docker export</c>，**后台任务**）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">导出请求（容器标识）。</param>
+    /// <returns>统一响应，<c>data</c> 为任务标识与状态。</returns>
+    /// <response code="200">已受理（导出在后台执行）。</response>
+    /// <response code="400">容器标识为空（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机不存在（<c>1300</c>）。</response>
+    /// <remarks>
+    /// <para><b>导出内容不含挂载卷</b>：Docker 的 <c>export</c> 导出的是容器的可写层，
+    /// 卷在产物里只是个空目录（实测）。界面必须写明这一点——
+    /// 否则用户会以为「备份全了」，而卷里的数据其实没被带走。</para>
+    /// <para><b>需要容器读权限</b>：导出是读操作。</para>
+    /// </remarks>
+    [HttpPost("export")]
+    [ProducesResponseType(typeof(ApiResult<StartExportResult>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ExportAsync(
+        string hostId,
+        [FromBody] StartExportRequest request,
+        CancellationToken cancellationToken)
+    {
+        var resourceId = request.ResourceId?.Trim();
+
+        if (String.IsNullOrWhiteSpace(resourceId))
+        {
+            throw new ArgumentException("容器标识不能为空。", nameof(request));
+        }
+
+        // ⚠️ 容器授权必须在这里做（请求期有登录用户）。
+        // 导出实际跑在后台线程里，那里 ICurrentUser 是空的——
+        // 在那里判权限会一律失败，症状是「一发起导出就 1502」。
+        // AuthorizeReadAsync 同时把短 ID / 名字解析成规范 ID。
+        var canonicalId = await _containers
+            .AuthorizeReadAsync(hostId, resourceId, cancellationToken)
+            .ConfigureAwait(false);
+
+        var jobId = request.ProgressToken?.Trim();
+
+        if (String.IsNullOrWhiteSpace(jobId))
+        {
+            jobId = Guid.NewGuid().ToString("N");
+        }
+
+        var result = _transferJobs.StartExport(
+            hostId,
+            TransferOperations.ContainerExport,
+            canonicalId,
+            jobId,
+            canonicalId);
+
+        return this.Ok(ApiResults.Ok(result));
+    }
+
+    /// <summary>
+    /// 查询容器导出任务的状态。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">状态查询请求（任务标识）。</param>
+    /// <returns>统一响应，<c>data</c> 为任务状态（完成时含下载地址）。</returns>
+    /// <response code="200">查询成功。</response>
+    /// <response code="400">任务标识为空（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机不存在（<c>1300</c>）或任务不存在（<c>1410</c>）。</response>
+    [HttpPost("export/status")]
+    [ProducesResponseType(typeof(ApiResult<TransferJobStatusResult>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    public IActionResult ExportStatusAsync(
+        string hostId,
+        [FromBody] TransferJobStatusRequest request)
+    {
+        var jobId = request.JobId?.Trim();
+
+        if (String.IsNullOrWhiteSpace(jobId))
+        {
+            throw new ArgumentException("任务标识不能为空。", nameof(request));
+        }
+
+        var status = _transferJobs.GetStatus(jobId);
+
+        if (status is null)
+        {
+            throw new BusinessException(
+                ErrorCodes.TransferJobNotFound,
+                $"导出任务「{jobId}」不存在或已过期");
+        }
+
+        return this.Ok(ApiResults.Ok(status));
+    }
+
+    /// <summary>
+    /// 凭下载票据取走容器导出产物（**匿名端点**，票据即凭证）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）；仅用于路径一致性，不承担鉴权职责。</param>
+    /// <param name="token">下载票据。</param>
+    /// <returns>文件流（<c>application/x-tar</c> + <c>Content-Disposition</c>）。</returns>
+    /// <response code="200">下载流已开始。</response>
+    /// <response code="410">票据无效或已过期（<c>1408</c>）。</response>
+    [HttpGet("download")]
+    [AllowAnonymous]
+    [DownloadTicket]
+    [ProducesResponseType(typeof(string), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status410Gone)]
+    public IActionResult DownloadAsync(
+        string hostId,
+        [FromQuery] string? token)
+    {
+        var ticket = _tickets.Resolve(token, DateTime.UtcNow);
+
+        if (ticket is null)
+        {
+            throw new BusinessException(
+                ErrorCodes.DownloadTicketInvalid,
+                "下载票据无效或已过期，请重新发起导出。");
+        }
+
+        if (!System.IO.File.Exists(ticket.FilePath))
+        {
+            throw new BusinessException(
+                ErrorCodes.DownloadTicketInvalid,
+                "导出产物已不存在，请重新发起导出。");
+        }
+
+        return this.PhysicalFile(
+            ticket.FilePath,
+            "application/x-tar",
+            ticket.FileName,
+            enableRangeProcessing: true);
+    }
+
+    /// <summary>
+    /// 导入容器文件系统为镜像（等价 <c>docker import</c>，**原始请求体**）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="repository">镜像仓库名（可空）。</param>
+    /// <param name="tag">镜像标签（可空）。</param>
+    /// <param name="message">提交说明（可空）。</param>
+    /// <param name="changes">额外的 Dockerfile 指令（可空，重复传）。</param>
+    /// <param name="body">tar 流（请求体）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应，<c>data</c> 为导入结果。</returns>
+    /// <response code="200">导入成功。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）。</response>
+    /// <response code="404">主机不存在（<c>1300</c>）。</response>
+    /// <response code="413">上传体积超过上限（<c>1407</c>）。</response>
+    /// <response code="500">导入失败（<c>1402</c>）。</response>
+    /// <response code="502">主机不可达（<c>1301</c>）。</response>
+    /// <remarks>
+    /// <para><b>导入只带文件系统</b>：tar 里没有 CMD / ENTRYPOINT / ENV / 端口 / 挂载，
+    /// 因此导入出来的镜像<b>不能按原样运行</b>。想要一个能直接跑的镜像请用 commit。</para>
+    /// </remarks>
+    [HttpPost("import")]
+    [Consumes("application/octet-stream")]
+    [DisableRequestSizeLimit]
+    [ProducesResponseType(typeof(ApiResult<ContainerImportResult>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status413PayloadTooLarge)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status500InternalServerError)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> ImportAsync(
+        string hostId,
+        [FromQuery] string? repository,
+        [FromQuery] string? tag,
+        [FromQuery] string? message,
+        [FromQuery] string[]? changes,
+        [FromBody] Stream body,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+
+        if (this.Request.ContentLength is long declaredLength && declaredLength > _filesOptions.MaxUploadBytes)
+        {
+            throw new BusinessException(
+                ErrorCodes.UploadTooLarge,
+                $"上传体积超过上限（{_filesOptions.MaxUploadBytes} 字节）");
+        }
+
+        await using var limited = new LimitedReadStream(body, _filesOptions.MaxUploadBytes);
+
+        var result = await _transfers
+            .ImportAsync(hostId, limited, repository, tag, message, changes, cancellationToken)
+            .ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok(result));
+    }
+
+    /// <summary>
+    /// 把容器当前状态提交为镜像（等价 <c>docker commit</c>）。
+    /// </summary>
+    /// <param name="hostId">主机标识（主机名）。</param>
+    /// <param name="request">提交请求（容器标识、镜像名、说明等）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>统一响应，<c>data</c> 为新镜像 ID 与名字。</returns>
+    /// <response code="200">提交成功。</response>
+    /// <response code="400">容器标识或镜像名为空（<c>1000</c>）。</response>
+    /// <response code="401">未认证（<c>1100</c> / <c>1101</c>）。</response>
+    /// <response code="403">无权访问该主机（<c>1501</c>）或缺写权限（<c>1502</c>）。</response>
+    /// <response code="404">主机（<c>1300</c>）或容器（<c>1401</c>）不存在。</response>
+    /// <response code="500">提交失败（<c>1402</c>）。</response>
+    /// <response code="502">主机不可达（<c>1301</c>）。</response>
+    /// <remarks>
+    /// <para><b>它会固化临时改动</b>：容器里临时装的东西、临时改的配置都会被写进镜像，
+    /// 而且<b>不可逆</b>。因此界面上的二次确认必须说明这一点。</para>
+    /// <para><b>它需要两个权限</b>：容器的写权限（读它的状态）+ 镜像的写权限（造新镜像）。
+    /// 只查容器权限会让「只能改容器」的用户凭空多出「造镜像」的能力。</para>
+    /// </remarks>
+    [HttpPost("commit")]
+    [ProducesResponseType(typeof(ApiResult<CommitContainerResult>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status500InternalServerError)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> CommitAsync(
+        string hostId,
+        [FromBody] CommitContainerRequest request,
+        CancellationToken cancellationToken)
+    {
+        var containerId = request.ContainerId?.Trim();
+        var repository = request.Repository?.Trim();
+
+        if (String.IsNullOrWhiteSpace(containerId))
+        {
+            throw new ArgumentException("容器标识不能为空。", nameof(request));
+        }
+
+        if (String.IsNullOrWhiteSpace(repository))
+        {
+            throw new ArgumentException("镜像仓库名不能为空。", nameof(request));
+        }
+
+        var imageId = await _transfers.CommitAsync(
+            hostId,
+            containerId,
+            repository,
+            request.Tag?.Trim(),
+            request.Comment,
+            request.Author,
+            request.Pause ?? true,
+            request.Changes,
+            cancellationToken).ConfigureAwait(false);
+
+        return this.Ok(ApiResults.Ok(new CommitContainerResult(
+            imageId,
+            repository,
+            request.Tag?.Trim() ?? "latest")));
     }
 }
