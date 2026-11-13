@@ -93,6 +93,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **New global permissions**: `variable.read` / `variable.write`; a project-scoped variable is
   bound to `(host, project name)` rather than to `composes.id`, so deleting and re-deploying a
   project does not silently drop its secrets.
+- **Variable UI**: global variables live under Settings (gated by `variable.read` /
+  `variable.write`, not by "is admin" — roles are data, custom roles can carry the same
+  permissions); the Compose detail page shows the project's own variables, the inherited
+  globals (read-only) and a warning listing variables the YAML references but nothing
+  defines, before the user presses deploy.
+- **Webhook parameter overrides**: `POST /api/v1/webhooks/composes/{token}?VAR=value` overrides
+  a variable for that one deploy. Only variables that are declared, explicitly flagged
+  overridable and non-secret take effect; everything else is **ignored by name** and echoed
+  back in `ignoredVariables`. There is no magic `?tag=` parameter — `?tag=1.2.3` is just
+  "override the variable named `TAG`", and the YAML must reference `${TAG}`. Overriding a
+  secret is a hard error (`1910`): silently ignoring it would leave CI believing the password
+  changed while the old one keeps running.
+- **Container rebuild webhooks**: `POST /api/v1/webhooks/containers/{token}` rebuilds one
+  container (anonymous endpoint, SHA-256 token hash only, 10 triggers/minute). The token is
+  bound to the **container name**, not its ID — a rebuild always changes the ID, so binding
+  the ID would invalidate the token after the first use. Renaming the container therefore
+  invalidates the token; the UI says so out loud.
+- **Image auto update**: policies bind a `(host, reference)` pair to the digest behind a tag.
+  Detection issues one `HEAD /v2/<name>/manifests/<tag>` and reads `Docker-Content-Digest` —
+  never `docker pull`, which would move hundreds of megabytes to answer "did it change?".
+  Official images get the `library/` namespace; Docker Hub aliases are normalised; the daemon's
+  configured mirrors are tried first. Two modes: notify only, or pull and recreate the
+  containers using the image through the same kernel as the manual rebuild (full config
+  restored from inspect, automatic rollback on failure). **The first check only establishes a
+  baseline** — a freshly added policy must not declare an update before the user has decided
+  anything. Failures go to the notification centre as `image-update-failed`, **not** into
+  alert rules: alert rules are "notify me under these conditions", and a system reporting on
+  its own action is a different thing.
+- **Resource task generalisation**: the Compose task registry became
+  `ResourceTaskRegistry<TResult>` with `resourceKind` / `resourceName` in the snapshot, so
+  container rebuild tasks reuse the same queue, worker and progress channel.
+- **New error codes**: `1405` update policy not found, `1406` update policy already exists,
+  `1908` variable not defined, `1909` invalid variable name, `1910` variable not overridable,
+  `1911` container webhook token invalid, `1912` container webhook rate limited,
+  `1913` variable not found, `1914` variable name taken, `1915` container webhook not found.
+
+### Fixed
+
+- **`perm.team.read` / `perm.team.write` were never registered as authorization policies**:
+  both constants existed and were referenced by `[Authorize]`, but the policy was missing, so
+  every `/api/v1/admin/teams/*` endpoint answered **500**. No team integration test existed, so
+  CI stayed green. A guard test now scans both class-level and action-level `[Authorize]`
+  attributes against every registered policy, and it is verified to fail when the registration
+  is removed.
 
 ### 0.13.0 — Accounts, teams and security (internal draft)
 
