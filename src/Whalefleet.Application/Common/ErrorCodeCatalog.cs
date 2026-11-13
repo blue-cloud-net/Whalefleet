@@ -99,6 +99,11 @@ public static class ErrorCodeCatalog
             [ErrorCodes.ComposeOperationInProgress] = (ErrorCategory.Conflict, "该 Compose 项目已有进行中的操作"),
             [ErrorCodes.ComposeWebhookTokenInvalid] = (ErrorCategory.NotFound, "Webhook 令牌无效或已吊销"),
             [ErrorCodes.ComposeWebhookRateLimited] = (ErrorCategory.RateLimited, "Webhook 触发过于频繁"),
+            [ErrorCodes.VariableNotDefined] = (ErrorCategory.Validation, "Compose 文件引用的变量未定义"),
+            [ErrorCodes.InvalidVariableName] = (ErrorCategory.Validation, "变量名非法"),
+            [ErrorCodes.VariableNotOverridable] = (ErrorCategory.Validation, "该变量不允许被 Webhook 覆盖"),
+            [ErrorCodes.VariableNotFound] = (ErrorCategory.NotFound, "变量不存在"),
+            [ErrorCodes.VariableNameAlreadyExists] = (ErrorCategory.Validation, "变量名已被占用"),
 
             [ErrorCodes.AlertRuleNotFound] = (ErrorCategory.NotFound, "告警规则不存在"),
             [ErrorCodes.AlertRuleInvalid] = (ErrorCategory.Validation, "告警规则参数非法"),

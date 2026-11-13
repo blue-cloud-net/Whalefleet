@@ -5,6 +5,7 @@ using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Abstractions.Auditing;
 using Whalefleet.Application.Sessions;
 using Whalefleet.Application.Teams;
+using Whalefleet.Application.Variables;
 using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Abstractions.Terminal;
 using Whalefleet.Application.Alerting;
@@ -117,6 +118,9 @@ public static class ApplicationServiceCollectionExtensions
 
         // 编排 Webhook 用例（0.10.0）。Scoped：依赖 Scoped 的仓储。
         services.AddScoped<ComposeWebhookService>();
+
+        // 环境变量用例（0.15.0）。Scoped：依赖 Scoped 的仓储与密钥保护器。
+        services.AddScoped<EnvVariableService>();
 
         // 任务登记表与队列（0.10.0）。**必须 Singleton**：
         // 登记表要在「HTTP 请求线程」与「后台工作线程」之间共享状态，

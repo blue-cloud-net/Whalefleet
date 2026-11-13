@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Docker;
+using Whalefleet.Application.Variables;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Composes;
 
@@ -55,6 +56,7 @@ public sealed class ComposeProjectService
     private readonly IDockerHostAccessor _accessor;
     private readonly ContainerAuthorizationService _authorization;
     private readonly IComposeProjectRepository _repository;
+    private readonly EnvVariableService _variables;
     private readonly ComposeTaskRegistry _tasks;
     private readonly ComposeOperationQueue _queue;
     private readonly IPermissionChecker _permissions;
@@ -79,6 +81,7 @@ public sealed class ComposeProjectService
     public ComposeProjectService(
         IDockerHostAccessor accessor, ContainerAuthorizationService authorization,
         IComposeProjectRepository repository,
+        EnvVariableService variables,
         ComposeTaskRegistry tasks,
         ComposeOperationQueue queue,
         IPermissionChecker permissions,
@@ -89,6 +92,7 @@ public sealed class ComposeProjectService
     {
         ArgumentNullException.ThrowIfNull(accessor);
         ArgumentNullException.ThrowIfNull(repository);
+        ArgumentNullException.ThrowIfNull(variables);
         ArgumentNullException.ThrowIfNull(tasks);
         ArgumentNullException.ThrowIfNull(queue);
         ArgumentNullException.ThrowIfNull(permissions);
@@ -100,6 +104,7 @@ public sealed class ComposeProjectService
         _accessor = accessor;
         _authorization = authorization;
         _repository = repository;
+        _variables = variables;
         _tasks = tasks;
         _queue = queue;
         _permissions = permissions;
@@ -235,15 +240,27 @@ public sealed class ComposeProjectService
 
         var warnings = new List<string>();
         var declaredServiceNames = new List<string>();
+        ComposeVariablesResponse? variables = null;
 
         if (recorded is not null)
         {
             try
             {
+                // 宽松解析：未定义的变量换成占位符而不是报错——
+                // 详情页要在用户还没填变量值时也能打开（那正是最需要它的时候）。
                 var document = ComposeParser.Parse(recorded.ComposeContent);
 
                 warnings.AddRange(document.Warnings);
                 declaredServiceNames.AddRange(document.Services.Select(service => service.Name));
+
+                variables = await _variables
+                    .ListForComposeAsync(
+                        host.Id,
+                        host.Name,
+                        name,
+                        document.ReferencedVariables,
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
             catch (BusinessException)
             {
@@ -266,7 +283,8 @@ public sealed class ComposeProjectService
             services,
             warnings,
             declaredServiceNames.Count,
-            missingServices);
+            missingServices,
+            variables);
     }
 
     /// <summary>
@@ -297,8 +315,13 @@ public sealed class ComposeProjectService
 
         await this.EnsureWritePermissionAsync(host.Id, cancellationToken).ConfigureAwait(false);
 
-        // 解析在请求期做：语法错、含不支持的字段都直接回给用户
-        var document = ComposeParser.Parse(content);
+        // 解析在请求期做：语法错、含不支持的字段、**变量未定义**都直接回给用户。
+        // 变量未定义报 1908 而不是「替换成空串」——空串会产出「服务起来了但什么都不对」。
+        var resolved = await _variables
+            .ResolveAsync(host.Id, name, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
+        var document = ComposeParser.Parse(content, resolved.Values);
 
         var existing = await _repository
             .FindByHostAndNameAsync(host.Id, name, cancellationToken)
@@ -379,7 +402,12 @@ public sealed class ComposeProjectService
 
         await this.EnsureWritePermissionAsync(host.Id, cancellationToken).ConfigureAwait(false);
 
-        var document = ComposeParser.Parse(content);
+        // 同部署：解析在请求期做，变量未定义直接报 1908。
+        var resolved = await _variables
+            .ResolveAsync(host.Id, name, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
+        var document = ComposeParser.Parse(content, resolved.Values);
 
         var existing = await _repository
             .FindByHostAndNameAsync(host.Id, name, cancellationToken)

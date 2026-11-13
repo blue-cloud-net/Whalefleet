@@ -1,5 +1,7 @@
 namespace Whalefleet.Application.Composes;
 
+using Whalefleet.Application.Variables;
+
 /// <summary>
 /// 编排 Compose 项目列表项。
 /// </summary>
@@ -53,6 +55,9 @@ public sealed record ComposeProjectSummary(
 /// <param name="Warnings">解析期的提示。</param>
 /// <param name="DeclaredServiceCount">YAML 里声明的服务数；本平台没保存 YAML 时为 <c>0</c>。</param>
 /// <param name="MissingServices">声明了但当前还没有容器的服务名（按声明顺序）。</param>
+/// <param name="Variables">
+/// 变量清单（项目级 / 从全局继承的 / 被引用但尚未定义的）。
+/// </param>
 /// <remarks>
 /// <para><b><see cref="MissingServices"/> 是「服务视角」的最后一块拼图</b>：
 /// 详情页的主体是**按 compose 项目过滤出来的容器列表**，而容器列表只能回答
@@ -71,7 +76,8 @@ public sealed record ComposeProjectDetail(
     IReadOnlyList<ComposeServiceSummary> Services,
     IReadOnlyList<string> Warnings,
     int DeclaredServiceCount,
-    IReadOnlyList<string> MissingServices);
+    IReadOnlyList<string> MissingServices,
+    ComposeVariablesResponse? Variables);
 
 /// <summary>
 /// 编排项目里的一个服务。

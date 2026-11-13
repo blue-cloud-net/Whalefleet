@@ -10,6 +10,7 @@ using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Docker;
 using Whalefleet.Application.Images;
+using Whalefleet.Application.Variables;
 
 namespace Whalefleet.Application.Composes;
 
@@ -52,6 +53,7 @@ public sealed class ComposeOperationExecutor
 
     private readonly IDockerHostAccessor _accessor;
     private readonly ImageService _images;
+    private readonly EnvVariableService _variables;
     private readonly IOperationProgressPublisher _progress;
     private readonly ILogger<ComposeOperationExecutor> _logger;
 
@@ -60,22 +62,26 @@ public sealed class ComposeOperationExecutor
     /// </summary>
     /// <param name="accessor">主机访问器。</param>
     /// <param name="images">镜像用例（复用它的拉取逻辑与进度上报）。</param>
+    /// <param name="variables">环境变量用例（部署时注入 Compose 的变量值）。</param>
     /// <param name="progress">进度发布器。</param>
     /// <param name="logger">日志。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
     public ComposeOperationExecutor(
         IDockerHostAccessor accessor,
         ImageService images,
+        EnvVariableService variables,
         IOperationProgressPublisher progress,
         ILogger<ComposeOperationExecutor> logger)
     {
         ArgumentNullException.ThrowIfNull(accessor);
         ArgumentNullException.ThrowIfNull(images);
+        ArgumentNullException.ThrowIfNull(variables);
         ArgumentNullException.ThrowIfNull(progress);
         ArgumentNullException.ThrowIfNull(logger);
 
         _accessor = accessor;
         _images = images;
+        _variables = variables;
         _progress = progress;
         _logger = logger;
     }
@@ -118,7 +124,14 @@ public sealed class ComposeOperationExecutor
 
         var client = await _accessor.GetClientAsync(request.HostName, cancellationToken).ConfigureAwait(false);
 
-        var document = ComposeParser.Parse(request.ComposeContent);
+        // 变量在**执行时**重新解析：请求期解析过了，但到执行时值可能已经变了。
+        // 配置哈希取的是**插值后**的服务定义，因此「只改变量值」也会触发重建。
+        var host = await _accessor.ResolveAsync(request.HostName, cancellationToken).ConfigureAwait(false);
+        var resolved = await _variables
+            .ResolveAsync(host.Id, request.ComposeName, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
+        var document = ComposeParser.Parse(request.ComposeContent, resolved.Values);
         var plan = ComposePlanner.Plan(request.ComposeName, document);
 
         var created = 0;
