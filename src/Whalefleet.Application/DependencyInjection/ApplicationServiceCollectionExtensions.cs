@@ -20,6 +20,7 @@ using Whalefleet.Application.HostTags;
 using Whalefleet.Application.Images;
 using Whalefleet.Application.Networks;
 using Whalefleet.Application.Operations;
+using Whalefleet.Application.Webhooks;
 using Whalefleet.Application.Permissions;
 using Whalefleet.Application.Repositories;
 using Whalefleet.Application.Composes;
@@ -126,9 +127,15 @@ public static class ApplicationServiceCollectionExtensions
         // 任务登记表与队列（0.10.0）。**必须 Singleton**：
         // 登记表要在「HTTP 请求线程」与「后台工作线程」之间共享状态，
         // 队列更是跨请求传递的唯一通道。
-        services.AddSingleton<ComposeWebhookRateLimiter>();
+        services.AddSingleton<WebhookRateLimiter>();
         services.AddSingleton<ResourceTaskRegistry<ComposeOperationResult>>();
-        services.AddSingleton<ComposeOperationQueue>();
+
+        // 容器重建 Webhook（0.15.0）。登记表同样是 Singleton：
+        // 它要在 HTTP 请求线程与后台工作线程之间共享任务状态。
+        services.AddScoped<ContainerWebhookService>();
+        services.AddScoped<ContainerRebuildExecutor>();
+        services.AddSingleton<ResourceTaskRegistry<ContainerRecreateResult>>();
+        services.AddSingleton<ResourceOperationQueue>();
 
         // 文件传输（0.14.0）：配置选项。**绑定与校验放在 Api 层**（与 RealtimeOptions / TerminalOptions
         // 同一处理方式）——配置绑定是入站适配器的职责，而应用层不引入配置绑定相关的包。

@@ -105,6 +105,9 @@ public class ErrorCodesTests
         [nameof(ErrorCodes.VariableNotOverridable)] = 1910,
         [nameof(ErrorCodes.VariableNotFound)] = 1913,
         [nameof(ErrorCodes.VariableNameAlreadyExists)] = 1914,
+        [nameof(ErrorCodes.ContainerWebhookTokenInvalid)] = 1911,
+        [nameof(ErrorCodes.ContainerWebhookRateLimited)] = 1912,
+        [nameof(ErrorCodes.ContainerWebhookNotFound)] = 1915,
 
         // 告警与通知
         [nameof(ErrorCodes.AlertRuleNotFound)] = 1700,

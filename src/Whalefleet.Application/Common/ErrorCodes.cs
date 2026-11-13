@@ -528,12 +528,38 @@ public static class ErrorCodes
     public const int VariableNotFound = 1913;
 
     /// <summary>
+    /// 容器 Webhook 令牌无效、已吊销或未启用（HTTP 404）。
+    /// </summary>
+    /// <remarks>
+    /// <b>不区分三种情况</b>：区分了就成了令牌探测工具——
+    /// 攻击者能靠状态码差异确认「这个令牌曾经存在过」。一律 404。
+    /// </remarks>
+    public const int ContainerWebhookTokenInvalid = 1911;
+
+    /// <summary>
+    /// 容器 Webhook 触发过于频繁（HTTP 429）。
+    /// </summary>
+    /// <remarks>
+    /// 一次触发就是一次容器重建，不加限制的话一个循环的 CI 会把守护进程打满。
+    /// </remarks>
+    public const int ContainerWebhookRateLimited = 1912;
+
+    /// <summary>
     /// 变量名已被占用（HTTP 400）。
     /// </summary>
     /// <remarks>
     /// 同一作用域内变量名唯一（全局唯一 / 同一项目的项目级变量唯一）。
     /// </remarks>
     public const int VariableNameAlreadyExists = 1914;
+
+    /// <summary>
+    /// 容器 Webhook 记录不存在（HTTP 404）。
+    /// </summary>
+    /// <remarks>
+    /// 用于「吊销一个还没配令牌的容器」这类管理侧操作；
+    /// 匿名端点一律报 <c>1911</c>（不区分「不存在」与「已吊销」）。
+    /// </remarks>
+    public const int ContainerWebhookNotFound = 1915;
     #endregion
 
     #region 1700-1799 告警与通知

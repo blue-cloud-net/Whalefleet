@@ -101,6 +101,9 @@ public class ErrorHttpStatusTests
         [ErrorCodes.VariableNotOverridable] = 400,
         [ErrorCodes.VariableNotFound] = 404,
         [ErrorCodes.VariableNameAlreadyExists] = 400,
+        [ErrorCodes.ContainerWebhookTokenInvalid] = 404,
+        [ErrorCodes.ContainerWebhookRateLimited] = 429,
+        [ErrorCodes.ContainerWebhookNotFound] = 404,
 
         [ErrorCodes.AlertRuleNotFound] = 404,
         [ErrorCodes.AlertRuleInvalid] = 400,

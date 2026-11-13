@@ -104,6 +104,9 @@ public static class ErrorCodeCatalog
             [ErrorCodes.VariableNotOverridable] = (ErrorCategory.Validation, "该变量不允许被 Webhook 覆盖"),
             [ErrorCodes.VariableNotFound] = (ErrorCategory.NotFound, "变量不存在"),
             [ErrorCodes.VariableNameAlreadyExists] = (ErrorCategory.Validation, "变量名已被占用"),
+            [ErrorCodes.ContainerWebhookTokenInvalid] = (ErrorCategory.NotFound, "容器 Webhook 令牌无效或已吊销"),
+            [ErrorCodes.ContainerWebhookRateLimited] = (ErrorCategory.RateLimited, "容器 Webhook 触发过于频繁"),
+            [ErrorCodes.ContainerWebhookNotFound] = (ErrorCategory.NotFound, "容器 Webhook 记录不存在"),
 
             [ErrorCodes.AlertRuleNotFound] = (ErrorCategory.NotFound, "告警规则不存在"),
             [ErrorCodes.AlertRuleInvalid] = (ErrorCategory.Validation, "告警规则参数非法"),

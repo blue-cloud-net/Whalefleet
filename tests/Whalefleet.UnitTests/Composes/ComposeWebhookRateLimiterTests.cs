@@ -1,6 +1,7 @@
 using FluentAssertions;
 
 using Whalefleet.Application.Composes;
+using Whalefleet.Application.Webhooks;
 
 using Xunit;
 
@@ -9,12 +10,12 @@ namespace Whalefleet.UnitTests.Composes;
 /// <summary>
 /// Webhook 限流的并发与时间边界回归。
 /// </summary>
-public sealed class ComposeWebhookRateLimiterTests
+public sealed class WebhookRateLimiterTests
 {
     [Fact]
     public async Task 受理_并发触发_同一窗口最多十次()
     {
-        var limiter = new ComposeWebhookRateLimiter(TimeProvider.System);
+        var limiter = new WebhookRateLimiter(TimeProvider.System);
         var composeId = Guid.NewGuid();
         var results = await Task.WhenAll(Enumerable.Range(0, 100)
             .Select(_ => Task.Run(() => limiter.TryAcquire(composeId))));
@@ -26,7 +27,7 @@ public sealed class ComposeWebhookRateLimiterTests
     public void 受理_窗口到期_被拒请求不延长窗口()
     {
         var clock = new ManualClock();
-        var limiter = new ComposeWebhookRateLimiter(clock);
+        var limiter = new WebhookRateLimiter(clock);
         var composeId = Guid.NewGuid();
         for (var i = 0; i < 10; i++)
         {

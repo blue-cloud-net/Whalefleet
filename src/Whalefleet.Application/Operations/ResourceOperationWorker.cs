@@ -5,12 +5,14 @@ using Microsoft.Extensions.Logging;
 using Whalefleet.Application.Abstractions.Auditing;
 using Whalefleet.Application.Abstractions.Realtime;
 using Whalefleet.Application.Common;
+using Whalefleet.Application.Composes;
+using Whalefleet.Application.Webhooks;
 using Whalefleet.Application.Operations;
 using Whalefleet.Core.Auditing;
 using Whalefleet.Core.Hosts;
 using Whalefleet.Core.Composes;
 
-namespace Whalefleet.Application.Composes;
+namespace Whalefleet.Application.Operations;
 
 /// <summary>
 /// 编排任务后台工作器：从队列里取出操作并执行。
@@ -28,13 +30,14 @@ namespace Whalefleet.Application.Composes;
 /// <para><b>单个任务失败不终止循环</b>：失败只标记该任务，
 /// 循环继续处理下一个——一个坏 YAML 不该让整个编排功能从此罢工。</para>
 /// </remarks>
-public sealed class ComposeOperationWorker : BackgroundService
+public sealed class ResourceOperationWorker : BackgroundService
 {
-    private readonly ComposeOperationQueue _queue;
+    private readonly ResourceOperationQueue _queue;
     private readonly ResourceTaskRegistry<ComposeOperationResult> _registry;
+    private readonly ResourceTaskRegistry<ContainerRecreateResult> _containerRegistry;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly TimeProvider _timeProvider;
-    private readonly ILogger<ComposeOperationWorker> _logger;
+    private readonly ILogger<ResourceOperationWorker> _logger;
 
     /// <summary>
     /// 初始化工作器。
@@ -45,12 +48,13 @@ public sealed class ComposeOperationWorker : BackgroundService
     /// <param name="timeProvider">时间源。</param>
     /// <param name="logger">日志。</param>
     /// <exception cref="ArgumentNullException">任一依赖为 <see langword="null"/>。</exception>
-    public ComposeOperationWorker(
-        ComposeOperationQueue queue,
+    public ResourceOperationWorker(
+        ResourceOperationQueue queue,
         ResourceTaskRegistry<ComposeOperationResult> registry,
+        ResourceTaskRegistry<ContainerRecreateResult> containerRegistry,
         IServiceScopeFactory scopeFactory,
         TimeProvider timeProvider,
-        ILogger<ComposeOperationWorker> logger)
+        ILogger<ResourceOperationWorker> logger)
     {
         ArgumentNullException.ThrowIfNull(queue);
         ArgumentNullException.ThrowIfNull(registry);
@@ -60,6 +64,7 @@ public sealed class ComposeOperationWorker : BackgroundService
 
         _queue = queue;
         _registry = registry;
+        _containerRegistry = containerRegistry;
         _scopeFactory = scopeFactory;
         _timeProvider = timeProvider;
         _logger = logger;
@@ -91,8 +96,16 @@ public sealed class ComposeOperationWorker : BackgroundService
     /// </summary>
     /// <param name="request">操作请求。</param>
     /// <returns>表示异步操作的任务。</returns>
-    private async Task ProcessAsync(ComposeOperationRequest request)
+    private async Task ProcessAsync(ResourceOperationRequest request)
     {
+        // 容器重建与编排部署走同一套「202 + 任务标识 + 轮询」契约，
+        // 但执行器、结果形态与审计口径都不同，因此在这里分派。
+        if (request.ResourceKind == ResourceKinds.Container)
+        {
+            await this.ProcessContainerAsync(request).ConfigureAwait(false);
+            return;
+        }
+
         var now = _timeProvider.GetUtcNow().UtcDateTime;
 
         _registry.MarkRunning(request.TaskId, "开始执行", now);
@@ -118,7 +131,7 @@ public sealed class ComposeOperationWorker : BackgroundService
                 "编排任务 {TaskId} 完成：主机 {HostName}，编排 {ComposeName}，操作 {Operation}",
                 request.TaskId,
                 request.HostName,
-                request.ComposeName,
+                request.ResourceName,
                 request.Operation);
         }
         catch (BusinessException exception)
@@ -142,7 +155,7 @@ public sealed class ComposeOperationWorker : BackgroundService
                 "编排任务 {TaskId} 失败：主机 {HostName}，编排 {ComposeName}，操作 {Operation}，原因 {Reason}",
                 request.TaskId,
                 request.HostName,
-                request.ComposeName,
+                request.ResourceName,
                 request.Operation,
                 exception.Message);
         }
@@ -165,7 +178,124 @@ public sealed class ComposeOperationWorker : BackgroundService
                 "编排任务 {TaskId} 异常退出：主机 {HostName}，编排 {ComposeName}",
                 request.TaskId,
                 request.HostName,
-                request.ComposeName);
+                request.ResourceName);
+        }
+    }
+
+    /// <summary>
+    /// 执行一次容器重建。
+    /// </summary>
+    /// <param name="request">操作请求（资源名 = 容器名）。</param>
+    /// <returns>表示异步操作的任务。</returns>
+    private async Task ProcessContainerAsync(ResourceOperationRequest request)
+    {
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
+
+        _containerRegistry.MarkRunning(request.TaskId, "开始重建", now);
+
+        // 作用域提到 try 之外：失败路径也要写审计，而那一刻作用域还在
+        using var scope = _scopeFactory.CreateScope();
+
+        try
+        {
+            var executor = scope.ServiceProvider.GetRequiredService<ContainerRebuildExecutor>();
+            var result = await executor.ExecuteAsync(request, CancellationToken.None).ConfigureAwait(false);
+
+            var finished = _timeProvider.GetUtcNow().UtcDateTime;
+
+            _containerRegistry.MarkSucceeded(request.TaskId, result, [], finished);
+
+            await this.RecordContainerAuditAsync(scope.ServiceProvider, request, true, null, finished)
+                .ConfigureAwait(false);
+
+            _logger.LogInformation(
+                "容器重建任务 {TaskId} 完成：主机 {HostName}，容器 {ContainerName}",
+                request.TaskId,
+                request.HostName,
+                request.ResourceName);
+        }
+        catch (BusinessException exception)
+        {
+            var failed = _timeProvider.GetUtcNow().UtcDateTime;
+
+            _containerRegistry.MarkFailed(request.TaskId, exception.Code, exception.Message, failed);
+
+            await this.RecordContainerAuditAsync(scope.ServiceProvider, request, false, exception, failed)
+                .ConfigureAwait(false);
+
+            _logger.LogWarning(
+                "容器重建任务 {TaskId} 失败：主机 {HostName}，容器 {ContainerName}，原因 {Reason}",
+                request.TaskId,
+                request.HostName,
+                request.ResourceName,
+                exception.Message);
+        }
+        catch (Exception exception)
+        {
+            var failed = _timeProvider.GetUtcNow().UtcDateTime;
+
+            var failure = new BusinessException(
+                ErrorCodes.ComposeDeployFailed,
+                ErrorCodeCatalog.GetDefaultMessage(ErrorCodes.ComposeDeployFailed));
+
+            _containerRegistry.MarkFailed(request.TaskId, failure.Code, failure.Message, failed);
+
+            await this.RecordContainerAuditAsync(scope.ServiceProvider, request, false, failure, failed)
+                .ConfigureAwait(false);
+
+            _logger.LogError(
+                exception,
+                "容器重建任务 {TaskId} 异常退出：主机 {HostName}，容器 {ContainerName}",
+                request.TaskId,
+                request.HostName,
+                request.ResourceName);
+        }
+    }
+
+    /// <summary>
+    /// 写一条容器重建的审计。
+    /// </summary>
+    /// <param name="services">作用域的服务提供器。</param>
+    /// <param name="request">操作请求。</param>
+    /// <param name="succeeded">是否成功。</param>
+    /// <param name="exception">失败时的异常。</param>
+    /// <param name="occurredAt">发生时刻（UTC）。</param>
+    /// <returns>表示异步操作的任务。</returns>
+    private async Task RecordContainerAuditAsync(
+        IServiceProvider services,
+        ResourceOperationRequest request,
+        bool succeeded,
+        BusinessException? exception,
+        DateTime occurredAt)
+    {
+        try
+        {
+            var audit = services.GetRequiredService<IAuditLogger>();
+
+            await audit.RecordAsync(
+                new AuditLogDraft
+                {
+                    Category = AuditCategory.Activity,
+                    Action = AuditActions.ContainerWebhookRecreate,
+                    Outcome = succeeded ? AuditOutcome.Success : AuditOutcome.Failure,
+                    OccurredAt = occurredAt,
+                    ActorId = request.ActorId,
+                    ActorName = request.ActorName ?? String.Empty,
+                    TargetType = AuditTargetTypes.Container,
+                    TargetId = request.ResourceName,
+                    TargetName = request.ResourceName,
+                    HostName = request.HostName,
+                    ErrorCode = exception?.Code,
+                    ClientIp = request.ClientIp,
+                },
+                CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception auditException)
+        {
+            _logger.LogWarning(
+                auditException,
+                "写容器重建审计失败（任务 {TaskId}）",
+                request.TaskId);
         }
     }
 
@@ -185,7 +315,7 @@ public sealed class ComposeOperationWorker : BackgroundService
     /// 只是列表里多一条「受管但空」的条目——那是可以事后修的，
     /// 而把整个任务标成失败会让用户以为删除没成功（而它其实成功了）。</para>
     /// </remarks>
-    private async Task RemoveRecordAsync(IServiceProvider services, ComposeOperationRequest request)
+    private async Task RemoveRecordAsync(IServiceProvider services, ResourceOperationRequest request)
     {
         if (request.Operation != ComposeOperations.Remove)
         {
@@ -205,7 +335,7 @@ public sealed class ComposeOperationWorker : BackgroundService
             }
 
             var entity = await repository
-                .FindByHostAndNameAsync(host.Id, request.ComposeName)
+                .FindByHostAndNameAsync(host.Id, request.ResourceName)
                 .ConfigureAwait(false);
 
             if (entity is null)
@@ -221,7 +351,7 @@ public sealed class ComposeOperationWorker : BackgroundService
                 exception,
                 "删除编排记录失败（主机={HostName}，编排={ComposeName}）",
                 request.HostName,
-                request.ComposeName);
+                request.ResourceName);
         }
     }
 
@@ -241,7 +371,7 @@ public sealed class ComposeOperationWorker : BackgroundService
     /// </remarks>
     private async Task RecordAuditAsync(
         IServiceProvider services,
-        ComposeOperationRequest request,
+        ResourceOperationRequest request,
         bool succeeded,
         BusinessException? exception,
         ComposeOperationResult? result,
@@ -261,8 +391,8 @@ public sealed class ComposeOperationWorker : BackgroundService
                     ActorId = request.ActorId,
                     ActorName = request.ActorName ?? String.Empty,
                     TargetType = AuditTargetTypes.Compose,
-                    TargetId = request.ComposeName,
-                    TargetName = request.ComposeName,
+                    TargetId = request.ResourceName,
+                    TargetName = request.ResourceName,
                     HostName = request.HostName,
                     ErrorCode = exception?.Code,
                     ClientIp = request.ClientIp,
@@ -289,7 +419,7 @@ public sealed class ComposeOperationWorker : BackgroundService
     /// 用的就是 <c>update</c> 操作，若按操作类型先判，
     /// 审计里记的就是普通更新——「谁触发的这次部署」这条线索就丢了。
     /// </remarks>
-    private static string ResolveAuditAction(ComposeOperationRequest request) => request.Operation switch
+    private static string ResolveAuditAction(ResourceOperationRequest request) => request.Operation switch
     {
         _ when request.WebhookTokenHint is not null => AuditActions.ComposeWebhookReload,
         ComposeOperations.Update => AuditActions.ComposeUpdate,
@@ -308,7 +438,7 @@ public sealed class ComposeOperationWorker : BackgroundService
     /// <b>不写环境变量的值、不写 YAML 全文</b>：那里面常含口令，
     /// 而审计日志会被采集器上报到集中式系统。
     /// </remarks>
-    private static string BuildDetail(ComposeOperationRequest request, ComposeOperationResult? result)
+    private static string BuildDetail(ResourceOperationRequest request, ComposeOperationResult? result)
     {
         var parts = new List<string>
         {
@@ -345,7 +475,7 @@ public sealed class ComposeOperationWorker : BackgroundService
     /// <param name="occurredAt">发生时刻（UTC）。</param>
     /// <returns>表示异步操作的任务。</returns>
     private async Task NotifyFailureAsync(
-        ComposeOperationRequest request,
+        ResourceOperationRequest request,
         int errorCode,
         string message,
         DateTime occurredAt)
@@ -359,7 +489,7 @@ public sealed class ComposeOperationWorker : BackgroundService
             await notifier.NotifyFailedAsync(
                 new ComposeTaskFailureNotification(
                     request.HostName,
-                    request.ComposeName,
+                    request.ResourceName,
                     request.Operation,
                     errorCode,
                     message,

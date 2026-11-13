@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Operations;
+using Whalefleet.Application.Webhooks;
 using Whalefleet.Application.Docker;
 using Whalefleet.Application.Variables;
 using Whalefleet.Core.Permissions;
@@ -59,7 +60,7 @@ public sealed class ComposeProjectService
     private readonly IComposeProjectRepository _repository;
     private readonly EnvVariableService _variables;
     private readonly ResourceTaskRegistry<ComposeOperationResult> _tasks;
-    private readonly ComposeOperationQueue _queue;
+    private readonly ResourceOperationQueue _queue;
     private readonly IPermissionChecker _permissions;
     private readonly ICurrentUser _currentUser;
     private readonly ICurrentClientIp _clientIp;
@@ -84,7 +85,7 @@ public sealed class ComposeProjectService
         IComposeProjectRepository repository,
         EnvVariableService variables,
         ResourceTaskRegistry<ComposeOperationResult> tasks,
-        ComposeOperationQueue queue,
+        ResourceOperationQueue queue,
         IPermissionChecker permissions,
         ICurrentUser currentUser,
         ICurrentClientIp clientIp,
@@ -299,7 +300,7 @@ public sealed class ComposeProjectService
     /// 名称非法（<c>1000</c>）、YAML 非法（<c>1904</c>）、同名已存在（<c>1902</c>）、
     /// 缺 <c>compose.write</c>（<c>1502</c>）或已有进行中的操作（<c>1905</c>）。
     /// </exception>
-    public async Task<ComposeTaskAccepted> DeployAsync(
+    public async Task<ResourceTaskAccepted> DeployAsync(
         string hostId,
         ApplyComposeProjectRequest request,
         CancellationToken cancellationToken = default)
@@ -371,7 +372,7 @@ public sealed class ComposeProjectService
             taskId,
             document.Services.Count);
 
-        return new ComposeTaskAccepted(taskId, ResourceTaskStatusText.Queued, 1);
+        return new ResourceTaskAccepted(taskId, ResourceTaskStatusText.Queued, 1);
     }
 
     /// <summary>
@@ -386,7 +387,7 @@ public sealed class ComposeProjectService
     /// 非本平台部署（<c>1903</c>）、缺 <c>compose.write</c>（<c>1502</c>）
     /// 或已有进行中的操作（<c>1905</c>）。
     /// </exception>
-    public async Task<ComposeTaskAccepted> UpdateAsync(
+    public async Task<ResourceTaskAccepted> UpdateAsync(
         string hostId,
         ApplyComposeProjectRequest request,
         CancellationToken cancellationToken = default)
@@ -450,7 +451,7 @@ public sealed class ComposeProjectService
             taskId,
             document.Services.Count);
 
-        return new ComposeTaskAccepted(taskId, ResourceTaskStatusText.Queued, 1);
+        return new ResourceTaskAccepted(taskId, ResourceTaskStatusText.Queued, 1);
     }
 
     /// <summary>
@@ -460,7 +461,7 @@ public sealed class ComposeProjectService
     /// <param name="request">停止请求。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>任务受理结果。</returns>
-    public async Task<ComposeTaskAccepted> StopAsync(
+    public async Task<ResourceTaskAccepted> StopAsync(
         string hostId,
         StopComposeProjectRequest request,
         CancellationToken cancellationToken = default)
@@ -482,7 +483,7 @@ public sealed class ComposeProjectService
 
         this.Enqueue(taskId, host.Name, name, ComposeOperations.Stop, null, false, false, false);
 
-        return new ComposeTaskAccepted(taskId, ResourceTaskStatusText.Queued, 1);
+        return new ResourceTaskAccepted(taskId, ResourceTaskStatusText.Queued, 1);
     }
 
     /// <summary>
@@ -492,7 +493,7 @@ public sealed class ComposeProjectService
     /// <param name="request">删除请求。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>任务受理结果。</returns>
-    public async Task<ComposeTaskAccepted> RemoveAsync(
+    public async Task<ResourceTaskAccepted> RemoveAsync(
         string hostId,
         RemoveComposeProjectRequest request,
         CancellationToken cancellationToken = default)
@@ -522,7 +523,7 @@ public sealed class ComposeProjectService
             false,
             request.RemoveVolumes ?? false);
 
-        return new ComposeTaskAccepted(taskId, ResourceTaskStatusText.Queued, 1);
+        return new ResourceTaskAccepted(taskId, ResourceTaskStatusText.Queued, 1);
     }
 
     /// <summary>
@@ -990,9 +991,10 @@ public sealed class ComposeProjectService
         bool pruneOrphans,
         bool removeVolumes)
     {
-        if (!_queue.TryEnqueue(new ComposeOperationRequest(
+        if (!_queue.TryEnqueue(new ResourceOperationRequest(
             taskId,
             hostName,
+            ResourceKinds.Compose,
             composeName,
             operation,
             content,

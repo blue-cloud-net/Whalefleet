@@ -1,4 +1,4 @@
-namespace Whalefleet.Application.Composes;
+namespace Whalefleet.Application.Operations;
 
 /// <summary>
 /// 编排操作的结果摘要。

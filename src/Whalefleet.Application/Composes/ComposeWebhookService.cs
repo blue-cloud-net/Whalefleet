@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Whalefleet.Application.Abstractions;
 using Whalefleet.Application.Common;
 using Whalefleet.Application.Operations;
+using Whalefleet.Application.Webhooks;
 using Whalefleet.Application.Variables;
 using Whalefleet.Core.Hosts;
 using Whalefleet.Core.Composes;
@@ -58,11 +59,11 @@ public sealed class ComposeWebhookService
     private readonly IHostRepository _hosts;
     private readonly EnvVariableService _variables;
     private readonly ResourceTaskRegistry<ComposeOperationResult> _tasks;
-    private readonly ComposeOperationQueue _queue;
+    private readonly ResourceOperationQueue _queue;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<ComposeWebhookService> _logger;
 
-    private readonly ComposeWebhookRateLimiter _rateLimiter;
+    private readonly WebhookRateLimiter _rateLimiter;
 
     /// <summary>
     /// 初始化 Webhook 用例。
@@ -81,10 +82,10 @@ public sealed class ComposeWebhookService
         IHostRepository hosts,
         EnvVariableService variables,
         ResourceTaskRegistry<ComposeOperationResult> tasks,
-        ComposeOperationQueue queue,
+        ResourceOperationQueue queue,
         TimeProvider timeProvider,
         ILogger<ComposeWebhookService> logger,
-        ComposeWebhookRateLimiter rateLimiter)
+        WebhookRateLimiter rateLimiter)
     {
         ArgumentNullException.ThrowIfNull(repository);
         ArgumentNullException.ThrowIfNull(hosts);
@@ -188,7 +189,7 @@ public sealed class ComposeWebhookService
     /// 令牌无效 / 已吊销（<c>1906</c>）、触发过于频繁（<c>1907</c>）、
     /// 已有进行中的操作（<c>1905</c>）或试图覆盖密钥（<c>1910</c>）。
     /// </exception>
-    public async Task<ComposeTaskAccepted> TriggerAsync(
+    public async Task<ResourceTaskAccepted> TriggerAsync(
         string token,
         ComposeWebhookReloadRequest request,
         IReadOnlyDictionary<string, string>? overrides = null,
@@ -220,9 +221,10 @@ public sealed class ComposeWebhookService
                 throw new BusinessException(ErrorCodes.ComposeNotFound, "编排 Compose 项目已不存在。");
             }
 
-            if (!_queue.TryEnqueue(new ComposeOperationRequest(
+            if (!_queue.TryEnqueue(new ResourceOperationRequest(
             taskId,
             hostName,
+            ResourceKinds.Compose,
             compose.Name,
             ComposeOperations.Update,
             compose.ComposeContent,
@@ -252,7 +254,7 @@ public sealed class ComposeWebhookService
             resolved.AppliedOverrides.Count,
             resolved.IgnoredOverrides.Count);
 
-        var accepted = new ComposeTaskAccepted(taskId, ResourceTaskStatusText.Queued, 1)
+        var accepted = new ResourceTaskAccepted(taskId, ResourceTaskStatusText.Queued, 1)
         {
             AppliedVariables = resolved.AppliedOverrides,
             IgnoredVariables = resolved.IgnoredOverrides,
