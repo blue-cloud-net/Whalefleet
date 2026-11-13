@@ -23,7 +23,8 @@ internal sealed class SqliteUserRepository : RepositoryBase<User, Guid>, IUserRe
 {
     private const string _columns =
         "id, username, password_hash, creation_time, creator_id, "
-        + "last_modification_time, last_modifier_id, is_deleted, deletion_time, deleter_id";
+        + "last_modification_time, last_modifier_id, is_deleted, deletion_time, deleter_id, "
+        + "is_disabled, must_change_password, password_changed_at";
 
     private static readonly string _selectByIdSql = $"""
         SELECT {_columns}
@@ -74,7 +75,8 @@ internal sealed class SqliteUserRepository : RepositoryBase<User, Guid>, IUserRe
     private static readonly string _insertSql = $"""
         INSERT INTO users ({_columns})
         VALUES (@Id, @Username, @PasswordHash, @CreationTime, @CreatorId,
-                @LastModificationTime, @LastModifierId, @IsDeleted, @DeletionTime, @DeleterId)
+                @LastModificationTime, @LastModifierId, @IsDeleted, @DeletionTime, @DeleterId,
+                @IsDisabled, @MustChangePassword, @PasswordChangedAt)
         """;
 
     private static readonly string _updateSql = $"""
@@ -85,7 +87,10 @@ internal sealed class SqliteUserRepository : RepositoryBase<User, Guid>, IUserRe
             last_modifier_id = @LastModifierId,
             is_deleted = @IsDeleted,
             deletion_time = @DeletionTime,
-            deleter_id = @DeleterId
+            deleter_id = @DeleterId,
+            is_disabled = @IsDisabled,
+            must_change_password = @MustChangePassword,
+            password_changed_at = @PasswordChangedAt
         WHERE id = @Id AND {SoftDeleteFilter}
         """;
 
@@ -239,5 +244,10 @@ internal sealed class SqliteUserRepository : RepositoryBase<User, Guid>, IUserRe
         user.IsDeleted,
         user.DeletionTime,
         DeleterId = user.DeleterId.ToStorageText(),
+        // 账号状态三列（0.13.0）：停用 / 必须改密 / 密码变更时间。
+        // bool 写入 SQLite 的 INTEGER 列由驱动自动转换（0 / 1）。
+        user.IsDisabled,
+        user.MustChangePassword,
+        user.PasswordChangedAt,
     };
 }

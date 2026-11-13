@@ -12,7 +12,9 @@ using Whalefleet.Core.Hosts;
 using Whalefleet.Core.Permissions;
 using Whalefleet.Core.Repositories;
 using Whalefleet.Core.Composes;
+using Whalefleet.Core.Teams;
 using Whalefleet.Core.Users;
+using Whalefleet.Infrastructure.Persistence.Teams;
 using Whalefleet.Infrastructure.Persistence;
 using Whalefleet.Infrastructure.Persistence.Alerting;
 using Whalefleet.Infrastructure.Persistence.Auditing;
@@ -108,6 +110,11 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<IAlertEventRepository, SqliteAlertEventRepository>();
         services.AddScoped<INotificationChannelRepository, SqliteNotificationChannelRepository>();
         services.AddScoped<INotificationRepository, SqliteNotificationRepository>();
+
+        // 团队（0.13.0）：花名册、成员关系与团队角色授权（权限上限）。
+        services.AddScoped<ITeamRepository, SqliteTeamRepository>();
+        services.AddScoped<ITeamMemberRepository, SqliteTeamMemberRepository>();
+        services.AddScoped<ITeamRoleAssignmentRepository, SqliteTeamRoleAssignmentRepository>();
 
         return services;
     }

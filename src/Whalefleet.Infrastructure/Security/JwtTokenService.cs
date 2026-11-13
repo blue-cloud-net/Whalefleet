@@ -51,10 +51,16 @@ internal sealed class JwtTokenService : ITokenService
         Guid userId,
         string username,
         IReadOnlyList<string> roleNames,
-        DateTime utcNow)
+        DateTime utcNow,
+        Guid sessionId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(username);
         ArgumentNullException.ThrowIfNull(roleNames);
+
+        if (sessionId == Guid.Empty)
+        {
+            throw new ArgumentException("access token 必须绑定会话 id", nameof(sessionId));
+        }
 
         var expiresAt = utcNow.Add(_options.AccessTokenLifetime);
 
@@ -71,6 +77,10 @@ internal sealed class JwtTokenService : ITokenService
         identity.AddClaim(new Claim(JwtClaimNames.Subject, userId.ToString("D")));
         identity.AddClaim(new Claim(JwtClaimNames.UniqueName, username));
         identity.AddClaim(new Claim(JwtClaimNames.Jti, Guid.NewGuid().ToString("N")));
+
+        // 会话 id（0.13.0）：服务端据此按会话吊销。
+        // 轮换时它不变——轮换改的是「会话绑定的 token」，不是「会话本身」。
+        identity.AddClaim(new Claim(JwtClaimNames.SessionId, sessionId.ToString("D")));
 
         foreach (var roleName in roleNames.Where(name => !String.IsNullOrWhiteSpace(name)))
         {
