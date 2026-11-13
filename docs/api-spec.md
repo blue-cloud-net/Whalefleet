@@ -219,6 +219,16 @@
 | `1106` | 401 | 个人访问令牌已过期 | 0.18.0 |
 | `1107` | 404 | 个人访问令牌不存在 | 0.18.0 |
 | `1504` | 403 | MCP 写工具未启用（`Mcp:AllowWrite=false`） | 0.18.0 |
+| `1405` | 404 | 镜像自动更新策略不存在 | 0.15.0 |
+| `1406` | 400 | 镜像不可跟踪（缺标签 / 摘要不唯一） | 0.15.0 |
+| `1407` | 502 | 上游镜像摘要查询失败 | 0.15.0 |
+| `1908` | 400 | 变量未定义（YAML 引用了不存在的变量） | 0.15.0 |
+| `1909` | 400 | 变量名非法 | 0.15.0 |
+| `1910` | 400 | 该变量不允许被 Webhook 覆盖 | 0.15.0 |
+| `1911` | 404 | 容器 Webhook 令牌无效或已吊销 | 0.15.0 |
+| `1912` | 429 | 容器 Webhook 触发过于频繁 | 0.15.0 |
+| `1913` | 404 | 变量不存在 | 0.15.0 |
+| `1914` | 400 | 变量名已被占用 | 0.15.0 |
 
 ### Mock 与契约同步
 
@@ -464,8 +474,9 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 容器 / 卷文件浏览 | `POST /api/v1/hosts/{hostId}/{containers,volumes}/files/{list,download,write}` | 0.14.0 |
 | **容器定义反向生成** | `POST /api/v1/hosts/{hostId}/containers/run-command` | 0.14.0 |
 | **编排原文导出** | `POST /api/v1/hosts/{hostId}/composes/export` | 0.14.0 |
-| 资源 Webhook | `POST /api/v1/webhooks/{token}` | 0.15.0 |
-| 镜像自动更新策略 | `POST /api/v1/hosts/{hostId}/images/auto-update` | 0.15.0 |
+| 变量与密钥 | `POST /api/v1/admin/variables/*` + `POST /api/v1/hosts/{hostId}/composes/variables/*` | 0.15.0 |
+| **容器重建 Webhook** | `POST /api/v1/webhooks/containers/{token}` | 0.15.0 |
+| 镜像自动更新 | `POST /api/v1/hosts/{hostId}/images/auto-update/{get,update,remove,check,check-all}` | 0.15.0 |
 
 ### 文件传输（0.14.0）
 
@@ -500,6 +511,11 @@ POST /api/v1/hosts/{hostId}/containers/list
 
 > 审计写入由**应用服务层统一埋点**（非每个 Controller 各写一遍），中间件兜底记录 4xx / 5xx。
 > **Webhook 端点无需认证头**——URL 里的 token 即凭据；因此令牌必须可撤销、可重置，且随库备份。
+>
+> ⚠️ **两类 Webhook 分开设路径**：`/webhooks/composes/{token}`（重部署，0.10.0）与
+> `/webhooks/containers/{token}`（重建容器，0.15.0）。**不能合成 `/webhooks/{token}`**——
+> 同一个路径段既要靠 token 反查资源类型，又要靠它反查主机与作用域，
+> 两种资源的生命周期与授权口径都不同，合成后必然出现「令牌存在但作用对象不明确」的分支。
 
 ---
 
@@ -1873,6 +1889,67 @@ nginx: [emerg] …
 | 查询任务 | `POST /api/v1/hosts/{hostId}/composes/task` | `{ taskId }` | 任务快照；**不存在时 `data` 为 `null`**（不是报错） |
 | 轮换 Webhook 令牌 | `POST /api/v1/hosts/{hostId}/composes/webhook/rotate` | `{ name }` | **明文只此一次** |
 | 吊销 Webhook 令牌 | `POST /api/v1/hosts/{hostId}/composes/webhook/revoke` | `{ name }` | 幂等 |
+| 列出变量 | `POST /api/v1/hosts/{hostId}/composes/variables/list` | `{ composeName }` | 项目级变量 + 继承的全局变量 + **未定义变量清单** |
+| 新建变量 | `POST /api/v1/hosts/{hostId}/composes/variables/create` | `{ composeName, name, value, isSecret?, webhookOverridable?, description? }` | 名称已占用报 `1914` |
+| 更新变量 | `POST /api/v1/hosts/{hostId}/composes/variables/update` | `{ composeName, name, value?, isSecret?, webhookOverridable?, description?, clearValue? }` | 变量不存在报 `1913` |
+| 删除变量 | `POST /api/v1/hosts/{hostId}/composes/variables/remove` | `{ composeName, name }` | 软删除 |
+
+#### 变量与密钥（0.15.0）
+
+> **全局变量**：`/api/v1/admin/variables/*`（全局作用域，鉴权 `variable.read` / `variable.write`）。
+> **项目级变量**：`/api/v1/hosts/{hostId}/composes/variables/*`（主机作用域，鉴权 `compose.read` / `compose.write`）。
+
+| 操作 | 路径 | 请求体 | 说明 |
+|------|------|--------|------|
+| 列出全局变量 | `POST /api/v1/admin/variables/list` | — | 全部全局变量 |
+| 新建全局变量 | `POST /api/v1/admin/variables/create` | `{ name, value, isSecret?, webhookOverridable?, description? }` | 名称已占用报 `1914` |
+| 更新全局变量 | `POST /api/v1/admin/variables/update` | `{ name, value?, isSecret?, webhookOverridable?, description?, clearValue? }` | 变量不存在报 `1913` |
+| 删除全局变量 | `POST /api/v1/admin/variables/remove` | `{ name }` | 软删除 |
+
+**取值优先级**（同名时）：**Webhook 覆盖 > 项目级变量 > 全局变量**。
+
+**变量的响应形态**：
+
+```json
+{
+  "name": "DB_PASSWORD",
+  "scope": "project",
+  "hostId": "local",
+  "composeName": "shop",
+  "isSecret": true,
+  "webhookOverridable": false,
+  "description": "数据库口令",
+  "hasValue": true,
+  "valueMasked": "••••••"
+}
+```
+
+- **值永不返回**：`valueMasked` 是**固定掩码**，与真实值无关（连长度都不泄漏）。
+  普通变量与密钥**一视同仁**——「有权限的人能看见明文」会让「密钥」这个分类失去意义。
+- `hasValue` 区分「设过值」与「没设过」，界面据此显示掩码或「（未设置）」。
+- **编辑时留空表示不修改**：请求里的 `value` 省略 = 保持原值；
+  `clearValue: true` = 显式清空。**不能靠「传空串」表达清空**——
+  掩码串会被用户原样提交回库，那等于把掩码当成了真值。
+
+**变量名**：`[A-Za-z_][A-Za-z0-9_]*`，≤ 64 字符（与 Compose 的 `${VAR}` 语法一致）。非法报 `1909`。
+
+**YAML 里的变量引用**：
+
+| 写法 | 语义 |
+|------|------|
+| `${VAR}` | 取变量值；未定义 → `1908`（**绝不替换成空串**） |
+| `${VAR:-default}` | 取变量值；未定义时用 `default`（`default` 本身可以是空串） |
+| `$$` | 字面量 `$`（转义） |
+
+- **未定义即报错**（`1908` / 400），并指明是哪个变量。
+  替换成空串会产出「密码变成了空」这种既不报错又无法排查的结果。
+- `${VAR:?msg}` 与 `${VAR:+alt}` **不支持**：报错并给出 `1904` 与明确文案
+  （`:?` 是「未定义就失败」，`:+` 是「已定义才用 alt」，两者都不是「取不到就用默认值」）。
+- **YAML 原文里始终保留 `${VAR}`**：`composes.compose_content` 存的是**带占位符的原文**，
+  绝不写入插值后的结果——否则密钥明文会躺在数据库列里。
+
+**配置哈希取插值后的结果**：因此「只改变量值」也会让服务被重建。
+否则哈希不变 → 不重建 → 用户看到的是「变量没生效」。
 
 #### 部署类端点返回 **202**，不是 200
 
@@ -1954,6 +2031,8 @@ nginx: [emerg] …
 |------|------|--------|------|
 | 触发重部署 | `POST /api/v1/webhooks/composes/{token}` | `{ pullAlways?, pruneOrphans?, wait? }` | **202**；令牌无效报 `1906` |
 | 查询任务 | `POST /api/v1/webhooks/composes/{token}/task` | `{ taskId }` | 任务快照 |
+| 触发容器重建 | `POST /api/v1/webhooks/containers/{token}` | `{ pull?, wait? }` | **202**；令牌无效报 `1911` |
+| 查询容器任务 | `POST /api/v1/webhooks/containers/{token}/task` | `{ taskId }` | 任务快照 |
 
 > ⚠️ **路径里不能有 `hostId`**：这是匿名端点，主机由令牌反查得到。
 > 若路径里带上主机标识，`CurrentHostMiddleware` 会拿它去查库并做可见性校验——
@@ -1964,12 +2043,56 @@ nginx: [emerg] …
   而「URL 里带令牌」是这类触发器唯一能用的形态。
 - **令牌只存哈希**（SHA-256），明文只在生成 / 轮换的那一刻返回一次。
   数据库被读走也换不出可用的令牌。
-- **令牌无效一律 `1906` / 404**：不区分「不存在」「已吊销」「未启用」——
+- **令牌无效一律 `1906` / 404**（容器侧为 `1911`）：不区分「不存在」「已吊销」「未启用」——
   区分了就成了令牌探测工具。
-- **限流**：`1907` / 429，**1 分钟内最多 10 次**。
+- **限流**：`1907` / 429（容器侧为 `1912`），**1 分钟内最多 10 次**。
   一次触发就是一次完整部署（含拉镜像），不加限制的话一个循环的 CI 会把守护进程打满。
 - `wait=true` 时**同步等待任务结束**（上限 45 秒，**小于反代读超时**）。
   超时后返回 202 + 任务快照，CI 可改用轮询。
+
+#### Webhook 传参（0.15.0）
+
+`POST /api/v1/webhooks/composes/{token}?TAG=3&MODE=dev` —— **查询串里的键即变量名**。
+
+- **没有 `?tag=` 这个魔法参数**：写 `?tag=1.2.3` 等价于「覆盖名为 `TAG` 的变量」，
+  YAML 里须写 `image: nginx:${TAG}`。魔法替换会让「哪个键对应哪个变量」变成隐式约定，
+  而隐式约定在「有全局变量 + 有同名项目变量」时必然歧义。
+- **只有「已声明 + 显式勾选可被覆盖 + 非密钥」的变量生效**：
+  1. 变量必须**已声明**（项目级或全局）；
+  2. `webhookOverridable` 必须为 `true`；
+  3. `isSecret` 必须为 `false`。
+- **未生效的键被忽略**，并在响应里回带 `ignoredVariables`（**只回名字，不回值**）：
+
+```json
+{
+  "taskId": "…",
+  "status": "queued",
+  "queuePosition": 1,
+  "appliedVariables": ["TAG"],
+  "ignoredVariables": ["DB_PASSWORD"]
+}
+```
+
+> ⚠️ **这是匿名入口**：凭据就是 URL 里的令牌，而 URL 会进反代的 access log。
+> 允许覆盖任意变量等于开了一条「远程改数据库口令」的通道。
+> 因此密钥**强制**不可被 Webhook 覆盖（`1910`），
+> 且不声明的键**直接忽略**而不是报错——报错会把「哪些键可用」变成可枚举的信息。
+
+- **覆盖只作用于本次部署**，不落库。
+- 变量名大小写**敏感**（`${TAG}` 与 `${tag}` 是两个变量），与 Compose 一致。
+
+#### 容器重建 Webhook（0.15.0）
+
+| 操作 | 路径 | 请求体 | 说明 |
+|------|------|--------|------|
+| 列出令牌 | `POST /api/v1/hosts/{hostId}/containers/webhook/list` | — | 该主机上已配置的容器 Webhook |
+| 轮换令牌 | `POST /api/v1/hosts/{hostId}/containers/webhook/rotate` | `{ containerName }` | **明文只此一次** |
+| 吊销令牌 | `POST /api/v1/hosts/{hostId}/containers/webhook/revoke` | `{ containerName }` | 幂等 |
+
+- **令牌绑容器名**而不是容器 ID：重建后 ID 一定变，绑 ID 等于令牌下一次就失效。
+  容器**改名**会让原令牌失效（404）——界面必须提示这一点。
+- 触发重建走**与界面「重建」完全相同的内核**（让位 → 建新 → 失败回滚），
+  因此也一并搬移 0.12 的容器粒度授权分配。
 
 ---
 
