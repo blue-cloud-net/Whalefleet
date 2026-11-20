@@ -137,6 +137,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CI stayed green. A guard test now scans both class-level and action-level `[Authorize]`
   attributes against every registered policy, and it is verified to fail when the registration
   is removed.
+- **"Follow the system" never followed the system while the page was open**: the theme store
+  read the system dark preference straight from `matchMedia` inside a getter — but a Pinia
+  getter is a computed, so it only recomputes when a *reactive* dependency changes, and
+  `matchMedia` is not reactive. The result stayed frozen at page load. On phones it is worse:
+  the app stayed light after the system switched to night, so the mobile browser force-darkened
+  the whole page — neutral grey background, text flattened into grey blocks, icons turned into
+  solid squares. The system preference now lives in state, the listener is bound exactly once,
+  and a system switch takes effect immediately.
+- **Element Plus component colours did not match the app in dark mode**: the `--el-*` bridge in
+  `main.css` was written under `:root` (specificity 0,1,0) while Element Plus's dark package
+  uses `html.dark` (0,1,1) — the bridge was overridden wholesale in dark mode, so dialogs,
+  dropdowns and inputs used EP's neutral grey `#141414` while cards used our `#141a21`.
+  The bridge is now `:root, html.dark`, so the project's own tokens win.
+- **The page never declared `color-scheme`, so the browser inverted it for us**: mobile browsers
+  (Chrome / Edge) force-darken web pages that do not declare dark-mode support, which is
+  disastrous for a page themed with CSS variables. Both `index.html` and `main.css` now declare
+  `color-scheme: light dark`, so the browser only renders scrollbars, form controls and the
+  canvas according to the current theme.
+- **White flash on first paint and a stray colour bar in dark mode**: the theme is now applied
+  by an inline script in `index.html` **before the first paint** (it used to wait for the Vue
+  mount, so dark-mode users saw a white frame first), and `<meta name="theme-color">` follows
+  the light/dark mode and the brand colour.
 
 ### 0.13.0 — Accounts, teams and security (internal draft)
 
@@ -262,6 +284,27 @@ before the first public release).
   a baseline) plus a caller-supplied ceiling — 100 for CPU and memory, the peak for network — makes
   the top edge mean “ceiling” and the bottom edge mean “zero”. The ceiling is also spelled out in
   the tooltip: a frame can only convey relative height.
+
+#### Fixed
+
+- **The product name is no longer truncated in the top bar on phones**: the command palette in the
+  middle column is `display:none` below `sm`, and a `display:none` grid item does **not** occupy its
+  track — the three-column grid therefore auto-placed the *right* column into the `auto` track,
+  leaving the left column only half of the remaining width. The brand name was clipped to “Wha” while
+  the right half of the bar stayed empty. Narrow screens now use a two-column grid with **explicit**
+  column placement, and the brand group may shrink, so an overlong name ends in an ellipsis instead
+  of being cut off.
+- **The list toolbar no longer falls apart on phones**: the search box used to float in the middle
+  (the 4rem slot reserved for the selection count pushed it there) and the batch actions ended up on
+  a line of their own. Narrow screens now use two rows — the filters occupy the first row (the search
+  box fills it) and the selection count plus the actions the second.
+- **The pagination bar no longer overflows on phones**: `prev, pager, next, jumper, total` cannot fit
+  into 390px, so the page-size selector was cut in half (“20 / page”). Narrow screens now render
+  `prev, pager, next` (5 pager buttons instead of 7), with the total and the page-size selector on a
+  second line. The page itself no longer scrolls sideways.
+- **The breadcrumb is hidden below `lg`**: Element Plus' breadcrumb wraps, so between 640px and
+  1023px “Overview / local / Volumes” was stacked into three vertical lines in the top bar, which
+  read like a rendering bug. What it carried is covered by the page title and the host selector.
 
 #### Notes
 
