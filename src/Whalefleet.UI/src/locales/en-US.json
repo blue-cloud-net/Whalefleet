@@ -183,6 +183,7 @@
     "selected": "{count} selected",
     "sidebar": "Toggle sidebar",
     "sizeSharedHint": "Actual size {virtual} (includes layers shared with other images)",
+    "totalItems": "{total} total",
     "value": "Value",
     "confirmTitle": "Please confirm",
     "deleted": "Deleted",

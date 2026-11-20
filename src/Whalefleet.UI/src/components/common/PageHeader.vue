@@ -71,8 +71,22 @@ withDefaults(
         </p>
       </div>
 
-      <!-- 右侧操作区：筛选器 / 主按钮等 -->
-      <div v-if="$slots.actions" class="flex items-center gap-2 shrink-0">
+      <!--
+        右侧操作区：筛选器 / 主按钮等。
+
+        ⚠️ **必须允许换行**（`flex-wrap`）：窄屏上标题与操作区放不下时，
+        整块操作区会换到第二行；而操作区内部若是「一排不换行的按钮」，
+        三个宽按钮加起来超过屏宽时就会**横向溢出**——按钮被裁掉右半截，
+        而移动端横向溢出还会让整页可横向拖动。
+
+        `sm:shrink-0` 保留宽屏行为：宽屏空间充足时操作区不参与压缩，
+        标题被压缩（`app-truncate`）而不是把按钮挤扁。
+        `max-sm:min-w-0` 让窄屏的操作区允许被压缩，按钮因此能内部换行。
+      -->
+      <div
+        v-if="$slots.actions"
+        class="flex flex-wrap items-center justify-end gap-2 sm:shrink-0 max-sm:min-w-0"
+      >
         <slot name="actions" />
       </div>
     </div>

@@ -183,6 +183,7 @@
     "selected": "已选 {count} 项",
     "sidebar": "切换侧边栏",
     "sizeSharedHint": "实际体积 {virtual}（含与其他镜像共享的层）",
+    "totalItems": "共 {total} 条",
     "value": "值",
     "confirmTitle": "请确认",
     "deleted": "已删除",

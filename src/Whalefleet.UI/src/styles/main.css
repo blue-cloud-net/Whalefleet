@@ -568,6 +568,12 @@ html.dark {
   .el-dialog { max-width: calc(100vw - var(--space-8)); }
   /* 窄屏：字段名收回值上方，两列硬撑会把值列压到只剩几个字符 */
   .app-facts > div { grid-template-columns: minmax(0, 1fr); gap: 0.125rem; }
+  /* 窄屏：列表工具条的搜索框占满筛选行剩余宽度。
+     `flex-basis: 0` 会让 flex 布局**忽略 width**——所以调用方写的
+     `!w-40`（EP 的 el-input 默认宽度是 100%，必须加 `!` 才压得住）不再起作用，
+     搜索框改成「吃掉剩余空间」。写在这里而不是每个列表页里改宽度类，
+     是为了让「窄屏下搜索框撑满」这条约定只有一个地方。 */
+  .app-list-toolbar__filters > .el-input { flex: 1 1 0%; min-width: 0; }
 }
 @media (min-width: 640px) and (max-width: 1023px) {
   :root { --spacing-page: var(--space-6); }

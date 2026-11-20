@@ -59,6 +59,25 @@ import { useI18n } from 'vue-i18n'
  *
  * ## 批量动作之间用 `gap-1`（读成一个按钮组）
  * 一排同类按钮应当读成一个**按钮组**（紧凑），而不是一串互不相干的按钮。
+ *
+ * ## 窄屏（<640px）为什么换成两行
+ *
+ * 宽屏的工具条是「一行装完」：筛选 → 批量 → 页面操作，右对齐。
+ * 到了 390px 宽的手机上，一行装不下就会**折成三段**：
+ * 第一行只有搜索框、第二行只有批量按钮、第三行只有刷新按钮，
+ * 右对齐又让每一段都贴着右边——读起来像三组互不相干的东西，
+ * 而搜索框被挤到中间（左边空着一大块），看起来像布局坏了。
+ *
+ * 窄屏改成两行，用 CSS 断点解决（**不引入 JS**）：
+ *   第一行：筛选独占整行（`basis-full`）——搜索框撑满剩余宽度，计数跟在旁边；
+ *   第二行：已选计数靠左（`mr-auto`），批量与页面操作靠右。
+ *
+ * ⚠️ 靠 `order-*` 换的是**视觉顺序**，DOM 顺序不变——
+ * 宽屏（`sm` 以上）这些类不生效，工具条仍是「已选 N → 筛选 → 批量 → 页面操作」。
+ * 窄屏的顺序被刻意改过：筛选是「找东西」，是第一行；动作是「做事情」，第二行。
+ *
+ * ⚠️ 分隔竖线在窄屏是 `hidden`（`md:block` 才显示）：
+ * 窄屏下工具条会折行，竖线若正好落在新行的行首，看着像多刷了一道「|」。
  */
 withDefaults(
   defineProps<{
@@ -80,25 +99,41 @@ const { t } = useI18n()
 </script>
 
 <template>
-  <div class="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+  <!--
+    `w-full`：工具条始终撑满卡片头部的操作区。
+    它是 SectionCard `#actions` 槽位里**唯一**的子元素，不撑满的话
+    窄屏下 `basis-full` 的筛选行会以「工具条自身的内容宽」为基准，
+    搜索框撑不满卡片宽度（而卡片宽度才是用户看到的可用宽度）。
+    宽屏的右对齐不受影响：本元素内部的 `justify-end` 会把内容推到右缘。
+  -->
+  <div class="flex w-full flex-wrap items-center justify-end gap-x-4 gap-y-2">
     <!--
       第 0 组：**已选计数**（最左）。
 
       ⚠️ **槽位恒定宽度**：`selectedCount` 为 0 时留空而不是删掉这个元素——
       删掉会让工具条宽度变化，所有控件跟着平移（勾一下就抖一下）。
       宽度用 `min-w-[4rem]`：三位数（已选 100 项）时文字要能撑开。
+
+      窄屏下 `mr-auto` 把这一行剩余空间吃掉 → 计数靠左、动作靠右。
     -->
     <span
       v-if="selectedCount !== undefined"
-      class="min-w-[4rem] shrink-0 text-xs font-medium text-content-strong"
+      class="min-w-[4rem] shrink-0 text-xs font-medium text-content-strong max-sm:order-2 max-sm:mr-auto"
     >
       {{
         selectedCount > 0 ? t('common.selected', { count: selectedCount }) : ''
       }}
     </span>
 
-    <!-- 第 1 组：筛选——搜索框、状态下拉、命中计数 -->
-    <div class="flex flex-wrap items-center gap-2">
+    <!--
+      第 1 组：筛选——搜索框、状态下拉、命中计数。
+
+      窄屏 `basis-full` 让它独占第一行：搜索框因此能撑满整行，
+      不会被后面的动作挤到只剩一小截（那正是「搜索框浮在中间」的成因）。
+    -->
+    <div
+      class="app-list-toolbar__filters flex min-w-0 flex-wrap items-center gap-2 max-sm:order-1 max-sm:basis-full"
+    >
       <slot name="filters" />
     </div>
 
@@ -122,7 +157,10 @@ const { t } = useI18n()
       第 2 组：批量动作。
       「已选 N」不在这一组里——它挪到了最左（见文件头）。
     -->
-    <div v-if="$slots.batch" class="flex flex-wrap items-center gap-1">
+    <div
+      v-if="$slots.batch"
+      class="flex flex-wrap items-center gap-1 max-sm:order-3"
+    >
       <!--
         批量动作：**常驻**。
         槽位参数给出 count 与 busy，调用方据此禁用——
@@ -141,7 +179,7 @@ const { t } = useI18n()
     />
 
     <!-- 第 3 组：页面级附加操作——刷新、列设置 -->
-    <div class="flex items-center gap-1">
+    <div class="flex items-center gap-1 max-sm:order-4">
       <slot name="extra" />
     </div>
   </div>

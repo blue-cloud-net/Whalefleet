@@ -131,12 +131,26 @@ function goOverview() {
       `auto` 列的宽度由按钮自身决定，两侧 `1fr` 等宽 → 中列始终落在视觉中线。
       `overflow-hidden` 是必要的：面包屑是 `whitespace-nowrap` 的，长主机名
       不裁剪的话会顶开中列，「居中」在那一刻就失效了。
+
+      ## ⚠️ 窄屏为什么必须是两列（`grid-cols-[1fr_auto]`）
+      中列的命令面板是 `hidden sm:flex`——窄屏下它是 `display:none`。
+      而 **CSS Grid 里 `display:none` 的元素根本不参与布局**：
+      三个子元素只剩两个时，自动放置会把右列塞进**第 2 列（`auto`）**，
+      第 3 列（`1fr`）空着——于是「三列等分」变成了「左列 1fr + 右列自适应 + 右侧空一列」。
+
+      实测（390px 视口）：可用宽 366px，右列内容 104px → 剩下的 262px 被两个 `1fr` 平分，
+      左列只拿到 131px。品牌区（汉堡 32 + Logo 24 + 间距）先吃掉 72px，
+      留给「Whalefleet」的只剩 59px —— 标题被截成「Wha」，
+      而右边还空着一大片。**看起来像「品牌名被挤没了」，实际是网格自己错位了。**
+
+      窄屏改成两列（`1fr auto`）：左列拿走全部剩余宽度，右列按内容自适应贴右，
+      品牌名完整显示。宽屏再切回三列（`sm:grid-cols-[1fr_auto_1fr]`）。
     -->
     <header
-      class="h-16 shrink-0 sticky top-0 z-20 grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 sm:px-4 bg-surface-card/80 backdrop-blur-md backdrop-saturate-150 border-b border-line-subtle"
+      class="h-16 shrink-0 sticky top-0 z-20 grid grid-cols-[1fr_auto] sm:grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 sm:px-4 bg-surface-card/80 backdrop-blur-md backdrop-saturate-150 border-b border-line-subtle"
     >
       <!-- 左列：品牌区 + 面包屑 -->
-      <div class="flex items-center gap-2 min-w-0 overflow-hidden">
+      <div class="col-start-1 row-start-1 flex items-center gap-2 min-w-0 overflow-hidden">
         <!--
           品牌区：折叠按钮 / 汉堡 / Logo / 标题 合成一组。
 
@@ -147,8 +161,14 @@ function goOverview() {
             改成 `gap-3` 后 Logo 整体右移 4px，竖线正好落在 200px。
           产品名 `app.title` 中英文都是 `Whalefleet`（定长），所以这条对齐不会被 i18n 撑歪。
           ⚠️ 若日后产品名改长或侧边栏宽度调整，这里要重新量一次——这条竖线没有约束在代码里。
+
+          ⚠️ 窄屏允许这组被压缩（`max-sm:shrink max-sm:min-w-0`）：
+          整组是 `shrink-0` 时，它的宽度恒等于内容宽——标题再长也不会触发
+          `app-truncate` 的省略号，而是被左列的 `overflow-hidden` **硬切一刀**
+          （截图中「Whalefleet」变成「Wha」，断口齐齐的，没有省略号）。
+          允许压缩后，超长时是「Whalefle…」这种带省略号的优雅降级。
         -->
-        <div class="flex items-center gap-2.5 shrink-0">
+        <div class="flex items-center gap-2.5 shrink-0 max-sm:shrink max-sm:min-w-0">
           <!-- 移动端：打开侧边栏抽屉 -->
           <el-button
             text
@@ -202,9 +222,19 @@ function goOverview() {
           </button>
         </div>
 
-        <!-- 面包屑：与品牌区之间用竖线分隔，弱化处理不抢主标题 -->
+        <!--
+          面包屑：与品牌区之间用竖线分隔，弱化处理不抢主标题。
+
+          ⚠️ **`lg` 起才显示**（不是 `sm`）：EP 的 `.el-breadcrumb` 是 `flex-wrap: wrap`，
+          容器一窄它就把每一段竖着摞起来（「总览 / local / 数据卷」变成三行），
+          在顶栏里看起来像渲染坏了。
+          而 640–1023 这一段本来就放不下：左列只分到
+          `(屏宽 - 内边距 - 命令面板 256px) / 2`，减去品牌区后留给面包屑的不足 90px。
+          `lg`（1024px）起侧栏同时展开、列位够宽，面包屑才能单行显示。
+          窄屏与平板的信息缺口由**页面标题 + 顶部主机选择器**补上。
+        -->
         <span
-          class="hidden sm:flex items-center pl-3 border-l border-line-subtle min-w-0 overflow-hidden"
+          class="hidden lg:flex items-center pl-3 border-l border-line-subtle min-w-0 overflow-hidden"
         >
           <AppBreadcrumb />
         </span>
@@ -217,11 +247,14 @@ function goOverview() {
         放在正中还有个副作用上的好处——它是全站唯一与「当前在哪台机器」无关的操作，
         居中让它读起来像一个全局搜索框，而不是某个页面的工具条按钮。
 
-        `w-64 sm:w-80 xl:w-96` 而不是定宽：定宽在窄屏会挤掉两侧控件，
+        `w-64 sm:w-64 xl:w-96` 而不是定宽：定宽在窄屏会挤掉两侧控件，
         而搜索框「宽一点更好用」——这是唯一一个值得多占地方的地方。
+        ⚠️ `sm` 段刻意不再加宽（保持 256px）：640px 视口下三列平分，
+        中列每多占 64px，两侧就各少 32px，左列要同时装品牌名与面包屑，
+        挤到 640px 时「Whalefleet」就会重新被截断。
       -->
       <button
-        class="hidden sm:flex items-center gap-2 w-64 xl:w-96 rounded-md border border-line-subtle bg-surface-sunken px-3 py-1.5 text-xs text-content-faint hover:bg-surface-hover hover:border-line-strong transition-colors"
+        class="col-start-2 row-start-1 hidden sm:flex items-center gap-2 w-64 xl:w-96 rounded-md border border-line-subtle bg-surface-sunken px-3 py-1.5 text-xs text-content-faint hover:bg-surface-hover hover:border-line-strong transition-colors"
         :aria-label="t('command.placeholder')"
         @click="paletteVisible = true"
       >
@@ -235,8 +268,12 @@ function goOverview() {
         主机选择与主题按钮相邻——两者都是「全局偏好 / 当前上下文」类控件，
         而左侧只回答「我认得这个站、我在这台机器的哪个页面」，不混入会被频繁切换的项。
         靠外的是主机：它比主题更常被点到（换机器看的东西和换明暗不在一个频率上）。
+
+        ⚠️ `col-start-2 sm:col-start-3`：窄屏是「左列 1fr + 右列 auto」两列，
+        宽屏才是三列。显式指定列位而不是靠自动放置——
+        自动放置在「中间那列 display:none」时会把右列塞进第 2 列（见上方注释）。
       -->
-      <div class="flex items-center justify-end gap-1 min-w-0">
+      <div class="col-start-2 row-start-1 sm:col-start-3 flex items-center justify-end gap-1 min-w-0">
         <!-- mock 开启时显眼的角标：避免「前端在打假数据却以为是真后端」 -->
         <MockBadge v-if="mockEnabled" />
 

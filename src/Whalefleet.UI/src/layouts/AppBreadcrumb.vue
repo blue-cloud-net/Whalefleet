@@ -45,7 +45,12 @@ const crumbs = computed(() =>
 </script>
 
 <template>
-  <el-breadcrumb class="hidden sm:block whitespace-nowrap" separator="/">
+  <!--
+    `hidden lg:block`：与顶栏里包裹它的容器保持一致——
+    面包屑只在 `lg` 起显示（EP 的面包屑会换行，窄屏下竖着摞起来像渲染坏了）。
+    `whitespace-nowrap`：即便空间不足也宁可被裁切，也不要折行。
+  -->
+  <el-breadcrumb class="hidden lg:block whitespace-nowrap" separator="/">
     <el-breadcrumb-item
       v-for="(crumb, index) in crumbs"
       :key="crumb.key"
