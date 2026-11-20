@@ -306,7 +306,7 @@ export interface HostOverview extends HostInfo {
   /**
    * 预留：Agent 版本。
    *
-   * Agent 模式排在 1.0.0 之后（见 docs/roadmap.md），当前后端不返回该字段，
+   * Agent 模式计划于 0.17.0 接入（见 docs/v0.17.0-agent-design.md），当前后端不返回该字段，
    * 因此 UI 在无值时**不渲染任何 Agent 相关元素**。
    */
   agentVersion?: string

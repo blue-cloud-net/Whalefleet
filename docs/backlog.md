@@ -378,7 +378,7 @@ Serilog 滚动日志落地 `/var/log/whalefleet/`，替代或并存现有 `/app/
 ### 三条独立项
 
 1. **Terraform Provider / CLI**：把 API 包装为声明式资源管理入口。
-   前置是 `0.19.0` 的 API 冻结——**在冻结之前做等于白做**。
+   前置是 `0.20.0` 的 API 契约收口与快照测试，公开 API 随 `1.0.0` 冻结。
 2. **危险操作二次确认**：删容器 / 删卷 / prune / commit 等破坏性操作要求手输资源名确认。
    Portainer 把它做成可配的 Policy（`admin/environments/policies`）。
 3. **容器归属调整**：把容器的可见性从「创建者」改为「可转移」。依赖 `0.12.0` 的容器级 RBAC。

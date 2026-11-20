@@ -245,7 +245,7 @@ const engineGroups = computed<InfoGroup[]>(() => {
     { label: t('host.engine.apiVersion'), value: v?.apiVersion ?? MISSING },
     { label: t('host.engine.goVersion'), value: v?.goVersion ?? MISSING }
   ]
-  // 预留：Agent 模式排在 1.0.0 之后，届时后端才会返回 agentVersion
+  // 预留：0.17.0 Agent 接入后，由后端返回 agentVersion
   if (h.agentVersion) {
     versionRows.push({ label: t('host.engine.agentVersion'), value: h.agentVersion })
   }

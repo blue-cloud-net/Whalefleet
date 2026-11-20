@@ -6,7 +6,7 @@
 > **可能在下一次迭代里就改变**（见 [roadmap.md](./roadmap.md#版本段与发布模型)）。
 >
 > **自 `1.0.0` 起，公开 API 冻结**：路径与请求 / 响应结构保持向后兼容，直到 `2.0.0`。
-> 这条承诺的可执行手段是 **0.19.0 落地的路由清单与响应 DTO 快照测试**——
+> 这条承诺的可执行手段是 **0.20.0 落地的路由清单与响应 DTO 快照测试**——
 > 改动任一响应 DTO 都会让测试失败。冻结承诺若没有测试支撑，只是文档里的一句话。
 >
 > 三个仍可变更的例外（不计入冻结范围）：
@@ -768,6 +768,8 @@ POST /api/v1/hosts/{hostId}/containers/list
 
 ### 主机管理（0.0.8 / 0.0.13）
 
+> `0.17.0` 的主机类型扩展、Agent 配对与连接接口见 [Agent 设计稿](./v0.17.0-agent-design.md#接口与数据)。
+
 | 操作 | 路径 | 角色 | 说明 |
 |------|------|------|------|
 | 获取列表 | `POST /api/v1/admin/hosts/list` | admin | 包含所有主机的连通状态 |
@@ -1009,7 +1011,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 - **宿主机级实时 CPU / 内存 / 网络 / 负载**：Docker Engine API **没有**宿主机级指标端点——
   `/info` 只给 `NCPU` / `MemTotal` 这样的静态上限，`docker stats` 只针对容器。
   用容器聚合值冒充宿主机指标，会让同一个页面出现两套口径，比不给更糟。
-  需要它就得在目标主机上部署 Agent（1.0.0 之后）。
+  通过 Agent 采集宿主机级实时指标排在 `1.0.0` 之后。
 - **一次性 stats API**：`POST /api/v1/hosts/{hostId}/containers/stats`（单次 `docker stats --no-stream`）
   明确不做，实时值走 `0.5.0` 的 Hub。
 - **历史指标持久化**：进程内只留最近 60 点环形缓冲供 sparkline，**不落库**。
@@ -2700,7 +2702,7 @@ nginx: [emerg] …
 - ❌ `POST /api/v1/hosts/{hostId}/containers/exec`（一次性 exec）
 - ❌ `POST /api/v1/hosts/{hostId}/containers/stats`（一次性 stats）
 - ❌ `POST /api/v1/system/prune`（一次清四类）——**资源级 prune 已在 0.7.0 交付**，不做的是「一键全清」
-- ❌ **宿主机级实时指标**（CPU / 内存 / 网络 / 负载）——Docker Engine API 无此端点，需目标主机上的 Agent（1.0.0 之后）
+- ❌ **宿主机级实时指标**（CPU / 内存 / 网络 / 负载）——Docker Engine API 无此端点，通过 Agent 采集此类指标排在 `1.0.0` 之后
 - ❌ OAuth / OIDC 登录相关 API
 - ❌ 应用模板相关 API、GitOps 从 Git 同步 Compose 项目的 API
 - ❌ 计划任务 / cron 相关 API

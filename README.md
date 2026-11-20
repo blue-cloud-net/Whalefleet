@@ -30,6 +30,7 @@
 - 🚨 **Alerting rules** (0.11.0): three severity levels with configurable thresholds, cooldowns, and webhook / email channels
 - 💻 **Web terminal** (0.8.0): xterm.js + a dedicated short-lived terminal token
 - 📦 **Docker Compose project management** (0.10.0): deploy / update / stop / remove a Compose file as a unit, with live progress and a **resource webhook** for CI; **`.env` variables** (0.15.0)
+- 🔌 **Agent host management** (planned for 0.17.0): direct and outbound Edge connections for managing Docker hosts. [Agent design](docs/v0.17.0-agent-design.md)
 - 🤖 **MCP server** (0.18.0): expose Docker management to AI clients (VS Code Copilot, Claude Desktop) — read-only by default, with environment-variable redaction
 - 🎨 **Modern UI**: UnoCSS + Element Plus + command palette (Ctrl+K) + global shortcuts + light/dark themes + three accent colors
 
@@ -194,7 +195,7 @@ The current host user needs read/write access to `/var/run/docker.sock` (usually
 | [docs/overview.md](docs/overview.md) | Background, positioning, goals, non-goals, release model, repository identifiers |
 | [docs/constraints.md](docs/constraints.md) | Technology compose project version baseline, security / CI-CD constraints, deployment constraints, boundary conditions |
 | [docs/features.md](docs/features.md) | Complete feature list grouped by module (annotated by version) |
-| [docs/roadmap.md](docs/roadmap.md) | Version plan targeting `1.0.0` (0.1.0 – 0.19.0 feature iterations, then RC and the official release) |
+| [docs/roadmap.md](docs/roadmap.md) | Version plan targeting `1.0.0` (0.1.0 – 0.20.0 feature iterations, then RC and the official release) |
 | [docs/architecture.md](docs/architecture.md) | System layering, multi-host DockerClient factory, SDK isolation, communication mechanisms |
 | [docs/api-spec.md](docs/api-spec.md) | RPC-style API conventions + error code ranges + SignalR hubs + WebSocket terminal |
 | [docs/ui-guidelines.md](docs/ui-guidelines.md) | UI layout specs (layout diagrams / breakpoints / component tiers / shortcuts / themes / routing) |

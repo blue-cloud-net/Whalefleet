@@ -30,6 +30,7 @@
 - 🚨 **告警规则体系**（0.11.0）：三级严重度 + 可配阈值 + 冷却期 + Webhook / 邮件渠道
 - 💻 **Web 终端**（0.8.0）：xterm.js + 独立短时 terminal token
 - 📦 **Docker Compose 项目管理**（0.10.0）：把一份 Compose 文件作为整体部署 / 更新 / 停止 / 删除，带实时进度与供 CI 触发的**资源 Webhook**；**`.env` 变量**（0.15.0）
+- 🔌 **Agent 代理管理**（计划于 0.17.0）：通过直连或 Edge 出站连接管理 Docker 主机。[Agent 设计稿](docs/v0.17.0-agent-design.md)
 - 🤖 **MCP 服务器**（0.18.0）：把 Docker 管理能力暴露给 AI 客户端（VS Code Copilot、Claude Desktop）——默认只读，环境变量值自动脱敏
 - 🎨 **现代 UI**：UnoCSS + Element Plus + 命令面板（Ctrl/K）+ 全局快捷键 + 亮/暗主题 + 三色主题色
 
@@ -189,7 +190,7 @@ dotnet Whalefleet.Api.dll --urls http://0.0.0.0:8080
 | [docs/overview.md](docs/overview.md) | 项目背景、定位、目标、非目标、发布模型、仓库标识 |
 | [docs/constraints.md](docs/constraints.md) | 技术栈版本基线、安全 / CI/CD 约束、部署约束、边界条件 |
 | [docs/features.md](docs/features.md) | 按模块分组的完整功能列表（按版本标注） |
-| [docs/roadmap.md](docs/roadmap.md) | 以 `1.0.0` 为目标的版本规划（0.1.0 – 0.19.0 功能迭代 + RC 与正式发布） |
+| [docs/roadmap.md](docs/roadmap.md) | 以 `1.0.0` 为目标的版本规划（0.1.0 – 0.20.0 功能迭代 + RC 与正式发布） |
 | [docs/architecture.md](docs/architecture.md) | 系统分层、多主机 DockerClient 工厂、SDK 隔离、通信机制 |
 | [docs/api-spec.md](docs/api-spec.md) | RPC 风格 API 约定 + 错误码分段 + SignalR Hub + WebSocket 终端 |
 | [docs/ui-guidelines.md](docs/ui-guidelines.md) | UI 布局规范（布局图 / 断点 / 组件分层 / 快捷键 / 主题 / 路由） |

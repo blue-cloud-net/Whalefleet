@@ -641,6 +641,8 @@ HTTP 请求（校验 + 入队）  →  202 + taskId
 | 生成代码 | `GetTypeDeserializerImpl` 用 `new DynamicMethod(..., type, skipVisibility: true)` | 跨程序集跳过可见性检查 |
 
 官方测试佐证：`tests/Dapper.Tests/ConstructorTests.cs::TestWithNonPublicConstructor`。
+> `0.17.0` 计划在 Docker 客户端接入层加入直连和 Edge Agent，详见 [Agent 设计稿](./v0.17.0-agent-design.md)。
+
 
 ### 因此实体须满足
 

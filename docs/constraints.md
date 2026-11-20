@@ -423,8 +423,8 @@ dotnet Whalefleet.Api.dll --urls http://0.0.0.0:8080
 
 | 阶段 | 支持的连接方式 |
 |------|--------------|
-| 0.0.8 ~ 1.0.0 | 本地 Unix Socket（`/var/run/docker.sock`）+ 远程 TCP（可选 TLS / Basic 认证） |
-| 1.0.0 之后 | Agent 模式（目标主机部署轻量 Agent，可选） |
+| 0.0.8 起 | 本地 Unix Socket（`/var/run/docker.sock`）+ 远程 TCP（可选 TLS / Basic 认证） |
+| 0.17.0（计划） | 在目标主机部署轻量 Agent，支持 HTTPS 直连或 Edge 出站轮询与按需 SignalR 建链。详见 [Agent 设计稿](./v0.17.0-agent-design.md) |
 
 ---
 
@@ -453,7 +453,7 @@ dotnet Whalefleet.Api.dll --urls http://0.0.0.0:8080
 - **宿主机级实时 CPU / 内存 / 网络 / 负载不做**：Docker Engine API 没有宿主机级指标端点
   （`/info` 只给 `NCPU` / `MemTotal` 这样的静态上限，`docker stats` 只针对容器）。
   用容器聚合值冒充宿主机指标会让同一页面出现两套口径，比不给更糟
-- 主机级实时指标需目标主机上的 Agent，属 1.0.0 之后（见 [backlog.md](./backlog.md)）
+- 通过 Agent 采集宿主机级实时指标排在 `1.0.0` 之后
 
 ### 镜像构建
 
