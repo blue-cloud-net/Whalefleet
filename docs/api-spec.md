@@ -1023,7 +1023,7 @@ POST /api/v1/hosts/{hostId}/containers/list
 | 操作 | 路径 | 阶段 | 说明 |
 |------|------|------|------|
 | **创建容器** | `POST /api/v1/hosts/{hostId}/containers/create` | 0.0.9 | Body: `{ image, name?, cmd?, entrypoint?, env?, labels?, ports?, volumes?, restartPolicy?, autoRemove?, network?, hostname?, workingDir?, tty?, stdinOpen? }`（**精选子集**，非全部 `CreateContainerParameters` 字段，理由见下文）。**0.3.0** 新增高级参数 `user?`、`capAdd?`、`capDrop?`、`healthCheck?`、`devices?`、`sysctls?`、`ulimits?`、`logDriver?`、`memoryLimitBytes?`、`nanoCpus?`（见下） |
-| 获取列表 | `POST /api/v1/hosts/{hostId}/containers/list` | 0.0.9 / **0.10.0** | Body: `{ all?, state?, search?, project?, pageIndex?, pageSize?, sortBy?, sortDir? }`；分页在服务端**内存**完成（Docker 无分页参数），`pageSize` 上限 100；`state` / `search` / `project` 见下方说明。**0.10.0** 响应项新增 `composeService`（所属 Compose 服务名，非 Compose 容器为 `null`） |
+| 获取列表 | `POST /api/v1/hosts/{hostId}/containers/list` | 0.0.9 / **0.10.0** | Body: `{ all?, state?, search?, project?, pageIndex?, pageSize?, unpaged?, sortBy?, sortDir? }`；分页在服务端**内存**完成（Docker 无分页参数），`pageSize` 上限 100；`state` / `search` / `project` 见下方说明。**0.10.0** 响应项新增 `composeService`（所属 Compose 服务名，非 Compose 容器为 `null`） |
 | 启动 | `POST /api/v1/hosts/{hostId}/containers/start` | 0.0.9 | Body: `{ containerId }` |
 | 停止 | `POST /api/v1/hosts/{hostId}/containers/stop` | 0.0.9 | Body: `{ containerId, waitSeconds? }`；`waitSeconds` 取值 0–300（默认 10，与 Docker 一致） |
 | 重启 | `POST /api/v1/hosts/{hostId}/containers/restart` | 0.0.9 | Body: `{ containerId }` |
@@ -1378,6 +1378,8 @@ nginx: [emerg] …
 > 响应头还能正常返回，前端因此要**先看 `Content-Type`** 再决定按文本还是按 JSON 解析。
 
 > **分页语义**：Docker 不提供容器列表的分页参数，因此 `total` 是**一次性拉全量后**的条数，
+> 容器、镜像、数据卷和网络列表支持 `unpaged: true`。服务端忽略分页参数，返回全部匹配且可见的条目，回显 `pageIndex: 0` 和 `pageSize: total`。
+>
 > 切片在服务端内存完成。`pageIndex` 从 0 开始、负数按 0 处理；`pageSize` 默认 20、上限 100，
 > **夹紧后的实际值一并返回**（传 5000 时能从响应里看出服务端用了 100）。页码越界返回空 `items`
 > 而**不是**自动回到最后一页——后者会让调用方以为「这就是第 100 页的内容」。
@@ -1521,7 +1523,7 @@ nginx: [emerg] …
 
 | 操作 | 路径 | 阶段 | 说明 |
 |------|------|------|------|
-| 获取列表 | `POST /api/v1/hosts/{hostId}/images/list` | 0.0.10 | Body: `{ all?, search?, pageIndex?, pageSize?, sortBy?, sortDir? }`；分页在服务端**内存**完成（Docker 无分页参数），`pageSize` 上限 100 |
+| 获取列表 | `POST /api/v1/hosts/{hostId}/images/list` | 0.0.10 | Body: `{ all?, search?, pageIndex?, pageSize?, unpaged?, sortBy?, sortDir? }`；分页在服务端**内存**完成（Docker 无分页参数），`pageSize` 上限 100 |
 | 拉取 | `POST /api/v1/hosts/{hostId}/images/pull` | 0.0.10 | Body: `{ image, tag?, platform? }`；按镜像地址匹配已登记的仓库凭据，未登记时匿名拉取；0.5.0 起支持 SignalR 实时进度 |
 | 删除 | `POST /api/v1/hosts/{hostId}/images/remove` | 0.0.10 | Body: `{ imageId, force? }`；被容器占用的镜像返回 `1404`/409 |
 | **批量删除** | `POST /api/v1/hosts/{hostId}/images/batch-remove` | **0.1.0** | Body: `{ imageIds: string[], force? }`；响应为汇总结果，**部分成功也是 200**（数据卷侧同形状） |
@@ -1787,7 +1789,7 @@ nginx: [emerg] …
 
 | 操作 | 路径 | 说明 |
 |------|------|------|
-| 获取列表 | `POST /api/v1/hosts/{hostId}/volumes/list` | Body: `{ search?, pageIndex?, pageSize? }`；分页在服务端**内存**完成（Docker 无分页参数），`pageSize` 默认 20 / 上限 100；`search` 按**卷名 / 驱动 / 宿主挂载路径**模糊匹配（不区分大小写），在分页之前过滤 |
+| 获取列表 | `POST /api/v1/hosts/{hostId}/volumes/list` | Body: `{ search?, pageIndex?, pageSize?, unpaged? }`；分页在服务端**内存**完成（Docker 无分页参数），`pageSize` 默认 20 / 上限 100；`search` 按**卷名 / 驱动 / 宿主挂载路径**模糊匹配（不区分大小写），在分页之前过滤 |
 | 创建 | `POST /api/v1/hosts/{hostId}/volumes/create` | Body: `{ name, driver?, driverOptions?, labels? }` |
 | 删除 | `POST /api/v1/hosts/{hostId}/volumes/remove` | Body: `{ name, force? }` |
 | **批量删除** | `POST /api/v1/hosts/{hostId}/volumes/batch-remove` | Body: `{ names: [...], force? }` |
@@ -1854,7 +1856,7 @@ nginx: [emerg] …
 
 | 操作 | 路径 | 说明 |
 |------|------|------|
-| 获取列表 | `POST /api/v1/hosts/{hostId}/networks/list` | Body: `{ search?, pageIndex?, pageSize? }`；分页在服务端**内存**完成，`pageSize` 默认 20 / 上限 100；`search` 按**网络名 / 网络 ID / 驱动**模糊匹配（不区分大小写），在分页之前过滤 |
+| 获取列表 | `POST /api/v1/hosts/{hostId}/networks/list` | Body: `{ search?, pageIndex?, pageSize?, unpaged? }`；分页在服务端**内存**完成，`pageSize` 默认 20 / 上限 100；`search` 按**网络名 / 网络 ID / 驱动**模糊匹配（不区分大小写），在分页之前过滤 |
 | 创建 | `POST /api/v1/hosts/{hostId}/networks/create` | Body: `{ name, driver?, subnet?, gateway?, ipRange?, attachable?, labels? }` |
 | 删除 | `POST /api/v1/hosts/{hostId}/networks/remove` | Body: `{ networkId }` |
 | **接入网络** | `POST /api/v1/hosts/{hostId}/networks/connect` | Body: `{ containerId, networkId }`；容器已接入时**幂等返回成功**（服务端先读实际状态再决定要不要调守护进程）。容器须**运行中** |
