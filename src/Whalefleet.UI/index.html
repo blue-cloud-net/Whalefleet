@@ -4,8 +4,66 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      声明本页支持明暗两套配色。
+
+      ⚠️ 这不是装饰：移动端浏览器（Chrome / Edge）在系统处于暗色时，
+      会给**没有声明支持暗色**的网页套一层「强制暗色」——
+      它把浅色页面反相，而反相对「用 CSS 变量做主题」的页面是灾难：
+      文字被压成灰块、`mask` 出来的图标变成实心方块、颜色也不成体系。
+
+      声明 `light dark` 等于告诉浏览器「我自己会处理」，
+      它便不再插手，只负责把滚动条 / 表单控件 / 画布底色按 `color-scheme` 渲染。
+    -->
+    <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#409eff" />
     <title>Whalefleet</title>
+    <script>
+      /*
+       * 首屏主题同步：**必须在第一次绘制前**给 <html> 打上 class。
+       *
+       * Vue 要等 JS 下载 + 解析 + 挂载才跑得到 `applyToDocument()`，
+       * 在那之前页面是「无主题」状态 —— 暗色用户会先看到一帧白底再翻黑，
+       * 移动端网络慢时这帧白底能拖到几百毫秒，非常刺眼。
+       *
+       * 这里刻意不 import 任何模块（首屏最忌讳的就是多一次往返）：
+       * 直接按持久化键 `whalefleet:theme` 的形状解析。
+       * ⚠️ 键名与形状必须与 `stores/theme.ts` 保持一致，否则首屏按旧值渲染，
+       * 表现为「刷新后主题先错一下才对」。
+       */
+      ;(function () {
+        try {
+          var raw = localStorage.getItem('whalefleet:theme')
+          var saved = raw ? JSON.parse(raw) : null
+
+          var mode = saved && saved.mode
+          if (mode !== 'light' && mode !== 'dark') mode = 'system'
+
+          var color = saved && saved.color
+          if (color !== 'green' && color !== 'purple') color = 'blue'
+
+          var dark =
+            mode === 'dark' ||
+            (mode === 'system' &&
+              window.matchMedia &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches)
+
+          var el = document.documentElement
+          el.classList.toggle('dark', dark)
+          el.classList.toggle('theme-system', mode === 'system')
+          el.classList.remove('theme-blue', 'theme-green', 'theme-purple')
+          el.classList.add('theme-' + color)
+
+          // 地址栏 / 状态栏底色：暗色时用页面底色，亮色时用品牌色。
+          // 不跟着切的话，暗色页面顶上会留一条亮蓝色横条（移动端最显眼）。
+          var brand = color === 'green' ? '#67C23A' : color === 'purple' ? '#7A40B8' : '#409EFF'
+          var meta = document.querySelector('meta[name="theme-color"]')
+          if (meta) meta.setAttribute('content', dark ? '#0d121c' : brand)
+        } catch (e) {
+          /* 隐私模式 / 存储被禁：主题回落到 CSS 默认值即可，不该因此白屏 */
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="app"></div>

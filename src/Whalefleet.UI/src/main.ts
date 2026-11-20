@@ -58,7 +58,11 @@ app.use(i18n)
 app.use(ElementPlus)
 
 // ===== 主题：启动即同步到 <html>，避免首屏闪烁 =====
-useThemeStore().applyToDocument()
+const themeStore = useThemeStore()
+themeStore.applyToDocument()
+// 绑定系统主题变化监听（全局唯一）：「跟随系统」要真的跟得上，
+// 否则系统切到夜间后页面还停在亮色，移动端浏览器再把页面强制暗色 —— 成品是两套主题叠在一起
+themeStore.bindSystemThemeListener()
 
 // ===== 登录态恢复 =====
 // 令牌由持久化插件还原；这里**不**发起预刷新：多标签页共用 storage，

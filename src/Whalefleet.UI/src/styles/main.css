@@ -6,6 +6,17 @@
    预设变量消费。这样换主题 / 调圆角只需改一处。
    ============================================================ */
 :root {
+  /* 颜色方案：**必须写 `light dark`（声明「明暗都支持」），不能写 `light`**。
+     写法决定浏览器会不会插手：
+     · `light dark` → 页面声明自己支持暗色，浏览器**不再套「强制暗色」**，
+       只负责按系统偏好渲染滚动条 / 表单控件 / 画布底色；
+     · `light`（或 `only light`）→ 页面声明「我只有亮色」，浏览器在系统暗色下
+       会自作主张给整页反相——文字被压成灰块、`mask` 图标变成实心方块，
+       颜色也不成体系（看着像渲染坏了，其实是两套主题叠在一起）。
+     ⚠️ 因此**不要**再补一条 `html:not(.dark) { color-scheme: light }`：
+     那等于把「我支持暗色」的声明又撤回去了。 */
+  color-scheme: light dark;
+
   /* 基础刻度 → 语义间距 → 组件尺寸 */
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -97,6 +108,11 @@
 }
 
 html.dark {
+  /* 暗色态：让浏览器把滚动条、表单控件、画布底色也切到暗色，
+     不然这些「浏览器自绘」的部分仍是亮色，在夜里格外刺眼。
+     同时它也是「本页支持暗色」的声明，浏览器据此不套强制暗色。 */
+  color-scheme: dark;
+
   --surface-page: #0d121c;
   --surface-card: #141a21;
   --surface-card-hover: #1a222b;
@@ -311,8 +327,18 @@ html.dark *::-webkit-scrollbar-thumb:hover {
 
 /* 变量桥接：Element Plus 走 --el-* 变量，本项目走 --surface-* / --border-subtle。
    不桥接的话，EP 自带的暗色表面（#141414）会和我们的卡片（#141a21）对不上，
-   浮层与页面会出现肉眼可见的色差。放在本文件靠后位置以覆盖库自带值。 */
-:root {
+   浮层与页面会出现肉眼可见的色差。放在本文件靠后位置以覆盖库自带值。
+
+   ⚠️ 选择器写成 `:root, html.dark`（而不是只写 `:root`）：
+   EP 的暗色包 `element-plus/theme-chalk/dark/css-vars.css` 用的是 **`html.dark`**，
+   特异度 (0,1,1) 比 `:root` 的 (0,1,0) 高。只写 `:root` 时，
+   暗色下这些变量**全部由 EP 赢**——本文件的桥接形同虚设：
+   弹窗 / 下拉 / 输入框是 EP 的中性灰 #141414，卡片是我们的 #141a21，
+   两套灰并排出现（暗色下最刺眼的「显示有问题」）。
+   写成 `:root, html.dark` 后同特异度 (0,1,1)，再靠**本文件在 EP 样式表之后**
+   （见 main.ts 的 import 顺序）取胜。 */
+:root,
+html.dark {
   /* 主色跟随三色主题；light-N 由 color-mix 派生，避免手写 5 份色阶 */
   --el-color-primary: rgb(var(--brand-500));
   --el-color-primary-dark-2: color-mix(in srgb, var(--el-color-primary) 80%, #000);
@@ -481,8 +507,11 @@ html.dark {
 }
 
 
-/* 组件令牌桥接：所有业务页面共用同一套控件、表格与浮层节奏。 */
-:root {
+/* 组件令牌桥接：所有业务页面共用同一套控件、表格与浮层节奏。
+   ⚠️ 同样是 `:root, html.dark`——理由见上方变量桥接处的说明：
+   只写 `:root` 会被 EP 的 `html.dark` 变量压过去，暗色下填充色 / 禁用态全变 EP 的灰。 */
+:root,
+html.dark {
   --el-font-family: var(--font-sans);
   --el-font-size-base: 14px;
   --el-component-size: var(--control-height);

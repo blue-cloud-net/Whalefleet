@@ -9,14 +9,13 @@ export function useTheme() {
   const store = useThemeStore()
   const { mode, color, resolvedMode, sidebarCollapsed } = storeToRefs(store)
 
-  // 跟随系统：监听 prefers-color-scheme
-  if (typeof window !== 'undefined') {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const onChange = () => {
-      if (store.mode === 'system') store.applyToDocument()
-    }
-    mq.addEventListener('change', onChange)
-  }
+  // 跟随系统：监听 prefers-color-scheme。
+  //
+  // 监听器放在 store 里（`bindSystemThemeListener`），**不在这里**：
+  // 本 composable 会被顶栏、登录页等多个组件调用，
+  // 放这儿等于每次调用都挂一个监听器，且谁也不负责摘。
+  // store 里用 state 上的闸门保证全局只有一个。
+  store.bindSystemThemeListener()
 
   // 任何主题相关状态变化 → 同步到 <html>
   watch([mode, color, resolvedMode], () => store.applyToDocument())
