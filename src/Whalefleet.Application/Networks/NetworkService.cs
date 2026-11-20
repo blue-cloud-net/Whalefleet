@@ -88,8 +88,8 @@ public sealed class NetworkService
         // 过滤必须在分页之前：先分页再过滤会让 total 与实际命中数对不上。
         var filtered = Filter(networks, request.Search);
 
-        var pageIndex = Math.Max(request.PageIndex ?? 0, 0);
-        var pageSize = Math.Clamp(request.PageSize ?? _defaultPageSize, 1, _maxPageSize);
+        var pageIndex = request.Unpaged ? 0 : Math.Max(request.PageIndex ?? 0, 0);
+        var pageSize = request.Unpaged ? filtered.Count : Math.Clamp(request.PageSize ?? _defaultPageSize, 1, _maxPageSize);
 
         _logger.LogDebug(
             "主机 {HostId} 网络列表：共 {Total} 个（搜索={Search}），返回第 {PageIndex} 页（每页 {PageSize}）",

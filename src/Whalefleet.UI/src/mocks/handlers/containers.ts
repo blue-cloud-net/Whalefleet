@@ -362,8 +362,8 @@ export function containerHandlers(scenario: () => MockScenario) {
       }
 
       const body = await readBody(request)
-      const pageIndex = Math.max(Number(body.pageIndex ?? 0) || 0, 0)
-      const pageSize = Math.min(Math.max(Number(body.pageSize ?? 20) || 20, 1), 100)
+      let pageIndex = Math.max(Number(body.pageIndex ?? 0) || 0, 0)
+      let pageSize = Math.min(Math.max(Number(body.pageSize ?? 20) || 20, 1), 100)
 
       // ⚠️ `state` 优先于 `all`（与后端 ContainerService.ResolveStateFilter 同口径）：
       // state = running → 只留运行类；state = stopped → 只留未运行类；all → 全留。
@@ -437,6 +437,11 @@ export function containerHandlers(scenario: () => MockScenario) {
           if (result !== 0) return descending ? -result : result
           return a.id.localeCompare(b.id)
         })
+      }
+
+      if (body.unpaged === true) {
+        pageIndex = 0
+        pageSize = ordered.length
       }
 
       return HttpResponse.json(

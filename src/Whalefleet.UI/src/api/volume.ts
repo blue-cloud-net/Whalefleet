@@ -30,7 +30,7 @@ import type {
  */
 export function listVolumes(
   hostId: string,
-  params: { search?: string; pageIndex?: number; pageSize?: number } = {}
+  params: { search?: string; pageIndex?: number; pageSize?: number; unpaged?: boolean } = {}
 ): Promise<VolumeListResult> {
   return request<VolumeListResult>({
     url: `/api/v1/hosts/${encodeURIComponent(hostId)}/volumes/list`,

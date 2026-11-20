@@ -61,6 +61,8 @@ const props = withDefaults(
      */
     maxPageSize?: number    /** 加载中：禁用整条分页，防止连点翻出重复页 */
     disabled?: boolean
+    /** 该列表支持由服务端返回全部匹配项。 */
+    supportsUnpaged?: boolean
   }>(),
   { maxPageSize: MAX_PAGE_SIZE, disabled: false }
 )
@@ -108,8 +110,10 @@ const sizeOptions = computed(() => PAGE_SIZE_OPTIONS.filter((size) => size <= pr
  * 只写「全部」就是在骗人——用户会以为列表里是全部数据。
  * 上限内才显示干净的「全部」。
  */
+const unpaged = computed(() => props.supportsUnpaged && props.pageSize === PAGE_SIZE_ALL)
+
 const allOptionLabel = computed(() =>
-  props.total > props.maxPageSize
+  !props.supportsUnpaged && props.total > props.maxPageSize
     ? t('common.pageSizeAllCapped', { max: props.maxPageSize })
     : t('common.pageSizeAll')
 )
@@ -167,6 +171,7 @@ function onSizeChange(size: number): void {
          且 EP 的样式表排在 `virtual:uno.css` 之后——同特异度下 EP 赢，
          不加 `!` 的话窄屏的分页按钮会靠右而不是居中。 -->
     <el-pagination
+      v-if="!unpaged"
       class="col-span-2 !justify-center sm:col-span-1 sm:col-start-2"
       :current-page="currentPage"
       :page-size="effectivePageSize"
@@ -183,7 +188,7 @@ function onSizeChange(size: number): void {
       窄屏的总数：EP 的 `total` 段在窄屏被摘掉了（见上方 `paginationLayout`），
       总数不能跟着一起消失——「这一页一共多少条」是分页条的基本信息。
     -->
-    <span v-if="isNarrow" class="text-xs text-content-muted">
+    <span v-if="isNarrow || unpaged" class="text-xs text-content-muted">
       {{ t('common.totalItems', { total }) }}
     </span>
 

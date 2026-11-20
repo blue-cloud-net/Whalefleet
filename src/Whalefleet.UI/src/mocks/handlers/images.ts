@@ -124,8 +124,8 @@ export function imageHandlers(scenario: () => MockScenario) {
 
       const body = await readBody(request)
       const search = String(body.search ?? '').trim().toLowerCase()
-      const pageIndex = Math.max(Number(body.pageIndex ?? 0) || 0, 0)
-      const pageSize = Math.min(Math.max(Number(body.pageSize ?? 20) || 20, 1), 100)
+      let pageIndex = Math.max(Number(body.pageIndex ?? 0) || 0, 0)
+      let pageSize = Math.min(Math.max(Number(body.pageSize ?? 20) || 20, 1), 100)
 
       // `search` 在后端是**服务端内存过滤**（按仓库名 / 标签模糊匹配，不分大小写）
       const all = imagesFor(scenario())
@@ -166,6 +166,11 @@ export function imageHandlers(scenario: () => MockScenario) {
           if (result !== 0) return descending ? -result : result
           return a.id.localeCompare(b.id)
         })
+      }
+
+      if (body.unpaged === true) {
+        pageIndex = 0
+        pageSize = ordered.length
       }
 
       return HttpResponse.json(

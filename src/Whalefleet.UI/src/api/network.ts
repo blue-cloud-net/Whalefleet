@@ -21,7 +21,7 @@ import type { NetworkDetail, NetworkListResult, NetworkSummary } from '@/types/a
  */
 export function listNetworks(
   hostId: string,
-  params: { search?: string; pageIndex?: number; pageSize?: number } = {}
+  params: { search?: string; pageIndex?: number; pageSize?: number; unpaged?: boolean } = {}
 ): Promise<NetworkListResult> {
   return request<NetworkListResult>({
     url: `/api/v1/hosts/${encodeURIComponent(hostId)}/networks/list`,
