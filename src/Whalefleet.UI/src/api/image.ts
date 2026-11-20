@@ -31,6 +31,7 @@ export function listImages(
     search?: string
     pageIndex?: number
     pageSize?: number
+    unpaged?: boolean
     /** 排序字段；省略时保持后端返回顺序（创建时间降序）。未知值后端按 `created` 处理 */
     sortBy?: ImageSortField
     /** 排序方向；`asc` 为升序，其余（含省略）按降序 */

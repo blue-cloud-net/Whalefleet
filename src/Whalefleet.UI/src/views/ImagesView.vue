@@ -30,7 +30,7 @@ import {
 } from '@/utils/image-display'
 import { formatDateTime } from '@/utils/datetime'
 import { TIP_DELAY_MS } from '@/utils/tooltip'
-import { PAGE_SIZE_ALL, resolvePageSize, usePreferencesStore } from '@/stores/preferences'
+import { PAGE_SIZE_ALL, usePreferencesStore } from '@/stores/preferences'
 import type { ImageSummary } from '@/types/api'
 
 /**
@@ -123,13 +123,10 @@ const hostId = computed(() => String(route.params.hostId ?? ''))
 /**
  * 总页数。
  *
- * 必须用 `resolvePageSize` 而不是直接 `total / pageSize`：
- * `pageSize` 可能是 `PAGE_SIZE_ALL`（0，除以它得 Infinity），
- * 也可能是被上限夹紧后的值。与分页组件的口径不同步会出现
- * 「el-pagination 显示了第 2 页按钮，但 goToPage 的边界检查拦下它」——按钮点不动。
+ * 「全部」固定只有一页。
  */
 const pageCount = computed(() =>
-  Math.max(1, Math.ceil(total.value / resolvePageSize(pageSize.value, total.value)))
+  pageSize.value === PAGE_SIZE_ALL ? 1 : Math.max(1, Math.ceil(total.value / pageSize.value))
 )
 const isEmpty = computed(() => !loading.value && error.value === null && images.value.length === 0)
 
@@ -138,10 +135,7 @@ function listParams() {
   return {
     search: search.value.trim(),
     pageIndex: pageIndex.value,
-    // ⚠️ 「全部」必须在这里换算成真实条数再发出去：0 传出去会被后端
-    // Math.Clamp(pageSize, 1, 100) 夹成 1，用户选了"全部"却只看到一行。
-    // 换算规则（含上限夹紧）收在 resolvePageSize 里，与分页组件的口径共用一份。
-    pageSize: resolvePageSize(pageSize.value, total.value),
+    ...(pageSize.value === PAGE_SIZE_ALL ? { unpaged: true } : { pageSize: pageSize.value }),
     ...(sortField.value ? { sortBy: sortField.value, sortDir: sortOrder.value } : {})
   }
 }
@@ -742,6 +736,7 @@ watch(
         </EmptyState>
 
         <ListPagination
+          supports-unpaged
           :total="total"
           :page-index="pageIndex"
           :page-size="pageSize"

@@ -38,7 +38,6 @@ import {
   CONTAINER_BASIC_COLUMNS,
   CONTAINER_METRIC_COLUMNS,
   PAGE_SIZE_ALL,
-  resolvePageSize,
   usePreferencesStore,
   type ContainerColumn
 } from '@/stores/preferences'
@@ -149,13 +148,10 @@ const hostId = computed(() => String(route.params.hostId ?? ''))
 /**
  * 总页数。
  *
- * 必须用 `resolvePageSize` 而不是直接 `total / pageSize`：
- * `pageSize` 可能是 `PAGE_SIZE_ALL`（0，除以它得 Infinity），
- * 也可能是被上限夹紧后的值。与分页组件的口径不同步会出现
- * 「el-pagination 显示了第 2 页按钮，但 goToPage 的边界检查拦下它」——按钮点不动。
+ * 「全部」固定只有一页。
  */
 const pageCount = computed(() =>
-  Math.max(1, Math.ceil(total.value / resolvePageSize(pageSize.value, total.value)))
+  pageSize.value === PAGE_SIZE_ALL ? 1 : Math.max(1, Math.ceil(total.value / pageSize.value))
 )
 
 /**
@@ -171,10 +167,7 @@ function listParams() {
     search: search.value.trim(),
     state: stateFilter.value,
     pageIndex: pageIndex.value,
-    // ⚠️ 「全部」必须在这里换算成真实条数再发出去：0 传出去会被后端
-    // Math.Clamp(pageSize, 1, 100) 夹成 1，用户选了"全部"却只看到一行。
-    // 换算规则（含上限夹紧）收在 resolvePageSize 里，与分页组件的口径共用一份。
-    pageSize: resolvePageSize(pageSize.value, total.value),
+    ...(pageSize.value === PAGE_SIZE_ALL ? { unpaged: true } : { pageSize: pageSize.value }),
     ...(sortField.value ? { sortBy: sortField.value, sortDir: sortOrder.value } : {})
   }
 }
@@ -351,18 +344,22 @@ const columnGroups = [
   { key: 'metrics', label: 'container.columns.metrics', columns: CONTAINER_METRIC_COLUMNS }
 ] as const
 
-/** 一次性拉当前页的健康信息。失败时保持旧值（降级为「运行中」而不是报错）。 */
+/** 分批补充当前结果的健康信息，每批遵守端点上限。 */
 async function refreshHealth(): Promise<void> {
   if (!hostId.value) return
 
-  const ids = containers.value.map((container) => container.id)
+  const host = hostId.value
+  const rows = containers.value
+  const ids = rows.map((container) => container.id)
   if (ids.length === 0) return
 
   try {
-    const result = await getContainerHealth(hostId.value, ids)
     const next: Record<string, ContainerHealthSummary> = {}
-
-    for (const item of result.items) next[item.containerId] = item
+    for (let offset = 0; offset < ids.length; offset += 100) {
+      const result = await getContainerHealth(host, ids.slice(offset, offset + 100))
+      if (hostId.value !== host || containers.value !== rows) return
+      for (const item of result.items) next[item.containerId] = item
+    }
 
     healthMap.value = next
   } catch {
@@ -1411,6 +1408,7 @@ onBeforeUnmount(() => {
              是可见可点的，不再需要先猜「总数是否超过每页条数」。
              `disabled` 绑 loading：轮询与刷新期间禁掉，防止连点翻出重复页。 -->
         <ListPagination
+          supports-unpaged
           :total="total"
           :page-index="pageIndex"
           :page-size="pageSize"

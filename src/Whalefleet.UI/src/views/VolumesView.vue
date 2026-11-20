@@ -29,7 +29,7 @@ import {
 } from '@/utils/resource-display'
 import { formatDateTime } from '@/utils/datetime'
 import { TIP_DELAY_MS } from '@/utils/tooltip'
-import { PAGE_SIZE_ALL, resolvePageSize, usePreferencesStore } from '@/stores/preferences'
+import { PAGE_SIZE_ALL, usePreferencesStore } from '@/stores/preferences'
 import type { BatchOperationFailure, VolumeDetail, VolumeSummary } from '@/types/api'
 
 /**
@@ -88,26 +88,22 @@ const isEmpty = computed(() => !loading.value && error.value === null && volumes
 /**
  * 总页数。
  *
- * 必须用 `resolvePageSize` 而不是直接 `total / pageSize`：
- * `pageSize` 可能是 `PAGE_SIZE_ALL`（0，除以它得 Infinity），也可能被上限夹紧。
- * 与分页组件口径不一致会出现「分页条显示了第 2 页按钮，但 goToPage 拦下它」——按钮点不动。
+ * 「全部」固定只有一页。
  */
 const pageCount = computed(() =>
-  Math.max(1, Math.ceil(total.value / resolvePageSize(pageSize.value, total.value)))
+  pageSize.value === PAGE_SIZE_ALL ? 1 : Math.max(1, Math.ceil(total.value / pageSize.value))
 )
 
 /**
  * 列表查询参数。
  *
- * ⚠️ 「全部」必须在这里换算成真实条数再发出去：0 传出去会被后端
- * `Math.Clamp(pageSize, 1, 100)` 夹成 1，用户选了「全部」却只看到一行。
  */
 function listParams() {
   return {
     // ⚠️ 搜索在**服务端**过滤：分页也在服务端做，前端过滤只能筛到当前页。
     search: search.value.trim(),
     pageIndex: pageIndex.value,
-    pageSize: resolvePageSize(pageSize.value, total.value)
+    ...(pageSize.value === PAGE_SIZE_ALL ? { unpaged: true } : { pageSize: pageSize.value })
   }
 }
 
@@ -606,6 +602,7 @@ watch(
 
         <!-- 分页条始终显示：翻到最后一页删光后仍能回到上一页，而不是对着一片空白猜。 -->
         <ListPagination
+          supports-unpaged
           :total="total"
           :page-index="pageIndex"
           :page-size="pageSize"

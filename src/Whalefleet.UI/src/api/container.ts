@@ -64,6 +64,7 @@ export interface ListContainersParams {
   pageIndex?: number
   /** 每页条数；后端上限 100，超出会被**夹紧并回显实际值** */
   pageSize?: number
+  unpaged?: boolean
   /** 排序字段；省略时保持后端返回顺序（创建时间降序）。未知值后端按 `created` 处理 */
   sortBy?: ContainerSortField
   /** 排序方向；`asc` 为升序，其余（含省略）按降序 */
