@@ -293,10 +293,10 @@
 
 主机作用域的接口把 `hostId` 放在路径首段：
 
-```
-POST /api/v1/hosts/{hostId}/containers/list
-                     ↑
-                主机名（hostname）
+```mermaid
+flowchart LR
+    A["POST /api/v1/hosts/"] --> B["{hostId}"] --> C["/containers/list"]
+    B -.->|"主机名（hostname）"| D["DockerHost.Name"]
 ```
 
 | 项 | 约定 |
@@ -2530,13 +2530,17 @@ nginx: [emerg] …
 
 ### 两步流程
 
-```
-1. POST /api/v1/hosts/{hostId}/containers/terminal-token   ← 普通 ApiResult，错误可诊断
-   body: { containerId, shell?, command?, columns?, rows? }
-   →   { success, data: { terminalToken, expiresAt } }
+```mermaid
+sequenceDiagram
+    participant UI as 前端
+    participant API as REST：terminal-token
+    participant WS as /ws 终端端点
 
-2. GET  /ws/hosts/{hostId}/containers/exec?token={terminalToken}&cols=120&rows=30
-   →  101 Switching Protocols，之后是双向字节流
+    UI->>API: POST /api/v1/hosts/{hostId}/containers/terminal-token<br/>{ containerId, shell?, command?, columns?, rows? }
+    API-->>UI: { success, data: { terminalToken, expiresAt } }<br/>（普通 ApiResult，错误可诊断）
+    UI->>WS: GET /ws/hosts/{hostId}/containers/exec?token=…&cols=120&rows=30
+    WS-->>UI: 101 Switching Protocols
+    Note over UI,WS: 之后是双向字节流
 ```
 
 **为什么拆成两步**：浏览器建立 WebSocket 时不能自定义请求头，令牌只能进 URL，而 URL 会进访问日志、反代日志与浏览器历史——因此不能放 access token。更要紧的是：握手失败时前端只拿到一个 `close` 事件（通常 `1006`），**看不到状态码、更看不到响应体**。所以「容器不存在 / 未运行 / 没权限」必须由第 1 步给出，那是用户唯一能看到原因的地方。

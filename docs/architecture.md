@@ -2,44 +2,29 @@
 
 ## 系统分层概览
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                  浏览器 / 客户端                          │
-│       Vue 3 + TypeScript + UnoCSS + Element Plus        │
-│   Pinia · vue-i18n · @microsoft/signalr · xterm.js      │
-└──────────────┬──────────────────────┬───────────────────┘
-               │ HTTP (RPC API)       │ WebSocket (SignalR / 独立)
-               ▼                      ▼
-┌─────────────────────────────────────────────────────────┐
-│              ASP.NET Core 10 宿主进程                    │
-│                                                         │
-│  ┌────────────────┐      ┌──────────────────────────┐  │
-│  │  API 层        │      │  SignalR Hub 层           │  │
-│  │  /api/v1/...   │      │  ContainerLogHub         │  │
-│  │  Controllers   │      │  ContainerStatsHub       │  │
-│  └───────┬────────┘      │  NotificationHub         │  │
-│          │               └─────────────┬─────────────┘  │
-│  ┌───────▼─────────────────────────────▼──────────────┐ │
-│  │                 Service 层                          │ │
-│  │  ContainerService  ImageService  VolumeService    │ │
-│  │  NetworkService    HostService   UserService      │ │
-│  │  AuthService       RoleService                    │ │
-│  └───────┬─────────────────────────────┬──────────────┘ │
-│          │                             │                │
-│  ┌───────▼────────┐      ┌─────────────▼────────────┐ │
-│  │  Docker 接入层  │      │  数据访问层                │ │
-│  │  Core 抽象     │      │  Dapper + SQLite           │ │
-│  │  Infra 实现    │      │  + WAL 模式                │ │
-│  │  DockerClient  │      │  + Argon2id                │ │
-│  │  Builder 风格  │      └────────────────────────────┘ │
-│  └───────┬────────┘                                     │
-└──────────┼──────────────────────────────────────────────┘
-           │ unix:///var/run/docker.sock 或 tcp://host:port
-           ▼
-┌─────────────────────────┐
-│   Docker 守护进程        │
-│   多主机（0.0.8 起）    │
-└─────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Client["浏览器 / 客户端"]
+        UI["Vue 3 + TypeScript + UnoCSS + Element Plus<br/>Pinia · vue-i18n · @microsoft/signalr · xterm.js"]
+    end
+
+    subgraph Host["ASP.NET Core 10 宿主进程"]
+        Api["API 层<br/>/api/v1/...<br/>Controllers"]
+        Hubs["SignalR Hub 层<br/>ContainerLogHub<br/>ContainerStatsHub<br/>NotificationHub"]
+        Services["Service 层<br/>ContainerService / ImageService / VolumeService<br/>NetworkService / HostService / UserService<br/>AuthService / RoleService"]
+        DockerAccess["Docker 接入层<br/>Core 抽象 · Infra 实现<br/>DockerClient（Builder 风格）"]
+        Persistence["数据访问层<br/>Dapper + SQLite<br/>WAL 模式 · Argon2id"]
+    end
+
+    Daemon["Docker 守护进程<br/>多主机（0.0.8 起）"]
+
+    UI -->|"HTTP（RPC API）"| Api
+    UI -->|"WebSocket（SignalR / 独立）"| Hubs
+    Api --> Services
+    Hubs --> Services
+    Services --> DockerAccess
+    Services --> Persistence
+    DockerAccess -->|"unix:///var/run/docker.sock 或 tcp://host:port"| Daemon
 ```
 
 ---
@@ -61,37 +46,29 @@
 
 项目级依赖图（箭头方向 = 引用方向；箭头尾部依赖箭头头部）：
 
-```
-                              ┌──────────────────────────────┐
-                              │  Whalefleet.Core         │
-                              │  ──────────────────────────  │
-                              │  Entity / ValueObject        │
-                              │  枚举与业务常量               │
-                              │  仅依赖 BCL，无 NuGet         │
-                              └──────────────┬───────────────┘
-                                             │ ▲
-                  ┌──────────────────────────┘ │ ┌──────────────────────────┐
-                  │                            │ │                          │
-                  ▼                            │ ▼                          │
-       ┌─────────────────────────┐             │       ┌─────────────────────────┐
-       │  Application            │             │       │  Infrastructure          │
-       │  ─────────────────────  │             │       │  ─────────────────────  │
-       │  应用服务（用例编排）    │             │       │  Docker.DotNet 适配      │
-       │  外部资源接口抽象       │             │       │  仓储实现                │
-       │  (IDockerClientFactory) │             │       │  第三方 SDK 集成         │
-       │  DTO 映射              │             │       │                          │
-       └──────────┬──────────────┘             │       └──────────┬──────────────┘
-                  │                            │                  │
-                  │     ┌──────────────────────┘                  │
-                  │     │                                          │
-                  ▼     ▼                                          ▼
-       ┌──────────────────────────────────────────────────────────────────┐
-       │                       Whalefleet.Api                          │
-       │  ─────────────────────────────────────────────────────────────  │
-       │  ASP.NET Core 10 宿主进程                                          │
-       │  Controllers / SignalR Hubs / 静态前端托管                        │
-       │  Serilog / Kestrel / 配置 / DI 编排                                │
-       └──────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph Core["Whalefleet.Core"]
+        CoreDesc["Entity / ValueObject<br/>枚举与业务常量<br/>仅依赖 BCL，无 NuGet"]
+    end
+
+    subgraph App["Whalefleet.Application"]
+        AppDesc["应用服务（用例编排）<br/>外部资源接口抽象（IDockerClientFactory）<br/>DTO 映射"]
+    end
+
+    subgraph Infra["Whalefleet.Infrastructure"]
+        InfraDesc["Docker.DotNet 适配<br/>仓储实现<br/>第三方 SDK 集成"]
+    end
+
+    subgraph Api["Whalefleet.Api"]
+        ApiDesc["ASP.NET Core 10 宿主进程<br/>Controllers / SignalR Hubs / 静态前端托管<br/>Serilog / Kestrel / 配置 / DI 编排"]
+    end
+
+    App --> Core
+    Infra --> Core
+    Infra --> App
+    Api --> App
+    Api --> Infra
 ```
 
 **依赖方向规则**：
@@ -415,17 +392,16 @@ Hub 鉴权：JWT 通过 `?access_token=...` 查询参数传递（WebSocket 不�
 
 **实时通道的依赖方向**（与项目其余部分一致）：
 
-```
-Infrastructure.ContainerEventWatcher   ← 读 Docker 事件流（SDK 适配层）
-            │  发布
-            ▼
-Application.IContainerEventBus         ← 进程内总线（Application/Common）
-            │  订阅
-            ▼
-Api.ContainerNotificationDispatcher     ← 判权限 + 推 Hub
-            │
-            ▼
-Api.NotificationHub → 浏览器
+```mermaid
+flowchart TD
+    Watcher["Infrastructure.ContainerEventWatcher<br/>读 Docker 事件流（SDK 适配层）"]
+    Bus["Application.IContainerEventBus<br/>进程内总线（Application/Common）"]
+    Dispatcher["Api.ContainerNotificationDispatcher<br/>判权限 + 推 Hub"]
+    Browser["浏览器"]
+
+    Watcher -->|"发布"| Bus
+    Bus -->|"订阅"| Dispatcher
+    Dispatcher -->|"Api.NotificationHub 推送"| Browser
 ```
 
 > **为什么中间要隔一层总线**：事件的**来源**在 Infrastructure（要读 Docker SDK），
@@ -466,14 +442,11 @@ Api.NotificationHub → 浏览器
 部署可能要拉镜像（几分钟），而 HTTP 请求抗不住那么长——反代会把连接掐掉，
 客户端拿到的是「504 网关超时」而不是「部署失败」。因此：
 
-```
-HTTP 请求（校验 + 入队）  →  202 + taskId
-                             ↓
-                    ComposeOperationWorker（后台）
-                             ↓
-                    ComposeOperationExecutor（真正碰 Docker）
-                             ↓
-              实时进度（OnOperationProgress）+ 任务快照（轮询）
+```mermaid
+flowchart TD
+    Req["HTTP 请求（校验 + 入队）"] -->|"202 + taskId"| Worker["ComposeOperationWorker（后台）"]
+    Worker --> Exec["ComposeOperationExecutor（真正碰 Docker）"]
+    Exec --> Feedback["实时进度（OnOperationProgress）<br/>+ 任务快照（轮询）"]
 ```
 
 | 组件 | 位置 | 生命周期 | 职责 |
@@ -567,11 +540,12 @@ HTTP 请求（校验 + 入队）  →  202 + taskId
 
 审计属性一律 `internal set`，**外部（含应用层）只读**，唯一写入口是上述 `public` 方法：
 
-```
-应用服务 / 仓储基类
-      │  调 entity.MarkCreated(now, userId)  ← public
-      ▼
-实体内部  ──►  internal setter 写 CreationTime / CreatorId
+```mermaid
+flowchart TD
+    Caller["应用服务 / 仓储基类<br/>调 entity.MarkCreated(now, userId)（public）"]
+    Entity["实体内部<br/>internal setter 写 CreationTime / CreatorId"]
+
+    Caller --> Entity
 ```
 
 `Mark*` / `Delete` **显式接收时间与操作人**，而不是在实体内部取当前时间。原因有三：
@@ -641,8 +615,6 @@ HTTP 请求（校验 + 入队）  →  202 + taskId
 | 生成代码 | `GetTypeDeserializerImpl` 用 `new DynamicMethod(..., type, skipVisibility: true)` | 跨程序集跳过可见性检查 |
 
 官方测试佐证：`tests/Dapper.Tests/ConstructorTests.cs::TestWithNonPublicConstructor`。
-> `0.17.0` 计划在 Docker 客户端接入层加入直连和 Edge Agent，详见 [Agent 设计稿](./v0.17.0-agent-design.md)。
-
 
 ### 因此实体须满足
 
@@ -671,34 +643,18 @@ HTTP 请求（校验 + 入队）  →  202 + taskId
 
 职责按「谁知道什么」切三层——解析主机（Scoped，要查库）、池化客户端（Singleton，要跨请求存活）、创建客户端（无状态）：
 
-```
-HTTP Request
-─────────────
-   │  hostId = 主机名（hosts.name，不区分大小写）
-   ▼
-┌─────────────────────────────────┐
-│ IDockerHostAccessor   (Scoped)  │
-│  · 查 hosts 表解析主机          │  未找到 → 1300；已停用 → 1302
-│  · 校验 enabled                 │
-│  · 探活：临时客户端+Ping+释放   │  不经池，不污染生产连接
-└────────────────┬────────────────┘
-                 │ DockerHostConnection
-                 ▼
-┌─────────────────────────────────┐
-│ IDockerClientPool     (Singleton)│
-│  · 池键 = 规范化连接串 [+凭据指纹]│  同端点的主机名共享客户端
-│  · 命中即复用；未命中转交工厂   │
-│  · 空闲超时回收 / Invalidate    │
-│  · 进程退出统一释放             │
-└────────────────┬────────────────┘
-                 │ 未命中
-                 ▼
-┌─────────────────────────────────┐
-│ IDockerClientFactory  (无状态)  │
-│  · 规范化端点 → DockerClientBuilder│
-└────────────────┬────────────────┘
-                 ▼
-      Docker.DotNet.Enhanced DockerClient
+```mermaid
+flowchart TD
+    Req["HTTP Request<br/>hostId = 主机名（hosts.name，不区分大小写）"]
+    Accessor["IDockerHostAccessor（Scoped）<br/>查 hosts 表解析主机 · 校验 enabled<br/>探活：临时客户端 + Ping + 释放（不经池）"]
+    Pool["IDockerClientPool（Singleton）<br/>池键 = 规范化连接串 [+ 凭据指纹]<br/>命中即复用 · 空闲超时回收 · Invalidate"]
+    Factory["IDockerClientFactory（无状态）<br/>规范化端点 → DockerClientBuilder"]
+    Client["Docker.DotNet.Enhanced DockerClient"]
+
+    Req --> Accessor
+    Accessor -->|"DockerHostConnection<br/>未找到 1300 · 已停用 1302"| Pool
+    Pool -->|"未命中"| Factory
+    Factory --> Client
 ```
 
 ### 主机名约束（不可变标识）
@@ -897,33 +853,20 @@ public interface IDockerClientPool
 
 ### JWT 流程
 
-```
-                    ┌──────────────┐
-                    │ LoginView    │
-                    │ (前端)        │
-                    └──────┬───────┘
-                           │ POST /api/v1/auth/login
-                           │ {username, password}
-                           ▼
-                    ┌──────────────┐
-                    │ AuthController│
-                    │ + AuthService│
-                    └──────┬───────┘
-                           │ Argon2id 校验
-                           │ 生成 access (15min) + refresh (7d)
-                           ▼
-                    ┌──────────────┐
-                    │ 数据库        │
-                    │ refresh_tokens│
-                    │ (可撤销表)    │
-                    └──────┬───────┘
-                           │
-                           ▼ accessToken + refreshToken 返回前端
-                    ┌──────────────┐
-                    │ Pinia        │
-                    │ useUserStore │
-                    │ localStorage │
-                    └──────────────┘
+```mermaid
+sequenceDiagram
+    participant V as LoginView（前端）
+    participant A as AuthController + AuthService
+    participant DB as refresh_tokens（可撤销表）
+    participant P as Pinia useUserStore / localStorage
+
+    V->>A: POST /api/v1/auth/login {username, password}
+    A->>A: Argon2id 校验
+    A->>A: 生成 access（15min）+ refresh（7d）
+    A->>DB: 写入 refresh token
+    A-->>V: accessToken + refreshToken
+    V->>P: 持久化令牌对
+    Note over V,P: 后续请求自动带 Authorization: Bearer accessToken
 ```
 
 后续请求自动带 `Authorization: Bearer <accessToken>`。
@@ -1030,19 +973,24 @@ const connection = new HubConnectionBuilder()
 
 为最小化 access token 泄漏风险，使用**独立短时 terminal token**：
 
-```
-1. 前端请求 POST /api/v1/hosts/{hostId}/containers/terminal-token
-   → 返回 5 分钟过期 terminalToken（仅能用于 /ws/hosts/{hostId}/containers/exec）
+```mermaid
+sequenceDiagram
+    participant UI as 前端
+    participant API as REST 签发端点
+    participant WS as WebSocket 端点（/ws）
+    participant D as Docker exec
 
-2. 前端建立 WebSocket:
-   new WebSocket(`wss://host/ws/hosts/${hostId}/containers/exec?token=${terminalToken}&cols=120&rows=30`)
-
-3. 后端验证 terminalToken 有效性 + 主机一致 + 重新校验容器状态与 container.write
-
-4. 建立双向流：Exec.CreateContainerExecAsync(TTY) + StartContainerExecAsync(Detach=false)
-   → MultiplexedStream 桥接到 WebSocket
-
-5. 关闭 WebSocket 时释放 exec 实例，并写一条 `container.exec` 审计（会话 ID / 时长 / 退出码 / 结束原因）
+    UI->>API: POST /api/v1/hosts/{hostId}/containers/terminal-token
+    API-->>UI: 5 分钟过期 terminalToken（仅可用于 /ws/hosts/{hostId}/containers/exec）
+    UI->>WS: 建立 WebSocket（?token=…&cols=120&rows=30）
+    WS->>WS: 验证 terminalToken 有效性 + 主机一致
+    WS->>WS: 重新校验容器状态与 container.write
+    WS->>D: Exec.CreateContainerExecAsync(TTY) + StartContainerExecAsync(Detach=false)
+    D-->>WS: MultiplexedStream
+    WS-->>UI: 桥接双向字节流
+    UI->>WS: 关闭 WebSocket
+    WS->>D: 释放 exec 实例
+    WS->>WS: 写 container.exec 审计（会话 ID / 时长 / 退出码 / 结束原因）
 ```
 
 **三条关键设计**
@@ -1062,19 +1010,14 @@ const connection = new HubConnectionBuilder()
 审计回答「谁在什么时候对什么做了什么、结果如何」，因此它**不是日志系统的一部分**：
 Serilog 写给运维看，审计写给人查责任。两者唯一的交集是故障排查。
 
-```
-Controller / Endpoint
-      │  ① 业务动作（正常路径）
-      ▼
-Application Service  ──② IAuditLogger.WriteAsync(...)──▶  audit_logs（SQLite）
-      │                                                       ▲
-      │  ③ 失败（抛 BusinessException）                        │
-      ▼                                                       │
-ExceptionHandlingMiddleware ──────────────────────────────────┘
-      （只有 5xx 才兜底，4xx 是正常业务反馈）
-
-AuditFallbackMiddleware（在 UseStatusCodePages 之后）
-      └─ 只记「没被任何应用服务记录的 5xx」，补上最后的黑洞
+```mermaid
+flowchart TD
+    EP["Controller / Endpoint"] -->|"① 业务动作（正常路径）"| Svc["Application Service"]
+    Svc -->|"② IAuditLogger.WriteAsync(...)"| Audit[("audit_logs（SQLite）")]
+    Svc -->|"③ 失败（抛 BusinessException）"| MW["ExceptionHandlingMiddleware"]
+    MW -->|"只有 5xx 才兜底（4xx 是正常业务反馈）"| Audit
+    MW --> FB["AuditFallbackMiddleware<br/>（在 UseStatusCodePages 之后）"]
+    FB -->|"只记没被任何应用服务记录的 5xx"| Audit
 ```
 
 **五条设计决定**
@@ -1108,27 +1051,22 @@ AuditFallbackMiddleware（在 UseStatusCodePages 之后）
 
 为避免 Docker SDK 类型泄漏到上层，并支持未来切换：
 
-```
-┌────────────────────────────────────────────┐
-│ 接口层 (Whalefleet.Api)                │
-│   - Controllers 只引用 Application 的接口  │
-└──────────────────┬─────────────────────────┘
-                   │
-┌──────────────────▼─────────────────────────┐
-│ 应用层 (Whalefleet.Application)        │
-│   - IDockerClientFactory (接口)            │
-│   - IDockerHostAccessor  (接口)            │
-│   - DTO (HostDto, ContainerDto, ...)       │
-│   - ApiResult<T> / ErrorCodes              │
-└──────────────────┬─────────────────────────┘
-                   │
-┌──────────────────▼─────────────────────────┐
-│ 基础设施层 (Whalefleet.Infrastructure) │
-│   - DockerClientFactory (实现)             │
-│   - DockerHostAccessor  (实现)             │
-│   - XxxRepository (Dapper + SQLite)        │
-│   - 引用 Docker.DotNet.Enhanced            │
-└────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph ApiLayer["接口层（Whalefleet.Api）"]
+        Controllers["Controllers<br/>只引用 Application 的接口"]
+    end
+
+    subgraph AppLayer["应用层（Whalefleet.Application）"]
+        AppItems["IDockerClientFactory（接口）<br/>IDockerHostAccessor（接口）<br/>DTO（HostDto、ContainerDto …）<br/>ApiResult / ErrorCodes"]
+    end
+
+    subgraph InfraLayer["基础设施层（Whalefleet.Infrastructure）"]
+        InfraItems["DockerClientFactory（实现）<br/>DockerHostAccessor（实现）<br/>XxxRepository（Dapper + SQLite）<br/>引用 Docker.DotNet.Enhanced"]
+    end
+
+    Controllers --> AppItems
+    AppItems --> InfraItems
 ```
 
 **关键收益**：
@@ -1176,33 +1114,35 @@ ENTRYPOINT ["dotnet", "Whalefleet.Api.dll"]
 
 ### 目录结构
 
+```mermaid
+mindmap
+  root((src/Whalefleet.UI/src))
+    api（RPC 风格方法）
+    assets（静态资源）
+    components
+      common（EmptyState / StatusBadge / JsonTree / CommandPalette）
+      business（ContainerStatusBadge / PortMappingEditor / EnvVarEditor）
+    composables（复用 Composition 函数）
+      useTheme.ts
+      useShortcuts.ts
+    layouts
+      AppLayout.vue
+      AuthLayout.vue
+    locales（i18n 语言文件）
+    router
+      index.ts
+      guards.ts
+    stores（Pinia）
+    styles
+      tokens.css（CSS 变量）
+      uno.css（UnoCSS 入口）
+      overrides.css（Element Plus 主题覆盖）
+    types（TypeScript 类型）
+    utils
+    views（路由对应的页面组件）
 ```
-src/Whalefleet.UI/src/
-├── api/                   # API 封装（RPC 风格方法）
-├── assets/                # 静态资源
-├── components/
-│   ├── common/            # 通用组件（EmptyState、StatusBadge、JsonTree、CommandPalette）
-│   └── business/          # 业务组件（ContainerStatusBadge、PortMappingEditor、EnvVarEditor）
-├── composables/           # 复用 Composition 函数
-│   ├── useTheme.ts
-│   └── useShortcuts.ts
-│   # 主机作用域请求的 URL 由各 api 模块按显式 hostId 参数拼出
-├── layouts/
-│   ├── AppLayout.vue
-│   └── AuthLayout.vue
-├── locales/               # i18n 语言文件
-├── router/
-│   ├── index.ts
-│   └── guards.ts
-├── stores/                # Pinia
-├── styles/
-│   ├── tokens.css         # CSS 变量
-│   ├── uno.css            # UnoCSS 入口
-│   └── overrides.css      # Element Plus 主题覆盖
-├── types/                 # TypeScript 类型
-├── utils/
-└── views/                 # 路由对应的页面组件
-```
+
+> 主机作用域请求的 URL 由各 api 模块按显式 hostId 参数拼出。
 
 ### 通信方式
 
@@ -1245,11 +1185,15 @@ src/Whalefleet.UI/src/
 
 ### 职责分层
 
-```
-错误码数值           语义分类               HTTP 状态码
-ErrorCodes    ──►  ErrorCategory   ──►  ErrorHttpStatus
-（应用层）           （应用层）             （接口层）
-      └── ErrorCodeCatalog 提供分类与默认文案
+```mermaid
+flowchart LR
+    Num["错误码数值<br/>ErrorCodes<br/>（应用层）"]
+    Cat["语义分类<br/>ErrorCategory<br/>（应用层）"]
+    Http["HTTP 状态码<br/>ErrorHttpStatus<br/>（接口层）"]
+    Catalog["ErrorCodeCatalog<br/>提供分类与默认文案"]
+
+    Num --> Cat --> Http
+    Catalog -.-> Cat
 ```
 
 > 刻意分三层：应用层只描述「错误属于哪一类」，不引入 HTTP 概念；接口层负责把分类翻译成协议状态码。两侧都能独立单测。
@@ -1258,12 +1202,15 @@ ErrorCodes    ──►  ErrorCategory   ──►  ErrorHttpStatus
 
 ### 管道顺序（不可随意调整）
 
-```
-1. ExceptionHandlingMiddleware   ← 必须最外层，否则无法捕获注册在它之前的中间件异常
-2. SerilogRequestLogging         ← 异常请求降级为 Debug（详情已由第 1 层记录，避免重复告警）
-3. UseStatusCodePages            ← 包装「无响应体」的 4xx/5xx
-4. UseCors                       ← 白名单为空时不注册任何策略 = 默认拒绝跨域
-5. MapControllers / MapHealthChecks /（仅 Development）dev 故障注入端点
+```mermaid
+flowchart LR
+    M5["5. MapControllers / MapHealthChecks<br/>（仅 Development）dev 故障注入端点"]
+    M4["4. UseCors<br/>白名单为空时不注册任何策略 = 默认拒绝跨域"]
+    M3["3. UseStatusCodePages<br/>包装「无响应体」的 4xx/5xx"]
+    M2["2. SerilogRequestLogging<br/>异常请求降级为 Debug（详情已由第 1 层记录）"]
+    M1["1. ExceptionHandlingMiddleware<br/>必须最外层，否则无法捕获注册在它之前的中间件异常"]
+
+    M1 --> M2 --> M3 --> M4 --> M5
 ```
 
 ### 异常 → 错误码 → HTTP 映射

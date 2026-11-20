@@ -91,22 +91,23 @@ mock 复刻了后端的**刷新令牌轮换**语义：每次刷新签发新的 `
 
 ## 目录结构
 
-```
-src/
-├── api/          # API 封装（index.ts = axios 实例 + 拦截器；auth.ts / host.ts = 端点）
-├── components/
-│   ├── common/   # 通用组件
-│   └── business/ # 业务组件
-├── composables/  # Composition 函数
-├── layouts/      # 应用外壳
-├── locales/      # i18n（zh-CN / en-US，两份 key 必须同步）
-├── mocks/        # MSW mock（仅开发）
-├── router/       # 路由与守卫
-├── stores/       # Pinia
-├── styles/       # main.css（设计令牌 + Element Plus 变量桥接）
-├── types/        # TypeScript 类型
-├── utils/        # 纯函数工具
-└── views/        # 路由对应的页面
+```mermaid
+mindmap
+  root((src))
+    api（index.ts = axios 实例 + 拦截器；auth.ts / host.ts = 端点）
+    components
+      common（通用组件）
+      business（业务组件）
+    composables（Composition 函数）
+    layouts（应用外壳）
+    locales（zh-CN / en-US，两份 key 必须同步）
+    mocks（MSW mock，仅开发）
+    router（路由与守卫）
+    stores（Pinia）
+    styles（main.css：设计令牌 + Element Plus 变量桥接）
+    types（TypeScript 类型）
+    utils（纯函数工具）
+    views（路由对应的页面）
 ```
 
 ---

@@ -7,28 +7,22 @@
 
 ## 整体布局（桌面端 ≥1280px）
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│ TopBar (64px 固定顶栏)                                            │
-│ ┌────┬─────────────────────────────────────────────────────────┐ │
-│ │Logo│  面包屑 Home / Containers / nginx                       │ │
-│ │    │              HostSelector ▼      通知🔔   👤user ▼     │ │
-│ └────┴─────────────────────────────────────────────────────────┘ │
-│ Sidebar        │ Content（带滚动，主内容区）                      │
-│ (200px,        │                                                   │
-│  可折叠→64px)  │  <RouterView />                                   │
-│                │                                                   │
-│ 📊 Dashboard   │                                                   │
-│ 📦 Containers  │                                                   │
-│ 🖼  Images     │                                                   │
-│ 💾 Volumes     │                                                   │
-│ 🌐 Networks    │                                                   │
-│ ─── ADMIN ──── │                                                   │
-│ 🖥  Hosts      │                                                   │
-│ 👥 Users       │                                                   │
-│                │                                                   │
-│ [折叠按钮]     │                                                   │
-└──────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph TopBar["TopBar（64px 固定顶栏）"]
+        direction LR
+        Logo["Logo"]
+        Crumb["面包屑<br/>Home / Containers / nginx"]
+        Right["HostSelector ▾ · 通知 🔔 · 用户 ▾"]
+    end
+
+    subgraph Body["主体区"]
+        direction LR
+        Sidebar["Sidebar（200px，可折叠 → 64px）<br/>概览 · 容器 · 镜像 · 数据卷 · 网络<br/>── ADMIN ── 主机 · 用户<br/>[折叠按钮]"]
+        Content["Content（带滚动，主内容区）<br/>RouterView"]
+    end
+
+    TopBar --> Body
 ```
 
 ---
@@ -158,21 +152,18 @@ node scripts/mobile-shot.mjs http://host.docker.internal:30123/hosts/local/volum
 
 总览页用**长条形**条目而非卡片网格（便于横向对比多台服务器的同类指标），并按**分组**聚合：
 
-```
-生产环境  1 台
-┌────────────────────────────────────────────────────────────────────┐
-│ ● prod-01  远程 TCP          ┃ ▢ ┃ ▢ ┃ ▢ ┃ ▢        在线 ✎ ℹ 📈  → │
-│   tcp://10.0.0.11:2376        ┃容┃图┃卷┃网                          │
-│   linux/aarch64 · Docker 27.3.1                                       │
-└────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Prod["生产环境（1 台）"]
+        R1["● prod-01 · 远程 TCP<br/>tcp://10.0.0.11:2376<br/>linux/aarch64 · Docker 27.3.1<br/>容器 / 镜像 / 卷 / 网络 四个计数<br/>在线 ✎ ℹ 📈 →"]
+    end
 
-测试环境  1 台
-┌────────────────────────────────────────────────────────────────────┐
-│ ● staging-01  远程 TCP      ┃ ▢ ┃ ▢ ┃ ▢ ┃ ▢           离线 ✎ ℹ 📈  → │
-│   tcp://10.0.0.21:2375     （版本缺失 → 整行省略）                  │
-└────────────────────────────────────────────────────────────────────┘
+    subgraph Staging["测试环境（1 台）"]
+        R2["● staging-01 · 远程 TCP<br/>tcp://10.0.0.21:2375<br/>版本缺失 → 整行省略<br/>离线 ✎ ℹ 📈 →"]
+    end
 
-未分组  0 台  ← 无成员的分组不渲染
+    NoGroup["未分组（0 台）：无成员的分组不渲染"]
+    style NoGroup stroke-dasharray: 4 4
 ```
 
 - 一行一台主机：`名称 + 类型` / `endpoint` / `版本` ｜ 四个资源计数 ｜ `状态 + 行内按钮 + 箭头`
@@ -493,33 +484,46 @@ HOST_TONE_RAIL[tone]                // 卡片左侧色条
 
 ## 路由结构
 
-```
-/login                              → LoginView（独立 AuthLayout，无顶栏侧栏）
-/                                   → AppLayout 容器，redirect → /overview
+```mermaid
+flowchart LR
+    Login["/login<br/>LoginView（独立 AuthLayout，无顶栏侧栏）"]
+    Root["/<br/>AppLayout 容器，redirect → /overview"]
 
-  ─── 全局作用域（scope: 'global'）───
-  /overview                         → OverviewView（所有服务器总览，默认页）
-  /settings                         → SettingsView（主题 / 语言 / 每页条数）
-  /hosts                            → HostsView        (admin, 主机 CRUD)
-  /users                            → UsersView        (admin)
-  /roles                            → RolesView        (admin, 角色与权限矩阵)
-  /repositories                      → RepositoriesView  (需 repository.read)
+    subgraph G["全局作用域（scope: global）"]
+        direction TB
+        Overview["/overview → OverviewView<br/>（所有服务器总览，默认页）"]
+        Settings["/settings → SettingsView<br/>（主题 / 语言 / 每页条数）"]
+        Hosts["/hosts → HostsView<br/>（admin，主机 CRUD）"]
+        Users["/users → UsersView（admin）"]
+        Roles["/roles → RolesView<br/>（admin，角色与权限矩阵）"]
+        Repos["/repositories → RepositoriesView<br/>（需 repository.read）"]
+    end
 
-  ─── 主机作用域（scope: 'host'）───
-  /hosts/:hostId                    → redirect → /hosts/:hostId/dashboard
-  /hosts/:hostId/dashboard          → HostDashboardView（落地页，承载「主机信息」卡片；不进侧边栏）
-  /hosts/:hostId/status             → HostStatusView（状态图，菜单第一项）
-  /hosts/:hostId/composes             → ComposesView（Compose 项目，0.10.0+）
-  /hosts/:hostId/containers         → ContainersView
-    /hosts/:hostId/containers/:id/inspect  → ContainerInspectView（配置快照）
-    /hosts/:hostId/containers/:id/logs     → ContainerLogsView（实时日志）
-    /hosts/:hostId/containers/:id/terminal → ContainerTerminalView（交互式终端，独立页）
-  /hosts/:hostId/images             → ImagesView
-  /hosts/:hostId/volumes            → VolumesView      (0.2.0+)
-  /hosts/:hostId/networks           → NetworksView     (0.2.0+)
-  /hosts/:hostId/events             → EventsView       (操作审计，0.9.0+ 占位)
-  /hosts/:hostId/composes/:name       → ComposeProjectDetailView  (0.10.0+)
-  /hosts/:hostId/repositories        → RepositoryListView (0.4.0+)
+    subgraph H["主机作用域（scope: host）"]
+        direction TB
+        Dash["/hosts/:hostId → redirect → /hosts/:hostId/dashboard"]
+        Dashboard["/hosts/:hostId/dashboard → HostDashboardView<br/>（落地页，不进侧边栏）"]
+        Status["/hosts/:hostId/status → HostStatusView<br/>（状态图，菜单第一项）"]
+        Composes["/hosts/:hostId/composes → ComposesView（0.10.0+）"]
+        Containers["/hosts/:hostId/containers → ContainersView"]
+        Inspect["/hosts/:hostId/containers/:id/inspect<br/>→ ContainerInspectView（配置快照）"]
+        Logs["/hosts/:hostId/containers/:id/logs<br/>→ ContainerLogsView（实时日志）"]
+        Terminal["/hosts/:hostId/containers/:id/terminal<br/>→ ContainerTerminalView（独立页）"]
+        Images["/hosts/:hostId/images → ImagesView"]
+        Volumes["/hosts/:hostId/volumes → VolumesView（0.2.0+）"]
+        Networks["/hosts/:hostId/networks → NetworksView（0.2.0+）"]
+        Events["/hosts/:hostId/events → EventsView<br/>（操作审计，0.9.0+ 占位）"]
+        ComposeDetail["/hosts/:hostId/composes/:name<br/>→ ComposeProjectDetailView（0.10.0+）"]
+        RepoList["/hosts/:hostId/repositories<br/>→ RepositoryListView（0.4.0+）"]
+    end
+
+    Root --> G
+    Root --> H
+    Dash --> Dashboard
+    Containers --> Inspect
+    Containers --> Logs
+    Containers --> Terminal
+    Composes --> ComposeDetail
 ```
 
 > **注意**：`/hosts`（主机管理，admin CRUD）与 `/hosts/:hostId/**`（某台主机的资源作用域）
@@ -577,42 +581,44 @@ interface RouteMeta {
 
 ## 文件组织约定
 
+```mermaid
+mindmap
+  root((src/Whalefleet.UI/src))
+    api（RPC 风格方法）
+    assets（静态资源）
+    components
+      common（通用组件，跨业务复用）
+      business（业务组件，领域专用）
+    composables（复用 Composition 函数）
+      useTheme.ts
+      useShortcuts.ts
+    layouts（应用外壳及其组成部件）
+      AppLayout.vue（顶栏 + 侧边栏 + 内容区）
+      AppBreadcrumb.vue（顶栏面包屑）
+      UserMenu.vue（用户名 / 角色 / 登出）
+      AppSidebar.vue（桌面侧栏 + 移动端抽屉）
+      SidebarNav.vue（侧边栏菜单内容）
+      AuthLayout.vue
+    locales（zh-CN / en-US，键必须同步）
+    router
+      index.ts
+      guards.ts（鉴权 + 角色守卫）
+    stores（Pinia）
+      auth.ts（令牌对 + 用户摘要，持久化）
+      host.ts（主机列表 + 分组 + currentId，不持久化）
+      theme.ts（主题 + 侧栏折叠，持久化）
+      preferences.ts（每页条数等偏好）
+    styles
+      main.css（设计令牌 + Element Plus 变量桥接 + 页面级动画）
+    types（TypeScript 类型）
+    utils（纯函数工具，可脱开组件单测）
+      breadcrumbs.ts（面包屑层级派生）
+      datetime.ts（时间 / 时长格式化）
+      host-status.ts（主机三态语义映射 ok / down / idle）
+    views（路由对应的页面组件）
 ```
-src/Whalefleet.UI/src/
-├── api/                   # API 封装（RPC 风格方法）
-├── assets/                # 静态资源
-├── components/
-│   ├── common/            # 通用组件（跨业务复用）
-│   └── business/          # 业务组件（领域专用）
-├── composables/           # 复用 Composition 函数
-│   ├── useTheme.ts
-│   └── useShortcuts.ts
-│   # 主机作用域请求的 URL 由各 api 模块按显式 hostId 参数拼出
-├── layouts/               # 应用外壳及其组成部件（只在布局内部复用）
-│   ├── AppLayout.vue      # 顶栏 + 侧边栏 + 内容区
-│   ├── AppBreadcrumb.vue  # 顶栏面包屑
-│   ├── UserMenu.vue       # 顶栏用户菜单（用户名 / 角色 / 登出）
-│   ├── AppSidebar.vue     # 桌面侧栏 + 移动端抽屉（容器与断点）
-│   ├── SidebarNav.vue     # 侧边栏菜单内容（两个容器共用同一份）
-│   └── AuthLayout.vue
-├── locales/               # i18n 语言文件（zh-CN / en-US 两份，键必须同步）
-├── router/
-│   ├── index.ts
-│   └── guards.ts          # 鉴权 + 角色守卫
-├── stores/                # Pinia
-│   ├── auth.ts            # 令牌对 + 用户摘要（持久化）
-│   ├── host.ts            # 主机列表 + 分组 + currentId（**不持久化**）
-│   ├── theme.ts           # 主题 + 侧栏折叠（持久化）
-│   └── preferences.ts     # 每页条数等偏好
-├── styles/
-│   └── main.css           # 设计令牌（语义色）+ Element Plus 变量桥接 + 页面级动画
-├── types/                 # TypeScript 类型
-├── utils/                 # 纯函数工具（可脱开组件单测）
-│   ├── breadcrumbs.ts     # 面包屑层级派生
-│   ├── datetime.ts        # 时间 / 时长格式化
-│   └── host-status.ts     # 主机三态语义映射（ok / down / idle）
-└── views/                 # 路由对应的页面组件
-```
+
+> 主机作用域请求的 URL 由各 api 模块按显式 hostId 参数拼出。
 
 ---
 

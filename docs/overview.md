@@ -8,17 +8,31 @@ Whalefleet 旨在提供一个**轻量、可自托管、易于二次开发**的 D
 
 ## 项目定位
 
-```
-Whalefleet vs Portainer
-─────────────────────────────────────────────────────────────
-特性                  Whalefleet          Portainer
-─────────────────────────────────────────────────────────────
-开源协议              MIT（完全开放）          CE 版 zlib，EE 商业
-技术栈               .NET 10 + Vue 3          Go + React
-二次开发             易于定制                 改动成本高
-功能范围             聚焦核心运维场景          功能全面但复杂
-多主机               分阶段支持               CE 版受限
-─────────────────────────────────────────────────────────────
+```mermaid
+flowchart LR
+    subgraph W["Whalefleet"]
+        direction TB
+        W1["开源协议：MIT（完全开放）"]
+        W2["技术栈：.NET 10 + Vue 3"]
+        W3["二次开发：易于定制"]
+        W4["功能范围：聚焦核心运维场景"]
+        W5["多主机：分阶段支持"]
+    end
+
+    subgraph P["Portainer"]
+        direction TB
+        P1["开源协议：CE 版 zlib，EE 商业"]
+        P2["技术栈：Go + React"]
+        P3["二次开发：改动成本高"]
+        P4["功能范围：功能全面但复杂"]
+        P5["多主机：CE 版受限"]
+    end
+
+    W1 ~~~ P1
+    W2 ~~~ P2
+    W3 ~~~ P3
+    W4 ~~~ P4
+    W5 ~~~ P5
 ```
 
 ## 核心目标
@@ -137,6 +151,7 @@ socket-proxy 把 Docker API 权限限定到最小分区集。注意 `POST` 这�
 | [backlog.md](./backlog.md) | 明确非目标与待评估项（含 1.0.0 之后的范围） |
 | [roadmap.md](./roadmap.md) | 以 `1.0.0` 为目标的版本规划（0.1.0 – 0.20.0 功能迭代 + RC 与正式发布） |
 | [architecture.md](./architecture.md) | 系统分层、多主机 DockerClient 工厂、通信机制 |
+| [v0.17.0-agent-design.md](./v0.17.0-agent-design.md) | Agent 直连、Edge 和 Docker 数据转发设计 |
 | [api-spec.md](./api-spec.md) | RPC 风格 API 约定 + SignalR Hub + WebSocket 规范 |
 | [ui-guidelines.md](./ui-guidelines.md) | UI 布局规范（整体布局、断点、组件分层、交互约定） |
 | [README.md](../README.md) | 项目入口（英文，徽章、`docker run` 一键启动、文档链接） |
@@ -149,4 +164,3 @@ socket-proxy 把 Docker API 权限限定到最小分区集。注意 `POST` 这�
 ## 许可证
 
 [MIT](../LICENSE) © 2026 blue-cloud-net
-| [v0.17.0-agent-design.md](./v0.17.0-agent-design.md) | Agent 直连、Edge 和 Docker 数据转发设计 |
