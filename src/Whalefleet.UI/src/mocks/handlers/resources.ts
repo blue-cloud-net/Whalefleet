@@ -90,6 +90,10 @@ export function resourceHandlers(scenario: () => MockScenario) {
    * 前端「只渲染当前页」的分支永远测不到。
    */
   function paginate<T>(items: T[], body: Record<string, unknown>) {
+    if (body.unpaged === true) {
+      return { items, total: items.length, pageIndex: 0, pageSize: items.length }
+    }
+
     const rawIndex = Number(body.pageIndex ?? 0)
     const rawSize = Number(body.pageSize ?? 20)
     const pageIndex = Math.max(Number.isFinite(rawIndex) ? Math.trunc(rawIndex) : 0, 0)
