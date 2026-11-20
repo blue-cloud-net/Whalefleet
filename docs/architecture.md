@@ -641,6 +641,8 @@ flowchart TD
 
 ## 多主机架构（0.0.8 起）
 
+> `0.17.0` 计划在 Docker 客户端接入层加入直连和 Edge Agent，详见 [Agent 设计稿](./v0.17.0-agent-design.md)。
+
 职责按「谁知道什么」切三层——解析主机（Scoped，要查库）、池化客户端（Singleton，要跨请求存活）、创建客户端（无状态）：
 
 ```mermaid
