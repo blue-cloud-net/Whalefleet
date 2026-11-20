@@ -27,6 +27,9 @@ public sealed record ListNetworksRequest
     /// 每页条数；省略时用默认值（20），超出上限（100）会被夹紧。
     /// </summary>
     public int? PageSize { get; init; }
+
+    /// <summary>返回全部匹配结果，忽略分页参数。</summary>
+    public bool Unpaged { get; init; }
 }
 
 /// <summary>

@@ -164,8 +164,8 @@ public sealed partial class ContainerService
         // 更难解释。排序必须在分页之前，否则 total 不变而每页内容错位。
         var ordered = Sort(filtered, request.SortBy, request.SortDir);
 
-        var pageIndex = Math.Max(request.PageIndex ?? 0, 0);
-        var pageSize = Math.Clamp(request.PageSize ?? _defaultPageSize, 1, _maxPageSize);
+        var pageIndex = request.Unpaged ? 0 : Math.Max(request.PageIndex ?? 0, 0);
+        var pageSize = request.Unpaged ? ordered.Count : Math.Clamp(request.PageSize ?? _defaultPageSize, 1, _maxPageSize);
 
         _logger.LogDebug(
             "主机 {HostId} 容器列表：共 {Total} 个（状态={State}，搜索={Search}，项目={Project}，排序={SortBy}/{SortDir}），返回第 {PageIndex} 页（每页 {PageSize}）",

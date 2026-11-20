@@ -28,6 +28,9 @@ public sealed record ListImagesRequest
     /// </summary>
     public int? PageSize { get; init; }
 
+    /// <summary>返回全部匹配结果，忽略分页参数。</summary>
+    public bool Unpaged { get; init; }
+
     /// <summary>
     /// 排序字段；省略时保持守护进程返回的顺序（创建时间降序）。
     /// </summary>
